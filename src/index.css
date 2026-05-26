@@ -1,0 +1,136 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  /* No overrides needed here */
+}
+
+/* Invert standard colors in dark mode automatically so we don't need dark: prefixes everywhere */
+.dark {
+  --color-white: #121212;
+  --color-black: #e4e4e7;
+  
+  --color-gray-50: #18181b;
+  --color-gray-100: #27272a;
+  --color-gray-200: #3f3f46;
+  --color-gray-300: #52525b;
+  --color-gray-400: #71717a;
+  --color-gray-500: #a1a1aa;
+  --color-gray-600: #d4d4d8;
+  --color-gray-700: #e4e4e7;
+  --color-gray-800: #f4f4f5;
+  --color-gray-900: #ffffff;
+  
+  --color-green-500: #22c55e;
+  --color-red-500: #ef4444;
+  --color-red-50: #450a0a;
+
+  /* App bg special hex mapped to dark */
+  color: var(--color-gray-900);
+}
+
+body {
+  background-color: var(--color-white);
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.markdown-body ul {
+  list-style-type: disc;
+  padding-left: 1.5rem;
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.markdown-body ol {
+  list-style-type: decimal;
+  padding-left: 1.5rem;
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.markdown-body pre {
+  background-color: var(--color-gray-100);
+  padding: 0.5rem;
+  border-radius: 0.5rem;
+  overflow-x: auto;
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.markdown-body code {
+  background-color: var(--color-gray-100);
+  padding: 0.125rem 0.25rem;
+  border-radius: 0.25rem;
+  font-family: monospace;
+  font-size: 0.875em;
+}
+
+.markdown-body pre code {
+  background-color: transparent;
+  padding: 0;
+}
+
+.markdown-body blockquote {
+  border-left: 4px solid var(--color-gray-300);
+  padding-left: 1rem;
+  color: var(--color-gray-500);
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-gray-200);
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-gray-300);
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: var(--color-gray-700);
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: var(--color-gray-600);
+}
+
+
+/* Hardcoded hex overrides */
+.dark .bg-\[\#f0f2f5\] {
+  background-color: #000000 !important;
+}
+
+.dark .bg-\[\#1e2329\] {
+  background-color: #f4f4f5 !important;
+  color: #000000 !important;
+}
+
+.dark .bg-\[\#e2e8f0\] {
+  background-color: #27272a !important;
+  color: #ffffff !important;
+}
+
+.dark .bg-\[\#2c2f33\] {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+}
+
+/* Re-adjust shadow in dark mode so it's not a glaring white shadow if standard is black */
+.dark .shadow-2xl {
+  box-shadow: 0 25px 50px -12px rgba(255, 255, 255, 0.05);
+}
+
+.dark .shadow-\[0_-10px_40px_-15px_rgba\(0\,0\,0\,0\.05\)\] {
+  box-shadow: 0 -10px 40px -15px rgba(255, 255, 255, 0.05) !important;
+}

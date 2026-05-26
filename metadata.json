@@ -1,0 +1,8 @@
+{
+  "name": "Almaren Messenger",
+  "description": "A high-performance chat application capable of rendering 100k+ messages without lag, responsive for mobile and PC.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
