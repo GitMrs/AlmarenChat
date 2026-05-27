@@ -8,93 +8,69 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  password  String
-  name      String
-  avatar    String?
-  isOnline  Boolean  @default(false)
-  lastSeen  DateTime @default(now())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id           String         @id @default(uuid())
+  email        String         @unique
+  passwordHash String
+  name         String
+  avatar       String?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
 
-  chats            ChatUser[]
-  agents           Agent[]
-  sentFriendships  Friendship[] @relation("UserFriendships")
-  recvFriendships  Friendship[] @relation("FriendRequests")
+  conversations Conversation[]
+  agents        Agent[]
+  favorites     FavoriteAgent[]
 }
 
 model Agent {
-  id          String   @id @default(uuid())
-  name        String
-  avatar      String?
-  description String?
+  id           String         @id @default(uuid())
+  creatorId    String?
+  creator      User?          @relation(fields: [creatorId], references: [id])
+  name         String
+  avatar       String?
+  description  String?
+  category     String?
+  tone         String?
+  greeting     String?
   systemPrompt String?
-  // AI Configuration
-  apiBaseUrl  String?
-  apiKey      String?
-  modelName   String?
-  // Meta
-  creatorId   String?
-  creator     User?    @relation(fields: [creatorId], references: [id])
-  isPublic    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  model        String?
+  isPublic     Boolean        @default(true)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
 
-  chats ChatUser[]
+  conversations Conversation[]
+  favorites     FavoriteAgent[]
 }
 
-model Chat {
-  id        String      @id @default(uuid())
-  title     String?
-  isGroup   Boolean     @default(false)
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
-
-  users    ChatUser[]
-  messages Message[]
-}
-
-model ChatUser {
-  id        String   @id @default(uuid())
-  chatId    String
+model Conversation {
+  id        String    @id @default(uuid())
   userId    String
-  agentId   String?
-  joinedAt  DateTime @default(now())
-
-  chat  Chat   @relation(fields: [chatId], references: [id], onDelete: Cascade)
-  user  User?  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  agent Agent? @relation(fields: [agentId], references: [id], onDelete: Cascade)
-
-  @@unique([chatId, userId])
-  @@unique([chatId, agentId])
+  user      User      @relation(fields: [userId], references: [id])
+  agentId   String
+  agent     Agent     @relation(fields: [agentId], references: [id])
+  title     String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  messages  Message[]
 }
 
 model Message {
-  id        String      @id @default(uuid())
-  chatId    String
-  senderId  String
-  content   String
-  type      String      @default("text")
-  status    String      @default("sent")
-  createdAt DateTime    @default(now())
+  id             String       @id @default(uuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  role           String       // "user" | "assistant" | "system"
+  content        String
+  createdAt      DateTime     @default(now())
 
-  chat Chat @relation(fields: [chatId], references: [id], onDelete: Cascade)
-
-  @@index([chatId, createdAt])
+  @@index([conversationId, createdAt])
 }
 
-model Friendship {
+model FavoriteAgent {
   id        String   @id @default(uuid())
   userId    String
-  friendId  String
-  status    String   @default("pending")
+  user      User     @relation(fields: [userId], references: [id])
+  agentId   String
+  agent     Agent    @relation(fields: [agentId], references: [id])
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
 
-  user   User @relation("UserFriendships", fields: [userId], references: [id], onDelete: Cascade)
-  friend User @relation("FriendRequests", fields: [friendId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, friendId])
-  @@index([friendId])
+  @@unique([userId, agentId])
 }

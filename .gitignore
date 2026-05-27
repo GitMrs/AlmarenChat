@@ -9,3 +9,5 @@ coverage/
 
 /src/generated/prisma
 *.db
+.next/
+tsconfig.tsbuildinfo

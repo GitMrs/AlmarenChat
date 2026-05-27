@@ -1,0 +1,55 @@
+import { NextResponse } from 'next/server';
+import prisma from '@/app/api/_lib/db';
+import { requireAuth } from '@/app/api/_lib/auth';
+
+export async function GET(request: Request) {
+  try {
+    const userId = requireAuth(request);
+
+    const conversations = await prisma.conversation.findMany({
+      where: { userId },
+      include: {
+        agent: true,
+        messages: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+        },
+      },
+      orderBy: { updatedAt: 'desc' },
+    });
+
+    return NextResponse.json({ conversations });
+  } catch (e: any) {
+    if (e.message === 'Unauthorized') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    return NextResponse.json({ error: e.message }, { status: 500 });
+  }
+}
+
+export async function POST(request: Request) {
+  try {
+    const userId = requireAuth(request);
+    const { agentId, title } = await request.json();
+
+    if (!agentId) {
+      return NextResponse.json({ error: 'Missing agentId' }, { status: 400 });
+    }
+
+    const conversation = await prisma.conversation.create({
+      data: {
+        userId,
+        agentId,
+        title,
+      },
+      include: { agent: true },
+    });
+
+    return NextResponse.json({ conversation });
+  } catch (e: any) {
+    if (e.message === 'Unauthorized') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    return NextResponse.json({ error: e.message }, { status: 500 });
+  }
+}

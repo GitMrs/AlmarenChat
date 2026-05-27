@@ -1,0 +1,51 @@
+import { NextResponse } from 'next/server';
+import prisma from '@/app/api/_lib/db';
+import { requireAuth } from '@/app/api/_lib/auth';
+
+export async function GET(request: Request) {
+  try {
+    requireAuth(request);
+
+    const agents = await prisma.agent.findMany({
+      where: { isPublic: true },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return NextResponse.json({ agents });
+  } catch (e: any) {
+    if (e.message === 'Unauthorized') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    return NextResponse.json({ error: e.message }, { status: 500 });
+  }
+}
+
+export async function POST(request: Request) {
+  try {
+    const userId = requireAuth(request);
+    const { name, avatar, description, category, tone, greeting, systemPrompt, model, isPublic } =
+      await request.json();
+
+    const agent = await prisma.agent.create({
+      data: {
+        name,
+        avatar,
+        description,
+        category,
+        tone,
+        greeting,
+        systemPrompt,
+        model,
+        isPublic: isPublic ?? true,
+        creatorId: userId,
+      },
+    });
+
+    return NextResponse.json({ agent });
+  } catch (e: any) {
+    if (e.message === 'Unauthorized') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    return NextResponse.json({ error: e.message }, { status: 500 });
+  }
+}
