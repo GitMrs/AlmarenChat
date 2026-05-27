@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { Mail, Lock, User, ArrowRight, ChevronLeft, MessageSquare } from 'lucide-react';
-import { cn } from '../lib/utils';
+import { login, register } from '../lib/api';
 
 interface LoginScreenProps {
-  onLogin: () => void;
+  onLogin: (user: { id: string; name: string; email: string; avatar?: string }) => void;
 }
 
 export function LoginScreen({ onLogin }: LoginScreenProps) {
@@ -11,11 +11,26 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (email && password) {
-      onLogin();
+    if (!email || !password) return;
+    if (!isLogin && !name) return;
+
+    setError('');
+    setLoading(true);
+
+    try {
+      const data = isLogin
+        ? await login(email, password)
+        : await register(email, password, name);
+      onLogin(data.user);
+    } catch (err: any) {
+      setError(err.message || 'An error occurred');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -26,7 +41,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
          <div className="absolute top-0 right-0 p-12 opacity-10 blur-3xl pointer-events-none">
             <div className="w-96 h-96 bg-white rounded-full"></div>
          </div>
-         
+
          <div className="relative z-10 flex items-center gap-3">
            <div className="w-12 h-12 bg-white/10 rounded-2xl flex items-center justify-center backdrop-blur-sm border border-white/10">
              <MessageSquare size={28} className="text-white" />
@@ -51,7 +66,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
       {/* Main Form Area */}
       <div className="flex-1 overflow-y-auto px-6 py-12 md:px-12 lg:px-20 flex flex-col justify-center relative">
         {!isLogin && (
-          <button 
+          <button
             type="button"
             onClick={() => setIsLogin(true)}
             className="absolute top-6 left-6 p-2 text-gray-500 hover:text-black transition-colors rounded-full hover:bg-gray-50 z-20"
@@ -72,6 +87,12 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
             {isLogin ? 'Please enter your details to sign in.' : 'Start your messaging journey with us.'}
           </p>
 
+          {error && (
+            <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm">
+              {error}
+            </div>
+          )}
+
           <form onSubmit={handleSubmit} className="space-y-5 mt-10">
             {!isLogin && (
               <div className="space-y-1.5">
@@ -80,8 +101,8 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
                   <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
                     <User size={20} className="text-gray-400" />
                   </div>
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     placeholder="John Doe"
@@ -97,8 +118,8 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
                 <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
                   <Mail size={20} className="text-gray-400" />
                 </div>
-                <input 
-                  type="email" 
+                <input
+                  type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="name@example.com"
@@ -114,8 +135,8 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
                 <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
                   <Lock size={20} className="text-gray-400" />
                 </div>
-                <input 
-                  type="password" 
+                <input
+                  type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
@@ -133,16 +154,17 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
               </div>
             )}
 
-            <button 
+            <button
               type="submit"
-              className="w-full flex items-center justify-center gap-2 bg-[#1e2329] text-white py-4 rounded-xl font-medium text-lg hover:bg-black transition-colors active:scale-[0.98] mt-8 shadow-[0_8px_20px_rgba(0,0,0,0.08)]"
+              disabled={loading}
+              className="w-full flex items-center justify-center gap-2 bg-[#1e2329] text-white py-4 rounded-xl font-medium text-lg hover:bg-black transition-colors active:scale-[0.98] mt-8 shadow-[0_8px_20px_rgba(0,0,0,0.08)] disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isLogin ? 'Sign In' : 'Sign Up'}
-              <ArrowRight size={20} />
+              {loading ? 'Please wait...' : (isLogin ? 'Sign In' : 'Sign Up')}
+              {!loading && <ArrowRight size={20} />}
             </button>
 
-            <button 
-              type="button" 
+            <button
+              type="button"
               onClick={() => setIsLogin(!isLogin)}
               className="w-full flex items-center justify-center gap-2 bg-gray-50 border border-gray-200 text-gray-900 py-4 rounded-xl font-medium text-lg hover:bg-gray-100 transition-colors active:scale-[0.98] mt-3"
             >

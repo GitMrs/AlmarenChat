@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { MessageCircle } from 'lucide-react';
 import { LoginScreen } from './components/LoginScreen';
 import { ChatListScreen } from './components/ChatListScreen';
@@ -10,54 +10,68 @@ import { UserDetailScreen } from './components/UserDetailScreen';
 import { AgentDetailScreen } from './components/AgentDetailScreen';
 import { CreateCustomAgentScreen } from './components/CreateCustomAgentScreen';
 import { AgentStoreScreen } from './components/AgentStoreScreen';
-import { mockChats, getBigChatMessages, MOCK_USERS, currentUserObj } from './mockData';
-import agentData from './lib/agent.json';
+import { NotificationToast, useToastNotifications } from './components/NotificationToast';
+import { useAppState } from './hooks/useAppState';
+import { streamChat } from './lib/api';
 import { Chat, Message, User } from './types';
+import agentData from './lib/agent.json';
 
 export default function App() {
+  const {
+    currentUser,
+    setCurrentUser,
+    chats,
+    users,
+    agents,
+    loading,
+    typingUsers,
+    friendRequests,
+    notificationsEnabled,
+    login,
+    register,
+    logout,
+    checkAuth,
+    loadMessages,
+    sendMessage,
+    createChat,
+    createAgent,
+    setChats,
+    loadData,
+    loadFriendRequests,
+    acceptFriendRequest,
+    rejectFriendRequest,
+    sendFriendRequest,
+    startTyping,
+    stopTyping,
+    setActiveChatId,
+    toggleNotifications,
+  } = useAppState();
+
   const [screen, setScreen] = useState<'login' | 'app'>('login');
   const [activeTab, setActiveTab] = useState<TabType>('chats');
-  const [chats, setChats] = useState<Chat[]>(() => {
-    try {
-      const saved = localStorage.getItem('agent_chats');
-      return saved ? JSON.parse(saved) : mockChats;
-    } catch { return mockChats; }
-  });
-  const [users, setUsers] = useState<User[]>(() => {
-    try {
-      const saved = localStorage.getItem('agent_users');
-      return saved ? JSON.parse(saved) : MOCK_USERS;
-    } catch { return MOCK_USERS; }
-  });
   const [activeChat, setActiveChat] = useState<Chat | null>(null);
   const [activeMessages, setActiveMessages] = useState<Message[]>([]);
-  
-  useEffect(() => {
-    localStorage.setItem('agent_chats', JSON.stringify(chats));
-  }, [chats]);
-
-  useEffect(() => {
-    localStorage.setItem('agent_users', JSON.stringify(users));
-  }, [users]);
-
-  useEffect(() => {
-    if (activeChat && activeChat.user.id.startsWith('agent-')) {
-      localStorage.setItem(`agent_messages_${activeChat.id}`, JSON.stringify(activeMessages));
-    }
-  }, [activeMessages, activeChat]);
   const [selectedContact, setSelectedContact] = useState<User | null>(null);
   const [selectedStoreAgent, setSelectedStoreAgent] = useState<any | null>(null);
   const [isCreatingCustomAgent, setIsCreatingCustomAgent] = useState(false);
   const [isViewingAgentStore, setIsViewingAgentStore] = useState(false);
   const [isDark, setIsDark] = useState(false);
-  
-  // Basic responsive check to adjust behavior for mobile (stack) vs desktop (split)
   const [isMobileView, setIsMobileView] = useState(window.innerWidth < 768);
+  const { toasts, addToast, removeToast } = useToastNotifications();
 
-  const handleAddAgent = (agent: User) => {
-    if (users.find(u => u.id === agent.id)) return;
-    setUsers([agent, ...users]);
-  };
+  // Check auth on mount
+  useEffect(() => {
+    checkAuth().then(user => {
+      if (user) setScreen('app');
+    });
+  }, []);
+
+  // Load friend requests when app screen loads
+  useEffect(() => {
+    if (screen === 'app') {
+      loadFriendRequests();
+    }
+  }, [screen, loadFriendRequests]);
 
   useEffect(() => {
     if (isDark) {
@@ -73,26 +87,77 @@ export default function App() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  const handleLogin = () => {
+  // Refresh data when page becomes visible (e.g., user switches back from another tab)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden && currentUser) {
+        loadData(false);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [currentUser, loadData]);
+
+  // Listen for toast notifications from socket
+  useEffect(() => {
+    const handleToast = (e: Event) => {
+      const { title, message, chatId } = (e as CustomEvent).detail;
+      addToast(title, message, chatId);
+    };
+    window.addEventListener('toast:notification', handleToast);
+    return () => window.removeEventListener('toast:notification', handleToast);
+  }, [addToast]);
+
+  // Listen for real-time messages from socket
+  useEffect(() => {
+    const handleNewMessage = (e: Event) => {
+      const msg = (e as CustomEvent).detail as Message;
+      const isMyMessage = msg.senderId === currentUser?.id;
+
+      setActiveMessages(prev => {
+        // Check if message already exists (by id or by temp id)
+        if (prev.some(m => m.id === msg.id)) return prev;
+
+        if (isMyMessage) {
+          // Replace optimistic message (temp_*) with real message from server
+          const tempIdx = prev.findIndex(m => m.id.startsWith('temp_') && m.senderId === currentUser?.id);
+          if (tempIdx !== -1) {
+            const updated = [...prev];
+            updated[tempIdx] = msg;
+            return updated;
+          }
+        }
+
+        // For other users' messages, just append
+        return [...prev, msg];
+      });
+    };
+
+    window.addEventListener('socket:new_message', handleNewMessage);
+    return () => window.removeEventListener('socket:new_message', handleNewMessage);
+  }, [currentUser?.id]);
+
+  const handleLogin = async (user: { id: string; name: string; email: string }) => {
+    setCurrentUser(user);
     setScreen('app');
   };
 
   const handleLogout = () => {
+    logout();
     setScreen('login');
     setActiveChat(null);
   };
 
-  const handleSelectChat = (chat: Chat) => {
+  const handleSelectChat = async (chat: Chat) => {
     setActiveChat(chat);
+    setActiveChatId(chat.id);
     setSelectedContact(null);
-    if (chat.user.id.startsWith('agent-')) {
-      const savedMsgs = localStorage.getItem(`agent_messages_${chat.id}`);
-      setActiveMessages(savedMsgs ? JSON.parse(savedMsgs) : []);
-    } else {
-      // Load the 100k messages to prove performance
-      setTimeout(() => {
-         setActiveMessages(getBigChatMessages(chat.user.id));
-      }, 0);
+    try {
+      const messages = await loadMessages(chat.id);
+      setActiveMessages(messages);
+    } catch (err) {
+      console.error('Failed to load messages:', err);
+      setActiveMessages([]);
     }
   };
 
@@ -100,104 +165,96 @@ export default function App() {
     setChats(prevChats => {
       const chatIndex = prevChats.findIndex(c => c.id === chatId);
       if (chatIndex === -1) return prevChats;
-      
+
       const updatedChats = [...prevChats];
       updatedChats[chatIndex] = {
         ...updatedChats[chatIndex],
-        lastMessage: newMsg
+        lastMessage: newMsg,
       };
-      
+
       const [movedChat] = updatedChats.splice(chatIndex, 1);
       return [movedChat, ...updatedChats];
     });
   };
 
   const handleSendMessage = async (text: string) => {
-    if (!activeChat) return;
-    
-    // Create new message object
-    const newMsg: Message = {
-      id: `msg_${Date.now()}`,
-      senderId: currentUserObj.id,
-      content: text,
-      type: 'text',
-      timestamp: new Date().toISOString()
-    };
-    
-    // Append to virtualized list
-    setActiveMessages(prev => [...prev, newMsg]);
+    if (!activeChat || !currentUser) return;
 
-    // Update chats list (move to top and update last message)
-    updateChatList(activeChat.id, newMsg);
+    try {
+      // Send via socket (optimistic)
+      const savedMsg = await sendMessage(activeChat.id, text);
+      setActiveMessages(prev => [...prev, savedMsg]);
+      updateChatList(activeChat.id, savedMsg);
 
-    if (activeChat.user.id.startsWith('agent-')) {
-      let contextString = "You are a helpful AI assistant.";
-      // For custom agents, they might not be in agentData but we could pass their custom prompt if stored, but let's handle store agents first
-      const storeAgent = agentData.find(a => `agent-${a.identifier}` === activeChat.user.id);
-      if (storeAgent && (storeAgent.description || storeAgent.meta?.description)) {
-         contextString = storeAgent.description || storeAgent.meta.description;
-      } else if (activeChat.user.description) {
-         contextString = activeChat.user.description;
-      }
-      // activeMessages doesn't yet have newMsg in its closure so it's the right history to pass
-      const historyToPass = [...activeMessages];
-      
-      const aiMsgId = `msg_${Date.now() + 1}`;
-      const aiMsg: Message = {
-        id: aiMsgId,
-        senderId: activeChat.user.id,
-        content: '',
-        type: 'text',
-        timestamp: new Date().toISOString(),
-        isTyping: true
-      };
-      
-      setActiveMessages(prev => [...prev, aiMsg]);
-      updateChatList(activeChat.id, aiMsg);
-
-      try {
-        const res = await fetch('/api/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            message: text,
-            history: historyToPass,
-            context: contextString
-          })
-        });
-        if (!res.body) throw new Error('No readable stream');
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder('utf-8');
-        let fullText = '';
-        
-        let isFirstChunk = true;
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) {
-            // Unset typing indicator if stream ends immediately
-            if (isFirstChunk) {
-              const finalAiMsg = { ...aiMsg, isTyping: false };
-              setActiveMessages(prev => prev.map(m => m.id === aiMsgId ? finalAiMsg : m));
-              updateChatList(activeChat.id, finalAiMsg);
-            }
-            break;
-          }
-          
-          isFirstChunk = false;
-          const chunk = decoder.decode(value, { stream: true });
-          fullText += chunk;
-          
-          const updatedAiMsg = { ...aiMsg, content: fullText, isTyping: false };
-          
-          setActiveMessages(prev => 
-            prev.map(m => m.id === aiMsgId ? updatedAiMsg : m)
-          );
-          updateChatList(activeChat.id, updatedAiMsg);
+      // If this is an agent chat, get AI response
+      if (activeChat.user.id.startsWith('agent-')) {
+        let contextString = "You are a helpful AI assistant.";
+        const storeAgent = agentData.find(a => `agent-${a.identifier}` === activeChat.user.id);
+        if (storeAgent && (storeAgent.description || storeAgent.meta?.description)) {
+          contextString = storeAgent.description || storeAgent.meta.description;
+        } else if (activeChat.user.description) {
+          contextString = activeChat.user.description;
         }
-      } catch (err) {
-        console.error('Failed to get AI response:', err);
+
+        // Check for custom API config from agent
+        const agentConfig = {
+          apiBaseUrl: (activeChat.user as any).apiBaseUrl,
+          apiKey: (activeChat.user as any).apiKey,
+          modelName: (activeChat.user as any).modelName,
+        };
+        const hasCustomConfig = agentConfig.apiBaseUrl && agentConfig.apiKey && agentConfig.modelName;
+
+        const aiMsgId = `msg_${Date.now() + 1}`;
+        const aiMsg: Message = {
+          id: aiMsgId,
+          senderId: activeChat.user.id,
+          content: '',
+          type: 'text',
+          timestamp: new Date().toISOString(),
+          isTyping: true,
+        };
+
+        setActiveMessages(prev => [...prev, aiMsg]);
+        updateChatList(activeChat.id, aiMsg);
+
+        try {
+          const body = await streamChat(text, activeMessages, contextString, hasCustomConfig ? agentConfig : undefined);
+          if (!body) throw new Error('No readable stream');
+          const reader = body.getReader();
+          const decoder = new TextDecoder('utf-8');
+          let fullText = '';
+          let isFirstChunk = true;
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) {
+              if (isFirstChunk) {
+                const finalAiMsg = { ...aiMsg, isTyping: false };
+                setActiveMessages(prev => prev.map(m => m.id === aiMsgId ? finalAiMsg : m));
+                updateChatList(activeChat.id, finalAiMsg);
+              }
+              break;
+            }
+
+            isFirstChunk = false;
+            const chunk = decoder.decode(value, { stream: true });
+            fullText += chunk;
+
+            const updatedAiMsg = { ...aiMsg, content: fullText, isTyping: false };
+            setActiveMessages(prev => prev.map(m => m.id === aiMsgId ? updatedAiMsg : m));
+            updateChatList(activeChat.id, updatedAiMsg);
+          }
+
+          // Save AI response to database
+          if (fullText) {
+            await sendMessage(activeChat.id, fullText);
+          }
+        } catch (err) {
+          console.error('Failed to get AI response:', err);
+        }
       }
+    } catch (err) {
+      console.error('Failed to send message:', err);
     }
   };
 
@@ -206,55 +263,51 @@ export default function App() {
     setActiveChat(null);
   };
 
-  const handleStartAgentChat = (user: User) => {
-    // 1. Ensure user is in contacts array
-    if (!users.find(u => u.id === user.id)) {
-      setUsers(prev => [user, ...prev]);
-    }
-    
-    // 2. Find or create a chat
-    let chat = chats.find(c => c.user.id === user.id);
-    if (!chat) {
-      const newLastMsg: Message = {
-        id: `msg-${Date.now()}`,
-        content: `Hi there! I am ${user.name}.`,
-        timestamp: new Date().toISOString(),
-        senderId: user.id,
-        type: 'text'
-      };
-      
-      chat = {
-        id: `chat-${user.id}`,
-        user: user,
-        unreadCount: 0,
-        lastMessage: newLastMsg
-      };
-      setChats(prev => [chat!, ...prev]);
-      setActiveMessages([newLastMsg]);
-    } else {
-      if (chat.user.id.startsWith('agent-')) {
-        const savedMsgs = localStorage.getItem(`agent_messages_${chat.id}`);
-        setActiveMessages(savedMsgs ? JSON.parse(savedMsgs) : []);
+  const handleStartAgentChat = async (user: User, config?: any) => {
+    try {
+      let existingChat = chats.find(c => c.user.id === user.id);
+      if (existingChat) {
+        handleSelectChat(existingChat);
       } else {
-        setTimeout(() => {
-          setActiveMessages(getBigChatMessages(chat!.user.id));
-        }, 0);
+        // Create agent in database with config
+        if (config) {
+          const agent = await createAgent({
+            name: config.name,
+            avatar: config.avatar,
+            description: config.description,
+            systemPrompt: config.systemPrompt,
+            apiBaseUrl: config.apiBaseUrl,
+            apiKey: config.apiKey,
+            modelName: config.modelName,
+          });
+          // Update the user id to the actual agent id
+          user = { ...user, id: agent.id };
+        }
+        const newChat = await createChat(undefined, user.id.startsWith('agent-') ? user.id : undefined, user.name);
+        setActiveMessages([]);
+        setActiveChat(newChat);
+        setActiveChatId(newChat.id);
       }
+
+      setIsViewingAgentStore(false);
+      setSelectedStoreAgent(null);
+      setIsCreatingCustomAgent(false);
+      setSelectedContact(null);
+      setActiveTab('chats');
+    } catch (err) {
+      console.error('Failed to start agent chat:', err);
     }
-    
-    // 3. Clear store states and start chat
-    setIsViewingAgentStore(false);
-    setSelectedStoreAgent(null);
-    setIsCreatingCustomAgent(false);
-    setSelectedContact(null);
-    setActiveTab('chats');
-    setActiveChat(chat);
   };
 
-  const handleMessageContact = (user: User) => {
+  const handleMessageContact = async (user: User) => {
     let existingChat = chats.find(c => c.user.id === user.id);
     if (!existingChat) {
-       existingChat = chats[0];
+      try {
+        existingChat = await createChat(user.id);
+      } catch (err) {
+        console.error('Failed to create chat:', err);
+        return;
+      }
     }
     setSelectedContact(null);
     setActiveTab('chats');
@@ -263,6 +316,7 @@ export default function App() {
 
   const handleBackToChats = () => {
     setActiveChat(null);
+    setActiveChatId(null);
   };
 
   const handleBackFromDetails = () => {
@@ -274,9 +328,35 @@ export default function App() {
     setActiveChat(null);
     setSelectedContact(null);
     setIsViewingAgentStore(false);
+    // Refresh data when switching tabs
+    loadData(false);
   };
 
-  // 1. Login Screen View
+  const handleAddAgent = (agent: any) => {
+    createAgent({
+      name: agent.name || agent.meta?.title,
+      avatar: agent.avatar || agent.meta?.avatar,
+      description: agent.description || agent.meta?.description,
+      systemPrompt: agent.systemPrompt || agent.description,
+    });
+  };
+
+  // Check if other user is typing in active chat
+  const isOtherTyping = activeChat ? (typingUsers[activeChat.id] || []).some(id => id !== currentUser?.id) : false;
+
+  // Loading state
+  if (loading && screen === 'app') {
+    return (
+      <div className="h-screen w-full bg-[#f0f2f5] flex items-center justify-center dark:bg-[#121212]">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-gray-300 border-t-[#1e2329] rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-500">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Login Screen
   if (screen === 'login') {
     return (
       <div className="h-screen w-full bg-[#f0f2f5] flex items-center justify-center dark:bg-[#121212]">
@@ -287,21 +367,21 @@ export default function App() {
     );
   }
 
-  // 2. Main App View (Responsive)
+  // Main App
   return (
     <div className="h-screen w-full bg-[#f0f2f5] flex items-center justify-center">
       <div className="w-full h-full overflow-hidden flex bg-white relative dark:bg-[#121212]">
-        
-        {/* Left Side: Navigation & Target List (Visible always on desktop, conditionally on mobile) */}
-        <div 
+
+        {/* Left Side */}
+        <div
           className={`
             w-full md:w-[380px] flex-shrink-0 border-r border-gray-100 bg-white relative
             ${isMobileView && (activeChat || selectedContact || isViewingAgentStore) ? 'hidden' : 'block'}
           `}
         >
           {activeTab === 'chats' && (
-            <ChatListScreen 
-              chats={chats} 
+            <ChatListScreen
+              chats={chats}
               onSelectChat={handleSelectChat}
               activeChatId={activeChat?.id}
               onDeleteChat={(chatId) => {
@@ -309,50 +389,54 @@ export default function App() {
                 if (activeChat?.id === chatId) {
                   setActiveChat(null);
                 }
-                localStorage.removeItem(`agent_messages_${chatId}`);
               }}
             />
           )}
           {activeTab === 'contacts' && (
-               <ContactsScreen
-                 users={users}
-                 onSelectUser={handleSelectContactAction}
-                 onDeleteUser={(userId) => {
-                   setUsers(prev => prev.filter(u => u.id !== userId));
-                   const chatToDelete = chats.find(c => c.user.id === userId);
-                   if (chatToDelete) {
-                     localStorage.removeItem(`agent_messages_${chatToDelete.id}`);
-                   }
-                   setChats(prev => prev.filter(c => c.user.id !== userId));
-                   if (selectedContact?.id === userId) {
-                     setSelectedContact(null);
-                   }
-                   if (activeChat?.user.id === userId) {
-                     setActiveChat(null);
-                   }
-                 }}
-               />
+            <ContactsScreen
+              users={users}
+              friendRequests={friendRequests}
+              onSelectUser={handleSelectContactAction}
+              onDeleteUser={(userId) => {
+                setChats(prev => prev.filter(c => c.user.id !== userId));
+                if (selectedContact?.id === userId) {
+                  setSelectedContact(null);
+                }
+                if (activeChat?.user.id === userId) {
+                  setActiveChat(null);
+                }
+              }}
+              onAcceptRequest={acceptFriendRequest}
+              onRejectRequest={rejectFriendRequest}
+              onSendRequest={sendFriendRequest}
+            />
           )}
           {activeTab === 'settings' && (
-             <SettingsScreen 
-               onLogout={handleLogout} 
-               isDark={isDark} 
-               onToggleDark={setIsDark} 
-               onOpenAgentStore={() => {
-                 setIsViewingAgentStore(true);
-                 setActiveChat(null);
-                 setSelectedContact(null);
-                 setSelectedStoreAgent(null);
-                 setIsCreatingCustomAgent(false);
-               }}
-             />
+            <SettingsScreen
+              onLogout={handleLogout}
+              isDark={isDark}
+              onToggleDark={setIsDark}
+              onOpenAgentStore={() => {
+                setIsViewingAgentStore(true);
+                setActiveChat(null);
+                setSelectedContact(null);
+                setSelectedStoreAgent(null);
+                setIsCreatingCustomAgent(false);
+              }}
+              notificationsEnabled={notificationsEnabled}
+              onToggleNotifications={toggleNotifications}
+              currentUser={currentUser || undefined}
+              onProfileUpdate={(user) => {
+                setCurrentUser(user);
+              }}
+            />
           )}
 
-          <BottomNav activeTab={activeTab} onChangeTab={handleTabChange} />
+          <BottomNav activeTab={activeTab} onChangeTab={handleTabChange} friendRequestCount={friendRequests.length} />
         </div>
 
-        {/* Right Side: Active Chat & Details (Visible conditionally based on selection) */}
-        <div 
+        {/* Right Side */}
+        <div
           className={`
             flex-1 min-w-0 w-full bg-white relative
             ${isMobileView && (!activeChat && !selectedContact && !isViewingAgentStore) ? 'hidden' : 'block'}
@@ -360,36 +444,30 @@ export default function App() {
           `}
         >
           {isViewingAgentStore ? (
-             <AgentStoreScreen 
-               onClose={() => setIsViewingAgentStore(false)}
-               agents={users.filter(u => u.id.startsWith('agent-'))}
-               onSelectStoreAgent={(agentConfig) => setSelectedStoreAgent(agentConfig)}
-               onCreateCustomAgent={() => setIsCreatingCustomAgent(true)}
-               onDeleteAgent={(id) => {
-                 setUsers(prev => prev.filter(u => u.id !== id));
-                 const chatToDelete = chats.find(c => c.user.id === id);
-                 if (chatToDelete) {
-                   localStorage.removeItem(`agent_messages_${chatToDelete.id}`);
-                 }
-                 setChats(prev => prev.filter(chat => chat.user.id !== id));
-                 if (activeChat?.user.id === id) {
-                   setActiveChat(null);
-                 }
-               }}
-             />
+            <AgentStoreScreen
+              onClose={() => setIsViewingAgentStore(false)}
+              agents={users.filter(u => u.id.startsWith('agent-'))}
+              onSelectStoreAgent={(agentConfig) => setSelectedStoreAgent(agentConfig)}
+              onCreateCustomAgent={() => setIsCreatingCustomAgent(true)}
+              onDeleteAgent={(id) => {
+                setChats(prev => prev.filter(chat => chat.user.id !== id));
+                if (activeChat?.user.id === id) {
+                  setActiveChat(null);
+                }
+              }}
+            />
           ) : activeChat ? (
-            <ActiveChatScreen 
-              chat={activeChat} 
-              messages={activeMessages} 
+            <ActiveChatScreen
+              chat={activeChat}
+              messages={activeMessages}
               onBack={handleBackToChats}
               isMobile={isMobileView}
               onSendMessage={handleSendMessage}
-              onClearChat={() => {
-                setActiveMessages([]);
-                if (activeChat.user.id.startsWith('agent-')) {
-                  localStorage.removeItem(`agent_messages_${activeChat.id}`);
-                }
-              }}
+              onClearChat={() => setActiveMessages([])}
+              currentUserId={currentUser?.id}
+              onTyping={() => startTyping(activeChat.id)}
+              onStopTyping={() => stopTyping(activeChat.id)}
+              isOtherTyping={isOtherTyping}
             />
           ) : selectedContact ? (
             <UserDetailScreen
@@ -399,15 +477,14 @@ export default function App() {
               isMobile={isMobileView}
             />
           ) : (
-             // Desktop empty state
             <div className="text-gray-400 font-medium bg-white px-6 py-3 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center gap-3">
               <MessageCircle size={48} className="text-gray-300" strokeWidth={1.5} />
               <p>Select a chat or contact to start messaging</p>
             </div>
           )}
         </div>
-        
-        {/* Full-Screen overlays (Drawers) */}
+
+        {/* Overlays */}
         {selectedStoreAgent && (
           <AgentDetailScreen
             agentData={selectedStoreAgent}
@@ -421,8 +498,19 @@ export default function App() {
             onSave={handleStartAgentChat}
           />
         )}
+
+        {/* Toast Notifications */}
+        <NotificationToast
+          toasts={toasts}
+          onClose={removeToast}
+          onToastClick={(chatId) => {
+            const chat = chats.find(c => c.id === chatId);
+            if (chat) {
+              handleSelectChat(chat);
+            }
+          }}
+        />
       </div>
     </div>
   );
 }
-

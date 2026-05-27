@@ -1,8 +1,7 @@
-import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
 import { ChevronLeft, Trash2, Smile, Plus, Image as ImageIcon, Camera, Phone, File, Wallet, ArrowRightLeft, Bookmark, SendHorizontal, ChevronDown } from 'lucide-react';
 import Markdown from 'react-markdown';
 import { Chat, Message } from '../types';
-import { currentUserObj } from '../mockData';
 import { cn } from '../lib/utils';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
@@ -13,19 +12,26 @@ interface ActiveChatScreenProps {
   isMobile: boolean;
   onSendMessage: (text: string) => void;
   onClearChat?: () => void;
+  currentUserId?: string;
+  onTyping?: () => void;
+  onStopTyping?: () => void;
+  isOtherTyping?: boolean;
 }
 
-export function ActiveChatScreen({ chat, messages, onBack, isMobile, onSendMessage, onClearChat }: ActiveChatScreenProps) {
+export function ActiveChatScreen({
+  chat, messages, onBack, isMobile, onSendMessage, onClearChat,
+  currentUserId, onTyping, onStopTyping, isOtherTyping
+}: ActiveChatScreenProps) {
   const [inputText, setInputText] = useState('');
   const [showAttachments, setShowAttachments] = useState(false);
   const [showScrollBottom, setShowScrollBottom] = useState(false);
-  
+  const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const parentRef = useRef<HTMLDivElement>(null);
 
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const target = e.currentTarget;
     const { scrollTop, scrollHeight, clientHeight } = target;
-    // Show button if we are more than 200px from the bottom
     const isNearBottom = scrollHeight - scrollTop - clientHeight < 200;
     setShowScrollBottom(!isNearBottom);
   };
@@ -36,20 +42,45 @@ export function ActiveChatScreen({ chat, messages, onBack, isMobile, onSendMessa
     }
   };
 
-  // Use requestAnimationFrame to scroll to bottom on initial mount without jarring layout shifts
   useLayoutEffect(() => {
     if (parentRef.current && messages.length > 0) {
        parentRef.current.scrollTop = parentRef.current.scrollHeight;
     }
-  }, [messages.length]); // Scroll on initial load or message add (though not building add logic here)
+  }, [messages.length]);
+
+  // Handle input change with typing indicator
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setInputText(e.target.value);
+
+    if (onTyping) {
+      onTyping();
+      // Clear existing timer
+      if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
+      // Auto-stop typing after 2 seconds of inactivity
+      typingTimerRef.current = setTimeout(() => {
+        onStopTyping?.();
+      }, 2000);
+    }
+  };
+
+  const handleSend = () => {
+    if (inputText.trim()) {
+      onSendMessage(inputText.trim());
+      setInputText('');
+      onStopTyping?.();
+      if (typingTimerRef.current) {
+        clearTimeout(typingTimerRef.current);
+        typingTimerRef.current = null;
+      }
+    }
+  };
 
   const rowVirtualizer = useVirtualizer({
     count: messages.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 60, // Estimate row height. Varying height will be measured dynamically.
-    overscan: 20, // Render extra items outside viewport for smoother fast scrolling
+    estimateSize: () => 60,
+    overscan: 20,
     measureElement: (element) => {
-        // Provide logic to dynamic resizing if text is huge
         if (!element) return 60;
         return element.getBoundingClientRect().height;
     }
@@ -67,9 +98,9 @@ export function ActiveChatScreen({ chat, messages, onBack, isMobile, onSendMessa
           )}
           <div className="relative">
             {chat.user.avatar.startsWith('http') || chat.user.avatar.startsWith('/') ? (
-              <img 
-                src={chat.user.avatar} 
-                alt={chat.user.name} 
+              <img
+                src={chat.user.avatar}
+                alt={chat.user.name}
                 className="w-10 h-10 rounded-xl object-cover"
               />
             ) : (
@@ -85,13 +116,16 @@ export function ActiveChatScreen({ chat, messages, onBack, isMobile, onSendMessa
             <h2 className="font-semibold text-[15px] text-gray-900 leading-tight tracking-tight">
               {chat.user.name}
             </h2>
-            <p className="text-[11px] font-medium text-green-500 leading-tight">
-              {chat.user.isOnline ? 'Online' : 'Offline'}
+            <p className={cn(
+              "text-[11px] font-medium leading-tight",
+              isOtherTyping ? "text-blue-500" : chat.user.isOnline ? "text-green-500" : "text-gray-400"
+            )}>
+              {isOtherTyping ? 'typing...' : chat.user.isOnline ? 'Online' : 'Offline'}
             </p>
           </div>
         </div>
         {onClearChat && (
-          <button 
+          <button
             className="p-2 text-gray-700 hover:text-red-500 transition-colors"
             onClick={onClearChat}
             title="Clear Chat"
@@ -102,11 +136,11 @@ export function ActiveChatScreen({ chat, messages, onBack, isMobile, onSendMessa
       </div>
 
       {/* Message List (Virtualized) */}
-      <div 
-        ref={parentRef} 
+      <div
+        ref={parentRef}
         onScroll={handleScroll}
         className="flex-1 overflow-y-auto px-4 py-4"
-        style={{ scrollBehavior: 'auto' }} // Smooth isn't good for initial 100k jump
+        style={{ scrollBehavior: 'auto' }}
       >
         <div
           style={{
@@ -117,8 +151,8 @@ export function ActiveChatScreen({ chat, messages, onBack, isMobile, onSendMessa
         >
           {rowVirtualizer.getVirtualItems().map((virtualRow) => {
             const msg = messages[virtualRow.index];
-            const isMe = msg.senderId === currentUserObj.id;
-            
+            const isMe = msg.senderId === currentUserId;
+
             return (
               <div
                 key={msg.id}
@@ -138,19 +172,19 @@ export function ActiveChatScreen({ chat, messages, onBack, isMobile, onSendMessa
               >
                  <div className={cn(
                    "max-w-[75%] rounded-2xl px-4 py-2.5",
-                   isMe 
-                    ? "bg-[#e2e8f0] text-gray-900 rounded-br-sm" 
+                   isMe
+                    ? "bg-[#e2e8f0] text-gray-900 rounded-br-sm"
                     : "bg-white text-gray-900 border border-gray-100 rounded-bl-sm"
                  )}>
                     {msg.type === 'image' && msg.imageUrls && (
                        <div className="flex flex-col gap-2 mb-1">
                           {msg.imageUrls.map((url, i) => (
-                             <img 
+                             <img
                                 key={i}
-                                src={url} 
-                                alt="attachment" 
+                                src={url}
+                                alt="attachment"
                                 className="rounded-xl max-w-full h-auto object-cover max-h-[300px]"
-                                loading="lazy" // help browser with 100k img simulation
+                                loading="lazy"
                              />
                           ))}
                        </div>
@@ -163,8 +197,18 @@ export function ActiveChatScreen({ chat, messages, onBack, isMobile, onSendMessa
                        </div>
                     )}
                     {(!msg.isTyping && msg.content && msg.content !== "Sent an image" && msg.content !== "Sent images") && (
-                       <div className={cn("text-[15px] leading-relaxed [&>p:not(:last-child)]:mb-2 markdown-body", msg.type==='image' && 'mt-2 text-sm')}>
-                         {isMe ? msg.content : <Markdown>{msg.content}</Markdown>}
+                       <div className="flex items-end gap-2">
+                         <div className={cn("text-[15px] leading-relaxed [&>p:not(:last-child)]:mb-2 markdown-body", msg.type==='image' && 'mt-2 text-sm')}>
+                           {isMe ? msg.content : <Markdown>{msg.content}</Markdown>}
+                         </div>
+                         {isMe && msg.status && !chat.user.id.startsWith('agent-') && (
+                           <span className={cn(
+                             "text-[10px] shrink-0 pb-0.5",
+                             msg.status === 'read' ? "text-blue-500" : "text-gray-400"
+                           )}>
+                             {msg.status === 'read' ? '✓✓' : msg.status === 'delivered' ? '✓✓' : '✓'}
+                           </span>
+                         )}
                        </div>
                     )}
                  </div>
@@ -192,32 +236,26 @@ export function ActiveChatScreen({ chat, messages, onBack, isMobile, onSendMessa
             <Smile size={24} strokeWidth={2.5} />
           </button>
           <div className="flex-1 bg-gray-50 rounded-2xl flex items-center px-4 h-12">
-            <input 
-              type="text" 
-              placeholder=" " 
+            <input
+              type="text"
+              placeholder=" "
               value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
+              onChange={handleInputChange}
               onKeyDown={(e) => {
-                 if (e.key === 'Enter' && inputText.trim()) {
-                    onSendMessage(inputText.trim());
-                    setInputText('');
-                 }
+                 if (e.key === 'Enter') handleSend();
               }}
               className="w-full bg-transparent border-none outline-none text-gray-900 placeholder-gray-400"
             />
           </div>
           {inputText.trim() ? (
-            <button 
-               onClick={() => {
-                  onSendMessage(inputText.trim());
-                  setInputText('');
-               }}
+            <button
+               onClick={handleSend}
                className="w-10 h-10 flex items-center justify-center bg-[#1e2329] text-white rounded-xl hover:bg-black transition-colors shrink-0"
             >
               <SendHorizontal size={20} strokeWidth={2} />
             </button>
           ) : (
-            <button 
+            <button
                onClick={() => setShowAttachments(!showAttachments)}
                className="text-gray-900 hover:opacity-70 transition-opacity p-1 -mr-1"
             >
@@ -225,8 +263,7 @@ export function ActiveChatScreen({ chat, messages, onBack, isMobile, onSendMessa
             </button>
           )}
         </div>
-         
-         {/* Attachment Drawer */}
+
          {showAttachments && (
             <div className="grid grid-cols-4 gap-y-6 gap-x-2 pt-6 pb-4 animate-in slide-in-from-bottom-4 duration-200 fade-in">
                {[
