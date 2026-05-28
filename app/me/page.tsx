@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   ArrowRight,
@@ -32,7 +32,7 @@ function formatDate(value: string) {
   }).format(new Date(value));
 }
 
-export default function MePage() {
+function MeContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const activeTab = searchParams.get('tab') === 'settings' ? 'settings' : 'assets';
@@ -343,5 +343,21 @@ export default function MePage() {
         </section>}
       </div>
     </AppShell>
+  );
+}
+
+export default function MePage() {
+  return (
+    <Suspense
+      fallback={
+        <AppShell>
+          <div className="flex items-center justify-center py-24">
+            <Loader2 className="animate-spin text-slate-400" size={24} />
+          </div>
+        </AppShell>
+      }
+    >
+      <MeContent />
+    </Suspense>
   );
 }

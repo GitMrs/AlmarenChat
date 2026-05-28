@@ -331,7 +331,7 @@ export default function LoginPage() {
                 </p>
               </div>
 
-              <div className="mb-5 grid grid-cols-2 rounded-full bg-[#fbfaf7] p-1">
+              {/* {<div className="mb-5 grid grid-cols-2 rounded-full bg-[#fbfaf7] p-1">
                 {[
                   ['login', '登录'],
                   ['register', '注册'],
@@ -351,7 +351,7 @@ export default function LoginPage() {
                     {label}
                   </button>
                 ))}
-              </div>
+              </div>} */}
 
               <form onSubmit={handleSubmit} className="space-y-4">
                 {isRegister && (
