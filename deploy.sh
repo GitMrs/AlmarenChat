@@ -4,10 +4,10 @@ set -e
 
 IMAGE_NAME="almaren-chat"
 CONTAINER_NAME="almaren-chat"
-HOST_PORT="${HOST_PORT:-3000}"
+HOST_PORT="${HOST_PORT:-8001}"
 CONTAINER_PORT="3000"
 ENV_FILE="${ENV_FILE:-.env.production}"
-KEEP_VERSIONS="${KEEP_VERSIONS:-3}"
+KEEP_VERSIONS="${KEEP_VERSIONS:-1}"
 
 if [ ! -f "$ENV_FILE" ]; then
   echo "错误: 找不到环境变量文件 $ENV_FILE"
