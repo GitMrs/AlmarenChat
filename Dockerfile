@@ -29,6 +29,20 @@ COPY . .
 RUN yarn prisma generate
 RUN yarn build
 
+FROM node:22-bookworm-slim AS prod-deps
+
+WORKDIR /app
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ca-certificates openssl python3 make g++ \
+  && rm -rf /var/lib/apt/lists/*
+
+COPY package.json yarn.lock ./
+COPY prisma ./prisma
+COPY prisma.config.ts ./
+
+RUN yarn install --frozen-lockfile --production=true
+
 FROM node:22-bookworm-slim AS runner
 
 WORKDIR /app
@@ -49,7 +63,7 @@ RUN apt-get update \
 
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/yarn.lock ./yarn.lock
-COPY --from=builder /app/node_modules ./node_modules
+COPY --from=prod-deps /app/node_modules ./node_modules
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/prisma.config.ts ./prisma.config.ts
 COPY --from=builder /app/src/generated ./src/generated
