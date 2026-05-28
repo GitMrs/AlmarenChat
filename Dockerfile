@@ -1,90 +1,68 @@
-# ============================================
-# Stage 1: Dependencies
-# ============================================
-FROM node:22-alpine AS deps
-RUN apk add --no-cache openssl
-# 设置工作目录
+FROM node:22-bookworm-slim AS deps
+
 WORKDIR /app
 
-# 复制 package 文件
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ca-certificates openssl python3 make g++ \
+  && rm -rf /var/lib/apt/lists/*
+
 COPY package.json yarn.lock ./
+COPY prisma ./prisma
+COPY prisma.config.ts ./
 
-# 复制 Prisma schema（Prisma 安装时可能需要）
-COPY prisma/schema.prisma ./prisma/schema.prisma
-
-# 安装依赖
 RUN yarn install --frozen-lockfile
 
-# ============================================
-# Stage 2: Builder
-# ============================================
-FROM node:22-alpine AS builder
-RUN apk add --no-cache openssl
-# 设置工作目录
+FROM node:22-bookworm-slim AS builder
+
 WORKDIR /app
 
-# 从 deps 阶段复制 node_modules
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV NODE_ENV=production
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ca-certificates openssl \
+  && rm -rf /var/lib/apt/lists/*
+
 COPY --from=deps /app/node_modules ./node_modules
-
-# 复制public目录（在构建其他文件之前）
-COPY public ./public
-
-# 复制剩余文件
 COPY . .
 
-# 设置环境变量
-ENV NEXT_TELEMETRY_DISABLED 1
-ENV NODE_ENV production
-
-# 生成 Prisma 客户端
-RUN npx prisma generate
-
-# 构建应用
+RUN yarn prisma generate
 RUN yarn build
 
-# ============================================
-# Stage 3: Runner
-# ============================================
-FROM node:22-alpine AS runner
-RUN apk add --no-cache openssl
-# 创建非 root 用户
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 nextjs
+FROM node:22-bookworm-slim AS runner
 
-# 设置工作目录
 WORKDIR /app
 
-# 设置环境变量
-ENV NODE_ENV production
-ENV NEXT_TELEMETRY_DISABLED 1
-ENV PORT 3000
-ENV HOSTNAME "0.0.0.0"
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV PORT=3000
+ENV HOSTNAME=0.0.0.0
+ENV DATABASE_URL=file:/app/data/dev.db
 
-# 复制必要文件
-COPY --from=builder /app/public ./public
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ca-certificates openssl \
+  && rm -rf /var/lib/apt/lists/* \
+  && groupadd --system --gid 1001 nodejs \
+  && useradd --system --uid 1001 --gid nodejs nextjs \
+  && mkdir -p /app/data /app/public/uploads/images /app/public/uploads/documents \
+  && chown -R nextjs:nodejs /app/data /app/public/uploads
+
 COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/yarn.lock ./yarn.lock
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app/prisma.config.ts ./prisma.config.ts
+COPY --from=builder /app/src/generated ./src/generated
+COPY --from=builder /app/public ./public
 COPY --from=builder /app/healthcheck.js ./healthcheck.js
-
-# 创建 uploads 目录并设置权限
-RUN mkdir -p /app/public/uploads/images /app/public/uploads/documents && \
-  chown -R nextjs:nodejs /app/public/uploads
-
-# 复制 Next.js standalone 输出
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
-COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
-COPY --from=builder --chown=nextjs:nodejs /app/node_modules/.prisma ./node_modules/.prisma
-COPY --from=builder --chown=nextjs:nodejs /app/node_modules/@prisma ./node_modules/@prisma
 
-# 切换到非 root 用户
 USER nextjs
 
-# 暴露端口
 EXPOSE 3000
 
-# 健康检查
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
   CMD node healthcheck.js || exit 1
 
-# 启动应用
-CMD ["node", "server.js"]
+CMD ["sh", "-c", "./node_modules/.bin/prisma db push && node server.js"]

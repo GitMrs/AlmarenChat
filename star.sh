@@ -1,42 +1,45 @@
 #!/bin/bash
 
-# almare-chat 快速启动脚本（不重新构建镜像）
-
 set -e
 
-IMAGE_NAME="almare-chat"
+IMAGE_NAME="almaren-chat"
+CONTAINER_NAME="almaren-chat"
+HOST_PORT="${HOST_PORT:-3000}"
+CONTAINER_PORT="3000"
+ENV_FILE="${ENV_FILE:-.env.production}"
 
-echo "⚡ 快速启动（不构建镜像）..."
-
-# 检查镜像是否存在
-if ! docker images ${IMAGE_NAME}:latest --format "{{.Repository}}:{{.Tag}}" | grep -q "${IMAGE_NAME}:latest"; then
-  echo "❌ 错误: 镜像 ${IMAGE_NAME}:latest 不存在"
-  echo "💡 请先运行 ./deploy.sh 构建镜像"
+if [ ! -f "$ENV_FILE" ]; then
+  echo "错误: 找不到环境变量文件 $ENV_FILE"
+  echo "请先创建 $ENV_FILE，或用 ENV_FILE=.env ./star.sh 指定"
   exit 1
 fi
 
-# 停止并删除旧容器
-echo "🛑 停止旧容器..."
-docker stop ${IMAGE_NAME} 2>/dev/null || true
-echo "🗑️  删除旧容器..."
-docker rm ${IMAGE_NAME} 2>/dev/null || true
+if ! docker images "${IMAGE_NAME}:latest" --format "{{.Repository}}:{{.Tag}}" | grep -q "${IMAGE_NAME}:latest"; then
+  echo "错误: 镜像 ${IMAGE_NAME}:latest 不存在"
+  echo "请先运行 ./deploy.sh 构建镜像"
+  exit 1
+fi
 
-# 启动新容器（使用 latest 镜像）
-echo "🔥 启动新容器..."
+echo "停止旧容器..."
+docker stop "${CONTAINER_NAME}" 2>/dev/null || true
+docker rm "${CONTAINER_NAME}" 2>/dev/null || true
+
+echo "准备持久化目录..."
+mkdir -p data public/uploads/images public/uploads/documents
+chmod -R 777 data public/uploads
+
+echo "启动容器..."
 docker run -d \
-  --name ${IMAGE_NAME} \
-  -p 8001:3000 \
-  --env-file .env \
+  --name "${CONTAINER_NAME}" \
+  -p "${HOST_PORT}:${CONTAINER_PORT}" \
+  --env-file "$ENV_FILE" \
+  -e DATABASE_URL="file:/app/data/dev.db" \
+  -v "$(pwd)/data:/app/data" \
   -v "$(pwd)/public/uploads:/app/public/uploads" \
   --restart unless-stopped \
-  ${IMAGE_NAME}:latest
+  "${IMAGE_NAME}:latest"
 
 echo ""
-echo "✅ 容器已启动！"
-echo ""
-echo "📊 查看日志: docker logs -f ${IMAGE_NAME}"
-echo "🌐 访问地址: http://localhost:8001"
-echo ""
-echo "💡 提示:"
-echo "   - 修改 .env 后重新运行此脚本即可"
-echo "   - 如需重新构建，请运行 ./deploy.sh"
+echo "容器已启动"
+echo "日志: docker logs -f ${CONTAINER_NAME}"
+echo "访问: http://localhost:${HOST_PORT}"

@@ -1,0 +1,14 @@
+.git
+.next
+node_modules
+data
+dev.db
+*.db
+*.db-journal
+public/uploads
+.env
+.env.local
+.env.production
+npm-debug.log*
+yarn-error.log*
+Dockerfile
