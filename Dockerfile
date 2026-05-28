@@ -10,6 +10,8 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/*
 
 COPY package.json yarn.lock ./
+COPY prisma ./prisma
+COPY prisma.config.ts ./prisma.config.ts
 RUN yarn install --frozen-lockfile
 
 COPY . .
