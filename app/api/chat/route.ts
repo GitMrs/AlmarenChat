@@ -15,7 +15,7 @@ export async function POST(request: Request) {
           select: { contextMessageLimit: true },
         })
       : null;
-    const contextLimit = Math.max(1, Math.min(40, userSettings?.contextMessageLimit || 40));
+    const contextLimit = Math.max(1, Math.min(80, userSettings?.contextMessageLimit || 40));
 
     // Resolve or create conversation for persistence
     let resolvedConversationId: string | null = conversationId || null;

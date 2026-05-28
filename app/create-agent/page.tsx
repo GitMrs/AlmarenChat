@@ -11,13 +11,6 @@ import { agents, auth } from '@/lib/api';
 
 const AVATAR_OPTIONS = ['🪄', '🤖', '💡', '📚', '🧭', '🎨', '🧠', '🛠️', '🌿', '🔥', '🌙', '☕', '🎯', '🧩', '📝', '🪐'];
 
-const MODEL_OPTIONS = [
-  { id: 'default', name: '默认模型', description: '平台自动选择，适合大多数 Agent' },
-  { id: 'gpt-4o', name: 'GPT-4o', description: '综合能力强，适合创作和复杂任务' },
-  { id: 'claude-sonnet-4-20250514', name: 'Claude Sonnet', description: '适合长文本、分析和严谨表达' },
-  { id: 'gemini-2.0-flash', name: 'Gemini Flash', description: '响应更快，适合轻量问答' },
-];
-
 const PURPOSE_PRESETS = [
   { category: '写作', tone: '详细', label: '写作搭子', prompt: '帮用户把想法整理成清晰、可发布、有风格的内容。' },
   { category: '编程', tone: '冷静', label: '编程教练', prompt: '帮助用户拆解代码问题，给出可靠、简洁、可执行的技术建议。' },
@@ -35,7 +28,6 @@ export default function CreateAgentPage() {
   const [greeting, setGreeting] = useState('');
   const [systemPrompt, setSystemPrompt] = useState('');
   const [selectedAvatar, setSelectedAvatar] = useState('🪄');
-  const [model, setModel] = useState('default');
   const [isPublic, setIsPublic] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [needsLogin, setNeedsLogin] = useState<boolean | null>(null);
@@ -91,7 +83,6 @@ export default function CreateAgentPage() {
         greeting: finalGreeting,
         systemPrompt: finalPrompt,
         avatar: selectedAvatar,
-        model: model === 'default' ? undefined : model,
         isPublic,
       });
       router.push('/me');
@@ -318,26 +309,6 @@ export default function CreateAgentPage() {
                     className="w-full resize-none rounded-2xl border border-black/[0.08] bg-[#fbfaf7] px-4 py-3 font-mono text-sm leading-6 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-slate-300 focus:ring-4 focus:ring-slate-200/70"
                   />
                 </label>
-
-                <div className="grid gap-3 sm:grid-cols-2">
-                  {MODEL_OPTIONS.map((item) => (
-                    <button
-                      key={item.id}
-                      onClick={() => setModel(item.id)}
-                      className={cn(
-                        'rounded-2xl border p-4 text-left transition',
-                        model === item.id
-                          ? 'border-slate-950 bg-slate-950 text-white shadow-sm'
-                          : 'border-black/[0.06] bg-[#fbfaf7] text-slate-700 hover:bg-white'
-                      )}
-                    >
-                      <div className="text-sm font-black">{item.name}</div>
-                      <div className={cn('mt-1 text-xs leading-5', model === item.id ? 'text-white/60' : 'text-slate-500')}>
-                        {item.description}
-                      </div>
-                    </button>
-                  ))}
-                </div>
               </div>
             </section>
           </div>

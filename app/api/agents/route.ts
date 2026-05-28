@@ -25,7 +25,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const userId = requireAuth(request);
-    const { name, avatar, description, category, tone, greeting, systemPrompt, model, isPublic } =
+    const { name, avatar, description, category, tone, greeting, systemPrompt, isPublic } =
       await request.json();
 
     const agent = await prisma.agent.create({
@@ -37,7 +37,6 @@ export async function POST(request: Request) {
         tone,
         greeting,
         systemPrompt,
-        model,
         isPublic: isPublic ?? false,
         creatorId: userId,
       },

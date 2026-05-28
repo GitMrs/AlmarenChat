@@ -50,7 +50,7 @@ export async function PATCH(request: Request) {
     }
     if (data.contextMessageLimit !== undefined) {
       const limit = Number(data.contextMessageLimit);
-      data.contextMessageLimit = Math.max(1, Math.min(40, Number.isFinite(limit) ? Math.floor(limit) : 40));
+      data.contextMessageLimit = Math.max(1, Math.min(80, Number.isFinite(limit) ? Math.floor(limit) : 40));
     }
 
     const user = await prisma.user.update({

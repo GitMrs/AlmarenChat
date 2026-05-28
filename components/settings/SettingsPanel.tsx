@@ -335,15 +335,15 @@ export default function SettingsPanel() {
                   value={contextMessageLimit}
                   onChange={(e) => {
                     const value = Number(e.target.value);
-                    setContextMessageLimit(Math.max(1, Math.min(40, Number.isFinite(value) ? Math.floor(value) : 1)));
+                    setContextMessageLimit(Math.max(1, Math.min(80, Number.isFinite(value) ? Math.floor(value) : 1)));
                   }}
                   type="number"
                   min={1}
-                  max={40}
+                  max={80}
                   className="h-12 w-full rounded-2xl border border-black/[0.08] bg-[#fbfaf7] px-4 text-sm font-medium text-slate-800 outline-none focus:border-slate-300 focus:ring-4 focus:ring-slate-200/70"
                 />
                 <p className="mt-2 text-xs leading-5 text-slate-400">
-                  每次请求最多带入最近 {contextMessageLimit} 条历史消息，最大 40 条。
+                  每次请求最多带入最近 {contextMessageLimit} 条历史消息，最大 80 条。
                 </p>
               </label>
 
