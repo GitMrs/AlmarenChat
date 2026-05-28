@@ -62,7 +62,7 @@ export async function PATCH(
   try {
     const userId = requireAuth(request);
     const { conversationId } = await params;
-    const { title } = await request.json();
+    const { title, contextMessageLimit } = await request.json();
 
     const conversation = await prisma.conversation.findFirst({
       where: { id: conversationId, userId },
@@ -72,14 +72,31 @@ export async function PATCH(
       return NextResponse.json({ error: 'Conversation not found' }, { status: 404 });
     }
 
-    const nextTitle = typeof title === 'string' ? title.trim() : '';
-    if (!nextTitle) {
-      return NextResponse.json({ error: 'Title is required' }, { status: 400 });
+    const data: { title?: string; contextMessageLimit?: number } = {};
+
+    if (title !== undefined) {
+      const nextTitle = typeof title === 'string' ? title.trim() : '';
+      if (!nextTitle) {
+        return NextResponse.json({ error: 'Title is required' }, { status: 400 });
+      }
+      data.title = nextTitle;
+    }
+
+    if (contextMessageLimit !== undefined) {
+      const nextLimit = Number(contextMessageLimit);
+      if (!Number.isFinite(nextLimit)) {
+        return NextResponse.json({ error: 'Context message limit is invalid' }, { status: 400 });
+      }
+      data.contextMessageLimit = Math.max(1, Math.min(80, Math.round(nextLimit)));
+    }
+
+    if (Object.keys(data).length === 0) {
+      return NextResponse.json({ error: 'No changes provided' }, { status: 400 });
     }
 
     const updated = await prisma.conversation.update({
       where: { id: conversationId },
-      data: { title: nextTitle },
+      data,
     });
 
     return NextResponse.json({ conversation: updated });

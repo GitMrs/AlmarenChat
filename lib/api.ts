@@ -70,7 +70,7 @@ export const conversations = {
     request<{ success: boolean }>(`/conversations/${id}`, {
       method: 'DELETE',
     }),
-  update: (id: string, data: { title: string }) =>
+  update: (id: string, data: { title?: string; contextMessageLimit?: number }) =>
     request<{ conversation: any }>(`/conversations/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
@@ -138,6 +138,7 @@ export async function streamChat(data: {
   };
   conversationId?: string;
   agentId?: string;
+  contextMessageLimit?: number;
   signal?: AbortSignal;
 }): Promise<{ stream: ReadableStream<Uint8Array>; conversationId?: string }> {
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;

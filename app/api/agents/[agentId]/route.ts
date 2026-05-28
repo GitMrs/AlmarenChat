@@ -60,6 +60,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ a
       return NextResponse.json({ error: 'Not authorized' }, { status: 403 });
     }
 
+    await prisma.favoriteAgent.deleteMany({ where: { agentId } });
     await prisma.agent.delete({ where: { id: agentId } });
     return NextResponse.json({ success: true });
   } catch (e: any) {

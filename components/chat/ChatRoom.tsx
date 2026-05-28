@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ArrowLeft, Check, ChevronDown, ChevronUp, Copy, RefreshCw, Send, Sparkles, Square } from 'lucide-react';
+import { ArrowLeft, Check, ChevronDown, ChevronUp, Copy, RefreshCw, Send, SlidersHorizontal, Sparkles, Square } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import Avatar from '@/components/shared/Avatar';
@@ -44,6 +44,8 @@ const promptMap: Record<string, string[]> = {
 
 const USER_MESSAGE_COLLAPSE_CHARS = 600;
 const USER_MESSAGE_COLLAPSE_LINES = 12;
+const DEFAULT_CONTEXT_MESSAGE_LIMIT = 40;
+const MAX_CONTEXT_MESSAGE_LIMIT = 80;
 
 function CollapsibleUserMessage({ content }: { content: string }) {
   const [expanded, setExpanded] = useState(false);
@@ -103,6 +105,8 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [userSettings, setUserSettings] = useState<{ apiBaseUrl?: string; apiKey?: string; modelName?: string } | null>(null);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [contextMessageLimit, setContextMessageLimit] = useState(DEFAULT_CONTEXT_MESSAGE_LIMIT);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -127,6 +131,8 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
         // Load user settings for model config
         try {
           const { user: u } = await userApi.get();
+          setIsLoggedIn(true);
+          setContextMessageLimit(Math.max(1, Math.min(MAX_CONTEXT_MESSAGE_LIMIT, u.contextMessageLimit || DEFAULT_CONTEXT_MESSAGE_LIMIT)));
           if (u.customModelEnabled && u.apiBaseUrl && u.apiKey && u.modelName) {
             setUserSettings({ apiBaseUrl: u.apiBaseUrl, apiKey: u.apiKey, modelName: u.modelName });
           }
@@ -149,6 +155,15 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
               systemPrompt: conversation.agentSystemPrompt || found?.systemPrompt,
               greeting: found?.greeting,
             });
+            setContextMessageLimit(
+              Math.max(
+                1,
+                Math.min(
+                  MAX_CONTEXT_MESSAGE_LIMIT,
+                  conversation.contextMessageLimit || contextMessageLimit || DEFAULT_CONTEXT_MESSAGE_LIMIT
+                )
+              )
+            );
 
             const { messages: existingMessages } = await conversationsApi.getMessages(existingConversationId);
             setMessages(
@@ -228,6 +243,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
         context: displayAgent?.systemPrompt,
         conversationId: conversationId || undefined,
         agentId: displayAgent?.id || agentId,
+        contextMessageLimit,
         agentSnapshot: displayAgent
           ? {
               name: displayAgent.name,
@@ -316,6 +332,21 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
     setTimeout(() => setCopiedId(null), 1800);
   };
 
+  const updateContextMessageLimit = async (value: number) => {
+    if (!isLoggedIn) return;
+
+    const nextLimit = Math.max(1, Math.min(MAX_CONTEXT_MESSAGE_LIMIT, Math.round(value || 1)));
+    setContextMessageLimit(nextLimit);
+
+    if (!conversationId) return;
+
+    try {
+      await conversationsApi.update(conversationId, { contextMessageLimit: nextLimit });
+    } catch (error) {
+      console.error('Update context message limit failed:', error);
+    }
+  };
+
   const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
@@ -380,6 +411,26 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
         </div>
 
         <div className="mt-5 rounded-[28px] border border-black/[0.06] bg-white p-5 shadow-sm">
+          {isLoggedIn && (
+            <div className="mb-4 flex items-center justify-between gap-3 rounded-2xl bg-[#fbfaf7] px-3 py-2">
+              <div className="flex min-w-0 items-center gap-2 text-xs font-black text-slate-500">
+                <SlidersHorizontal size={15} />
+                <span>记忆</span>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <input
+                  type="number"
+                  min={1}
+                  max={MAX_CONTEXT_MESSAGE_LIMIT}
+                  value={contextMessageLimit}
+                  onChange={(event) => updateContextMessageLimit(Number(event.target.value))}
+                  className="h-8 w-16 rounded-xl border border-black/[0.06] bg-white px-2 text-center text-sm font-black text-slate-800 outline-none focus:border-slate-300"
+                />
+                <div className="whitespace-nowrap text-xs font-semibold text-slate-400">/ {MAX_CONTEXT_MESSAGE_LIMIT} 条</div>
+              </div>
+            </div>
+          )}
+
           <button
             onClick={() => setDetailsOpen((value) => !value)}
             className="flex w-full items-center justify-between text-left"

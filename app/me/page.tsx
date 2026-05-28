@@ -15,10 +15,12 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   Sparkles,
+  Trash2,
 } from 'lucide-react';
 import AppShell from '@/components/layout/AppShell';
 import LoginRequired from '@/components/auth/LoginRequired';
 import SettingsPanel from '@/components/settings/SettingsPanel';
+import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import { agents as agentsApi, auth, conversations as conversationsApi, favorites as favoritesApi } from '@/lib/api';
 import type { Agent } from '@/types';
 import { cn } from '@/lib/utils';
@@ -43,6 +45,7 @@ function MeContent() {
   const [error, setError] = useState('');
   const [needsLogin, setNeedsLogin] = useState(false);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [pendingDeleteAgent, setPendingDeleteAgent] = useState<Agent | null>(null);
 
   useEffect(() => {
     if (!localStorage.getItem('token')) {
@@ -81,6 +84,23 @@ function MeContent() {
       setMyAgents((items) => items.map((item) => (item.id === agent.id ? result.agent : item)));
     } catch (err: any) {
       setError(err.message || '更新发布状态失败');
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
+  const deleteAgent = async () => {
+    if (updatingId) return;
+    if (!pendingDeleteAgent) return;
+
+    setUpdatingId(pendingDeleteAgent.id);
+    setError('');
+    try {
+      await agentsApi.delete(pendingDeleteAgent.id);
+      setMyAgents((items) => items.filter((item) => item.id !== pendingDeleteAgent.id));
+      setPendingDeleteAgent(null);
+    } catch (err: any) {
+      setError(err.message || '删除 Agent 失败');
     } finally {
       setUpdatingId(null);
     }
@@ -242,6 +262,15 @@ function MeContent() {
                             {isUpdating ? <Loader2 className="animate-spin" size={15} /> : <Rocket size={15} />}
                             {agent.isPublic ? '下架' : '发布'}
                           </button>
+                          <button
+                            onClick={() => setPendingDeleteAgent(agent)}
+                            disabled={isUpdating}
+                            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-rose-100 bg-rose-50 text-rose-500 shadow-sm transition hover:bg-rose-100 disabled:bg-slate-100 disabled:text-slate-300"
+                            title="删除 Agent"
+                            aria-label="删除 Agent"
+                          >
+                            {isUpdating ? <Loader2 className="animate-spin" size={15} /> : <Trash2 size={15} />}
+                          </button>
                         </div>
                       </div>
                     </article>
@@ -342,6 +371,23 @@ function MeContent() {
           </aside>
         </section>}
       </div>
+
+      <ConfirmDialog
+        open={Boolean(pendingDeleteAgent)}
+        title="删除这个 Agent？"
+        description={
+          <>
+            「{pendingDeleteAgent?.name}」删除后不能恢复，已保存的历史会话仍会保留当时的 Agent 快照。
+          </>
+        }
+        icon={<Trash2 size={20} />}
+        cancelText="先保留"
+        confirmText="确认删除"
+        destructive
+        loading={Boolean(pendingDeleteAgent && updatingId === pendingDeleteAgent.id)}
+        onCancel={() => setPendingDeleteAgent(null)}
+        onConfirm={deleteAgent}
+      />
     </AppShell>
   );
 }

@@ -5,8 +5,18 @@ import { getUserIdFromRequest } from '@/app/api/_lib/auth';
 
 export async function POST(request: Request) {
   try {
-    const { message, history, context, apiBaseUrl, apiKey, modelName, conversationId, agentId, agentSnapshot } =
-      await request.json();
+    const {
+      message,
+      history,
+      context,
+      apiBaseUrl,
+      apiKey,
+      modelName,
+      conversationId,
+      agentId,
+      agentSnapshot,
+      contextMessageLimit,
+    } = await request.json();
 
     const userId = getUserIdFromRequest(request);
     const userSettings = userId
@@ -15,7 +25,11 @@ export async function POST(request: Request) {
           select: { contextMessageLimit: true },
         })
       : null;
-    const contextLimit = Math.max(1, Math.min(80, userSettings?.contextMessageLimit || 40));
+    const requestedContextLimit =
+      userId &&
+      contextMessageLimit !== undefined && Number.isFinite(Number(contextMessageLimit))
+        ? Math.max(1, Math.min(80, Math.round(Number(contextMessageLimit))))
+        : null;
 
     // Resolve or create conversation for persistence
     let resolvedConversationId: string | null = conversationId || null;
@@ -33,23 +47,33 @@ export async function POST(request: Request) {
           agentTone: snapshot.tone || null,
           agentDescription: snapshot.description || null,
           agentSystemPrompt: snapshot.systemPrompt || context || null,
+          contextMessageLimit: requestedContextLimit,
           title: message.slice(0, 50),
         },
       });
       resolvedConversationId = conversation.id;
     }
 
+    const conversationSettings =
+      userId && resolvedConversationId
+        ? await prisma.conversation.findFirst({
+            where: { id: resolvedConversationId, userId },
+            select: { contextMessageLimit: true },
+          })
+        : null;
+    const contextLimit = requestedContextLimit || conversationSettings?.contextMessageLimit || userSettings?.contextMessageLimit || 40;
+
     const persistedHistory =
       userId && resolvedConversationId
         ? await prisma.message.findMany({
             where: { conversationId: resolvedConversationId },
-            orderBy: { createdAt: 'asc' },
+            orderBy: { createdAt: 'desc' },
             take: contextLimit,
           })
         : [];
 
     const fallbackHistory = Array.isArray(history) ? history : [];
-    const sourceHistory = persistedHistory.length > 0 ? persistedHistory : fallbackHistory;
+    const sourceHistory = persistedHistory.length > 0 ? persistedHistory.reverse() : fallbackHistory.slice(-contextLimit);
 
     const openaiMessages: { role: 'system' | 'user' | 'assistant'; content: string }[] = sourceHistory
       .filter((msg: { role: string; content: string }) => msg.content && msg.role !== 'system')
