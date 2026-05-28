@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   ArrowRight,
   Bot,
@@ -13,21 +13,15 @@ import {
   Plus,
   Rocket,
   ShieldCheck,
+  SlidersHorizontal,
   Sparkles,
 } from 'lucide-react';
 import AppShell from '@/components/layout/AppShell';
-import { agents as agentsApi } from '@/lib/api';
+import LoginRequired from '@/components/auth/LoginRequired';
+import SettingsPanel from '@/components/settings/SettingsPanel';
+import { agents as agentsApi, auth, conversations as conversationsApi, favorites as favoritesApi } from '@/lib/api';
 import type { Agent } from '@/types';
-
-const favoriteAgents = [
-  { id: 'academic-writing', name: '小鹿写作官', avatar: '📝', reason: '常用来改文案' },
-  { id: 'philosophical-analysis', name: '概念分析师', avatar: '💡', reason: '适合拆问题' },
-];
-
-const recentConversations = [
-  { id: 'writing', agentId: 'academic-writing', title: '继续优化小红书标题', time: '刚刚' },
-  { id: 'study', agentId: 'philosophical-analysis', title: '把复杂概念讲简单', time: '昨天' },
-];
+import { cn } from '@/lib/utils';
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat('zh-CN', {
@@ -40,7 +34,11 @@ function formatDate(value: string) {
 
 export default function MePage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const activeTab = searchParams.get('tab') === 'settings' ? 'settings' : 'assets';
   const [myAgents, setMyAgents] = useState<Agent[]>([]);
+  const [favoriteAgents, setFavoriteAgents] = useState<any[]>([]);
+  const [recentConversations, setRecentConversations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [needsLogin, setNeedsLogin] = useState(false);
@@ -53,15 +51,22 @@ export default function MePage() {
       return;
     }
 
-    agentsApi
-      .mine()
-      .then((result) => setMyAgents(result.agents))
+    auth
+      .me()
+      .then(() =>
+        Promise.all([
+          agentsApi.mine().then((result) => setMyAgents(result.agents)),
+          favoritesApi.list().then((result) => setFavoriteAgents(result.favorites)),
+          conversationsApi.list().then((result) => setRecentConversations(result.conversations.slice(0, 5))),
+        ])
+      )
       .catch((err: any) => {
         if (err.message === 'Unauthorized') {
+          localStorage.removeItem('token');
           setNeedsLogin(true);
           return;
         }
-        setError(err.message || '加载我的 Agent 失败');
+        setError(err.message || '加载数据失败');
       })
       .finally(() => setLoading(false));
   }, []);
@@ -81,6 +86,10 @@ export default function MePage() {
     }
   };
 
+  const switchTab = (tab: 'assets' | 'settings') => {
+    router.push(tab === 'settings' ? '/me?tab=settings' : '/me');
+  };
+
   return (
     <AppShell>
       <div className="space-y-8 py-8">
@@ -92,10 +101,10 @@ export default function MePage() {
                 我的空间
               </div>
               <h1 className="text-4xl font-black leading-tight text-slate-950 sm:text-5xl">
-                管理你的 Agent、收藏和会话。
+                管理你的 Agent、模型和账号。
               </h1>
               <p className="mt-4 text-base leading-7 text-slate-500">
-                这里是用户自己的资产中心。创建后的 Agent 默认先在这里维护，需要公开时再发布到广场。
+                这里是用户自己的空间。创建后的 Agent 默认先在这里维护，账号和模型配置也统一放在这里。
               </p>
             </div>
 
@@ -109,7 +118,30 @@ export default function MePage() {
           </div>
         </section>
 
-        <section className="grid gap-4 md:grid-cols-3">
+        <section className="flex flex-wrap gap-2 rounded-[28px] border border-black/[0.06] bg-white p-2 shadow-sm">
+          {[
+            { id: 'assets', label: '我的资产', icon: Bot },
+            { id: 'settings', label: '账号设置', icon: SlidersHorizontal },
+          ].map((tab) => {
+            const Icon = tab.icon;
+            const active = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => switchTab(tab.id as 'assets' | 'settings')}
+                className={cn(
+                  'inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-black transition',
+                  active ? 'bg-slate-950 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-950'
+                )}
+              >
+                <Icon size={16} />
+                {tab.label}
+              </button>
+            );
+          })}
+        </section>
+
+        {activeTab === 'assets' && <section className="grid gap-4 md:grid-cols-3">
           {[
             { label: '我的 Agent', value: myAgents.length, icon: Bot, note: '可编辑、测试、发布' },
             { label: '收藏 Agent', value: favoriteAgents.length, icon: Heart, note: '下次快速开始' },
@@ -127,7 +159,7 @@ export default function MePage() {
               </div>
             );
           })}
-        </section>
+        </section>}
 
         {error && (
           <div className="rounded-2xl bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-600">
@@ -136,25 +168,15 @@ export default function MePage() {
         )}
 
         {needsLogin && (
-          <section className="rounded-[32px] border border-dashed border-slate-200 bg-white p-10 text-center shadow-sm">
-            <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-3xl bg-[#fbfaf7] text-slate-500">
-              <ShieldCheck size={26} />
-            </div>
-            <h2 className="text-2xl font-black text-slate-950">登录后维护你的 Agent</h2>
-            <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-slate-500">
-              我的空间会保存你创建的 Agent、发布状态、收藏和最近会话。登录后就能继续维护。
-            </p>
-            <button
-              onClick={() => router.push('/login')}
-              className="mt-6 inline-flex items-center gap-2 rounded-full bg-slate-950 px-5 py-3 text-sm font-black text-white shadow-sm"
-            >
-              登录 / 注册
-              <ArrowRight size={16} />
-            </button>
-          </section>
+          <LoginRequired
+            title="登录后维护你的 Agent"
+            description="我的空间会保存你创建的 Agent、发布状态、收藏和最近会话。登录后就能继续维护。"
+          />
         )}
 
-        {!needsLogin && <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+        {!needsLogin && activeTab === 'settings' && <SettingsPanel />}
+
+        {!needsLogin && activeTab === 'assets' && <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
           <div className="space-y-5">
             <div className="flex items-end justify-between gap-4">
               <div>
@@ -263,22 +285,27 @@ export default function MePage() {
                 <Heart size={18} className="text-rose-400" />
               </div>
               <div className="space-y-3">
-                {favoriteAgents.map((agent) => (
-                  <button
-                    key={agent.id}
-                    onClick={() => router.push(`/chat/${agent.id}`)}
-                    className="flex w-full items-center gap-3 rounded-2xl bg-[#fbfaf7] p-3 text-left transition hover:bg-slate-100"
-                  >
-                    <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white text-xl">
-                      {agent.avatar}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-black text-slate-950">{agent.name}</div>
-                      <div className="truncate text-xs text-slate-500">{agent.reason}</div>
-                    </div>
-                    <ArrowRight size={15} className="text-slate-300" />
-                  </button>
-                ))}
+                {favoriteAgents.length > 0 ? favoriteAgents.map((fav) => {
+                  const agent = fav.agent;
+                  return (
+                    <button
+                      key={fav.id}
+                      onClick={() => router.push(`/chat/${agent.id}`)}
+                      className="flex w-full items-center gap-3 rounded-2xl bg-[#fbfaf7] p-3 text-left transition hover:bg-slate-100"
+                    >
+                      <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white text-xl">
+                        {agent.avatar || '🤖'}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm font-black text-slate-950">{agent.name}</div>
+                        <div className="truncate text-xs text-slate-500">{agent.description}</div>
+                      </div>
+                      <ArrowRight size={15} className="text-slate-300" />
+                    </button>
+                  );
+                }) : (
+                  <p className="text-sm text-slate-400 text-center py-4">还没有收藏 Agent</p>
+                )}
               </div>
             </div>
 
@@ -293,16 +320,23 @@ export default function MePage() {
                 </button>
               </div>
               <div className="space-y-3">
-                {recentConversations.map((item) => (
+                {recentConversations.length > 0 ? recentConversations.map((item) => (
                   <button
                     key={item.id}
-                    onClick={() => router.push(`/chat/${item.agentId}`)}
+                    onClick={() => {
+                      router.push(`/conversations/${item.id}`);
+                    }}
                     className="w-full rounded-2xl bg-[#fbfaf7] p-3 text-left transition hover:bg-slate-100"
                   >
-                    <div className="truncate text-sm font-black text-slate-950">{item.title}</div>
-                    <div className="mt-1 text-xs font-semibold text-slate-400">{item.time}</div>
+                    <div className="truncate text-sm font-black text-slate-950">{item.title || '新对话'}</div>
+                    <div className="mt-1 truncate text-xs text-slate-500">{item.agentName || '未知 Agent'}</div>
+                    <div className="mt-1 text-xs font-semibold text-slate-400">
+                      {new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).format(new Date(item.updatedAt))}
+                    </div>
                   </button>
-                ))}
+                )) : (
+                  <p className="text-sm text-slate-400 text-center py-4">还没有会话记录</p>
+                )}
               </div>
             </div>
           </aside>

@@ -1,8 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { Bot, Compass, Plus, Settings, Sparkles, UserRound } from 'lucide-react';
+import { usePathname, useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { Bot, Compass, Plus, Sparkles, UserRound, MessageCircle } from 'lucide-react';
 import BottomNav from './BottomNav';
 import { cn } from '@/lib/utils';
 
@@ -14,12 +15,17 @@ const navItems = [
   { label: '发现', href: '/', icon: Compass },
   { label: '广场', href: '/agents', icon: Bot },
   { label: '创建', href: '/create-agent', icon: Plus },
-  { label: '我的', href: '/me', icon: UserRound },
-  { label: '设置', href: '/settings', icon: Settings },
+  { label: '会话', href: '/conversations', icon: MessageCircle },
 ];
 
 export default function AppShell({ children }: AppShellProps) {
   const pathname = usePathname();
+  const router = useRouter();
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+
+  useEffect(() => {
+    setIsLoggedIn(!!localStorage.getItem('token'));
+  }, []);
 
   const isActive = (href: string) => {
     if (href === '/') return pathname === '/';
@@ -62,12 +68,21 @@ export default function AppShell({ children }: AppShellProps) {
             })}
           </nav>
 
-          <Link
-            href="/login"
-            className="hidden rounded-full border border-black/[0.06] bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:text-slate-950 md:block"
-          >
-            登录 / 注册
-          </Link>
+          {isLoggedIn ? (
+            <button
+              onClick={() => router.push('/me')}
+              className="hidden h-10 w-10 items-center justify-center rounded-full bg-slate-950 text-white shadow-sm md:flex"
+            >
+              <UserRound size={18} />
+            </button>
+          ) : (
+            <Link
+              href="/login"
+              className="hidden rounded-full border border-black/[0.06] bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:text-slate-950 md:block"
+            >
+              登录 / 注册
+            </Link>
+          )}
         </div>
       </header>
 

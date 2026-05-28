@@ -8,7 +8,18 @@ export async function GET(request: Request) {
 
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, email: true, name: true, avatar: true, createdAt: true },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        avatar: true,
+        apiBaseUrl: true,
+        apiKey: true,
+        modelName: true,
+        customModelEnabled: true,
+        defaultStyle: true,
+        createdAt: true,
+      },
     });
 
     if (!user) {
@@ -27,15 +38,31 @@ export async function GET(request: Request) {
 export async function PATCH(request: Request) {
   try {
     const userId = requireAuth(request);
-    const { name, avatar } = await request.json();
+    const body = await request.json();
+
+    const allowedFields = ['name', 'avatar', 'apiBaseUrl', 'apiKey', 'modelName', 'customModelEnabled', 'defaultStyle'] as const;
+    const data: Record<string, any> = {};
+    for (const field of allowedFields) {
+      if (body[field] !== undefined) {
+        data[field] = body[field];
+      }
+    }
 
     const user = await prisma.user.update({
       where: { id: userId },
-      data: {
-        ...(name !== undefined && { name }),
-        ...(avatar !== undefined && { avatar }),
+      data,
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        avatar: true,
+        apiBaseUrl: true,
+        apiKey: true,
+        modelName: true,
+        customModelEnabled: true,
+        defaultStyle: true,
+        createdAt: true,
       },
-      select: { id: true, email: true, name: true, avatar: true, createdAt: true },
     });
 
     return NextResponse.json({ user });

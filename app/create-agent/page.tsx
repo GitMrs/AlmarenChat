@@ -1,12 +1,13 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Bot, Check, Eye, Lock, MessageCircle, Palette, Sparkles, Wand2 } from 'lucide-react';
+import { Bot, Check, Eye, Loader2, Lock, MessageCircle, Palette, Sparkles, Wand2 } from 'lucide-react';
 import AppShell from '@/components/layout/AppShell';
+import LoginRequired from '@/components/auth/LoginRequired';
 import { cn } from '@/lib/utils';
 import { AGENT_CATEGORIES, AGENT_TONES, CATEGORY_COLORS } from '@/types';
-import { agents } from '@/lib/api';
+import { agents, auth } from '@/lib/api';
 
 const AVATAR_OPTIONS = ['🪄', '🤖', '💡', '📚', '🧭', '🎨', '🧠', '🛠️', '🌿', '🔥', '🌙', '☕', '🎯', '🧩', '📝', '🪐'];
 
@@ -37,6 +38,22 @@ export default function CreateAgentPage() {
   const [model, setModel] = useState('default');
   const [isPublic, setIsPublic] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [needsLogin, setNeedsLogin] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (!localStorage.getItem('token')) {
+      setNeedsLogin(true);
+      return;
+    }
+
+    auth
+      .me()
+      .then(() => setNeedsLogin(false))
+      .catch(() => {
+        localStorage.removeItem('token');
+        setNeedsLogin(true);
+      });
+  }, []);
 
   const categoryColor = CATEGORY_COLORS[category] || '#6366f1';
   const canCreate = name.trim().length > 0 && description.trim().length > 0 && category && tone;
@@ -84,6 +101,29 @@ export default function CreateAgentPage() {
       setSubmitting(false);
     }
   };
+
+  if (needsLogin === null) {
+    return (
+      <AppShell>
+        <div className="flex items-center justify-center py-24">
+          <Loader2 className="animate-spin text-slate-400" size={24} />
+        </div>
+      </AppShell>
+    );
+  }
+
+  if (needsLogin) {
+    return (
+      <AppShell>
+        <div className="py-8">
+          <LoginRequired
+            title="登录后创建你的 Agent"
+            description="创建 Agent 会保存头像、设定、开场白和发布状态。登录后可以在我的空间继续维护。"
+          />
+        </div>
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell>

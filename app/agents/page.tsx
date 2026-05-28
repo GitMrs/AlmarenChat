@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Bot, Search, SlidersHorizontal } from 'lucide-react';
 import AppShell from '@/components/layout/AppShell';
@@ -28,8 +28,11 @@ function AgentsContent() {
     });
   }, []);
 
-  const filtered = getAgentsByCategory(agents, selectedCategory);
-  const results = searchQuery ? searchAgents(filtered, searchQuery) : filtered;
+  const filtered = useMemo(() => getAgentsByCategory(agents, selectedCategory), [agents, selectedCategory]);
+  const results = useMemo(
+    () => (searchQuery ? searchAgents(filtered, searchQuery) : filtered),
+    [filtered, searchQuery]
+  );
   const { displayed, hasMore, loading: loadingMore, sentinelRef } = useInfiniteScroll({
     items: results,
     pageSize: 18,

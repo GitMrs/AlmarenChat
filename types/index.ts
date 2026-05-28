@@ -25,8 +25,13 @@ export interface Agent {
 export interface Conversation {
   id: string;
   userId: string;
-  agentId: string;
-  agent: Agent;
+  agentId?: string;
+  agentName?: string;
+  agentAvatar?: string;
+  agentCategory?: string;
+  agentTone?: string;
+  agentDescription?: string;
+  agentSystemPrompt?: string;
   title?: string;
   createdAt: string;
   updatedAt: string;

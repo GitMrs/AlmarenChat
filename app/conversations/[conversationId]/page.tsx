@@ -3,7 +3,7 @@
 import { useParams } from 'next/navigation';
 import ChatRoom from '@/components/chat/ChatRoom';
 
-export default function ChatPage() {
+export default function ConversationChatPage() {
   const params = useParams();
-  return <ChatRoom agentId={params.agentId as string} />;
+  return <ChatRoom conversationId={params.conversationId as string} />;
 }

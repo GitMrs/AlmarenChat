@@ -66,12 +66,35 @@ export const conversations = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+  delete: (id: string) =>
+    request<{ success: boolean }>(`/conversations/${id}`, {
+      method: 'DELETE',
+    }),
+  update: (id: string, data: { title: string }) =>
+    request<{ conversation: any }>(`/conversations/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
   getMessages: (id: string, cursor?: string) =>
     request<{ messages: any[] }>(`/conversations/${id}/messages${cursor ? `?cursor=${cursor}` : ''}`),
   sendMessage: (id: string, content: string) =>
     request<{ message: any }>(`/conversations/${id}/messages`, {
       method: 'POST',
       body: JSON.stringify({ content }),
+    }),
+};
+
+// Favorites
+export const favorites = {
+  list: () => request<{ favorites: any[] }>('/favorites'),
+  add: (agentId: string) =>
+    request<{ favorite: any }>('/favorites', {
+      method: 'POST',
+      body: JSON.stringify({ agentId }),
+    }),
+  remove: (agentId: string) =>
+    request<{ success: boolean }>(`/favorites/${agentId}`, {
+      method: 'DELETE',
     }),
 };
 
@@ -83,8 +106,18 @@ export async function streamChat(data: {
   apiBaseUrl?: string;
   apiKey?: string;
   modelName?: string;
+  agentSnapshot?: {
+    name?: string;
+    avatar?: string;
+    category?: string;
+    tone?: string;
+    description?: string;
+    systemPrompt?: string;
+  };
+  conversationId?: string;
+  agentId?: string;
   signal?: AbortSignal;
-}): Promise<ReadableStream<Uint8Array>> {
+}): Promise<{ stream: ReadableStream<Uint8Array>; conversationId?: string }> {
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
 
   const res = await fetch(`${API_BASE}/chat`, {
@@ -98,18 +131,33 @@ export async function streamChat(data: {
   });
 
   if (!res.ok) {
-    throw new Error(`Chat request failed: ${res.status}`);
+    const error = await res.json().catch(() => ({ error: `Chat request failed: ${res.status}` }));
+    throw new Error(error.error || `Chat request failed: ${res.status}`);
   }
 
-  return res.body!;
+  const conversationId = res.headers.get('x-conversation-id') || undefined;
+  return { stream: res.body!, conversationId };
 }
 
 // User
 export const user = {
   get: () => request<{ user: any }>('/user'),
-  update: (data: { name?: string; avatar?: string }) =>
+  update: (data: {
+    name?: string | null;
+    avatar?: string | null;
+    apiBaseUrl?: string | null;
+    apiKey?: string | null;
+    modelName?: string | null;
+    customModelEnabled?: boolean;
+    defaultStyle?: string | null;
+  }) =>
     request<{ user: any }>('/user', {
       method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+  testModel: (data: { apiBaseUrl: string; apiKey: string; modelName: string }) =>
+    request<{ ok: boolean; message: string }>('/user/test-model', {
+      method: 'POST',
       body: JSON.stringify(data),
     }),
 };

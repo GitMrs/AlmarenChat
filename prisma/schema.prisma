@@ -13,6 +13,11 @@ model User {
   passwordHash String
   name         String
   avatar       String?
+  apiBaseUrl   String?
+  apiKey       String?
+  modelName    String?
+  customModelEnabled Boolean @default(false)
+  defaultStyle String?
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
 
@@ -37,20 +42,24 @@ model Agent {
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
 
-  conversations Conversation[]
   favorites     FavoriteAgent[]
 }
 
 model Conversation {
-  id        String    @id @default(uuid())
-  userId    String
-  user      User      @relation(fields: [userId], references: [id])
-  agentId   String
-  agent     Agent     @relation(fields: [agentId], references: [id])
-  title     String?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  messages  Message[]
+  id                  String    @id @default(uuid())
+  userId              String
+  user                User      @relation(fields: [userId], references: [id])
+  agentId             String?
+  agentName           String?
+  agentAvatar         String?
+  agentCategory       String?
+  agentTone           String?
+  agentDescription    String?
+  agentSystemPrompt   String?
+  title               String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  messages            Message[]
 }
 
 model Message {

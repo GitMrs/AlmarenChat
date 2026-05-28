@@ -11,6 +11,7 @@ export function useInfiniteScroll<T>({ items, pageSize = 20 }: UseInfiniteScroll
   const [displayCount, setDisplayCount] = useState(pageSize);
   const [loading, setLoading] = useState(false);
   const sentinelRef = useRef<HTMLDivElement>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const hasMore = displayCount < items.length;
   const displayed = items.slice(0, displayCount);
@@ -19,7 +20,7 @@ export function useInfiniteScroll<T>({ items, pageSize = 20 }: UseInfiniteScroll
     if (!hasMore || loading) return;
     setLoading(true);
     // Simulate small delay for smooth UX
-    setTimeout(() => {
+    timeoutRef.current = setTimeout(() => {
       setDisplayCount((prev) => Math.min(prev + pageSize, items.length));
       setLoading(false);
     }, 300);
@@ -27,8 +28,19 @@ export function useInfiniteScroll<T>({ items, pageSize = 20 }: UseInfiniteScroll
 
   // Reset when items change (e.g., category filter, search)
   useEffect(() => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
     setDisplayCount(pageSize);
+    setLoading(false);
   }, [items, pageSize]);
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    };
+  }, []);
 
   // IntersectionObserver
   useEffect(() => {

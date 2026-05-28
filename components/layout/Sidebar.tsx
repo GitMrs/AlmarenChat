@@ -1,7 +1,7 @@
 'use client';
 
 import { usePathname, useRouter } from 'next/navigation';
-import { Compass, Bot, PlusCircle, MessageSquare, Settings, Sparkles, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Compass, Bot, PlusCircle, MessageSquare, UserRound, Sparkles, ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState } from 'react';
 
@@ -10,7 +10,7 @@ const navItems = [
   { id: 'agents', label: 'Agent 广场', icon: Bot, href: '/agents' },
   { id: 'create', label: '创建 Agent', icon: PlusCircle, href: '/create-agent' },
   { id: 'conversations', label: '对话历史', icon: MessageSquare, href: '/conversations' },
-  { id: 'settings', label: '设置', icon: Settings, href: '/settings' },
+  { id: 'me', label: '我的空间', icon: UserRound, href: '/me' },
 ];
 
 export default function Sidebar() {

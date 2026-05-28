@@ -6,18 +6,13 @@ export async function GET(request: Request) {
   try {
     const userId = requireAuth(request);
 
-    const conversations = await prisma.conversation.findMany({
+    const favorites = await prisma.favoriteAgent.findMany({
       where: { userId },
-      include: {
-        messages: {
-          orderBy: { createdAt: 'desc' },
-          take: 1,
-        },
-      },
-      orderBy: { updatedAt: 'desc' },
+      include: { agent: true },
+      orderBy: { createdAt: 'desc' },
     });
 
-    return NextResponse.json({ conversations });
+    return NextResponse.json({ favorites });
   } catch (e: any) {
     if (e.message === 'Unauthorized') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -29,29 +24,25 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const userId = requireAuth(request);
-    const { agentId, title } = await request.json();
+    const { agentId } = await request.json();
 
     if (!agentId) {
       return NextResponse.json({ error: 'Missing agentId' }, { status: 400 });
     }
 
     const agent = await prisma.agent.findUnique({ where: { id: agentId } });
+    if (!agent) {
+      return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
+    }
 
-    const conversation = await prisma.conversation.create({
-      data: {
-        userId,
-        agentId,
-        agentName: agent?.name || null,
-        agentAvatar: agent?.avatar || null,
-        agentCategory: agent?.category || null,
-        agentTone: agent?.tone || null,
-        agentDescription: agent?.description || null,
-        agentSystemPrompt: agent?.systemPrompt || null,
-        title,
-      },
+    const favorite = await prisma.favoriteAgent.upsert({
+      where: { userId_agentId: { userId, agentId } },
+      update: {},
+      create: { userId, agentId },
+      include: { agent: true },
     });
 
-    return NextResponse.json({ conversation });
+    return NextResponse.json({ favorite });
   } catch (e: any) {
     if (e.message === 'Unauthorized') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

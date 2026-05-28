@@ -7,7 +7,7 @@ import AppShell from '@/components/layout/AppShell';
 import AgentCard from '@/components/agent/AgentCard';
 import LoadingSpinner from '@/components/shared/LoadingSpinner';
 import { getAgentsGroupedByCategory, getBuiltInAgents } from '@/lib/agents-data';
-import { getRecentAgentIds } from '@/lib/recent';
+import { conversations as conversationsApi } from '@/lib/api';
 import type { Agent } from '@/types';
 
 const scenarioLinks = [
@@ -20,23 +20,24 @@ const scenarioLinks = [
 export default function HomePage() {
   const router = useRouter();
   const [agents, setAgents] = useState<Agent[]>([]);
-  const [recentAgents, setRecentAgents] = useState<Agent[]>([]);
+  const [recentConversations, setRecentConversations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
 
   useEffect(() => {
+    const token = localStorage.getItem('token');
+    setIsLoggedIn(!!token);
+
     getBuiltInAgents().then((data) => {
       setAgents(data);
       setLoading(false);
-
-      const recent = getRecentAgentIds();
-      if (recent.length > 0) {
-        setRecentAgents(
-          recent
-            .map((item) => data.find((agent) => agent.id === item.agentId))
-            .filter(Boolean) as Agent[]
-        );
-      }
     });
+
+    if (token) {
+      conversationsApi.list().then((result) => {
+        setRecentConversations(result.conversations.slice(0, 3));
+      }).catch(() => {});
+    }
   }, []);
 
   const grouped = getAgentsGroupedByCategory(agents);
@@ -46,6 +47,10 @@ export default function HomePage() {
 
   const handleChat = (agent: Agent) => {
     router.push(`/chat/${agent.id}`);
+  };
+
+  const handleResumeConversation = (conversation: any) => {
+    router.push(`/conversations/${conversation.id}`);
   };
 
   return (
@@ -157,7 +162,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        {recentAgents.length > 0 && (
+        {isLoggedIn && recentConversations.length > 0 && (
           <section>
             <div className="mb-5 flex items-end justify-between gap-4">
               <div>
@@ -173,9 +178,26 @@ export default function HomePage() {
               </button>
             </div>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {recentAgents.slice(0, 3).map((agent) => (
-                <AgentCard key={agent.id} agent={agent} onChat={handleChat} variant="compact" />
-              ))}
+              {recentConversations.map((conversation) => {
+                return (
+                  <button
+                    key={conversation.id}
+                    onClick={() => handleResumeConversation(conversation)}
+                    className="group flex items-center gap-4 rounded-[28px] border border-black/[0.06] bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg"
+                  >
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#fbfaf7] text-2xl">
+                      {conversation.agentAvatar || '🤖'}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-black text-slate-950">
+                        {conversation.agentName || '未知 Agent'}
+                      </div>
+                      <div className="mt-1 truncate text-xs text-slate-500">{conversation.title || '继续对话'}</div>
+                    </div>
+                    <ArrowRight size={16} className="shrink-0 text-slate-300 transition group-hover:translate-x-1 group-hover:text-slate-950" />
+                  </button>
+                );
+              })}
             </div>
           </section>
         )}
