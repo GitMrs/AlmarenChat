@@ -35,7 +35,7 @@ export default function CreateAgentPage() {
   const [systemPrompt, setSystemPrompt] = useState('');
   const [selectedAvatar, setSelectedAvatar] = useState('🪄');
   const [model, setModel] = useState('default');
-  const [isPublic, setIsPublic] = useState(true);
+  const [isPublic, setIsPublic] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const categoryColor = CATEGORY_COLORS[category] || '#6366f1';
@@ -77,7 +77,7 @@ export default function CreateAgentPage() {
         model: model === 'default' ? undefined : model,
         isPublic,
       });
-      router.push(`/chat/${result.agent.id}`);
+      router.push('/me');
     } catch (error) {
       console.error('Create agent failed:', error);
     } finally {

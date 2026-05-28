@@ -4,10 +4,12 @@ import { requireAuth } from '@/app/api/_lib/auth';
 
 export async function GET(request: Request) {
   try {
-    requireAuth(request);
+    const userId = requireAuth(request);
+    const { searchParams } = new URL(request.url);
+    const scope = searchParams.get('scope');
 
     const agents = await prisma.agent.findMany({
-      where: { isPublic: true },
+      where: scope === 'mine' ? { creatorId: userId } : { isPublic: true },
       orderBy: { createdAt: 'desc' },
     });
 
@@ -36,7 +38,7 @@ export async function POST(request: Request) {
         greeting,
         systemPrompt,
         model,
-        isPublic: isPublic ?? true,
+        isPublic: isPublic ?? false,
         creatorId: userId,
       },
     });

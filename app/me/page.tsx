@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   ArrowRight,
@@ -7,6 +8,7 @@ import {
   Clock3,
   Edit3,
   Heart,
+  Loader2,
   MessageSquare,
   Plus,
   Rocket,
@@ -14,27 +16,8 @@ import {
   Sparkles,
 } from 'lucide-react';
 import AppShell from '@/components/layout/AppShell';
-
-const myAgents = [
-  {
-    id: 'draft-writing-agent',
-    name: '内容灵感伙伴',
-    avatar: '✍️',
-    description: '帮我把零散想法整理成可发布的内容。',
-    status: '私有',
-    statusTone: 'bg-slate-100 text-slate-600',
-    updatedAt: '今天更新',
-  },
-  {
-    id: 'published-study-agent',
-    name: '学习拆解师',
-    avatar: '📚',
-    description: '把复杂知识拆成例子、步骤和练习。',
-    status: '已发布',
-    statusTone: 'bg-emerald-50 text-emerald-700',
-    updatedAt: '昨天更新',
-  },
-];
+import { agents as agentsApi } from '@/lib/api';
+import type { Agent } from '@/types';
 
 const favoriteAgents = [
   { id: 'academic-writing', name: '小鹿写作官', avatar: '📝', reason: '常用来改文案' },
@@ -46,8 +29,57 @@ const recentConversations = [
   { id: 'study', agentId: 'philosophical-analysis', title: '把复杂概念讲简单', time: '昨天' },
 ];
 
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(value));
+}
+
 export default function MePage() {
   const router = useRouter();
+  const [myAgents, setMyAgents] = useState<Agent[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [needsLogin, setNeedsLogin] = useState(false);
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!localStorage.getItem('token')) {
+      setNeedsLogin(true);
+      setLoading(false);
+      return;
+    }
+
+    agentsApi
+      .mine()
+      .then((result) => setMyAgents(result.agents))
+      .catch((err: any) => {
+        if (err.message === 'Unauthorized') {
+          setNeedsLogin(true);
+          return;
+        }
+        setError(err.message || '加载我的 Agent 失败');
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
+  const togglePublish = async (agent: Agent) => {
+    if (updatingId) return;
+
+    setUpdatingId(agent.id);
+    setError('');
+    try {
+      const result = await agentsApi.update(agent.id, { isPublic: !agent.isPublic });
+      setMyAgents((items) => items.map((item) => (item.id === agent.id ? result.agent : item)));
+    } catch (err: any) {
+      setError(err.message || '更新发布状态失败');
+    } finally {
+      setUpdatingId(null);
+    }
+  };
 
   return (
     <AppShell>
@@ -97,7 +129,32 @@ export default function MePage() {
           })}
         </section>
 
-        <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+        {error && (
+          <div className="rounded-2xl bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-600">
+            {error}
+          </div>
+        )}
+
+        {needsLogin && (
+          <section className="rounded-[32px] border border-dashed border-slate-200 bg-white p-10 text-center shadow-sm">
+            <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-3xl bg-[#fbfaf7] text-slate-500">
+              <ShieldCheck size={26} />
+            </div>
+            <h2 className="text-2xl font-black text-slate-950">登录后维护你的 Agent</h2>
+            <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-slate-500">
+              我的空间会保存你创建的 Agent、发布状态、收藏和最近会话。登录后就能继续维护。
+            </p>
+            <button
+              onClick={() => router.push('/login')}
+              className="mt-6 inline-flex items-center gap-2 rounded-full bg-slate-950 px-5 py-3 text-sm font-black text-white shadow-sm"
+            >
+              登录 / 注册
+              <ArrowRight size={16} />
+            </button>
+          </section>
+        )}
+
+        {!needsLogin && <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
           <div className="space-y-5">
             <div className="flex items-end justify-between gap-4">
               <div>
@@ -105,51 +162,86 @@ export default function MePage() {
                 <h2 className="text-2xl font-black text-slate-950">我创建的 Agent</h2>
               </div>
               <button
-                onClick={() => router.push('/my-agents')}
+                onClick={() => router.push('/create-agent')}
                 className="hidden items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-bold text-slate-700 shadow-sm transition hover:text-slate-950 sm:flex"
               >
-                查看全部
+                新建 Agent
                 <ArrowRight size={15} />
               </button>
             </div>
 
-            <div className="grid gap-4">
-              {myAgents.map((agent) => (
-                <article
-                  key={agent.id}
-                  className="overflow-hidden rounded-[28px] border border-black/[0.06] bg-white shadow-sm"
-                >
-                  <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center">
-                    <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-3xl bg-[#fbfaf7] text-3xl shadow-sm">
-                      {agent.avatar}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="mb-2 flex flex-wrap items-center gap-2">
-                        <h3 className="text-lg font-black text-slate-950">{agent.name}</h3>
-                        <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${agent.statusTone}`}>
-                          {agent.status}
-                        </span>
-                        <span className="inline-flex items-center gap-1 text-xs font-semibold text-slate-400">
-                          <Clock3 size={13} />
-                          {agent.updatedAt}
-                        </span>
+            {loading ? (
+              <div className="flex items-center justify-center rounded-[28px] border border-black/[0.06] bg-white py-20 text-slate-400">
+                <Loader2 className="animate-spin" size={24} />
+              </div>
+            ) : myAgents.length > 0 ? (
+              <div className="grid gap-4">
+                {myAgents.map((agent) => {
+                  const isUpdating = updatingId === agent.id;
+                  return (
+                    <article
+                      key={agent.id}
+                      className="overflow-hidden rounded-[28px] border border-black/[0.06] bg-white shadow-sm"
+                    >
+                      <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center">
+                        <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-3xl bg-[#fbfaf7] text-3xl shadow-sm">
+                          {agent.avatar || '🤖'}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="mb-2 flex flex-wrap items-center gap-2">
+                            <h3 className="text-lg font-black text-slate-950">{agent.name}</h3>
+                            <span
+                              className={`rounded-full px-2.5 py-1 text-xs font-bold ${
+                                agent.isPublic ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'
+                              }`}
+                            >
+                              {agent.isPublic ? '已发布' : '私有'}
+                            </span>
+                            <span className="inline-flex items-center gap-1 text-xs font-semibold text-slate-400">
+                              <Clock3 size={13} />
+                              {formatDate(agent.updatedAt)}
+                            </span>
+                          </div>
+                          <p className="line-clamp-2 text-sm leading-6 text-slate-500">{agent.description || '还没有简介。'}</p>
+                        </div>
+                        <div className="flex shrink-0 flex-wrap gap-2">
+                          <button
+                            onClick={() => router.push(`/chat/${agent.id}`)}
+                            className="inline-flex items-center gap-2 rounded-full border border-black/[0.06] bg-white px-4 py-2 text-sm font-bold text-slate-700 shadow-sm"
+                          >
+                            <Edit3 size={15} />
+                            测试
+                          </button>
+                          <button
+                            onClick={() => togglePublish(agent)}
+                            disabled={isUpdating}
+                            className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-4 py-2 text-sm font-bold text-white shadow-sm disabled:bg-slate-200 disabled:text-slate-400"
+                          >
+                            {isUpdating ? <Loader2 className="animate-spin" size={15} /> : <Rocket size={15} />}
+                            {agent.isPublic ? '下架' : '发布'}
+                          </button>
+                        </div>
                       </div>
-                      <p className="text-sm leading-6 text-slate-500">{agent.description}</p>
-                    </div>
-                    <div className="flex shrink-0 flex-wrap gap-2">
-                      <button className="inline-flex items-center gap-2 rounded-full border border-black/[0.06] bg-white px-4 py-2 text-sm font-bold text-slate-700 shadow-sm">
-                        <Edit3 size={15} />
-                        编辑
-                      </button>
-                      <button className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-4 py-2 text-sm font-bold text-white shadow-sm">
-                        <Rocket size={15} />
-                        发布
-                      </button>
-                    </div>
-                  </div>
-                </article>
-              ))}
-            </div>
+                    </article>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="rounded-[28px] border border-dashed border-slate-200 bg-white p-12 text-center">
+                <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-3xl bg-[#fbfaf7] text-slate-400">
+                  <Bot size={24} />
+                </div>
+                <h3 className="text-lg font-black text-slate-950">还没有创建 Agent</h3>
+                <p className="mt-2 text-sm leading-6 text-slate-500">先创建一个私有 Agent，测试满意后再发布到广场。</p>
+                <button
+                  onClick={() => router.push('/create-agent')}
+                  className="mt-5 inline-flex items-center gap-2 rounded-full bg-slate-950 px-5 py-2.5 text-sm font-bold text-white"
+                >
+                  <Plus size={16} />
+                  创建 Agent
+                </button>
+              </div>
+            )}
           </div>
 
           <aside className="space-y-5">
@@ -214,7 +306,7 @@ export default function MePage() {
               </div>
             </div>
           </aside>
-        </section>
+        </section>}
       </div>
     </AppShell>
   );

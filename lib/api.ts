@@ -39,6 +39,7 @@ export const auth = {
 // Agents
 export const agents = {
   list: () => request<{ agents: any[] }>('/agents'),
+  mine: () => request<{ agents: any[] }>('/agents?scope=mine'),
   get: (id: string) => request<{ agent: any }>(`/agents/${id}`),
   create: (data: any) =>
     request<{ agent: any }>('/agents', {
