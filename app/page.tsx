@@ -7,7 +7,7 @@ import AppShell from '@/components/layout/AppShell';
 import AgentCard from '@/components/agent/AgentCard';
 import LoadingSpinner from '@/components/shared/LoadingSpinner';
 import { getAgentsGroupedByCategory, getBuiltInAgents } from '@/lib/agents-data';
-import { conversations as conversationsApi } from '@/lib/api';
+import { agents as agentsApi, conversations as conversationsApi, favorites as favoritesApi } from '@/lib/api';
 import type { Agent } from '@/types';
 
 const scenarioLinks = [
@@ -23,13 +23,19 @@ export default function HomePage() {
   const [recentConversations, setRecentConversations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [favorites, setFavorites] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const token = localStorage.getItem('token');
     setIsLoggedIn(!!token);
 
-    getBuiltInAgents().then((data) => {
-      setAgents(data);
+    Promise.all([
+      getBuiltInAgents(),
+      token ? agentsApi.list().catch(() => ({ agents: [] })) : Promise.resolve({ agents: [] }),
+      token ? favoritesApi.list().catch(() => ({ favorites: [] })) : Promise.resolve({ favorites: [] }),
+    ]).then(([builtInAgents, publicAgentsResult, favoritesResult]) => {
+      setAgents([...publicAgentsResult.agents, ...builtInAgents]);
+      setFavorites(new Set(favoritesResult.favorites.map((favorite: any) => favorite.agentId)));
       setLoading(false);
     });
 
@@ -47,6 +53,26 @@ export default function HomePage() {
 
   const handleChat = (agent: Agent) => {
     router.push(`/chat/${agent.id}`);
+  };
+
+  const handleFavorite = async (agent: Agent) => {
+    if (!isLoggedIn) {
+      router.push('/login');
+      return;
+    }
+
+    const nextFavorites = new Set(favorites);
+    const liked = nextFavorites.has(agent.id);
+    if (liked) {
+      nextFavorites.delete(agent.id);
+      setFavorites(nextFavorites);
+      await favoritesApi.remove(agent.id).catch(() => setFavorites(favorites));
+      return;
+    }
+
+    nextFavorites.add(agent.id);
+    setFavorites(nextFavorites);
+    await favoritesApi.add(agent.id).catch(() => setFavorites(favorites));
   };
 
   const handleResumeConversation = (conversation: any) => {
@@ -224,7 +250,14 @@ export default function HomePage() {
           ) : (
             <div className="grid gap-5 lg:grid-cols-4">
               {featuredAgents.slice(0, 4).map((agent) => (
-                <AgentCard key={agent.id} agent={agent} onChat={handleChat} />
+                <AgentCard
+                  key={agent.id}
+                  agent={agent}
+                  onChat={handleChat}
+                  onFavorite={handleFavorite}
+                  isFavorited={favorites.has(agent.id)}
+                  showFavorite={Boolean(agent.creatorId)}
+                />
               ))}
             </div>
           )}

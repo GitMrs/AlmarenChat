@@ -8,6 +8,7 @@ import AgentCard from '@/components/agent/AgentCard';
 import CategoryFilter from '@/components/agent/CategoryFilter';
 import LoadingSpinner from '@/components/shared/LoadingSpinner';
 import { getAgentsByCategory, getBuiltInAgents, searchAgents } from '@/lib/agents-data';
+import { agents as agentsApi, favorites as favoritesApi } from '@/lib/api';
 import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
 import type { Agent } from '@/types';
 
@@ -20,10 +21,20 @@ function AgentsContent() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState(initialCategory);
+  const [favorites, setFavorites] = useState<Set<string>>(new Set());
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
 
   useEffect(() => {
-    getBuiltInAgents().then((data) => {
-      setAgents(data);
+    const token = localStorage.getItem('token');
+    setIsLoggedIn(Boolean(token));
+
+    Promise.all([
+      getBuiltInAgents(),
+      token ? agentsApi.list().catch(() => ({ agents: [] })) : Promise.resolve({ agents: [] }),
+      token ? favoritesApi.list().catch(() => ({ favorites: [] })) : Promise.resolve({ favorites: [] }),
+    ]).then(([builtInAgents, publicAgentsResult, favoritesResult]) => {
+      setAgents([...publicAgentsResult.agents, ...builtInAgents]);
+      setFavorites(new Set(favoritesResult.favorites.map((favorite: any) => favorite.agentId)));
       setLoading(false);
     });
   }, []);
@@ -40,6 +51,26 @@ function AgentsContent() {
 
   const handleChat = (agent: Agent) => {
     router.push(`/chat/${agent.id}`);
+  };
+
+  const handleFavorite = async (agent: Agent) => {
+    if (!isLoggedIn) {
+      router.push('/login');
+      return;
+    }
+
+    const nextFavorites = new Set(favorites);
+    const liked = nextFavorites.has(agent.id);
+    if (liked) {
+      nextFavorites.delete(agent.id);
+      setFavorites(nextFavorites);
+      await favoritesApi.remove(agent.id).catch(() => setFavorites(favorites));
+      return;
+    }
+
+    nextFavorites.add(agent.id);
+    setFavorites(nextFavorites);
+    await favoritesApi.add(agent.id).catch(() => setFavorites(favorites));
   };
 
   return (
@@ -102,7 +133,14 @@ function AgentsContent() {
             {displayed.length > 0 ? (
               <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
                 {displayed.map((agent) => (
-                  <AgentCard key={agent.id} agent={agent} onChat={handleChat} />
+                  <AgentCard
+                    key={agent.id}
+                    agent={agent}
+                    onChat={handleChat}
+                    onFavorite={handleFavorite}
+                    isFavorited={favorites.has(agent.id)}
+                    showFavorite={Boolean(agent.creatorId)}
+                  />
                 ))}
               </div>
             ) : (

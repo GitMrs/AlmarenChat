@@ -14,6 +14,7 @@ interface AgentCardProps {
   isFavorited?: boolean;
   variant?: 'default' | 'featured' | 'compact';
   className?: string;
+  showFavorite?: boolean;
 }
 
 const categoryIntents: Record<string, string> = {
@@ -34,6 +35,7 @@ export default function AgentCard({
   isFavorited = false,
   variant = 'default',
   className,
+  showFavorite = true,
 }: AgentCardProps) {
   const category = agent.category || '工具';
   const color = CATEGORY_COLORS[category] || '#2563eb';
@@ -85,11 +87,11 @@ export default function AgentCard({
       />
 
       <div className="relative flex items-start justify-between gap-4">
-        <div className="flex items-center gap-3">
+        <div className="flex min-w-0 flex-1 items-center gap-3">
           <div className="rounded-3xl bg-slate-50 p-2 ring-1 ring-black/[0.04]">
             <Avatar src={agent.avatar} alt={agent.name} size={isFeatured ? 'lg' : 'md'} />
           </div>
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <h3 className={cn('truncate font-black text-slate-950', isFeatured ? 'text-xl' : 'text-base')}>
               {agent.name}
             </h3>
@@ -109,19 +111,21 @@ export default function AgentCard({
           </div>
         </div>
 
-        <button
-          onClick={(event) => {
-            event.stopPropagation();
-            onFavorite?.(agent);
-          }}
-          className={cn(
-            'rounded-full p-2 transition',
-            isFavorited ? 'bg-rose-50 text-rose-500' : 'bg-white/80 text-slate-300 hover:text-rose-400'
-          )}
-          aria-label="收藏 Agent"
-        >
-          <Heart size={18} fill={isFavorited ? 'currentColor' : 'none'} />
-        </button>
+        {showFavorite && (
+          <button
+            onClick={(event) => {
+              event.stopPropagation();
+              onFavorite?.(agent);
+            }}
+            className={cn(
+              'shrink-0 rounded-full p-2 transition',
+              isFavorited ? 'bg-rose-50 text-rose-500' : 'bg-white/80 text-slate-300 hover:text-rose-400'
+            )}
+            aria-label="收藏 Agent"
+          >
+            <Heart size={18} fill={isFavorited ? 'currentColor' : 'none'} />
+          </button>
+        )}
       </div>
 
       <p className={cn('relative mt-5 text-sm leading-6 text-slate-600', isFeatured ? 'line-clamp-3' : 'line-clamp-2')}>
