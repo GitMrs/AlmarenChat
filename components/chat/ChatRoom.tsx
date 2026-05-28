@@ -367,8 +367,11 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
               <div>
                 <p className="text-xs font-bold text-slate-400">行为设定摘要</p>
                 <div className="markdown-body mt-2 rounded-2xl bg-[#fbfaf7] p-4 text-xs leading-5 text-slate-500">
-                  <ReactMarkdown>
+                  {/* <ReactMarkdown>
                     {displayAgent.systemPrompt || '这个 Agent 会根据用户的问题给出清晰、具体、可执行的帮助。'}
+                  </ReactMarkdown> */}
+                    <ReactMarkdown>
+                    {'这个 Agent 会根据用户的问题给出清晰、具体、可执行的帮助。'}
                   </ReactMarkdown>
                 </div>
               </div>
