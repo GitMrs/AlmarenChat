@@ -18,6 +18,7 @@ export async function GET(request: Request) {
         modelName: true,
         customModelEnabled: true,
         defaultStyle: true,
+        contextMessageLimit: true,
         createdAt: true,
       },
     });

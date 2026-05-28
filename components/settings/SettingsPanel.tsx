@@ -32,6 +32,7 @@ type ModelSnapshot = {
   apiKey: string;
   modelName: string;
   defaultStyle: string;
+  contextMessageLimit: number;
 };
 
 export default function SettingsPanel() {
@@ -44,6 +45,7 @@ export default function SettingsPanel() {
   const [apiKey, setApiKey] = useState('');
   const [modelName, setModelName] = useState('');
   const [defaultStyle, setDefaultStyle] = useState('详细');
+  const [contextMessageLimit, setContextMessageLimit] = useState(40);
   const [initialAccount, setInitialAccount] = useState<AccountSnapshot | null>(null);
   const [initialModel, setInitialModel] = useState<ModelSnapshot | null>(null);
 
@@ -70,8 +72,9 @@ export default function SettingsPanel() {
       apiKey: apiKey.trim(),
       modelName: modelName.trim(),
       defaultStyle,
+      contextMessageLimit,
     }),
-    [apiBaseUrl, apiKey, customModelEnabled, defaultStyle, modelName]
+    [apiBaseUrl, apiKey, contextMessageLimit, customModelEnabled, defaultStyle, modelName]
   );
   const hasAccountChanges = initialAccount ? JSON.stringify(currentAccount) !== JSON.stringify(initialAccount) : false;
   const hasModelChanges = initialModel ? JSON.stringify(currentModel) !== JSON.stringify(initialModel) : false;
@@ -96,6 +99,7 @@ export default function SettingsPanel() {
         setApiKey(u.apiKey || '');
         setModelName(u.modelName || '');
         setDefaultStyle(u.defaultStyle || '详细');
+        setContextMessageLimit(u.contextMessageLimit || 40);
         setInitialAccount({ name: u.name || '' });
         setInitialModel({
           customModelEnabled: Boolean(u.customModelEnabled),
@@ -103,6 +107,7 @@ export default function SettingsPanel() {
           apiKey: u.apiKey || '',
           modelName: u.modelName || '',
           defaultStyle: u.defaultStyle || '详细',
+          contextMessageLimit: u.contextMessageLimit || 40,
         });
       })
       .catch((err: any) => {
@@ -150,10 +155,12 @@ export default function SettingsPanel() {
         apiKey: currentModel.apiKey || null,
         modelName: currentModel.modelName || null,
         defaultStyle: currentModel.defaultStyle,
+        contextMessageLimit: currentModel.contextMessageLimit,
       });
       setApiBaseUrl(currentModel.apiBaseUrl);
       setApiKey(currentModel.apiKey);
       setModelName(currentModel.modelName);
+      setContextMessageLimit(currentModel.contextMessageLimit);
       setInitialModel(currentModel);
       setModelSaved(true);
       setTimeout(() => setModelSaved(false), 2000);
@@ -320,6 +327,24 @@ export default function SettingsPanel() {
                   placeholder="例如 gpt-4o、deepseek-chat、claude-sonnet-4"
                   className="h-12 w-full rounded-2xl border border-black/[0.08] bg-[#fbfaf7] px-4 text-sm font-medium text-slate-800 outline-none focus:border-slate-300 focus:ring-4 focus:ring-slate-200/70"
                 />
+              </label>
+
+              <label className="block">
+                <span className="mb-2 block text-sm font-bold text-slate-700">上下文消息数</span>
+                <input
+                  value={contextMessageLimit}
+                  onChange={(e) => {
+                    const value = Number(e.target.value);
+                    setContextMessageLimit(Math.max(1, Math.min(40, Number.isFinite(value) ? Math.floor(value) : 1)));
+                  }}
+                  type="number"
+                  min={1}
+                  max={40}
+                  className="h-12 w-full rounded-2xl border border-black/[0.08] bg-[#fbfaf7] px-4 text-sm font-medium text-slate-800 outline-none focus:border-slate-300 focus:ring-4 focus:ring-slate-200/70"
+                />
+                <p className="mt-2 text-xs leading-5 text-slate-400">
+                  每次请求最多带入最近 {contextMessageLimit} 条历史消息，最大 40 条。
+                </p>
               </label>
 
               {modelConfigIncomplete && (

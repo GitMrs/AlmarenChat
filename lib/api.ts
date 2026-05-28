@@ -172,6 +172,7 @@ export const user = {
     modelName?: string | null;
     customModelEnabled?: boolean;
     defaultStyle?: string | null;
+    contextMessageLimit?: number;
   }) =>
     request<{ user: any }>('/user', {
       method: 'PATCH',

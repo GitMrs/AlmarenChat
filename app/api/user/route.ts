@@ -18,6 +18,7 @@ export async function GET(request: Request) {
         modelName: true,
         customModelEnabled: true,
         defaultStyle: true,
+        contextMessageLimit: true,
         createdAt: true,
       },
     });
@@ -40,12 +41,16 @@ export async function PATCH(request: Request) {
     const userId = requireAuth(request);
     const body = await request.json();
 
-    const allowedFields = ['name', 'avatar', 'apiBaseUrl', 'apiKey', 'modelName', 'customModelEnabled', 'defaultStyle'] as const;
+    const allowedFields = ['name', 'avatar', 'apiBaseUrl', 'apiKey', 'modelName', 'customModelEnabled', 'defaultStyle', 'contextMessageLimit'] as const;
     const data: Record<string, any> = {};
     for (const field of allowedFields) {
       if (body[field] !== undefined) {
         data[field] = body[field];
       }
+    }
+    if (data.contextMessageLimit !== undefined) {
+      const limit = Number(data.contextMessageLimit);
+      data.contextMessageLimit = Math.max(1, Math.min(40, Number.isFinite(limit) ? Math.floor(limit) : 40));
     }
 
     const user = await prisma.user.update({
@@ -61,6 +66,7 @@ export async function PATCH(request: Request) {
         modelName: true,
         customModelEnabled: true,
         defaultStyle: true,
+        contextMessageLimit: true,
         createdAt: true,
       },
     });

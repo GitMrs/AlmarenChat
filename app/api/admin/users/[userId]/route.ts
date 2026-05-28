@@ -19,6 +19,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ user
         modelName: true,
         customModelEnabled: true,
         defaultStyle: true,
+        contextMessageLimit: true,
         createdAt: true,
         updatedAt: true,
         _count: { select: { agents: true, conversations: true } },

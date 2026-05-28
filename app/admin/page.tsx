@@ -226,6 +226,7 @@ export default function AdminPage() {
                     模型配置：{selectedUser.customModelEnabled ? '已开启' : '未开启'}
                   </div>
                   <div className="text-slate-500">模型：{selectedUser.modelName || '-'}</div>
+                  <div className="text-slate-500">上下文消息数：{selectedUser.contextMessageLimit || 40}</div>
                 </div>
 
                 <div className="mt-5 rounded-xl bg-[#fbfaf7] p-3">

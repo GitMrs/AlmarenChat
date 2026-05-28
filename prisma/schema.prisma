@@ -18,6 +18,7 @@ model User {
   modelName    String?
   customModelEnabled Boolean @default(false)
   defaultStyle String?
+  contextMessageLimit Int @default(40)
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
 

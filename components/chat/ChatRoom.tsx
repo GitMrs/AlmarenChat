@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ArrowLeft, Check, ChevronDown, ChevronUp, Copy, RefreshCw, Send, Sparkles, Square } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import Avatar from '@/components/shared/Avatar';
 import LoadingSpinner from '@/components/shared/LoadingSpinner';
 import { getBuiltInAgents } from '@/lib/agents-data';
@@ -40,6 +41,40 @@ const promptMap: Record<string, string[]> = {
   工具: ['帮我整理成表格', '提炼成待办事项', '把内容压缩成摘要'],
   娱乐: ['来一个轻松的话题', '推荐点有趣的内容', '我们玩个小游戏'],
 };
+
+const USER_MESSAGE_COLLAPSE_CHARS = 600;
+const USER_MESSAGE_COLLAPSE_LINES = 12;
+
+function CollapsibleUserMessage({ content }: { content: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const shouldCollapse =
+    content.length > USER_MESSAGE_COLLAPSE_CHARS || content.split('\n').length > USER_MESSAGE_COLLAPSE_LINES;
+
+  if (!shouldCollapse) {
+    return <p className="whitespace-pre-wrap text-sm leading-7">{content}</p>;
+  }
+
+  return (
+    <div className="space-y-2">
+      <p
+        className={cn(
+          'whitespace-pre-wrap text-sm leading-7',
+          !expanded && 'max-h-48 overflow-hidden'
+        )}
+      >
+        {content}
+      </p>
+      {!expanded && <div className="-mt-8 h-8 bg-gradient-to-t from-current/20 to-transparent" />}
+      <button
+        type="button"
+        onClick={() => setExpanded((value) => !value)}
+        className="rounded-full bg-white/16 px-3 py-1 text-xs font-black text-white/90 transition hover:bg-white/24"
+      >
+        {expanded ? '收起' : '展开全部'}
+      </button>
+    </div>
+  );
+}
 
 interface ChatRoomProps {
   agentId?: string;
@@ -367,11 +402,8 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
               <div>
                 <p className="text-xs font-bold text-slate-400">行为设定摘要</p>
                 <div className="markdown-body mt-2 rounded-2xl bg-[#fbfaf7] p-4 text-xs leading-5 text-slate-500">
-                  {/* <ReactMarkdown>
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
                     {displayAgent.systemPrompt || '这个 Agent 会根据用户的问题给出清晰、具体、可执行的帮助。'}
-                  </ReactMarkdown> */}
-                    <ReactMarkdown>
-                    {'这个 Agent 会根据用户的问题给出清晰、具体、可执行的帮助。'}
                   </ReactMarkdown>
                 </div>
               </div>
@@ -430,10 +462,10 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
                 >
                   {message.role === 'assistant' ? (
                     <div className="markdown-body text-sm leading-7">
-                      <ReactMarkdown>{message.content}</ReactMarkdown>
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
                     </div>
                   ) : (
-                    <p className="whitespace-pre-wrap text-sm leading-7">{message.content}</p>
+                    <CollapsibleUserMessage content={message.content} />
                   )}
 
                   {message.role === 'assistant' && (
@@ -454,7 +486,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
                 <Avatar src={displayAgent.avatar} alt={displayAgent.name} size="sm" className="mt-1 shrink-0" />
                 <div className="max-w-[82%] rounded-[24px] rounded-bl-md border border-black/[0.06] bg-white px-5 py-4 text-slate-800 shadow-sm">
                   <div className="markdown-body text-sm leading-7">
-                    <ReactMarkdown>{streamingContent}</ReactMarkdown>
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{streamingContent}</ReactMarkdown>
                   </div>
                   <span className="ml-1 inline-block h-4 w-2 animate-pulse rounded-sm bg-slate-300" />
                 </div>
