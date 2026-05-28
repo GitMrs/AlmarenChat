@@ -55,22 +55,26 @@ function CollapsibleUserMessage({ content }: { content: string }) {
   }
 
   return (
-    <div className="space-y-2">
-      <p
-        className={cn(
-          'whitespace-pre-wrap text-sm leading-7',
-          !expanded && 'max-h-48 overflow-hidden'
+    <div className="space-y-3">
+      <div className="relative">
+        <p
+          className={cn(
+            'whitespace-pre-wrap text-sm leading-7 transition-[max-height]',
+            !expanded && 'max-h-56 overflow-hidden'
+          )}
+        >
+          {content}
+        </p>
+        {!expanded && (
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-14 rounded-b-[18px] bg-gradient-to-t from-black/12 via-black/4 to-transparent" />
         )}
-      >
-        {content}
-      </p>
-      {!expanded && <div className="-mt-8 h-8 bg-gradient-to-t from-current/20 to-transparent" />}
+      </div>
       <button
         type="button"
         onClick={() => setExpanded((value) => !value)}
-        className="rounded-full bg-white/16 px-3 py-1 text-xs font-black text-white/90 transition hover:bg-white/24"
+        className="inline-flex items-center text-xs font-black text-white/90 underline decoration-white/35 underline-offset-4 transition hover:text-white hover:decoration-white"
       >
-        {expanded ? '收起' : '展开全部'}
+        {expanded ? '收起消息' : '展开完整消息'}
       </button>
     </div>
   );
