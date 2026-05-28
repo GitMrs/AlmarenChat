@@ -289,7 +289,7 @@ export default function LoginPage() {
         : await auth.login({ email: email.trim(), password });
 
       localStorage.setItem('token', result.token);
-      router.push('/me');
+      router.push(!isRegister && result.user.isAdmin ? '/admin' : '/me');
     } catch (err: any) {
       setError(err.message || '操作失败，请稍后再试。');
     } finally {

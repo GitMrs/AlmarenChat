@@ -98,6 +98,28 @@ export const favorites = {
     }),
 };
 
+// Admin
+export const admin = {
+  dashboard: () => request<{ admin: any; stats: any; recentUsers: any[]; recentAgents: any[] }>('/admin'),
+  users: (query?: string) => request<{ users: any[] }>(`/admin/users${query ? `?q=${encodeURIComponent(query)}` : ''}`),
+  user: (id: string) => request<{ user: any }>(`/admin/users/${id}`),
+  resetUserPassword: (id: string, password: string) =>
+    request<{ success: boolean }>(`/admin/users/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ password }),
+    }),
+  agents: (query?: string) => request<{ agents: any[] }>(`/admin/agents${query ? `?q=${encodeURIComponent(query)}` : ''}`),
+  updateAgent: (id: string, data: { isPublic: boolean }) =>
+    request<{ agent: any }>(`/admin/agents/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+  deleteAgent: (id: string) =>
+    request<{ success: boolean }>(`/admin/agents/${id}`, {
+      method: 'DELETE',
+    }),
+};
+
 // AI Chat (streaming)
 export async function streamChat(data: {
   message: string;
