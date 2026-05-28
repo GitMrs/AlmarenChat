@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowRight, Check, Clock3, Edit3, Loader2, MessageSquare, Search, Sparkles, Trash2, X } from 'lucide-react';
 import AppShell from '@/components/layout/AppShell';
+import LoginRequired from '@/components/auth/LoginRequired';
 import { conversations as conversationsApi } from '@/lib/api';
 import { CATEGORY_COLORS } from '@/types';
 
@@ -26,6 +27,7 @@ export default function ConversationsPage() {
   const [conversationList, setConversationList] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [needsLogin, setNeedsLogin] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState('');
@@ -34,7 +36,8 @@ export default function ConversationsPage() {
 
   useEffect(() => {
     if (!localStorage.getItem('token')) {
-      router.push('/login');
+      setNeedsLogin(true);
+      setLoading(false);
       return;
     }
 
@@ -148,7 +151,12 @@ export default function ConversationsPage() {
               </button>
             </div>
 
-            {loading ? (
+            {needsLogin ? (
+              <LoginRequired
+                title="登录后查看会话"
+                description="会话记录会保存你和 Agent 一起推进过的任务、灵感和问题。登录后可以继续、重命名或删除。"
+              />
+            ) : loading ? (
               <div className="flex items-center justify-center rounded-[28px] border border-black/[0.06] bg-white py-20 text-slate-400">
                 加载中...
               </div>
