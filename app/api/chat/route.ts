@@ -16,6 +16,7 @@ export async function POST(request: Request) {
       agentId,
       agentSnapshot,
       contextMessageLimit,
+      skipPersistUserMessage,
     } = await request.json();
 
     const userId = getUserIdFromRequest(request);
@@ -82,10 +83,14 @@ export async function POST(request: Request) {
         content: msg.content,
       }));
     if (context) openaiMessages.unshift({ role: 'system', content: context });
-    openaiMessages.push({ role: 'user', content: message });
+
+    const lastMessage = openaiMessages[openaiMessages.length - 1];
+    if (!(skipPersistUserMessage && lastMessage?.role === 'user' && lastMessage.content === message)) {
+      openaiMessages.push({ role: 'user', content: message });
+    }
 
     // Save user message
-    if (userId && resolvedConversationId) {
+    if (userId && resolvedConversationId && !skipPersistUserMessage) {
       await prisma.message.create({
         data: { conversationId: resolvedConversationId, role: 'user', content: message },
       });

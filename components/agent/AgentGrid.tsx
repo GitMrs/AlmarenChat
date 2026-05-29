@@ -6,6 +6,7 @@ import type { Agent } from '@/types';
 interface AgentGridProps {
   agents: Agent[];
   onChat?: (agent: Agent) => void;
+  onView?: (agent: Agent) => void;
   onFavorite?: (agent: Agent) => void;
   favorites?: Set<string>;
   variant?: 'default' | 'featured' | 'compact';
@@ -14,6 +15,7 @@ interface AgentGridProps {
 export default function AgentGrid({
   agents,
   onChat,
+  onView,
   onFavorite,
   favorites = new Set(),
   variant = 'default',
@@ -39,6 +41,7 @@ export default function AgentGrid({
           key={agent.id}
           agent={agent}
           onChat={onChat}
+          onView={onView}
           onFavorite={onFavorite}
           isFavorited={favorites.has(agent.id)}
           variant={variant}

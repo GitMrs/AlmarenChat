@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useEffect, useMemo, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Bot, Check, Eye, Loader2, Lock, MessageCircle, Palette, Sparkles, Wand2 } from 'lucide-react';
 import AppShell from '@/components/layout/AppShell';
 import LoginRequired from '@/components/auth/LoginRequired';
@@ -18,8 +18,10 @@ const PURPOSE_PRESETS = [
   { category: '心理', tone: '温柔', label: '情绪陪伴', prompt: '温柔倾听用户的困扰，帮助用户梳理情绪和下一步选择。' },
 ];
 
-export default function CreateAgentPage() {
+function CreateAgentContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const editingAgentId = searchParams.get('agentId');
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -31,6 +33,7 @@ export default function CreateAgentPage() {
   const [isPublic, setIsPublic] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [needsLogin, setNeedsLogin] = useState<boolean | null>(null);
+  const [loadingAgent, setLoadingAgent] = useState(false);
 
   useEffect(() => {
     if (!localStorage.getItem('token')) {
@@ -40,12 +43,31 @@ export default function CreateAgentPage() {
 
     auth
       .me()
-      .then(() => setNeedsLogin(false))
+      .then(async () => {
+        setNeedsLogin(false);
+        if (!editingAgentId) return;
+
+        setLoadingAgent(true);
+        try {
+          const result = await agents.get(editingAgentId);
+          const agent = result.agent;
+          setName(agent.name || '');
+          setDescription(agent.description || '');
+          setCategory(agent.category || '写作');
+          setTone(agent.tone || '详细');
+          setGreeting(agent.greeting || '');
+          setSystemPrompt(agent.systemPrompt || '');
+          setSelectedAvatar(agent.avatar || '🪄');
+          setIsPublic(Boolean(agent.isPublic));
+        } finally {
+          setLoadingAgent(false);
+        }
+      })
       .catch(() => {
         localStorage.removeItem('token');
         setNeedsLogin(true);
       });
-  }, []);
+  }, [editingAgentId]);
 
   const categoryColor = CATEGORY_COLORS[category] || '#6366f1';
   const canCreate = name.trim().length > 0 && description.trim().length > 0 && category && tone;
@@ -75,7 +97,7 @@ export default function CreateAgentPage() {
 
     setSubmitting(true);
     try {
-      const result = await agents.create({
+      const payload = {
         name,
         description,
         category,
@@ -84,16 +106,22 @@ export default function CreateAgentPage() {
         systemPrompt: finalPrompt,
         avatar: selectedAvatar,
         isPublic,
-      });
+      };
+
+      if (editingAgentId) {
+        await agents.update(editingAgentId, payload);
+      } else {
+        await agents.create(payload);
+      }
       router.push('/me');
     } catch (error) {
-      console.error('Create agent failed:', error);
+      console.error('Save agent failed:', error);
     } finally {
       setSubmitting(false);
     }
   };
 
-  if (needsLogin === null) {
+  if (needsLogin === null || loadingAgent) {
     return (
       <AppShell>
         <div className="flex items-center justify-center py-24">
@@ -124,13 +152,15 @@ export default function CreateAgentPage() {
             <div className="max-w-3xl">
               <div className="mb-4 inline-flex items-center gap-2 rounded-full bg-slate-950 px-4 py-2 text-sm font-bold text-white">
                 <Wand2 size={16} />
-                Agent 创建器
+                {editingAgentId ? 'Agent 编辑器' : 'Agent 创建器'}
               </div>
               <h1 className="text-4xl font-black leading-tight text-slate-950 sm:text-5xl">
-                像塑造一个角色一样，创建你的 AI Agent。
+                {editingAgentId ? '继续打磨你的 AI Agent。' : '像塑造一个角色一样，创建你的 AI Agent。'}
               </h1>
               <p className="mt-4 text-base leading-7 text-slate-500">
-                给它身份、语气、能力和开场白。创建完成后，它会直接进入你的聊天空间。
+                {editingAgentId
+                  ? '修改身份、语气、能力和开场白。保存后会更新你的 Agent 设置。'
+                  : '给它身份、语气、能力和开场白。创建完成后，它会直接进入你的聊天空间。'}
               </p>
             </div>
             <div className="grid grid-cols-3 gap-3 rounded-3xl bg-[#fbfaf7] p-3 text-center">
@@ -378,7 +408,7 @@ export default function CreateAgentPage() {
                   )}
                 >
                   <Sparkles size={16} />
-                  {submitting ? '创建中...' : '创建并开始聊天'}
+                  {submitting ? '保存中...' : editingAgentId ? '保存修改' : '创建并开始聊天'}
                 </button>
               </div>
             </div>
@@ -386,5 +416,21 @@ export default function CreateAgentPage() {
         </div>
       </div>
     </AppShell>
+  );
+}
+
+export default function CreateAgentPage() {
+  return (
+    <Suspense
+      fallback={
+        <AppShell>
+          <div className="flex items-center justify-center py-24">
+            <Loader2 className="animate-spin text-slate-400" size={24} />
+          </div>
+        </AppShell>
+      }
+    >
+      <CreateAgentContent />
+    </Suspense>
   );
 }

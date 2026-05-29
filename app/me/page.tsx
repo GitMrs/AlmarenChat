@@ -130,7 +130,7 @@ function MeContent() {
 
             <button
               onClick={() => router.push('/create-agent')}
-              className="inline-flex w-fit items-center justify-center gap-2 rounded-full bg-slate-950 px-5 py-3 text-sm font-black text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg"
+              className="inline-flex w-fit cursor-pointer items-center justify-center gap-2 rounded-full bg-slate-950 px-5 py-3 text-sm font-black text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg"
             >
               <Plus size={17} />
               创建新 Agent
@@ -150,7 +150,7 @@ function MeContent() {
                 key={tab.id}
                 onClick={() => switchTab(tab.id as 'assets' | 'settings')}
                 className={cn(
-                  'inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-black transition',
+                  'inline-flex cursor-pointer items-center gap-2 rounded-full px-4 py-2 text-sm font-black transition',
                   active ? 'bg-slate-950 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-950'
                 )}
               >
@@ -205,7 +205,7 @@ function MeContent() {
               </div>
               <button
                 onClick={() => router.push('/create-agent')}
-                className="hidden items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-bold text-slate-700 shadow-sm transition hover:text-slate-950 sm:flex"
+                className="hidden cursor-pointer items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-bold text-slate-700 shadow-sm transition hover:text-slate-950 sm:flex"
               >
                 新建 Agent
                 <ArrowRight size={15} />
@@ -223,7 +223,7 @@ function MeContent() {
                   return (
                     <article
                       key={agent.id}
-                      className="overflow-hidden rounded-[28px] border border-black/[0.06] bg-white shadow-sm"
+                      className="cursor-default overflow-hidden rounded-[28px] border border-black/[0.06] bg-white shadow-sm"
                     >
                       <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center">
                         <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-3xl bg-[#fbfaf7] text-3xl shadow-sm">
@@ -248,16 +248,23 @@ function MeContent() {
                         </div>
                         <div className="flex shrink-0 flex-wrap gap-2">
                           <button
-                            onClick={() => router.push(`/chat/${agent.id}`)}
-                            className="inline-flex items-center gap-2 rounded-full border border-black/[0.06] bg-white px-4 py-2 text-sm font-bold text-slate-700 shadow-sm"
+                            onClick={() => router.push(`/create-agent?agentId=${agent.id}`)}
+                            className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-black/[0.06] bg-white px-4 py-2 text-sm font-bold text-slate-700 shadow-sm"
                           >
                             <Edit3 size={15} />
+                            编辑
+                          </button>
+                          <button
+                            onClick={() => router.push(`/chat/${agent.id}`)}
+                            className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-black/[0.06] bg-white px-4 py-2 text-sm font-bold text-slate-700 shadow-sm"
+                          >
+                            <MessageSquare size={15} />
                             测试
                           </button>
                           <button
                             onClick={() => togglePublish(agent)}
                             disabled={isUpdating}
-                            className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-4 py-2 text-sm font-bold text-white shadow-sm disabled:bg-slate-200 disabled:text-slate-400"
+                            className="inline-flex cursor-pointer items-center gap-2 rounded-full bg-slate-950 px-4 py-2 text-sm font-bold text-white shadow-sm disabled:cursor-default disabled:bg-slate-200 disabled:text-slate-400"
                           >
                             {isUpdating ? <Loader2 className="animate-spin" size={15} /> : <Rocket size={15} />}
                             {agent.isPublic ? '下架' : '发布'}
@@ -265,7 +272,7 @@ function MeContent() {
                           <button
                             onClick={() => setPendingDeleteAgent(agent)}
                             disabled={isUpdating}
-                            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-rose-100 bg-rose-50 text-rose-500 shadow-sm transition hover:bg-rose-100 disabled:bg-slate-100 disabled:text-slate-300"
+                            className="inline-flex h-10 w-10 cursor-pointer items-center justify-center rounded-full border border-rose-100 bg-rose-50 text-rose-500 shadow-sm transition hover:bg-rose-100 disabled:cursor-default disabled:bg-slate-100 disabled:text-slate-300"
                             title="删除 Agent"
                             aria-label="删除 Agent"
                           >
@@ -286,7 +293,7 @@ function MeContent() {
                 <p className="mt-2 text-sm leading-6 text-slate-500">先创建一个私有 Agent，测试满意后再发布到广场。</p>
                 <button
                   onClick={() => router.push('/create-agent')}
-                  className="mt-5 inline-flex items-center gap-2 rounded-full bg-slate-950 px-5 py-2.5 text-sm font-bold text-white"
+                  className="mt-5 inline-flex cursor-pointer items-center gap-2 rounded-full bg-slate-950 px-5 py-2.5 text-sm font-bold text-white"
                 >
                   <Plus size={16} />
                   创建 Agent
@@ -320,7 +327,7 @@ function MeContent() {
                     <button
                       key={fav.id}
                       onClick={() => router.push(`/chat/${agent.id}`)}
-                      className="flex w-full items-center gap-3 rounded-2xl bg-[#fbfaf7] p-3 text-left transition hover:bg-slate-100"
+                      className="flex w-full cursor-pointer items-center gap-3 rounded-2xl bg-[#fbfaf7] p-3 text-left transition hover:bg-slate-100"
                     >
                       <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white text-xl">
                         {agent.avatar || '🤖'}
@@ -343,7 +350,7 @@ function MeContent() {
                 <h3 className="text-lg font-black text-slate-950">最近会话</h3>
                 <button
                   onClick={() => router.push('/conversations')}
-                  className="text-xs font-bold text-slate-400 hover:text-slate-950"
+                  className="cursor-pointer text-xs font-bold text-slate-400 hover:text-slate-950"
                 >
                   全部
                 </button>
@@ -355,7 +362,7 @@ function MeContent() {
                     onClick={() => {
                       router.push(`/conversations/${item.id}`);
                     }}
-                    className="w-full rounded-2xl bg-[#fbfaf7] p-3 text-left transition hover:bg-slate-100"
+                    className="w-full cursor-pointer rounded-2xl bg-[#fbfaf7] p-3 text-left transition hover:bg-slate-100"
                   >
                     <div className="truncate text-sm font-black text-slate-950">{item.title || '新对话'}</div>
                     <div className="mt-1 truncate text-xs text-slate-500">{item.agentName || '未知 Agent'}</div>

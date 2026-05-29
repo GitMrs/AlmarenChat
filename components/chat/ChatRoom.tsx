@@ -2,10 +2,11 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ArrowLeft, Check, ChevronDown, ChevronUp, Copy, RefreshCw, Send, SlidersHorizontal, Sparkles, Square } from 'lucide-react';
+import { ArrowLeft, Check, ChevronDown, ChevronUp, Copy, RefreshCw, Send, SlidersHorizontal, Sparkles, Square, Trash2, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import Avatar from '@/components/shared/Avatar';
+import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import LoadingSpinner from '@/components/shared/LoadingSpinner';
 import { getBuiltInAgents } from '@/lib/agents-data';
 import { streamChat, conversations as conversationsApi, agents as agentsApi, user as userApi } from '@/lib/api';
@@ -46,6 +47,13 @@ const USER_MESSAGE_COLLAPSE_CHARS = 600;
 const USER_MESSAGE_COLLAPSE_LINES = 12;
 const DEFAULT_CONTEXT_MESSAGE_LIMIT = 40;
 const MAX_CONTEXT_MESSAGE_LIMIT = 80;
+
+function formatMessageTime(value: string) {
+  return new Intl.DateTimeFormat('zh-CN', {
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(value));
+}
 
 function CollapsibleUserMessage({ content }: { content: string }) {
   const [expanded, setExpanded] = useState(false);
@@ -104,12 +112,33 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
+  const [pendingDeleteMessage, setPendingDeleteMessage] = useState<ChatMessage | null>(null);
+  const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
+  const [activeActionMessageId, setActiveActionMessageId] = useState<string | null>(null);
   const [userSettings, setUserSettings] = useState<{ apiBaseUrl?: string; apiKey?: string; modelName?: string } | null>(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [contextMessageLimit, setContextMessageLimit] = useState(DEFAULT_CONTEXT_MESSAGE_LIMIT);
+  const [viewportHeight, setViewportHeight] = useState<number | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    const updateViewportHeight = () => {
+      setViewportHeight(window.visualViewport?.height || window.innerHeight);
+    };
+
+    updateViewportHeight();
+    window.visualViewport?.addEventListener('resize', updateViewportHeight);
+    window.visualViewport?.addEventListener('scroll', updateViewportHeight);
+    window.addEventListener('resize', updateViewportHeight);
+
+    return () => {
+      window.visualViewport?.removeEventListener('resize', updateViewportHeight);
+      window.visualViewport?.removeEventListener('scroll', updateViewportHeight);
+      window.removeEventListener('resize', updateViewportHeight);
+    };
+  }, []);
 
   useEffect(() => {
     const loadAgent = async () => {
@@ -203,33 +232,56 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, streamingContent]);
+  }, [messages, streamingContent, viewportHeight]);
+
+  useEffect(() => {
+    setActiveActionMessageId(null);
+  }, [messages.length]);
 
   const displayAgent = conversationAgent || agent;
   const categoryColor = displayAgent ? CATEGORY_COLORS[displayAgent.category || ''] || '#6366f1' : '#6366f1';
+  const latestAssistantMessageId = [...messages].reverse().find((message) => message.role === 'assistant' && message.id !== 'greeting')?.id;
   const suggestedPrompts = useMemo(() => {
     if (!displayAgent) return ['你能帮我做什么？', '给我介绍一下你的能力', '我们从一个小任务开始'];
     return promptMap[displayAgent.category || ''] || ['你能帮我做什么？', '给我介绍一下你的能力', '我们从一个小任务开始'];
   }, [displayAgent]);
 
-  const handleSend = async (text?: string) => {
+  const syncConversationMessages = async (id: string) => {
+    const { messages: latestMessages } = await conversationsApi.getMessages(id);
+    setMessages(
+      latestMessages.map((msg: any) => ({
+        id: msg.id,
+        role: msg.role,
+        content: msg.content,
+        createdAt: msg.createdAt,
+      }))
+    );
+  };
+
+  const handleSend = async (
+    text?: string,
+    options: { reuseLastUserMessage?: boolean; historyOverride?: ChatMessage[] } = {}
+  ) => {
     const content = text || input.trim();
     if (!content || isStreaming) return;
 
-    const userMessage: ChatMessage = {
-      id: `user-${Date.now()}`,
-      role: 'user',
-      content,
-      createdAt: new Date().toISOString(),
-    };
+    if (!options.reuseLastUserMessage) {
+      const userMessage: ChatMessage = {
+        id: `user-${Date.now()}`,
+        role: 'user',
+        content,
+        createdAt: new Date().toISOString(),
+      };
 
-    setMessages((prev) => [...prev, userMessage]);
-    setInput('');
+      setMessages((prev) => [...prev, userMessage]);
+      setInput('');
+    }
     setIsStreaming(true);
     setStreamingContent('');
 
     try {
-      const history = messages.map((message) => ({
+      const historySource = options.historyOverride || messages;
+      const history = historySource.map((message) => ({
         role: message.role,
         content: message.content,
       }));
@@ -244,6 +296,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
         conversationId: conversationId || undefined,
         agentId: displayAgent?.id || agentId,
         contextMessageLimit,
+        skipPersistUserMessage: options.reuseLastUserMessage,
         agentSnapshot: displayAgent
           ? {
               name: displayAgent.name,
@@ -284,6 +337,10 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
 
       setMessages((prev) => [...prev, assistantMessage]);
       setStreamingContent('');
+
+      if (result.conversationId) {
+        await syncConversationMessages(result.conversationId);
+      }
     } catch (error: any) {
       if (error.name !== 'AbortError') {
         console.error('Chat error:', error);
@@ -319,17 +376,39 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
     }
   };
 
-  const handleRegenerate = () => {
+  const handleRegenerate = async () => {
+    const lastAssistantMessage = [...messages].reverse().find((message) => message.role === 'assistant' && message.id !== 'greeting');
     const lastUserMessage = [...messages].reverse().find((message) => message.role === 'user');
     if (!lastUserMessage || isStreaming) return;
-    setMessages((prev) => prev.filter((message) => message.id !== prev[prev.length - 1]?.id));
-    handleSend(lastUserMessage.content);
+
+    if (lastAssistantMessage && conversationId && !lastAssistantMessage.id.startsWith('assistant-')) {
+      await conversationsApi.deleteMessage(conversationId, lastAssistantMessage.id).catch(() => {});
+    }
+
+    const nextMessages = messages.filter((message) => message.id !== lastAssistantMessage?.id);
+    setMessages(nextMessages);
+    handleSend(lastUserMessage.content, { reuseLastUserMessage: true, historyOverride: nextMessages });
   };
 
   const handleCopy = (id: string, content: string) => {
     navigator.clipboard.writeText(content);
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 1800);
+  };
+
+  const deleteMessage = async () => {
+    if (!pendingDeleteMessage || deletingMessageId) return;
+
+    setDeletingMessageId(pendingDeleteMessage.id);
+    try {
+      if (conversationId && !pendingDeleteMessage.id.startsWith('user-') && !pendingDeleteMessage.id.startsWith('assistant-') && pendingDeleteMessage.id !== 'greeting') {
+        await conversationsApi.deleteMessage(conversationId, pendingDeleteMessage.id);
+      }
+      setMessages((prev) => prev.filter((message) => message.id !== pendingDeleteMessage.id));
+      setPendingDeleteMessage(null);
+    } finally {
+      setDeletingMessageId(null);
+    }
   };
 
   const updateContextMessageLimit = async (value: number) => {
@@ -356,7 +435,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
 
   if (loading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-[#fbfaf7]">
+      <div className="flex h-dvh items-center justify-center bg-[#fbfaf7]">
         <LoadingSpinner size="lg" />
       </div>
     );
@@ -364,7 +443,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
 
   if (!displayAgent) {
     return (
-      <div className="flex h-screen flex-col items-center justify-center gap-4 bg-[#fbfaf7]">
+      <div className="flex h-dvh flex-col items-center justify-center gap-4 bg-[#fbfaf7]">
         <p className="font-semibold text-slate-500">Agent 不存在</p>
         <button
           onClick={() => router.push('/')}
@@ -377,7 +456,10 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
   }
 
   return (
-    <div className="flex h-screen bg-[#fbfaf7] text-slate-950">
+    <div
+      className="fixed inset-0 flex overflow-hidden bg-[#fbfaf7] text-slate-950"
+      style={{ height: viewportHeight ? `${viewportHeight}px` : '100dvh' }}
+    >
       <aside className="hidden w-[340px] shrink-0 border-r border-black/[0.06] bg-white/80 p-5 backdrop-blur lg:flex lg:flex-col">
         <button
           onClick={() => router.back()}
@@ -467,8 +549,8 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
         </div>
       </aside>
 
-      <main className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center gap-3 border-b border-black/[0.06] bg-white/86 px-4 py-3 backdrop-blur lg:hidden">
+      <main className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <header className="flex shrink-0 items-center gap-3 border-b border-black/[0.06] bg-white/86 px-4 py-3 backdrop-blur lg:hidden">
           <button onClick={() => router.back()} className="rounded-full p-2 hover:bg-slate-100">
             <ArrowLeft size={20} />
           </button>
@@ -477,9 +559,54 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
             <h1 className="truncate text-sm font-black text-slate-950">{displayAgent.name}</h1>
             <p className="text-xs font-medium text-slate-400">{displayAgent.category} · {displayAgent.tone}</p>
           </div>
+          <button
+            onClick={() => setDetailsOpen(true)}
+            className="rounded-full border border-black/[0.06] bg-white px-3 py-2 text-xs font-black text-slate-600 shadow-sm"
+          >
+            详情
+          </button>
         </header>
 
-        <div className="flex-1 overflow-y-auto px-4 py-5 sm:px-6 lg:px-10">
+        {detailsOpen && (
+          <div className="fixed inset-0 z-50 bg-slate-950/30 backdrop-blur-sm lg:hidden">
+            <div className="absolute inset-x-0 bottom-0 max-h-[82dvh] overflow-hidden rounded-t-[32px] bg-white shadow-2xl">
+              <div className="flex items-center justify-between border-b border-black/[0.06] px-5 py-4">
+                <div className="flex min-w-0 items-center gap-3">
+                  <Avatar src={displayAgent.avatar} alt={displayAgent.name} size="sm" />
+                  <div className="min-w-0">
+                    <h2 className="truncate text-base font-black text-slate-950">{displayAgent.name}</h2>
+                    <p className="text-xs font-bold text-slate-400">{displayAgent.category || 'Agent'} · {displayAgent.tone || '默认语气'}</p>
+                  </div>
+                </div>
+                <button onClick={() => setDetailsOpen(false)} className="rounded-full bg-[#fbfaf7] p-2 text-slate-500">
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="max-h-[calc(82dvh-73px)] space-y-4 overflow-y-auto p-5">
+                <p className="rounded-2xl bg-[#fbfaf7] p-4 text-sm leading-6 text-slate-600">
+                  {displayAgent.description || '这个 Agent 会根据你的问题给出清晰、具体、可执行的帮助。'}
+                </p>
+                <div>
+                  <p className="text-xs font-bold text-slate-400">开场白</p>
+                  <p className="mt-2 rounded-2xl bg-[#fbfaf7] p-4 text-sm leading-6 text-slate-600">
+                    {displayAgent.greeting || `你好，我是 ${displayAgent.name}。告诉我你想完成什么，我们从第一步开始。`}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-slate-400">行为设定摘要</p>
+                  <div className="markdown-body mt-2 rounded-2xl bg-[#fbfaf7] p-4 text-xs leading-5 text-slate-500">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {displayAgent.systemPrompt || '这个 Agent 会根据用户的问题给出清晰、具体、可执行的帮助。'}
+                    </ReactMarkdown>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-5 sm:px-6 lg:px-10">
           <div className="mx-auto max-w-4xl space-y-5">
             {messages.length <= 1 && !isStreaming && (
               <section className="rounded-[24px] bg-white/55 px-4 py-3">
@@ -507,30 +634,83 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
                   <Avatar src={displayAgent.avatar} alt={displayAgent.name} size="sm" className="mt-1 shrink-0" />
                 )}
                 <div
-                  className={cn(
-                    'group relative max-w-[82%] rounded-[24px] px-5 py-4 shadow-sm',
-                    message.role === 'user'
-                      ? 'rounded-br-md text-white'
-                      : 'rounded-bl-md border border-black/[0.06] bg-white text-slate-800'
-                  )}
-                  style={message.role === 'user' ? { backgroundColor: categoryColor } : undefined}
+                  onClick={() => setActiveActionMessageId((current) => (current === message.id ? null : message.id))}
+                  className={cn('group flex max-w-[82%] flex-col', message.role === 'user' ? 'items-end' : 'items-start')}
                 >
-                  {message.role === 'assistant' ? (
-                    <div className="markdown-body text-sm leading-7">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
-                    </div>
-                  ) : (
-                    <CollapsibleUserMessage content={message.content} />
-                  )}
+                  <div
+                    className={cn(
+                      'rounded-[24px] px-5 py-4 shadow-sm',
+                      message.role === 'user'
+                        ? 'rounded-br-md text-white'
+                        : 'rounded-bl-md border border-black/[0.06] bg-white text-slate-800'
+                    )}
+                    style={message.role === 'user' ? { backgroundColor: categoryColor } : undefined}
+                  >
+                    {message.role === 'assistant' ? (
+                      <div className="markdown-body text-sm leading-7">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
+                      </div>
+                    ) : (
+                      <CollapsibleUserMessage content={message.content} />
+                    )}
+                  </div>
 
-                  {message.role === 'assistant' && (
-                    <button
-                      onClick={() => handleCopy(message.id, message.content)}
-                      className="absolute -right-2 -top-2 rounded-full border border-black/[0.06] bg-white p-1.5 opacity-0 shadow-sm transition group-hover:opacity-100"
-                      aria-label="复制回复"
+                  {message.id !== 'greeting' && (
+                    <div
+                      className={cn(
+                        'mt-1 flex items-center gap-1 px-2 text-slate-400 transition md:opacity-0 md:group-hover:opacity-100',
+                        activeActionMessageId === message.id ? 'opacity-100' : 'opacity-0'
+                      )}
                     >
-                      {copiedId === message.id ? <Check size={13} className="text-emerald-500" /> : <Copy size={13} className="text-slate-400" />}
-                    </button>
+                      <span
+                        className="px-1 text-[11px] font-semibold leading-7"
+                        title={new Intl.DateTimeFormat('zh-CN', {
+                          month: '2-digit',
+                          day: '2-digit',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        }).format(new Date(message.createdAt))}
+                      >
+                        {formatMessageTime(message.createdAt)}
+                      </span>
+                      {message.role === 'assistant' && (
+                        <button
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleCopy(message.id, message.content);
+                          }}
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-full transition hover:bg-slate-100 hover:text-slate-700"
+                          title={copiedId === message.id ? '已复制' : '复制'}
+                          aria-label="复制回复"
+                        >
+                          {copiedId === message.id ? <Check size={13} className="text-emerald-500" /> : <Copy size={13} />}
+                        </button>
+                      )}
+                      {message.role === 'assistant' && message.id === latestAssistantMessageId && (
+                        <button
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleRegenerate();
+                          }}
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-full transition hover:bg-slate-100 hover:text-slate-700"
+                          title="重新生成"
+                          aria-label="重新生成"
+                        >
+                          <RefreshCw size={13} />
+                        </button>
+                      )}
+                      <button
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setPendingDeleteMessage(message);
+                        }}
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-full transition hover:bg-rose-50 hover:text-rose-500"
+                        title="删除"
+                        aria-label="删除消息"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>
@@ -564,7 +744,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
           </div>
         </div>
 
-        <footer className="border-t border-black/[0.06] bg-white/88 px-4 py-4 backdrop-blur sm:px-6">
+        <footer className="shrink-0 border-t border-black/[0.06] bg-white/88 px-4 py-4 backdrop-blur sm:px-6">
           <div className="mx-auto max-w-4xl">
             <div className="flex items-end gap-3 rounded-[28px] border border-black/[0.08] bg-[#fbfaf7] p-2 shadow-sm">
               <textarea
@@ -598,21 +778,21 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
                 </button>
               )}
             </div>
-
-            {messages.length > 1 && !isStreaming && (
-              <div className="mt-3 flex justify-center">
-                <button
-                  onClick={handleRegenerate}
-                  className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
-                >
-                  <RefreshCw size={14} />
-                  重新生成上一条回复
-                </button>
-              </div>
-            )}
           </div>
         </footer>
       </main>
+      <ConfirmDialog
+        open={Boolean(pendingDeleteMessage)}
+        title="删除这条消息？"
+        description="删除后不会再出现在当前会话里。"
+        icon={<Trash2 size={20} />}
+        cancelText="先保留"
+        confirmText="确认删除"
+        destructive
+        loading={Boolean(pendingDeleteMessage && deletingMessageId === pendingDeleteMessage.id)}
+        onCancel={() => setPendingDeleteMessage(null)}
+        onConfirm={deleteMessage}
+      />
     </div>
   );
 }

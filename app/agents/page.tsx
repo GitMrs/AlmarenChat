@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Bot, Search, SlidersHorizontal } from 'lucide-react';
 import AppShell from '@/components/layout/AppShell';
@@ -10,19 +10,49 @@ import LoadingSpinner from '@/components/shared/LoadingSpinner';
 import { getAgentsByCategory, getBuiltInAgents, searchAgents } from '@/lib/agents-data';
 import { agents as agentsApi, favorites as favoritesApi } from '@/lib/api';
 import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
+import { cn } from '@/lib/utils';
 import type { Agent } from '@/types';
+
+const AGENTS_PAGE_STATE_KEY = 'almaren:agents-page-state';
+
+type AgentsPageState = {
+  category?: string;
+  searchQuery?: string;
+  scrollY?: number;
+  displayCount?: number;
+};
+
+function readAgentsPageState(): AgentsPageState {
+  if (typeof window === 'undefined') return {};
+
+  try {
+    return JSON.parse(sessionStorage.getItem(AGENTS_PAGE_STATE_KEY) || '{}');
+  } catch {
+    return {};
+  }
+}
 
 function AgentsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const initialCategory = searchParams.get('category') || '全部';
+  const restoredState = useMemo(() => readAgentsPageState(), []);
+  const urlCategory = searchParams.get('category');
+  const shouldUseRestoredState = !urlCategory || urlCategory === restoredState.category;
+  const initialCategory = urlCategory || restoredState.category || '全部';
+  const restoredScrollY = shouldUseRestoredState ? restoredState.scrollY || 0 : 0;
+  const hasRestoredScrollRef = useRef(false);
+  const pageStateRef = useRef<AgentsPageState>({});
 
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(shouldUseRestoredState ? restoredState.searchQuery || '' : '');
   const [selectedCategory, setSelectedCategory] = useState(initialCategory);
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [initialDisplayCount, setInitialDisplayCount] = useState(
+    shouldUseRestoredState ? restoredState.displayCount || 18 : 18
+  );
+  const [showFloatingTools, setShowFloatingTools] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -44,14 +74,104 @@ function AgentsContent() {
     () => (searchQuery ? searchAgents(filtered, searchQuery) : filtered),
     [filtered, searchQuery]
   );
-  const { displayed, hasMore, loading: loadingMore, sentinelRef } = useInfiniteScroll({
+  const { displayed, displayCount, hasMore, loading: loadingMore, sentinelRef } = useInfiniteScroll({
     items: results,
     pageSize: 18,
+    initialDisplayCount,
   });
 
+  const savePageState = (nextState: Partial<AgentsPageState> = {}) => {
+    sessionStorage.setItem(
+      AGENTS_PAGE_STATE_KEY,
+      JSON.stringify({
+        category: selectedCategory,
+        searchQuery,
+        scrollY: window.scrollY,
+        displayCount,
+        ...nextState,
+      })
+    );
+  };
+
+  useEffect(() => {
+    pageStateRef.current = {
+      category: selectedCategory,
+      searchQuery,
+      displayCount,
+    };
+  }, [displayCount, searchQuery, selectedCategory]);
+
+  useEffect(() => {
+    const saveCurrentPageState = () => {
+      const current = pageStateRef.current;
+      sessionStorage.setItem(
+        AGENTS_PAGE_STATE_KEY,
+        JSON.stringify({
+          category: current.category || '全部',
+          searchQuery: current.searchQuery || '',
+          scrollY: window.scrollY,
+          displayCount: current.displayCount || 18,
+        })
+      );
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') saveCurrentPageState();
+    };
+
+    window.addEventListener('pagehide', saveCurrentPageState);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      saveCurrentPageState();
+      window.removeEventListener('pagehide', saveCurrentPageState);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
+
   const handleChat = (agent: Agent) => {
+    savePageState();
     router.push(`/chat/${agent.id}`);
   };
+
+  const handleView = (agent: Agent) => {
+    savePageState();
+    router.push(`/agents/${agent.id}`);
+  };
+
+  const handleCategorySelect = (category: string) => {
+    setSelectedCategory(category);
+    setInitialDisplayCount(18);
+    savePageState({ category, scrollY: 0, displayCount: 18 });
+    router.replace(category === '全部' ? '/agents' : `/agents?category=${encodeURIComponent(category)}`, { scroll: false });
+    window.scrollTo({ top: 0 });
+  };
+
+  const handleSearchChange = (value: string) => {
+    setSearchQuery(value);
+    setInitialDisplayCount(18);
+    savePageState({ searchQuery: value, scrollY: 0, displayCount: 18 });
+  };
+
+  useEffect(() => {
+    if (loading || hasRestoredScrollRef.current || !restoredScrollY) return;
+    if (displayed.length < Math.min(restoredState.displayCount || 18, results.length)) return;
+
+    hasRestoredScrollRef.current = true;
+    window.setTimeout(() => {
+      window.scrollTo({ top: restoredScrollY, behavior: 'auto' });
+    }, 0);
+  }, [displayed.length, loading, restoredScrollY, restoredState.displayCount, results.length]);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      setShowFloatingTools(window.scrollY > 360);
+    };
+
+    handleScroll();
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
 
   const handleFavorite = async (agent: Agent) => {
     if (!isLoggedIn) {
@@ -73,8 +193,41 @@ function AgentsContent() {
     await favoritesApi.add(agent.id).catch(() => setFavorites(favorites));
   };
 
+  const renderSearchInput = (compact = false) => (
+    <div className="relative">
+      <Search size={compact ? 16 : 19} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+      <input
+        type="text"
+        placeholder="搜索 Agent 名称、能力或分类..."
+        value={searchQuery}
+        onChange={(event) => handleSearchChange(event.target.value)}
+        className={cn(
+          'w-full rounded-full border border-black/[0.08] bg-[#fbfaf7] font-medium text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-slate-300 focus:ring-4 focus:ring-slate-200/70',
+          compact ? 'h-10 pl-10 pr-4 text-xs' : 'h-14 pl-13 pr-5 text-sm'
+        )}
+      />
+    </div>
+  );
+
   return (
     <div className="space-y-8 py-8">
+      <div
+        className={cn(
+          'pointer-events-none fixed inset-x-0 top-16 z-30 px-4 transition-all duration-200 sm:px-6 lg:px-8',
+          showFloatingTools ? 'translate-y-0 opacity-100' : '-translate-y-3 opacity-0'
+        )}
+      >
+        <div className="pointer-events-auto mx-auto max-w-7xl rounded-b-[28px] border-x border-b border-black/[0.06] bg-white/92 p-3 shadow-lg backdrop-blur-xl">
+          <div className="grid gap-3 lg:grid-cols-[minmax(220px,360px)_minmax(0,1fr)_auto] lg:items-center">
+            {renderSearchInput(true)}
+            <CategoryFilter selected={selectedCategory} onSelect={handleCategorySelect} className="pb-0" />
+            <div className="hidden whitespace-nowrap rounded-full bg-[#fbfaf7] px-3 py-2 text-xs font-black text-slate-500 lg:block">
+              共 {results.length} 个
+            </div>
+          </div>
+        </div>
+      </div>
+
       <section className="rounded-[32px] border border-black/[0.06] bg-white/82 p-5 shadow-sm backdrop-blur sm:p-7">
         <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-2xl">
@@ -91,21 +244,12 @@ function AgentsContent() {
           </div>
 
           <div className="min-w-0 flex-1 lg:max-w-xl">
-            <div className="relative">
-              <Search size={19} className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                type="text"
-                placeholder="搜索 Agent 名称、能力或分类..."
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-                className="h-14 w-full rounded-full border border-black/[0.08] bg-[#fbfaf7] pl-13 pr-5 text-sm font-medium text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-slate-300 focus:ring-4 focus:ring-slate-200/70"
-              />
-            </div>
+            {renderSearchInput()}
           </div>
         </div>
 
         <div className="mt-6 border-t border-black/[0.06] pt-5">
-          <CategoryFilter selected={selectedCategory} onSelect={setSelectedCategory} />
+          <CategoryFilter selected={selectedCategory} onSelect={handleCategorySelect} />
         </div>
       </section>
 
@@ -137,6 +281,7 @@ function AgentsContent() {
                     key={agent.id}
                     agent={agent}
                     onChat={handleChat}
+                    onView={handleView}
                     onFavorite={handleFavorite}
                     isFavorited={favorites.has(agent.id)}
                     showFavorite={Boolean(agent.creatorId)}

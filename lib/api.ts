@@ -82,6 +82,10 @@ export const conversations = {
       method: 'POST',
       body: JSON.stringify({ content }),
     }),
+  deleteMessage: (conversationId: string, messageId: string) =>
+    request<{ success: boolean }>(`/conversations/${conversationId}/messages/${messageId}`, {
+      method: 'DELETE',
+    }),
 };
 
 // Favorites
@@ -139,6 +143,7 @@ export async function streamChat(data: {
   conversationId?: string;
   agentId?: string;
   contextMessageLimit?: number;
+  skipPersistUserMessage?: boolean;
   signal?: AbortSignal;
 }): Promise<{ stream: ReadableStream<Uint8Array>; conversationId?: string }> {
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;

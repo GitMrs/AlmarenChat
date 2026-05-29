@@ -10,6 +10,7 @@ import type { Agent } from '@/types';
 interface AgentCardProps {
   agent: Agent;
   onChat?: (agent: Agent) => void;
+  onView?: (agent: Agent) => void;
   onFavorite?: (agent: Agent) => void;
   isFavorited?: boolean;
   variant?: 'default' | 'featured' | 'compact';
@@ -31,6 +32,7 @@ const categoryIntents: Record<string, string> = {
 export default function AgentCard({
   agent,
   onChat,
+  onView,
   onFavorite,
   isFavorited = false,
   variant = 'default',
@@ -64,11 +66,9 @@ export default function AgentCard({
 
   return (
     <motion.article
-      whileHover={{ y: -4 }}
       transition={{ duration: 0.2 }}
-      onClick={() => onChat?.(agent)}
       className={cn(
-        'group relative flex min-h-[265px] cursor-pointer flex-col overflow-hidden rounded-[24px] border border-black/[0.07] bg-white p-5 text-left shadow-sm transition hover:shadow-xl',
+        'relative flex min-h-[265px] cursor-default flex-col overflow-hidden rounded-[24px] border border-black/[0.07] bg-white p-5 text-left shadow-sm',
         isFeatured && 'min-h-[300px] p-6',
         className
       )}
@@ -92,9 +92,15 @@ export default function AgentCard({
             <Avatar src={agent.avatar} alt={agent.name} size={isFeatured ? 'lg' : 'md'} />
           </div>
           <div className="min-w-0 flex-1">
-            <h3 className={cn('truncate font-black text-slate-950', isFeatured ? 'text-xl' : 'text-base')}>
+            <button
+              onClick={() => (onView || onChat)?.(agent)}
+              className={cn(
+                'inline-block max-w-full cursor-pointer truncate text-left font-black text-slate-950 transition hover:text-slate-600 hover:underline hover:decoration-slate-300 hover:underline-offset-4',
+                isFeatured ? 'text-xl' : 'text-base'
+              )}
+            >
               {agent.name}
-            </h3>
+            </button>
             <div className="mt-2 flex flex-wrap items-center gap-1.5">
               <span
                 className="rounded-full px-2.5 py-1 text-xs font-bold text-white"
@@ -118,7 +124,7 @@ export default function AgentCard({
               onFavorite?.(agent);
             }}
             className={cn(
-              'shrink-0 rounded-full p-2 transition',
+              'shrink-0 cursor-pointer rounded-full p-2 transition',
               isFavorited ? 'bg-rose-50 text-rose-500' : 'bg-white/80 text-slate-300 hover:text-rose-400'
             )}
             aria-label="收藏 Agent"
@@ -149,7 +155,7 @@ export default function AgentCard({
             event.stopPropagation();
             onChat?.(agent);
           }}
-          className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full bg-slate-950 px-4 py-2 text-sm font-bold text-white shadow-sm transition group-hover:translate-x-0.5"
+          className="flex shrink-0 cursor-pointer items-center gap-2 whitespace-nowrap rounded-full bg-slate-950 px-4 py-2 text-sm font-bold text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
         >
           <MessageCircle size={16} />
           开始聊天

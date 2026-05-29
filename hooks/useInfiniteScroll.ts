@@ -5,10 +5,15 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 interface UseInfiniteScrollOptions<T> {
   items: T[];
   pageSize?: number;
+  initialDisplayCount?: number;
 }
 
-export function useInfiniteScroll<T>({ items, pageSize = 20 }: UseInfiniteScrollOptions<T>) {
-  const [displayCount, setDisplayCount] = useState(pageSize);
+export function useInfiniteScroll<T>({ items, pageSize = 20, initialDisplayCount }: UseInfiniteScrollOptions<T>) {
+  const getInitialCount = useCallback(
+    () => Math.max(pageSize, initialDisplayCount || pageSize),
+    [initialDisplayCount, pageSize]
+  );
+  const [displayCount, setDisplayCount] = useState(getInitialCount);
   const [loading, setLoading] = useState(false);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -32,9 +37,9 @@ export function useInfiniteScroll<T>({ items, pageSize = 20 }: UseInfiniteScroll
       clearTimeout(timeoutRef.current);
       timeoutRef.current = null;
     }
-    setDisplayCount(pageSize);
+    setDisplayCount(getInitialCount());
     setLoading(false);
-  }, [items, pageSize]);
+  }, [getInitialCount, items]);
 
   useEffect(() => {
     return () => {
@@ -60,5 +65,5 @@ export function useInfiniteScroll<T>({ items, pageSize = 20 }: UseInfiniteScroll
     return () => observer.disconnect();
   }, [hasMore, loading, loadMore]);
 
-  return { displayed, hasMore, loading, sentinelRef, total: items.length };
+  return { displayed, displayCount, hasMore, loading, sentinelRef, total: items.length };
 }

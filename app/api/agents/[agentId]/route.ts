@@ -28,7 +28,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ ag
       return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
     }
 
-    if (agent.creatorId && agent.creatorId !== userId) {
+    if (agent.creatorId !== userId) {
       return NextResponse.json({ error: 'Not authorized' }, { status: 403 });
     }
 
@@ -56,7 +56,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ a
       return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
     }
 
-    if (agent.creatorId && agent.creatorId !== userId) {
+    if (agent.creatorId !== userId) {
       return NextResponse.json({ error: 'Not authorized' }, { status: 403 });
     }
 

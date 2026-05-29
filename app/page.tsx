@@ -55,6 +55,10 @@ export default function HomePage() {
     router.push(`/chat/${agent.id}`);
   };
 
+  const handleViewAgent = (agent: Agent) => {
+    router.push(`/agents/${agent.id}`);
+  };
+
   const handleFavorite = async (agent: Agent) => {
     if (!isLoggedIn) {
       router.push('/login');
@@ -254,6 +258,7 @@ export default function HomePage() {
                   key={agent.id}
                   agent={agent}
                   onChat={handleChat}
+                  onView={handleViewAgent}
                   onFavorite={handleFavorite}
                   isFavorited={favorites.has(agent.id)}
                   showFavorite={Boolean(agent.creatorId)}

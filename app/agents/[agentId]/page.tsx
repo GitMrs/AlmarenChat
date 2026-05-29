@@ -1,35 +1,38 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
-import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, MessageCircle, Heart, Sparkles, Zap, BookOpen, Code, Heart as HeartIcon, Palette, Wrench, Coffee, Gamepad2 } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import { ArrowLeft, BookOpen, Coffee, Code, Gamepad2, Heart as HeartIcon, MessageCircle, Palette, Sparkles, Wrench, Zap } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import AppShell from '@/components/layout/AppShell';
 import Avatar from '@/components/shared/Avatar';
 import LoadingSpinner from '@/components/shared/LoadingSpinner';
 import { getBuiltInAgents } from '@/lib/agents-data';
-import { cn } from '@/lib/utils';
+import { agents as agentsApi } from '@/lib/api';
 import { CATEGORY_COLORS } from '@/types';
 import type { Agent } from '@/types';
 
 const CATEGORY_CAPABILITIES: Record<string, { icon: typeof Zap; items: string[] }> = {
-  '写作': { icon: BookOpen, items: ['文章撰写', '文案润色', '创意写作', '内容策划'] },
-  '编程': { icon: Code, items: ['代码编写', 'Bug 调试', '架构设计', '代码审查'] },
-  '学习': { icon: BookOpen, items: ['知识讲解', '学习规划', '概念解析', '考试辅导'] },
-  '心理': { icon: HeartIcon, items: ['情绪疏导', '压力管理', '自我认知', '正念练习'] },
-  '创意': { icon: Palette, items: ['创意构思', '头脑风暴', '方案设计', '灵感激发'] },
-  '生活': { icon: Coffee, items: ['生活建议', '健康管理', '旅行规划', '美食推荐'] },
-  '工具': { icon: Wrench, items: ['效率提升', '数据处理', '文档编写', '自动化'] },
-  '娱乐': { icon: Gamepad2, items: ['游戏推荐', '影视点评', '趣味问答', '冷知识'] },
+  写作: { icon: BookOpen, items: ['文章撰写', '文案润色', '创意写作', '内容策划'] },
+  编程: { icon: Code, items: ['代码编写', 'Bug 调试', '架构设计', '代码审查'] },
+  学习: { icon: BookOpen, items: ['知识讲解', '学习规划', '概念解析', '考试辅导'] },
+  心理: { icon: HeartIcon, items: ['情绪疏导', '压力管理', '自我认知', '正念练习'] },
+  创意: { icon: Palette, items: ['创意构思', '头脑风暴', '方案设计', '灵感激发'] },
+  生活: { icon: Coffee, items: ['生活建议', '健康管理', '旅行规划', '美食推荐'] },
+  工具: { icon: Wrench, items: ['效率提升', '数据处理', '文档编写', '自动化'] },
+  娱乐: { icon: Gamepad2, items: ['游戏推荐', '影视点评', '趣味问答', '冷知识'] },
 };
 
 const CATEGORY_SUGGESTIONS: Record<string, (name: string) => string[]> = {
-  '写作': (name) => [`帮我想一个${name}主题的文章大纲`, '帮我润色这段文字', '写一首关于春天的诗'],
-  '编程': (name) => [`${name}，帮我写一个快速排序`, '解释一下 React Hooks', '帮我优化这段代码'],
-  '学习': (name) => [`${name}，用简单例子解释量子力学`, '帮我制定学习计划', '总结这个概念的要点'],
-  '心理': (name) => [`${name}，我最近压力很大`, '帮我做一次放松练习', '如何培养积极心态？'],
-  '创意': (name) => [`${name}，帮我想一个创意方案`, '设计一个独特 logo 概念', '给我一个创业灵感'],
-  '生活': (name) => [`${name}，推荐一周健康食谱`, '帮我规划一次旅行', '如何养成早起习惯？'],
-  '工具': (name) => [`${name}，帮我写一个正则表达式`, '推荐好用的效率工具', '帮我分析这组数据'],
-  '娱乐': (name) => [`${name}，推荐几部好电影`, '讲一个有趣的冷知识', '来个脑筋急转弯'],
+  写作: (name) => [`帮我想一个${name}主题的文章大纲`, '帮我润色这段文字', '生成 5 个标题'],
+  编程: (name) => [`${name}，帮我定位这个报错`, '解释这段代码的思路', '给我一个更简单的实现'],
+  学习: (name) => [`${name}，用简单例子解释这个概念`, '帮我总结重点', '出 3 道练习题'],
+  心理: (name) => [`${name}，我最近有点焦虑`, '陪我做一次放松练习', '帮我分析这个选择'],
+  创意: (name) => [`${name}，给我 10 个新点子`, '帮我扩展这个设定', '换一个更有趣的方向'],
+  生活: (name) => [`${name}，帮我规划一周安排`, '给我一个实用清单', '帮我比较几个选择'],
+  工具: (name) => [`${name}，帮我整理成表格`, '提炼成待办事项', '把内容压缩成摘要'],
+  娱乐: (name) => [`${name}，推荐点有趣的内容`, '来一个轻松的话题', '我们玩个小游戏'],
 };
 
 export default function AgentDetailPage() {
@@ -39,14 +42,21 @@ export default function AgentDetailPage() {
 
   const [agent, setAgent] = useState<Agent | null>(null);
   const [loading, setLoading] = useState(true);
-  const [isFavorited, setIsFavorited] = useState(false);
 
   useEffect(() => {
-    getBuiltInAgents().then((agents) => {
-      const found = agents.find((a) => a.id === agentId);
-      setAgent(found || null);
-      setLoading(false);
-    });
+    const loadAgent = async () => {
+      try {
+        const result = await agentsApi.get(agentId);
+        setAgent(result.agent);
+      } catch {
+        const agents = await getBuiltInAgents();
+        setAgent(agents.find((item) => item.id === agentId) || null);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadAgent();
   }, [agentId]);
 
   const capabilities = useMemo(() => {
@@ -60,28 +70,29 @@ export default function AgentDetailPage() {
   const suggestedPrompts = useMemo(() => {
     if (!agent) return [];
     const generator = CATEGORY_SUGGESTIONS[agent.category || ''];
-    return generator ? generator(agent.name) : ['你能帮我做什么？', '给我讲讲你的特长', '来试试吧'];
+    return generator ? generator(agent.name) : ['你能帮我做什么？', '给我介绍一下你的能力', '我们从一个小任务开始'];
   }, [agent]);
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen">
-        <LoadingSpinner size="lg" />
-      </div>
+      <AppShell>
+        <div className="flex items-center justify-center py-24">
+          <LoadingSpinner size="lg" />
+        </div>
+      </AppShell>
     );
   }
 
   if (!agent) {
     return (
-      <div className="flex flex-col items-center justify-center h-screen gap-4">
-        <p className="text-gray-500">Agent 不存在</p>
-        <button
-          onClick={() => router.push('/')}
-          className="px-4 py-2 bg-primary-600 text-white rounded-xl text-sm"
-        >
-          返回首页
-        </button>
-      </div>
+      <AppShell>
+        <div className="flex flex-col items-center justify-center gap-4 py-24">
+          <p className="font-semibold text-slate-500">Agent 不存在</p>
+          <button onClick={() => router.push('/agents')} className="rounded-full bg-slate-950 px-5 py-2.5 text-sm font-bold text-white">
+            返回广场
+          </button>
+        </div>
+      </AppShell>
     );
   }
 
@@ -89,127 +100,98 @@ export default function AgentDetailPage() {
   const CapIcon = capabilities?.icon || Zap;
 
   return (
-    <div className="flex flex-col h-screen bg-gray-50">
-      {/* Header */}
-      <div className="flex items-center gap-3 px-4 py-3 bg-white border-b border-gray-100">
+    <AppShell>
+      <div className="space-y-6 py-8">
         <button
           onClick={() => router.back()}
-          className="p-2 rounded-full hover:bg-gray-100 transition-colors"
+          className="inline-flex items-center gap-2 rounded-full border border-black/[0.06] bg-white px-4 py-2 text-sm font-bold text-slate-600 shadow-sm transition hover:text-slate-950"
         >
-          <ArrowLeft size={20} className="text-gray-600" />
+          <ArrowLeft size={16} />
+          返回
         </button>
-        <h1 className="text-lg font-semibold text-gray-900">Agent 详情</h1>
-      </div>
 
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto">
-        {/* Hero */}
-        <div className="relative bg-white px-6 py-8">
-          <div
-            className="absolute top-0 left-0 right-0 h-32 opacity-10"
-            style={{ backgroundColor: categoryColor }}
-          />
-          <div
-            className="absolute top-0 right-0 w-40 h-40 rounded-full opacity-[0.06] blur-3xl"
-            style={{ backgroundColor: categoryColor }}
-          />
+        <section className="overflow-hidden rounded-[32px] border border-black/[0.06] bg-white shadow-sm">
+          <div className="h-2" style={{ backgroundColor: categoryColor }} />
+          <div className="grid gap-6 p-6 lg:grid-cols-[minmax(0,1fr)_340px] lg:p-8">
+            <div className="min-w-0">
+              <div className="flex flex-col gap-5 sm:flex-row sm:items-start">
+                <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-[28px] bg-[#fbfaf7] shadow-sm">
+                  <Avatar src={agent.avatar} alt={agent.name} size="xl" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="mb-3 flex flex-wrap items-center gap-2">
+                    <span className="rounded-full px-3 py-1.5 text-xs font-black text-white" style={{ backgroundColor: categoryColor }}>
+                      {agent.category || 'Agent'}
+                    </span>
+                    {agent.tone && <span className="rounded-full bg-[#fbfaf7] px-3 py-1.5 text-xs font-black text-slate-600">{agent.tone}</span>}
+                    <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-black text-emerald-700">
+                      {agent.isPublic ? '公开' : '私有'}
+                    </span>
+                  </div>
+                  <h1 className="text-4xl font-black leading-tight text-slate-950 sm:text-5xl">{agent.name}</h1>
+                  <p className="mt-4 max-w-3xl text-base leading-7 text-slate-500">
+                    {agent.description || '这个 Agent 会根据你的问题给出清晰、具体、可执行的帮助。'}
+                  </p>
+                </div>
+              </div>
 
-          <div className="relative flex flex-col items-center text-center">
-            <Avatar src={agent.avatar} alt={agent.name} size="xl" className="mb-4" />
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">{agent.name}</h2>
-
-            <div className="flex items-center gap-2 mb-4">
-              <span
-                className="px-3 py-1 rounded-full text-sm font-medium text-white"
-                style={{ backgroundColor: categoryColor }}
-              >
-                {agent.category}
-              </span>
-              {agent.tone && (
-                <span className="px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-600">
-                  {agent.tone}
-                </span>
-              )}
+              <div className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                {capabilities?.items.map((item) => (
+                  <div key={item} className="rounded-2xl bg-[#fbfaf7] px-4 py-3">
+                    <div className="mb-2 flex h-8 w-8 items-center justify-center rounded-xl bg-white shadow-sm" style={{ color: categoryColor }}>
+                      <CapIcon size={16} />
+                    </div>
+                    <div className="text-sm font-black text-slate-800">{item}</div>
+                  </div>
+                ))}
+              </div>
             </div>
 
-            <p className="text-gray-600 max-w-md">{agent.description}</p>
-          </div>
-        </div>
-
-        {/* Capabilities */}
-        {capabilities && (
-          <div className="mx-6 mt-4 p-4 bg-white rounded-2xl border border-gray-100">
-            <div className="flex items-center gap-2 mb-3">
-              <CapIcon size={16} style={{ color: categoryColor }} />
-              <span className="text-sm font-semibold text-gray-700">擅长领域</span>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {capabilities.items.map((item) => (
-                <span
-                  key={item}
-                  className="px-3 py-1.5 rounded-lg text-xs font-medium border"
-                  style={{
-                    backgroundColor: `${categoryColor}08`,
-                    borderColor: `${categoryColor}20`,
-                    color: categoryColor,
-                  }}
-                >
-                  {item}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Greeting Preview */}
-        {agent.greeting && (
-          <div className="mx-6 mt-4 p-4 bg-white rounded-2xl border border-gray-100">
-            <div className="flex items-center gap-2 mb-2">
-              <Sparkles size={16} className="text-primary-600" />
-              <span className="text-sm font-semibold text-gray-700">开场白</span>
-            </div>
-            <p className="text-sm text-gray-600 italic">&ldquo;{agent.greeting}&rdquo;</p>
-          </div>
-        )}
-
-        {/* Suggested Prompts */}
-        <div className="mx-6 mt-4 p-4 bg-white rounded-2xl border border-gray-100">
-          <h3 className="text-sm font-semibold text-gray-700 mb-3">试试这样问</h3>
-          <div className="flex flex-wrap gap-2">
-            {suggestedPrompts.map((prompt, i) => (
+            <aside className="rounded-[28px] bg-[#fbfaf7] p-5">
+              <div className="mb-4 text-sm font-black text-slate-950">快速开始</div>
+              <div className="space-y-2">
+                {suggestedPrompts.map((prompt) => (
+                  <button
+                    key={prompt}
+                    onClick={() => router.push(`/chat/${agent.id}?prompt=${encodeURIComponent(prompt)}`)}
+                    className="w-full rounded-2xl bg-white px-4 py-3 text-left text-sm font-bold leading-6 text-slate-600 shadow-sm transition hover:-translate-y-0.5 hover:text-slate-950"
+                  >
+                    {prompt}
+                  </button>
+                ))}
+              </div>
               <button
-                key={i}
-                onClick={() => router.push(`/chat/${agent.id}?prompt=${encodeURIComponent(prompt)}`)}
-                className="px-3 py-2 bg-gray-50 rounded-xl text-sm text-gray-600 hover:bg-primary-50 hover:text-primary-700 transition-colors border border-gray-100"
+                onClick={() => router.push(`/chat/${agent.id}`)}
+                className="mt-5 flex h-12 w-full items-center justify-center gap-2 rounded-full bg-slate-950 text-sm font-black text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg"
               >
-                {prompt}
+                <MessageCircle size={17} />
+                开始聊天
               </button>
-            ))}
+            </aside>
           </div>
-        </div>
+        </section>
 
-        {/* Actions */}
-        <div className="px-6 py-6 flex gap-3">
-          <button
-            onClick={() => router.push(`/chat/${agent.id}`)}
-            className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-primary-600 text-white rounded-2xl font-medium hover:bg-primary-700 transition-colors"
-          >
-            <MessageCircle size={20} />
-            开始聊天
-          </button>
-          <button
-            onClick={() => setIsFavorited(!isFavorited)}
-            className={cn(
-              'px-4 py-3 rounded-2xl border transition-colors',
-              isFavorited
-                ? 'bg-red-50 border-red-200 text-red-500'
-                : 'bg-white border-gray-200 text-gray-500 hover:border-red-200 hover:text-red-400'
-            )}
-          >
-            <Heart size={20} fill={isFavorited ? 'currentColor' : 'none'} />
-          </button>
-        </div>
+        <section className="grid gap-6 lg:grid-cols-[380px_minmax(0,1fr)]">
+          <div className="rounded-[28px] border border-black/[0.06] bg-white p-6 shadow-sm">
+            <div className="mb-3 flex items-center gap-2 text-sm font-black text-slate-950">
+              <Sparkles size={17} style={{ color: categoryColor }} />
+              开场白
+            </div>
+            <p className="text-sm leading-7 text-slate-600">
+              {agent.greeting || `你好，我是 ${agent.name}。告诉我你想完成什么，我们从第一步开始。`}
+            </p>
+          </div>
+
+          <div className="rounded-[28px] border border-black/[0.06] bg-white p-6 shadow-sm">
+            <div className="mb-3 text-sm font-black text-slate-950">行为设定</div>
+            <div className="markdown-body max-h-[420px] overflow-y-auto rounded-2xl bg-[#fbfaf7] p-5 text-sm leading-7 text-slate-600">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {agent.systemPrompt || '这个 Agent 会根据用户的问题给出清晰、具体、可执行的帮助。'}
+              </ReactMarkdown>
+            </div>
+          </div>
+        </section>
       </div>
-    </div>
+    </AppShell>
   );
 }

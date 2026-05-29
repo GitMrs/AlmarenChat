@@ -172,18 +172,13 @@ export default function ConversationsPage() {
                   return (
                     <article
                       key={conversation.id}
-                      className="group overflow-hidden rounded-[28px] border border-black/[0.06] bg-white text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg"
+                      className="cursor-default overflow-hidden rounded-[28px] border border-black/[0.06] bg-white text-left shadow-sm"
                     >
                       <div className="h-1.5" style={{ backgroundColor: color }} />
                       <div className="flex gap-4 p-5">
-                        <button
-                          type="button"
-                          onClick={() => router.push(`/conversations/${conversation.id}`)}
-                          className="flex h-14 w-14 shrink-0 items-center justify-center rounded-3xl bg-[#fbfaf7] text-3xl shadow-sm"
-                          aria-label="打开会话"
-                        >
+                        <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-3xl bg-[#fbfaf7] text-3xl shadow-sm">
                           {conversation.agentAvatar || '🤖'}
-                        </button>
+                        </div>
                         <div className="min-w-0 flex-1">
                           <div className="mb-2 flex flex-wrap items-center gap-2">
                             <span className="text-sm font-black text-slate-950">
@@ -238,9 +233,9 @@ export default function ConversationsPage() {
                             <button
                               type="button"
                               onClick={() => router.push(`/conversations/${conversation.id}`)}
-                              className="block w-full text-left"
+                              className="inline-block max-w-full cursor-pointer text-left"
                             >
-                              <h3 className="truncate text-lg font-black text-slate-950">
+                              <h3 className="cursor-pointer truncate text-lg font-black text-slate-950 transition hover:text-slate-600 hover:underline hover:decoration-slate-300 hover:underline-offset-4">
                                 {conversation.title || '新对话'}
                               </h3>
                             </button>
@@ -255,7 +250,7 @@ export default function ConversationsPage() {
                           <button
                             type="button"
                             onClick={() => startEditing(conversation)}
-                            className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-slate-500 transition hover:bg-slate-950 hover:text-white"
+                            className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full bg-slate-100 text-slate-500 transition hover:bg-slate-950 hover:text-white"
                             aria-label="修改会话名称"
                           >
                             <Edit3 size={15} />
@@ -264,7 +259,7 @@ export default function ConversationsPage() {
                             type="button"
                             onClick={() => deleteConversation(conversation.id)}
                             disabled={deletingId === conversation.id}
-                            className="flex h-9 w-9 items-center justify-center rounded-full bg-rose-50 text-rose-500 transition hover:bg-rose-500 hover:text-white disabled:bg-slate-100 disabled:text-slate-300"
+                            className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full bg-rose-50 text-rose-500 transition hover:bg-rose-500 hover:text-white disabled:cursor-default disabled:bg-slate-100 disabled:text-slate-300"
                             aria-label="删除会话"
                           >
                             {deletingId === conversation.id ? <Loader2 className="animate-spin" size={15} /> : <Trash2 size={15} />}
@@ -272,7 +267,7 @@ export default function ConversationsPage() {
                           <button
                             type="button"
                             onClick={() => router.push(`/conversations/${conversation.id}`)}
-                            className="hidden h-9 w-9 items-center justify-center rounded-full text-slate-300 transition hover:bg-slate-100 hover:text-slate-950 sm:flex"
+                            className="hidden h-9 w-9 cursor-pointer items-center justify-center rounded-full text-slate-300 transition hover:bg-slate-100 hover:text-slate-950 sm:flex"
                             aria-label="打开会话"
                           >
                             <ArrowRight size={18} />
