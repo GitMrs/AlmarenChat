@@ -9,9 +9,11 @@ export async function DELETE(
   try {
     const userId = requireAuth(request);
     const { agentId } = await params;
+    const { searchParams } = new URL(request.url);
+    const source = searchParams.get('source') || 'custom';
 
     await prisma.favoriteAgent.deleteMany({
-      where: { userId, agentId },
+      where: { userId, source, agentId },
     });
 
     return NextResponse.json({ success: true });

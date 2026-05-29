@@ -50,6 +50,7 @@ export interface FavoriteAgent {
   id: string;
   userId: string;
   agentId: string;
+  source: 'builtin' | 'custom';
   agent?: Agent;
   createdAt: string;
 }

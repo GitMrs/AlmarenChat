@@ -32,7 +32,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ a
     await requireAdmin(request);
     const { agentId } = await params;
 
-    await prisma.favoriteAgent.deleteMany({ where: { agentId } });
+    await prisma.favoriteAgent.deleteMany({ where: { agentId, source: 'custom' } });
     await prisma.agent.delete({ where: { id: agentId } });
 
     return NextResponse.json({ success: true });

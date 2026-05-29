@@ -91,13 +91,13 @@ export const conversations = {
 // Favorites
 export const favorites = {
   list: () => request<{ favorites: any[] }>('/favorites'),
-  add: (agentId: string) =>
+  add: (agentId: string, source: 'builtin' | 'custom' = 'custom') =>
     request<{ favorite: any }>('/favorites', {
       method: 'POST',
-      body: JSON.stringify({ agentId }),
+      body: JSON.stringify({ agentId, source }),
     }),
-  remove: (agentId: string) =>
-    request<{ success: boolean }>(`/favorites/${agentId}`, {
+  remove: (agentId: string, source: 'builtin' | 'custom' = 'custom') =>
+    request<{ success: boolean }>(`/favorites/${agentId}?source=${source}`, {
       method: 'DELETE',
     }),
 };

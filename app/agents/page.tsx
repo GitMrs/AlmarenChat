@@ -32,6 +32,14 @@ function readAgentsPageState(): AgentsPageState {
   }
 }
 
+function getAgentSource(agent: Agent): 'builtin' | 'custom' {
+  return agent.creatorId ? 'custom' : 'builtin';
+}
+
+function getFavoriteKey(agent: Agent) {
+  return `${getAgentSource(agent)}:${agent.id}`;
+}
+
 function AgentsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -64,7 +72,7 @@ function AgentsContent() {
       token ? favoritesApi.list().catch(() => ({ favorites: [] })) : Promise.resolve({ favorites: [] }),
     ]).then(([builtInAgents, publicAgentsResult, favoritesResult]) => {
       setAgents([...publicAgentsResult.agents, ...builtInAgents]);
-      setFavorites(new Set(favoritesResult.favorites.map((favorite: any) => favorite.agentId)));
+      setFavorites(new Set(favoritesResult.favorites.map((favorite: any) => `${favorite.source || 'custom'}:${favorite.agentId}`)));
       setLoading(false);
     });
   }, []);
@@ -180,17 +188,19 @@ function AgentsContent() {
     }
 
     const nextFavorites = new Set(favorites);
-    const liked = nextFavorites.has(agent.id);
+    const source = getAgentSource(agent);
+    const favoriteKey = getFavoriteKey(agent);
+    const liked = nextFavorites.has(favoriteKey);
     if (liked) {
-      nextFavorites.delete(agent.id);
+      nextFavorites.delete(favoriteKey);
       setFavorites(nextFavorites);
-      await favoritesApi.remove(agent.id).catch(() => setFavorites(favorites));
+      await favoritesApi.remove(agent.id, source).catch(() => setFavorites(favorites));
       return;
     }
 
-    nextFavorites.add(agent.id);
+    nextFavorites.add(favoriteKey);
     setFavorites(nextFavorites);
-    await favoritesApi.add(agent.id).catch(() => setFavorites(favorites));
+    await favoritesApi.add(agent.id, source).catch(() => setFavorites(favorites));
   };
 
   const renderSearchInput = (compact = false) => (
@@ -283,8 +293,8 @@ function AgentsContent() {
                     onChat={handleChat}
                     onView={handleView}
                     onFavorite={handleFavorite}
-                    isFavorited={favorites.has(agent.id)}
-                    showFavorite={Boolean(agent.creatorId)}
+                    isFavorited={favorites.has(getFavoriteKey(agent))}
+                    showFavorite
                   />
                 ))}
               </div>
