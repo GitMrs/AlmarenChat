@@ -26,7 +26,12 @@ docker rm "${CONTAINER_NAME}" 2>/dev/null || true
 
 echo "准备持久化目录..."
 mkdir -p data public/uploads/images public/uploads/documents
-chmod -R 777 data public/uploads
+if chown -R 1001:1001 data public/uploads 2>/dev/null; then
+  chmod -R 700 data
+  chmod -R 755 public/uploads
+else
+  chmod -R 777 data public/uploads
+fi
 
 echo "启动容器..."
 docker run -d \

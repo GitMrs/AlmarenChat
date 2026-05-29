@@ -1,7 +1,27 @@
 import { NextResponse } from 'next/server';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
 import OpenAI from 'openai';
 import prisma from '@/app/api/_lib/db';
 import { getUserIdFromRequest } from '@/app/api/_lib/auth';
+
+type ChatAttachment = {
+  type: 'image';
+  url: string;
+  name?: string;
+  mimeType?: string;
+  size?: number;
+};
+
+async function imageAttachmentToDataUrl(attachment: ChatAttachment) {
+  if (!attachment.url.startsWith('/uploads/images/')) return attachment.url;
+
+  const fileName = path.basename(attachment.url);
+  const filePath = path.join(process.cwd(), 'public', 'uploads', 'images', fileName);
+  const bytes = await readFile(filePath);
+  const mimeType = attachment.mimeType || 'image/png';
+  return `data:${mimeType};base64,${bytes.toString('base64')}`;
+}
 
 export async function POST(request: Request) {
   try {
@@ -17,7 +37,12 @@ export async function POST(request: Request) {
       agentSnapshot,
       contextMessageLimit,
       skipPersistUserMessage,
+      attachments,
     } = await request.json();
+    const imageAttachments: ChatAttachment[] = Array.isArray(attachments)
+      ? attachments.filter((attachment: ChatAttachment) => attachment?.type === 'image' && attachment.url)
+      : [];
+    const textMessage = typeof message === 'string' ? message : '';
 
     const userId = getUserIdFromRequest(request);
     const userSettings = userId
@@ -49,7 +74,7 @@ export async function POST(request: Request) {
           agentDescription: snapshot.description || null,
           agentSystemPrompt: snapshot.systemPrompt || context || null,
           contextMessageLimit: requestedContextLimit,
-          title: message.slice(0, 50),
+          title: textMessage.slice(0, 50) || (imageAttachments.length > 0 ? '图片会话' : '新会话'),
         },
       });
       resolvedConversationId = conversation.id;
@@ -76,7 +101,7 @@ export async function POST(request: Request) {
     const fallbackHistory = Array.isArray(history) ? history : [];
     const sourceHistory = persistedHistory.length > 0 ? persistedHistory.reverse() : fallbackHistory.slice(-contextLimit);
 
-    const openaiMessages: { role: 'system' | 'user' | 'assistant'; content: string }[] = sourceHistory
+    const openaiMessages: { role: 'system' | 'user' | 'assistant'; content: any }[] = sourceHistory
       .filter((msg: { role: string; content: string }) => msg.content && msg.role !== 'system')
       .map((msg: { role: string; content: string }) => ({
         role: msg.role === 'user' ? ('user' as const) : ('assistant' as const),
@@ -85,14 +110,32 @@ export async function POST(request: Request) {
     if (context) openaiMessages.unshift({ role: 'system', content: context });
 
     const lastMessage = openaiMessages[openaiMessages.length - 1];
-    if (!(skipPersistUserMessage && lastMessage?.role === 'user' && lastMessage.content === message)) {
-      openaiMessages.push({ role: 'user', content: message });
+    if (!(skipPersistUserMessage && imageAttachments.length === 0 && lastMessage?.role === 'user' && lastMessage.content === textMessage)) {
+      if (imageAttachments.length > 0) {
+        const imageContent = await Promise.all(
+          imageAttachments.map(async (attachment) => ({
+            type: 'image_url',
+            image_url: { url: await imageAttachmentToDataUrl(attachment) },
+          }))
+        );
+        openaiMessages.push({
+          role: 'user',
+          content: [{ type: 'text', text: textMessage || '请分析这张图片。' }, ...imageContent],
+        });
+      } else {
+        openaiMessages.push({ role: 'user', content: textMessage });
+      }
     }
 
     // Save user message
     if (userId && resolvedConversationId && !skipPersistUserMessage) {
       await prisma.message.create({
-        data: { conversationId: resolvedConversationId, role: 'user', content: message },
+        data: {
+          conversationId: resolvedConversationId,
+          role: 'user',
+          content: textMessage,
+          attachments: imageAttachments.length > 0 ? imageAttachments : undefined,
+        },
       });
     }
     // Use custom config if provided, otherwise fall back to platform default (Gemini via OpenAI-compatible API)

@@ -2,22 +2,23 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ArrowLeft, Check, ChevronDown, ChevronUp, Copy, RefreshCw, Send, SlidersHorizontal, Sparkles, Square, Trash2, X } from 'lucide-react';
+import { ArrowLeft, Check, ChevronDown, ChevronUp, Copy, ImagePlus, Loader2, RefreshCw, Send, SlidersHorizontal, Sparkles, Square, Trash2, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import Avatar from '@/components/shared/Avatar';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import LoadingSpinner from '@/components/shared/LoadingSpinner';
 import { getBuiltInAgents } from '@/lib/agents-data';
-import { streamChat, conversations as conversationsApi, agents as agentsApi, user as userApi } from '@/lib/api';
+import { streamChat, conversations as conversationsApi, agents as agentsApi, user as userApi, uploads } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { CATEGORY_COLORS } from '@/types';
-import type { Agent } from '@/types';
+import type { Agent, MessageAttachment } from '@/types';
 
 interface ChatMessage {
   id: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
+  attachments?: MessageAttachment[];
   createdAt: string;
 }
 
@@ -90,6 +91,28 @@ function CollapsibleUserMessage({ content }: { content: string }) {
   );
 }
 
+function MessageAttachments({ attachments }: { attachments?: MessageAttachment[] }) {
+  const images = attachments?.filter((attachment) => attachment.type === 'image') || [];
+  if (images.length === 0) return null;
+
+  return (
+    <div className="mb-3 flex flex-wrap gap-2">
+      {images.map((attachment) => (
+        <a
+          key={attachment.url}
+          href={attachment.url}
+          target="_blank"
+          rel="noreferrer"
+          className="block overflow-hidden rounded-2xl border border-white/25 bg-white/15"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <img src={attachment.url} alt={attachment.name || '上传图片'} className="max-h-56 max-w-[240px] object-cover" />
+        </a>
+      ))}
+    </div>
+  );
+}
+
 interface ChatRoomProps {
   agentId?: string;
   conversationId?: string;
@@ -119,9 +142,13 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [contextMessageLimit, setContextMessageLimit] = useState(DEFAULT_CONTEXT_MESSAGE_LIMIT);
   const [viewportHeight, setViewportHeight] = useState<number | null>(null);
+  const [pendingAttachment, setPendingAttachment] = useState<MessageAttachment | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [uploadError, setUploadError] = useState('');
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const updateViewportHeight = () => {
@@ -200,6 +227,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
                 id: msg.id,
                 role: msg.role,
                 content: msg.content,
+                attachments: msg.attachments || [],
                 createdAt: msg.createdAt,
               }))
             );
@@ -253,28 +281,69 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
         id: msg.id,
         role: msg.role,
         content: msg.content,
+        attachments: msg.attachments || [],
         createdAt: msg.createdAt,
       }))
     );
   };
 
+  const uploadImageFile = async (file: File) => {
+    if (!isLoggedIn) {
+      setUploadError('登录后可以发送图片');
+      return;
+    }
+
+    setUploadError('');
+    setUploadingImage(true);
+    try {
+      const { attachment } = await uploads.image(file);
+      setPendingAttachment(attachment);
+    } catch (error: any) {
+      setUploadError(error.message || '图片上传失败');
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
+  const handleImageSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file || uploadingImage) return;
+
+    await uploadImageFile(file);
+  };
+
+  const handlePaste = async (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const file = Array.from(event.clipboardData.files).find((item) => item.type.startsWith('image/'));
+    if (!file) return;
+
+    event.preventDefault();
+    if (uploadingImage || isStreaming) return;
+
+    await uploadImageFile(file);
+  };
+
   const handleSend = async (
     text?: string,
-    options: { reuseLastUserMessage?: boolean; historyOverride?: ChatMessage[] } = {}
+    options: { reuseLastUserMessage?: boolean; historyOverride?: ChatMessage[]; attachmentsOverride?: MessageAttachment[] } = {}
   ) => {
-    const content = text || input.trim();
-    if (!content || isStreaming) return;
+    const content = text ?? input.trim();
+    const outgoingAttachments = options.attachmentsOverride || (pendingAttachment ? [pendingAttachment] : []);
+    if ((!content && outgoingAttachments.length === 0) || isStreaming || uploadingImage) return;
 
     if (!options.reuseLastUserMessage) {
       const userMessage: ChatMessage = {
         id: `user-${Date.now()}`,
         role: 'user',
         content,
+        attachments: outgoingAttachments,
         createdAt: new Date().toISOString(),
       };
 
       setMessages((prev) => [...prev, userMessage]);
       setInput('');
+      setPendingAttachment(null);
+      setUploadError('');
     }
     setIsStreaming(true);
     setStreamingContent('');
@@ -295,6 +364,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
         context: displayAgent?.systemPrompt,
         conversationId: conversationId || undefined,
         agentId: displayAgent?.id || agentId,
+        attachments: outgoingAttachments,
         contextMessageLimit,
         skipPersistUserMessage: options.reuseLastUserMessage,
         agentSnapshot: displayAgent
@@ -387,7 +457,11 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
 
     const nextMessages = messages.filter((message) => message.id !== lastAssistantMessage?.id);
     setMessages(nextMessages);
-    handleSend(lastUserMessage.content, { reuseLastUserMessage: true, historyOverride: nextMessages });
+    handleSend(lastUserMessage.content, {
+      reuseLastUserMessage: true,
+      historyOverride: nextMessages,
+      attachmentsOverride: lastUserMessage.attachments || [],
+    });
   };
 
   const handleCopy = (id: string, content: string) => {
@@ -646,11 +720,12 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
                     )}
                     style={message.role === 'user' ? { backgroundColor: categoryColor } : undefined}
                   >
+                    <MessageAttachments attachments={message.attachments} />
                     {message.role === 'assistant' ? (
                       <div className="markdown-body text-sm leading-7">
                         <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
                       </div>
-                    ) : (
+                    ) : !message.content ? null : (
                       <CollapsibleUserMessage content={message.content} />
                     )}
                   </div>
@@ -746,10 +821,54 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
 
         <footer className="shrink-0 border-t border-black/[0.06] bg-white/88 px-4 py-4 backdrop-blur sm:px-6">
           <div className="mx-auto max-w-4xl">
+            {(pendingAttachment || uploadError) && (
+              <div className="mb-2 flex items-center justify-between gap-3 rounded-2xl border border-black/[0.06] bg-white px-3 py-2 shadow-sm">
+                {pendingAttachment ? (
+                  <div className="flex min-w-0 items-center gap-3">
+                    <img
+                      src={pendingAttachment.url}
+                      alt={pendingAttachment.name || '待发送图片'}
+                      className="h-12 w-12 shrink-0 rounded-xl object-cover"
+                    />
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-bold text-slate-700">{pendingAttachment.name || '已选择图片'}</p>
+                      <p className="text-xs font-semibold text-slate-400">发送后会随本条消息交给 AI 分析</p>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm font-semibold text-rose-500">{uploadError}</p>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPendingAttachment(null);
+                    setUploadError('');
+                  }}
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                  aria-label="移除图片"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            )}
             <div className="flex items-end gap-3 rounded-[28px] border border-black/[0.08] bg-[#fbfaf7] p-2 shadow-sm">
+              <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif" className="hidden" onChange={handleImageSelect} />
+              {isLoggedIn && (
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploadingImage || isStreaming}
+                  className="mb-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-slate-500 transition hover:bg-white hover:text-slate-800 disabled:bg-transparent disabled:text-slate-300"
+                  aria-label="上传图片"
+                  title="上传图片"
+                >
+                  {uploadingImage ? <Loader2 size={17} className="animate-spin" /> : <ImagePlus size={18} />}
+                </button>
+              )}
               <textarea
                 value={input}
                 onChange={(event) => setInput(event.target.value)}
+                onPaste={handlePaste}
                 onKeyDown={handleKeyDown}
                 placeholder={`向 ${displayAgent.name} 说点什么...`}
                 rows={1}
@@ -766,12 +885,12 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
               ) : (
                 <button
                   onClick={() => handleSend()}
-                  disabled={!input.trim()}
+                  disabled={(!input.trim() && !pendingAttachment) || uploadingImage}
                   className={cn(
                     'mb-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl transition',
-                    input.trim() ? 'text-white shadow-sm' : 'bg-slate-100 text-slate-400'
+                    input.trim() || pendingAttachment ? 'text-white shadow-sm' : 'bg-slate-100 text-slate-400'
                   )}
-                  style={input.trim() ? { backgroundColor: categoryColor } : undefined}
+                  style={input.trim() || pendingAttachment ? { backgroundColor: categoryColor } : undefined}
                   aria-label="发送消息"
                 >
                   <Send size={17} />

@@ -43,7 +43,16 @@ export interface Message {
   conversationId: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
+  attachments?: MessageAttachment[];
   createdAt: string;
+}
+
+export interface MessageAttachment {
+  type: 'image';
+  url: string;
+  name?: string;
+  mimeType?: string;
+  size?: number;
 }
 
 export interface FavoriteAgent {

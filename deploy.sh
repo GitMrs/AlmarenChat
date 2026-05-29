@@ -36,10 +36,16 @@ docker rm "${CONTAINER_NAME}" 2>/dev/null || true
 
 echo "准备持久化目录..."
 mkdir -p data public/uploads/images public/uploads/documents
-chmod -R 777 data public/uploads
+if chown -R 1001:1001 data public/uploads 2>/dev/null; then
+  chmod -R 700 data
+  chmod -R 755 public/uploads
+else
+  chmod -R 777 data public/uploads
+fi
 
 echo "同步数据库结构..."
 docker run --rm \
+  --user 1001:1001 \
   --env-file "$ENV_FILE" \
   -e DATABASE_URL="file:/app/data/dev.db" \
   -v "$(pwd)/data:/app/data" \

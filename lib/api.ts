@@ -128,6 +128,7 @@ export const admin = {
 export async function streamChat(data: {
   message: string;
   history: { role: string; content: string }[];
+  attachments?: { type: 'image'; url: string; name?: string; mimeType?: string; size?: number }[];
   context?: string;
   apiBaseUrl?: string;
   apiKey?: string;
@@ -189,4 +190,28 @@ export const user = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+};
+
+// Uploads
+export const uploads = {
+  image: async (file: File) => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const res = await fetch(`${API_BASE}/uploads/images`, {
+      method: 'POST',
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: formData,
+    });
+
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({ error: 'Upload failed' }));
+      throw new Error(error.error || `HTTP ${res.status}`);
+    }
+
+    return res.json() as Promise<{ attachment: { type: 'image'; url: string; name?: string; mimeType?: string; size?: number } }>;
+  },
 };
