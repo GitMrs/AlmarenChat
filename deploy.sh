@@ -3,7 +3,7 @@
 set -e
 
 IMAGE_NAME="almaren-chat"
-MIGRATOR_IMAGE_NAME="almaren-chat-migrator"
+MIGRATOR_IMAGE_NAME="almaren-chat-migrator:tmp"
 CONTAINER_NAME="almaren-chat"
 HOST_PORT="${HOST_PORT:-8001}"
 CONTAINER_PORT="3000"
@@ -27,9 +27,8 @@ echo "构建应用镜像: ${IMAGE_NAME}:${VERSION}"
 docker build --target runner -t "${IMAGE_NAME}:${VERSION}" .
 docker tag "${IMAGE_NAME}:${VERSION}" "${IMAGE_NAME}:latest"
 
-echo "构建数据库同步镜像: ${MIGRATOR_IMAGE_NAME}:${VERSION}"
-docker build --target migrator -t "${MIGRATOR_IMAGE_NAME}:${VERSION}" .
-docker tag "${MIGRATOR_IMAGE_NAME}:${VERSION}" "${MIGRATOR_IMAGE_NAME}:latest"
+echo "构建临时数据库同步镜像: ${MIGRATOR_IMAGE_NAME}"
+docker build --target migrator -t "${MIGRATOR_IMAGE_NAME}" .
 
 echo "停止旧容器..."
 docker stop "${CONTAINER_NAME}" 2>/dev/null || true
@@ -44,7 +43,10 @@ docker run --rm \
   --env-file "$ENV_FILE" \
   -e DATABASE_URL="file:/app/data/dev.db" \
   -v "$(pwd)/data:/app/data" \
-  "${MIGRATOR_IMAGE_NAME}:${VERSION}"
+  "${MIGRATOR_IMAGE_NAME}"
+
+echo "删除临时数据库同步镜像..."
+docker rmi "${MIGRATOR_IMAGE_NAME}" 2>/dev/null || true
 
 echo "启动容器..."
 docker run -d \
@@ -68,15 +70,6 @@ docker images "${IMAGE_NAME}" --format "{{.Tag}}" | \
   while read tag; do
     echo "删除: ${IMAGE_NAME}:${tag}"
     docker rmi "${IMAGE_NAME}:${tag}" 2>/dev/null || true
-  done
-
-docker images "${MIGRATOR_IMAGE_NAME}" --format "{{.Tag}}" | \
-  grep -E "^[0-9]{8}-[0-9]{6}$" | \
-  sort -r | \
-  tail -n +"$((KEEP_VERSIONS + 1))" | \
-  while read tag; do
-    echo "删除: ${MIGRATOR_IMAGE_NAME}:${tag}"
-    docker rmi "${MIGRATOR_IMAGE_NAME}:${tag}" 2>/dev/null || true
   done
 
 echo ""
