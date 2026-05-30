@@ -190,7 +190,8 @@ button:disabled {
 
 .markdown-body table {
   display: block;
-  width: 100%;
+  width: max-content;
+  min-width: 100%;
   max-width: 100%;
   overflow-x: auto;
   border-collapse: collapse;
@@ -206,6 +207,12 @@ button:disabled {
   text-align: left;
   vertical-align: top;
   white-space: nowrap;
+}
+
+.markdown-body td {
+  max-width: 18rem;
+  white-space: normal;
+  word-break: break-word;
 }
 
 .markdown-body th {

@@ -1,9 +1,11 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Bot, Eye, EyeOff, Search, Trash2, Users, MessageCircle, UserRound, Settings2 } from 'lucide-react';
 import { admin as adminApi } from '@/lib/api';
+import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import LoadingSpinner from '@/components/shared/LoadingSpinner';
 
 function formatDate(value?: string) {
@@ -41,6 +43,8 @@ export default function AdminPage() {
   const [newUserDailyLimit, setNewUserDailyLimit] = useState('');
   const [createUserMessage, setCreateUserMessage] = useState('');
   const [creatingUser, setCreatingUser] = useState(false);
+  const [pendingDeleteUser, setPendingDeleteUser] = useState<any>(null);
+  const [deletingUser, setDeletingUser] = useState(false);
 
   useEffect(() => {
     if (!localStorage.getItem('token')) {
@@ -170,8 +174,9 @@ export default function AdminPage() {
         password,
         dailyChatLimit: dailyLimit === null ? null : Math.floor(dailyLimit),
       });
+      const detail = await adminApi.user(result.user.id);
       setUsers((items) => [result.user, ...items]);
-      setSelectedUser(result.user);
+      setSelectedUser(detail.user);
       setDailyChatLimit(result.user.dailyChatLimit?.toString() || '');
       setNewUserEmail('');
       setNewUserName('');
@@ -206,6 +211,26 @@ export default function AdminPage() {
     }
   };
 
+  const deleteUser = async () => {
+    if (!pendingDeleteUser || deletingUser) return;
+
+    setDeletingUser(true);
+    try {
+      await adminApi.deleteUser(pendingDeleteUser.id);
+      setUsers((items) => items.filter((user) => user.id !== pendingDeleteUser.id));
+      if (selectedUser?.id === pendingDeleteUser.id) {
+        setSelectedUser(null);
+        setResetPassword('');
+        setResetMessage('');
+        setDailyChatLimit('');
+        setQuotaMessage('');
+      }
+      setPendingDeleteUser(null);
+    } finally {
+      setDeletingUser(false);
+    }
+  };
+
   if (loading) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-[#fbfaf7]">
@@ -231,7 +256,7 @@ export default function AdminPage() {
         <header className="flex flex-col gap-3 border-b border-black/[0.06] pb-5 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-sm font-bold text-slate-400">Admin</p>
-            <h1 className="text-3xl font-black">AlmarenChat 后台</h1>
+            <Link href="/" className="text-3xl font-black hover:text-blue-600 transition-colors">AlmarenChat</Link>
           </div>
           <div className="text-sm font-semibold text-slate-500">
             {dashboard.admin.email}
@@ -279,45 +304,13 @@ export default function AdminPage() {
           <div className="space-y-6">
             <div className="rounded-2xl border border-black/[0.06] bg-white p-5 shadow-sm">
               <h2 className="mb-4 text-lg font-black">Create user</h2>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <input
-                  value={newUserEmail}
-                  onChange={(event) => setNewUserEmail(event.target.value)}
-                  placeholder="Email"
-                  className="h-11 rounded-full border border-black/[0.08] bg-[#fbfaf7] px-4 text-sm outline-none focus:border-slate-300"
-                />
-                <input
-                  value={newUserName}
-                  onChange={(event) => setNewUserName(event.target.value)}
-                  placeholder="Name"
-                  className="h-11 rounded-full border border-black/[0.08] bg-[#fbfaf7] px-4 text-sm outline-none focus:border-slate-300"
-                />
-                <input
-                  type="password"
-                  value={newUserPassword}
-                  onChange={(event) => setNewUserPassword(event.target.value)}
-                  placeholder="Initial password"
-                  className="h-11 rounded-full border border-black/[0.08] bg-[#fbfaf7] px-4 text-sm outline-none focus:border-slate-300"
-                />
-                <input
-                  type="number"
-                  min={0}
-                  max={10000}
-                  value={newUserDailyLimit}
-                  onChange={(event) => setNewUserDailyLimit(event.target.value)}
-                  placeholder="Daily limit, default 30"
-                  className="h-11 rounded-full border border-black/[0.08] bg-[#fbfaf7] px-4 text-sm outline-none focus:border-slate-300"
-                />
-              </div>
-              <div className="mt-3 flex items-center justify-between gap-3">
-                <p className="text-xs font-semibold text-slate-400">Leave daily limit empty to use default 30.</p>
-                <button
-                  type="button"
-                  onClick={submitCreateUser}
-                  disabled={creatingUser}
-                  className="h-10 rounded-full bg-slate-950 px-4 text-sm font-bold text-white disabled:bg-slate-200 disabled:text-slate-400"
-                >
-                  {creatingUser ? 'Creating' : 'Create'}
+              <div className="flex flex-wrap items-center gap-3">
+                <input value={newUserEmail} onChange={(event) => setNewUserEmail(event.target.value)} placeholder="Email" className="h-11 min-w-[180px] flex-1 rounded-full border border-black/[0.08] bg-[#fbfaf7] px-4 text-sm outline-none focus:border-slate-300" />
+                <input value={newUserName} onChange={(event) => setNewUserName(event.target.value)} placeholder="Name" className="h-11 min-w-[120px] flex-1 rounded-full border border-black/[0.08] bg-[#fbfaf7] px-4 text-sm outline-none focus:border-slate-300" />
+                <input type="password" value={newUserPassword} onChange={(event) => setNewUserPassword(event.target.value)} placeholder="Password" className="h-11 min-w-[150px] flex-1 rounded-full border border-black/[0.08] bg-[#fbfaf7] px-4 text-sm outline-none focus:border-slate-300" />
+                <input type="number" min={0} max={10000} value={newUserDailyLimit} onChange={(event) => setNewUserDailyLimit(event.target.value)} placeholder="Limit" className="h-11 w-[100px] rounded-full border border-black/[0.08] bg-[#fbfaf7] px-4 text-sm outline-none focus:border-slate-300" />
+                <button type="button" onClick={submitCreateUser} disabled={creatingUser} className="h-11 rounded-full bg-slate-950 px-6 text-sm font-bold text-white disabled:bg-slate-200 disabled:text-slate-400">
+                  {creatingUser ? 'Creating...' : 'Create'}
                 </button>
               </div>
               {createUserMessage && <div className="mt-2 text-xs font-semibold text-slate-500">{createUserMessage}</div>}
@@ -367,7 +360,18 @@ export default function AdminPage() {
 
             {selectedUser && (
               <div className="rounded-2xl border border-black/[0.06] bg-white p-5 shadow-sm">
-                <h2 className="mb-4 text-lg font-black">用户详情</h2>
+                <div className="mb-4 flex items-center justify-between gap-3">
+                  <h2 className="text-lg font-black">用户详情</h2>
+                  <button
+                    type="button"
+                    onClick={() => setPendingDeleteUser(selectedUser)}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-red-100 text-red-500 transition hover:bg-red-50"
+                    title="Delete user"
+                    aria-label="Delete user"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
                 <div className="space-y-2 text-sm">
                   <div className="font-black">{selectedUser.name}</div>
                   <div className="text-slate-500">{selectedUser.email}</div>
@@ -430,26 +434,26 @@ export default function AdminPage() {
                 <div className="mt-5">
                   <h3 className="mb-2 text-sm font-black">创建的 Agent</h3>
                   <div className="space-y-2">
-                    {selectedUser.agents.map((agent: any) => (
+                    {(selectedUser.agents || []).map((agent: any) => (
                       <div key={agent.id} className="rounded-xl bg-[#fbfaf7] px-3 py-2 text-sm">
                         <span className="font-semibold">{agent.name}</span>
                         <span className="ml-2 text-xs text-slate-400">{agent.isPublic ? '已上架' : '已下架'}</span>
                       </div>
                     ))}
-                    {selectedUser.agents.length === 0 && <div className="text-sm text-slate-400">暂无 Agent</div>}
+                    {(selectedUser.agents || []).length === 0 && <div className="text-sm text-slate-400">暂无 Agent</div>}
                   </div>
                 </div>
 
                 <div className="mt-5">
                   <h3 className="mb-2 text-sm font-black">最近会话</h3>
                   <div className="space-y-2">
-                    {selectedUser.conversations.map((conversation: any) => (
+                    {(selectedUser.conversations || []).map((conversation: any) => (
                       <div key={conversation.id} className="rounded-xl bg-[#fbfaf7] px-3 py-2 text-sm">
                         <div className="font-semibold">{conversation.title || conversation.agentName || '未命名会话'}</div>
                         <div className="text-xs text-slate-400">{formatDate(conversation.updatedAt)}</div>
                       </div>
                     ))}
-                    {selectedUser.conversations.length === 0 && <div className="text-sm text-slate-400">暂无会话</div>}
+                    {(selectedUser.conversations || []).length === 0 && <div className="text-sm text-slate-400">暂无会话</div>}
                   </div>
                 </div>
               </div>
@@ -518,6 +522,22 @@ export default function AdminPage() {
           )}
         </section>
       </div>
+      <ConfirmDialog
+        open={Boolean(pendingDeleteUser)}
+        title="Delete user?"
+        description={
+          pendingDeleteUser
+            ? `This will delete ${pendingDeleteUser.email}, including conversations, favorites, quota usage and created agents.`
+            : ''
+        }
+        icon={<Trash2 size={20} />}
+        cancelText="Cancel"
+        confirmText="Delete"
+        destructive
+        loading={deletingUser}
+        onCancel={() => setPendingDeleteUser(null)}
+        onConfirm={deleteUser}
+      />
     </main>
   );
 }

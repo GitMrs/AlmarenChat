@@ -118,6 +118,10 @@ export const admin = {
       body: JSON.stringify(data),
     }),
   resetUserPassword: (id: string, password: string) => admin.updateUser(id, { password }),
+  deleteUser: (id: string) =>
+    request<{ success: boolean }>(`/admin/users/${id}`, {
+      method: 'DELETE',
+    }),
   agents: (query?: string) => request<{ agents: any[] }>(`/admin/agents${query ? `?q=${encodeURIComponent(query)}` : ''}`),
   updateAgent: (id: string, data: { isPublic: boolean }) =>
     request<{ agent: any }>(`/admin/agents/${id}`, {

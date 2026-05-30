@@ -104,3 +104,39 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ us
     return NextResponse.json({ error: result.error }, { status: result.status });
   }
 }
+
+export async function DELETE(request: Request, { params }: { params: Promise<{ userId: string }> }) {
+  try {
+    const admin = await requireAdmin(request);
+    const { userId } = await params;
+
+    if (admin.id === userId) {
+      return NextResponse.json({ error: 'You cannot delete yourself' }, { status: 400 });
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
+    if (!user) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
+
+    const conversations = await prisma.conversation.findMany({
+      where: { userId },
+      select: { id: true },
+    });
+    const conversationIds = conversations.map((conversation) => conversation.id);
+
+    await prisma.$transaction([
+      prisma.message.deleteMany({ where: { conversationId: { in: conversationIds } } }),
+      prisma.conversation.deleteMany({ where: { userId } }),
+      prisma.favoriteAgent.deleteMany({ where: { userId } }),
+      prisma.dailyChatUsage.deleteMany({ where: { userId } }),
+      prisma.agent.deleteMany({ where: { creatorId: userId } }),
+      prisma.user.delete({ where: { id: userId } }),
+    ]);
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    const result = adminErrorResponse(error);
+    return NextResponse.json({ error: result.error }, { status: result.status });
+  }
+}

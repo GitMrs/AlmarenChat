@@ -148,22 +148,22 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
   const [uploadError, setUploadError] = useState('');
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesScrollRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const updateViewportHeight = () => {
-      setViewportHeight(window.visualViewport?.height || window.innerHeight);
+      const nextHeight = Math.floor(window.visualViewport?.height || window.innerHeight);
+      setViewportHeight((current) => (Math.abs((current || 0) - nextHeight) > 1 ? nextHeight : current));
     };
 
     updateViewportHeight();
     window.visualViewport?.addEventListener('resize', updateViewportHeight);
-    window.visualViewport?.addEventListener('scroll', updateViewportHeight);
     window.addEventListener('resize', updateViewportHeight);
 
     return () => {
       window.visualViewport?.removeEventListener('resize', updateViewportHeight);
-      window.visualViewport?.removeEventListener('scroll', updateViewportHeight);
       window.removeEventListener('resize', updateViewportHeight);
     };
   }, []);
@@ -260,8 +260,16 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
   }, [isLoggedIn, initialPrompt, agent, existingConversationId, messages.length]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, streamingContent, viewportHeight]);
+    const container = messagesScrollRef.current;
+    if (!container) return;
+
+    requestAnimationFrame(() => {
+      container.scrollTo({
+        top: container.scrollHeight,
+        behavior: isStreaming ? 'auto' : 'smooth',
+      });
+    });
+  }, [messages.length, streamingContent, isStreaming]);
 
   useEffect(() => {
     setActiveActionMessageId(null);
@@ -667,6 +675,25 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
               </div>
 
               <div className="max-h-[calc(82dvh-73px)] space-y-4 overflow-y-auto p-5">
+                {isLoggedIn && (
+                  <div className="mb-4 flex items-center justify-between gap-3 rounded-2xl bg-[#fbfaf7] px-3 py-2">
+                    <div className="flex min-w-0 items-center gap-2 text-xs font-black text-slate-500">
+                      <SlidersHorizontal size={15} />
+                      <span>记忆</span>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <input
+                        type="number"
+                        min={1}
+                        max={MAX_CONTEXT_MESSAGE_LIMIT}
+                        value={contextMessageLimit}
+                        onChange={(event) => updateContextMessageLimit(Number(event.target.value))}
+                        className="h-8 w-16 rounded-xl border border-black/[0.06] bg-white px-2 text-center text-sm font-black text-slate-800 outline-none focus:border-slate-300"
+                      />
+                      <div className="whitespace-nowrap text-xs font-semibold text-slate-400">/ {MAX_CONTEXT_MESSAGE_LIMIT} 条</div>
+                    </div>
+                  </div>
+                )}
                 <p className="rounded-2xl bg-[#fbfaf7] p-4 text-sm leading-6 text-slate-600">
                   {displayAgent.description || '这个 Agent 会根据你的问题给出清晰、具体、可执行的帮助。'}
                 </p>
@@ -680,7 +707,9 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
                   <p className="text-xs font-bold text-slate-400">行为设定摘要</p>
                   <div className="markdown-body mt-2 rounded-2xl bg-[#fbfaf7] p-4 text-xs leading-5 text-slate-500">
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                      {displayAgent.systemPrompt || '这个 Agent 会根据用户的问题给出清晰、具体、可执行的帮助。'}
+                      {/* 注意现在先不用详情，先展示默认的行为设定摘要 */}
+                      {/* {displayAgent.systemPrompt || '这个 Agent 会根据用户的问题给出清晰、具体、可执行的帮助。'} */}
+                      '这个 Agent 会根据用户的问题给出清晰、具体、可执行的帮助。‘
                     </ReactMarkdown>
                   </div>
                 </div>
@@ -689,7 +718,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
           </div>
         )}
 
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-5 sm:px-6 lg:px-10">
+        <div ref={messagesScrollRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-5 scroll-pb-32 sm:px-6 lg:px-10">
           <div className="mx-auto max-w-4xl space-y-5">
             {!isLoggedIn && (
               <LoginRequired
@@ -725,11 +754,11 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
                 )}
                 <div
                   onClick={() => setActiveActionMessageId((current) => (current === message.id ? null : message.id))}
-                  className={cn('group flex max-w-[82%] flex-col', message.role === 'user' ? 'items-end' : 'items-start')}
+                  className={cn('group flex min-w-0 max-w-[82%] flex-col', message.role === 'user' ? 'items-end' : 'items-start')}
                 >
                   <div
                     className={cn(
-                      'rounded-[24px] px-5 py-4 shadow-sm',
+                      'min-w-0 max-w-full rounded-[24px] px-5 py-4 shadow-sm',
                       message.role === 'user'
                         ? 'rounded-br-md text-white'
                         : 'rounded-bl-md border border-black/[0.06] bg-white text-slate-800'
@@ -738,7 +767,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
                   >
                     <MessageAttachments attachments={message.attachments} />
                     {message.role === 'assistant' ? (
-                      <div className="markdown-body text-sm leading-7">
+                      <div className="markdown-body min-w-0 max-w-full overflow-hidden text-sm leading-7">
                         <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
                       </div>
                     ) : !message.content ? null : (
@@ -810,8 +839,8 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
             {isLoggedIn && isStreaming && streamingContent && (
               <div className="flex justify-start gap-3">
                 <Avatar src={displayAgent.avatar} alt={displayAgent.name} size="sm" className="mt-1 shrink-0" />
-                <div className="max-w-[82%] rounded-[24px] rounded-bl-md border border-black/[0.06] bg-white px-5 py-4 text-slate-800 shadow-sm">
-                  <div className="markdown-body text-sm leading-7">
+                <div className="min-w-0 max-w-[82%] rounded-[24px] rounded-bl-md border border-black/[0.06] bg-white px-5 py-4 text-slate-800 shadow-sm">
+                  <div className="markdown-body min-w-0 max-w-full overflow-hidden text-sm leading-7">
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>{streamingContent}</ReactMarkdown>
                   </div>
                   <span className="ml-1 inline-block h-4 w-2 animate-pulse rounded-sm bg-slate-300" />
@@ -836,7 +865,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
         </div>
 
         {isLoggedIn && (
-        <footer className="shrink-0 border-t border-black/[0.06] bg-white/88 px-4 py-4 backdrop-blur sm:px-6">
+        <footer className="shrink-0 border-t border-black/[0.06] bg-white/88 px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-4 backdrop-blur sm:px-6">
           <div className="mx-auto max-w-4xl">
             {(pendingAttachment || uploadError) && (
               <div className="mb-2 flex items-center justify-between gap-3 rounded-2xl border border-black/[0.06] bg-white px-3 py-2 shadow-sm">
