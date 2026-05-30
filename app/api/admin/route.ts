@@ -31,6 +31,7 @@ export async function GET(request: Request) {
           name: true,
           createdAt: true,
           customModelEnabled: true,
+          dailyChatLimit: true,
           _count: { select: { agents: true, conversations: true } },
         },
       }),

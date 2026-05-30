@@ -31,6 +31,16 @@ export default function AdminPage() {
   const [resetPassword, setResetPassword] = useState('');
   const [resetMessage, setResetMessage] = useState('');
   const [resettingPassword, setResettingPassword] = useState(false);
+  const [dailyChatLimit, setDailyChatLimit] = useState('');
+  const [quotaMessage, setQuotaMessage] = useState('');
+  const [savingQuota, setSavingQuota] = useState(false);
+  const [activeTab, setActiveTab] = useState<'users' | 'agents'>('users');
+  const [newUserEmail, setNewUserEmail] = useState('');
+  const [newUserName, setNewUserName] = useState('');
+  const [newUserPassword, setNewUserPassword] = useState('');
+  const [newUserDailyLimit, setNewUserDailyLimit] = useState('');
+  const [createUserMessage, setCreateUserMessage] = useState('');
+  const [creatingUser, setCreatingUser] = useState(false);
 
   useEffect(() => {
     if (!localStorage.getItem('token')) {
@@ -84,6 +94,8 @@ export default function AdminPage() {
     setSelectedUser(result.user);
     setResetPassword('');
     setResetMessage('');
+    setDailyChatLimit(result.user.dailyChatLimit?.toString() || '');
+    setQuotaMessage('');
   };
 
   const submitPasswordReset = async () => {
@@ -99,6 +111,77 @@ export default function AdminPage() {
       setResetMessage(e.message || '重置失败');
     } finally {
       setResettingPassword(false);
+    }
+  };
+
+  const submitDailyChatLimit = async () => {
+    if (!selectedUser || savingQuota) return;
+
+    const trimmed = dailyChatLimit.trim();
+    const nextLimit = trimmed === '' ? null : Number(trimmed);
+    if (nextLimit !== null && (!Number.isFinite(nextLimit) || nextLimit < 0 || nextLimit > 10000)) {
+      setQuotaMessage('每日额度需要在 0-10000 之间，留空使用默认 30。');
+      return;
+    }
+
+    setQuotaMessage('');
+    setSavingQuota(true);
+    try {
+      await adminApi.updateUser(selectedUser.id, { dailyChatLimit: nextLimit === null ? null : Math.floor(nextLimit) });
+      setSelectedUser((user: any) => (user ? { ...user, dailyChatLimit: nextLimit === null ? null : Math.floor(nextLimit) } : user));
+      setUsers((items) =>
+        items.map((user) =>
+          user.id === selectedUser.id ? { ...user, dailyChatLimit: nextLimit === null ? null : Math.floor(nextLimit) } : user
+        )
+      );
+      setQuotaMessage('每日额度已保存');
+    } catch (e: any) {
+      setQuotaMessage(e.message || '保存失败');
+    } finally {
+      setSavingQuota(false);
+    }
+  };
+
+  const submitCreateUser = async () => {
+    if (creatingUser) return;
+
+    const email = newUserEmail.trim();
+    const name = newUserName.trim();
+    const password = newUserPassword;
+    const limitText = newUserDailyLimit.trim();
+    const dailyLimit = limitText === '' ? null : Number(limitText);
+
+    if (!email || !name || password.length < 6) {
+      setCreateUserMessage('Email, name and at least 6 characters password are required.');
+      return;
+    }
+
+    if (dailyLimit !== null && (!Number.isFinite(dailyLimit) || dailyLimit < 0 || dailyLimit > 10000)) {
+      setCreateUserMessage('Daily chat limit must be between 0 and 10000.');
+      return;
+    }
+
+    setCreateUserMessage('');
+    setCreatingUser(true);
+    try {
+      const result = await adminApi.createUser({
+        email,
+        name,
+        password,
+        dailyChatLimit: dailyLimit === null ? null : Math.floor(dailyLimit),
+      });
+      setUsers((items) => [result.user, ...items]);
+      setSelectedUser(result.user);
+      setDailyChatLimit(result.user.dailyChatLimit?.toString() || '');
+      setNewUserEmail('');
+      setNewUserName('');
+      setNewUserPassword('');
+      setNewUserDailyLimit('');
+      setCreateUserMessage('User created.');
+    } catch (e: any) {
+      setCreateUserMessage(e.message || 'Create user failed.');
+    } finally {
+      setCreatingUser(false);
     }
   };
 
@@ -170,8 +253,76 @@ export default function AdminPage() {
           })}
         </section>
 
-        <section className="grid gap-6 lg:grid-cols-[1fr_1.15fr]">
+        <div className="inline-flex rounded-full border border-black/[0.06] bg-white p-1 shadow-sm">
+          <button
+            type="button"
+            onClick={() => setActiveTab('users')}
+            className={`rounded-full px-5 py-2 text-sm font-black transition ${
+              activeTab === 'users' ? 'bg-slate-950 text-white' : 'text-slate-500 hover:text-slate-950'
+            }`}
+          >
+            Users
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('agents')}
+            className={`rounded-full px-5 py-2 text-sm font-black transition ${
+              activeTab === 'agents' ? 'bg-slate-950 text-white' : 'text-slate-500 hover:text-slate-950'
+            }`}
+          >
+            Agents
+          </button>
+        </div>
+
+        <section className="space-y-6">
+          {activeTab === 'users' && (
           <div className="space-y-6">
+            <div className="rounded-2xl border border-black/[0.06] bg-white p-5 shadow-sm">
+              <h2 className="mb-4 text-lg font-black">Create user</h2>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <input
+                  value={newUserEmail}
+                  onChange={(event) => setNewUserEmail(event.target.value)}
+                  placeholder="Email"
+                  className="h-11 rounded-full border border-black/[0.08] bg-[#fbfaf7] px-4 text-sm outline-none focus:border-slate-300"
+                />
+                <input
+                  value={newUserName}
+                  onChange={(event) => setNewUserName(event.target.value)}
+                  placeholder="Name"
+                  className="h-11 rounded-full border border-black/[0.08] bg-[#fbfaf7] px-4 text-sm outline-none focus:border-slate-300"
+                />
+                <input
+                  type="password"
+                  value={newUserPassword}
+                  onChange={(event) => setNewUserPassword(event.target.value)}
+                  placeholder="Initial password"
+                  className="h-11 rounded-full border border-black/[0.08] bg-[#fbfaf7] px-4 text-sm outline-none focus:border-slate-300"
+                />
+                <input
+                  type="number"
+                  min={0}
+                  max={10000}
+                  value={newUserDailyLimit}
+                  onChange={(event) => setNewUserDailyLimit(event.target.value)}
+                  placeholder="Daily limit, default 30"
+                  className="h-11 rounded-full border border-black/[0.08] bg-[#fbfaf7] px-4 text-sm outline-none focus:border-slate-300"
+                />
+              </div>
+              <div className="mt-3 flex items-center justify-between gap-3">
+                <p className="text-xs font-semibold text-slate-400">Leave daily limit empty to use default 30.</p>
+                <button
+                  type="button"
+                  onClick={submitCreateUser}
+                  disabled={creatingUser}
+                  className="h-10 rounded-full bg-slate-950 px-4 text-sm font-bold text-white disabled:bg-slate-200 disabled:text-slate-400"
+                >
+                  {creatingUser ? 'Creating' : 'Create'}
+                </button>
+              </div>
+              {createUserMessage && <div className="mt-2 text-xs font-semibold text-slate-500">{createUserMessage}</div>}
+            </div>
+
             <div className="rounded-2xl border border-black/[0.06] bg-white p-5 shadow-sm">
               <div className="mb-4 flex items-center justify-between gap-3">
                 <h2 className="text-lg font-black">用户列表</h2>
@@ -227,8 +378,33 @@ export default function AdminPage() {
                   </div>
                   <div className="text-slate-500">模型：{selectedUser.modelName || '-'}</div>
                   <div className="text-slate-500">上下文消息数：{selectedUser.contextMessageLimit || 40}</div>
+                  <div className="text-slate-500">Daily chat limit: {selectedUser.dailyChatLimit ?? 30}</div>
                 </div>
 
+                <div className="mt-5 rounded-xl bg-[#fbfaf7] p-3">
+                  <h3 className="mb-2 text-sm font-black">Daily chat limit</h3>
+                  <div className="flex gap-2">
+                    <input
+                      type="number"
+                      min={0}
+                      max={10000}
+                      value={dailyChatLimit}
+                      onChange={(event) => setDailyChatLimit(event.target.value)}
+                      placeholder="Default 30"
+                      className="h-10 min-w-0 flex-1 rounded-full border border-black/[0.08] bg-white px-4 text-sm outline-none focus:border-slate-300"
+                    />
+                    <button
+                      type="button"
+                      onClick={submitDailyChatLimit}
+                      disabled={savingQuota}
+                      className="h-10 rounded-full bg-slate-950 px-4 text-sm font-bold text-white disabled:bg-slate-200 disabled:text-slate-400"
+                    >
+                      {savingQuota ? 'Saving' : 'Save'}
+                    </button>
+                  </div>
+                  <p className="mt-2 text-xs font-semibold text-slate-400">0 disables platform-model chat. Leave empty to use default 30.</p>
+                  {quotaMessage && <div className="mt-2 text-xs font-semibold text-slate-500">{quotaMessage}</div>}
+                </div>
                 <div className="mt-5 rounded-xl bg-[#fbfaf7] p-3">
                   <h3 className="mb-2 text-sm font-black">重置密码</h3>
                   <div className="flex gap-2">
@@ -279,7 +455,9 @@ export default function AdminPage() {
               </div>
             )}
           </div>
+          )}
 
+          {activeTab === 'agents' && (
           <div className="rounded-2xl border border-black/[0.06] bg-white p-5 shadow-sm">
             <div className="mb-4 flex items-center justify-between gap-3">
               <h2 className="text-lg font-black">Agent 管理</h2>
@@ -337,6 +515,7 @@ export default function AdminPage() {
               ))}
             </div>
           </div>
+          )}
         </section>
       </div>
     </main>

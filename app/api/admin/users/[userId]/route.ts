@@ -20,6 +20,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ user
         customModelEnabled: true,
         defaultStyle: true,
         contextMessageLimit: true,
+        dailyChatLimit: true,
         createdAt: true,
         updatedAt: true,
         _count: { select: { agents: true, conversations: true } },
@@ -63,16 +64,37 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ us
   try {
     await requireAdmin(request);
     const { userId } = await params;
-    const { password } = await request.json();
+    const { password, dailyChatLimit } = await request.json();
 
-    if (typeof password !== 'string' || password.length < 6) {
+    const data: { passwordHash?: string; dailyChatLimit?: number | null } = {};
+
+    if (password !== undefined) {
+      if (typeof password !== 'string' || password.length < 6) {
+        return NextResponse.json({ error: 'Password must be at least 6 characters' }, { status: 400 });
+      }
+
+      data.passwordHash = await bcrypt.hash(password, 10);
+    }
+
+    if (dailyChatLimit !== undefined) {
+      if (dailyChatLimit === null || dailyChatLimit === '') {
+        data.dailyChatLimit = null;
+      } else {
+        const limit = Number(dailyChatLimit);
+        if (!Number.isFinite(limit) || limit < 0 || limit > 10000) {
+          return NextResponse.json({ error: 'Daily chat limit must be between 0 and 10000' }, { status: 400 });
+        }
+        data.dailyChatLimit = Math.floor(limit);
+      }
+    }
+
+    if (Object.keys(data).length === 0) {
       return NextResponse.json({ error: 'Password must be at least 6 characters' }, { status: 400 });
     }
 
-    const passwordHash = await bcrypt.hash(password, 10);
     await prisma.user.update({
       where: { id: userId },
-      data: { passwordHash },
+      data,
       select: { id: true },
     });
 

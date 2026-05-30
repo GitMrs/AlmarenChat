@@ -3,8 +3,11 @@ import { requireAuth } from '@/app/api/_lib/auth';
 
 function getAdminEmails() {
   return (process.env.ADMIN_EMAILS || '')
+    .trim()
+    .replace(/^["']|["']$/g, '')
     .split(',')
     .map((email) => email.trim().toLowerCase())
+    .map((email) => email.replace(/^["']|["']$/g, ''))
     .filter(Boolean);
 }
 

@@ -19,12 +19,14 @@ model User {
   customModelEnabled Boolean @default(false)
   defaultStyle String?
   contextMessageLimit Int @default(40)
+  dailyChatLimit Int?
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
 
   conversations Conversation[]
   agents        Agent[]
   favorites     FavoriteAgent[]
+  chatUsages    DailyChatUsage[]
 }
 
 model Agent {
@@ -83,4 +85,17 @@ model FavoriteAgent {
   createdAt DateTime @default(now())
 
   @@unique([userId, source, agentId])
+}
+
+model DailyChatUsage {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  day       String
+  usedCount Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, day])
+  @@index([day])
 }

@@ -106,12 +106,18 @@ export const favorites = {
 export const admin = {
   dashboard: () => request<{ admin: any; stats: any; recentUsers: any[]; recentAgents: any[] }>('/admin'),
   users: (query?: string) => request<{ users: any[] }>(`/admin/users${query ? `?q=${encodeURIComponent(query)}` : ''}`),
+  createUser: (data: { email: string; password: string; name: string; dailyChatLimit?: number | null }) =>
+    request<{ user: any }>('/admin/users', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
   user: (id: string) => request<{ user: any }>(`/admin/users/${id}`),
-  resetUserPassword: (id: string, password: string) =>
+  updateUser: (id: string, data: { password?: string; dailyChatLimit?: number | null }) =>
     request<{ success: boolean }>(`/admin/users/${id}`, {
       method: 'PATCH',
-      body: JSON.stringify({ password }),
+      body: JSON.stringify(data),
     }),
+  resetUserPassword: (id: string, password: string) => admin.updateUser(id, { password }),
   agents: (query?: string) => request<{ agents: any[] }>(`/admin/agents${query ? `?q=${encodeURIComponent(query)}` : ''}`),
   updateAgent: (id: string, data: { isPublic: boolean }) =>
     request<{ agent: any }>(`/admin/agents/${id}`, {

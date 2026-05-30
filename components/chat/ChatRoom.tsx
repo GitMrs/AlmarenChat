@@ -7,6 +7,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import Avatar from '@/components/shared/Avatar';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
+import LoginRequired from '@/components/auth/LoginRequired';
 import LoadingSpinner from '@/components/shared/LoadingSpinner';
 import { getBuiltInAgents } from '@/lib/agents-data';
 import { streamChat, conversations as conversationsApi, agents as agentsApi, user as userApi, uploads } from '@/lib/api';
@@ -253,10 +254,10 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
   }, [agentId, existingConversationId]);
 
   useEffect(() => {
-    if (initialPrompt && agent && messages.length <= 1 && !existingConversationId) {
+    if (isLoggedIn && initialPrompt && agent && messages.length <= 1 && !existingConversationId) {
       handleSend(initialPrompt);
     }
-  }, [initialPrompt, agent, existingConversationId]);
+  }, [isLoggedIn, initialPrompt, agent, existingConversationId, messages.length]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -327,6 +328,11 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
     text?: string,
     options: { reuseLastUserMessage?: boolean; historyOverride?: ChatMessage[]; attachmentsOverride?: MessageAttachment[] } = {}
   ) => {
+    if (!isLoggedIn) {
+      router.push('/login');
+      return;
+    }
+
     const content = text ?? input.trim();
     const outgoingAttachments = options.attachmentsOverride || (pendingAttachment ? [pendingAttachment] : []);
     if ((!content && outgoingAttachments.length === 0) || isStreaming || uploadingImage) return;
@@ -414,12 +420,13 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
     } catch (error: any) {
       if (error.name !== 'AbortError') {
         console.error('Chat error:', error);
+        const errorContent = error.message || '抱歉，刚才生成失败了。你可以稍后再试，或换一种问法。';
         setMessages((prev) => [
           ...prev,
           {
             id: `error-${Date.now()}`,
             role: 'assistant',
-            content: '抱歉，刚才生成失败了。你可以稍后再试，或换一种问法。',
+            content: errorContent,
             createdAt: new Date().toISOString(),
           },
         ]);
@@ -682,7 +689,14 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
 
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-5 sm:px-6 lg:px-10">
           <div className="mx-auto max-w-4xl space-y-5">
-            {messages.length <= 1 && !isStreaming && (
+            {!isLoggedIn && (
+              <LoginRequired
+                title="登录后开始聊天"
+                description="聊天会消耗平台模型额度。登录后再开始对话，可以保护 API 额度，也能保存你的会话历史。"
+              />
+            )}
+
+            {isLoggedIn && messages.length <= 1 && !isStreaming && (
               <section className="rounded-[24px] bg-white/55 px-4 py-3">
                 <div className="mb-3 flex items-center gap-2 text-xs font-bold text-slate-400">
                   <Sparkles size={14} style={{ color: categoryColor }} />
@@ -702,7 +716,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
               </section>
             )}
 
-            {messages.map((message) => (
+            {isLoggedIn && messages.map((message) => (
               <div key={message.id} className={cn('flex gap-3', message.role === 'user' ? 'justify-end' : 'justify-start')}>
                 {message.role === 'assistant' && (
                   <Avatar src={displayAgent.avatar} alt={displayAgent.name} size="sm" className="mt-1 shrink-0" />
@@ -791,7 +805,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
               </div>
             ))}
 
-            {isStreaming && streamingContent && (
+            {isLoggedIn && isStreaming && streamingContent && (
               <div className="flex justify-start gap-3">
                 <Avatar src={displayAgent.avatar} alt={displayAgent.name} size="sm" className="mt-1 shrink-0" />
                 <div className="max-w-[82%] rounded-[24px] rounded-bl-md border border-black/[0.06] bg-white px-5 py-4 text-slate-800 shadow-sm">
@@ -803,7 +817,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
               </div>
             )}
 
-            {isStreaming && !streamingContent && (
+            {isLoggedIn && isStreaming && !streamingContent && (
               <div className="flex justify-start gap-3">
                 <Avatar src={displayAgent.avatar} alt={displayAgent.name} size="sm" className="mt-1 shrink-0" />
                 <div className="rounded-[24px] rounded-bl-md border border-black/[0.06] bg-white px-5 py-4 shadow-sm">
@@ -819,6 +833,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
           </div>
         </div>
 
+        {isLoggedIn && (
         <footer className="shrink-0 border-t border-black/[0.06] bg-white/88 px-4 py-4 backdrop-blur sm:px-6">
           <div className="mx-auto max-w-4xl">
             {(pendingAttachment || uploadError) && (
@@ -899,6 +914,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
             </div>
           </div>
         </footer>
+        )}
       </main>
       <ConfirmDialog
         open={Boolean(pendingDeleteMessage)}

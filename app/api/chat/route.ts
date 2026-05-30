@@ -3,7 +3,12 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import OpenAI from 'openai';
 import prisma from '@/app/api/_lib/db';
-import { getUserIdFromRequest } from '@/app/api/_lib/auth';
+import { requireAuth } from '@/app/api/_lib/auth';
+import { isAdminEmail } from '@/app/api/_lib/admin';
+
+const DAILY_CHAT_LIMIT = 30;
+const TEXT_CHAT_COST = 1;
+const IMAGE_CHAT_COST = 3;
 
 type ChatAttachment = {
   type: 'image';
@@ -21,6 +26,15 @@ async function imageAttachmentToDataUrl(attachment: ChatAttachment) {
   const bytes = await readFile(filePath);
   const mimeType = attachment.mimeType || 'image/png';
   return `data:${mimeType};base64,${bytes.toString('base64')}`;
+}
+
+function getQuotaDay() {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
 }
 
 export async function POST(request: Request) {
@@ -44,15 +58,66 @@ export async function POST(request: Request) {
       : [];
     const textMessage = typeof message === 'string' ? message : '';
 
-    const userId = getUserIdFromRequest(request);
-    const userSettings = userId
-      ? await prisma.user.findUnique({
-          where: { id: userId },
-          select: { contextMessageLimit: true },
-        })
-      : null;
+    const userId = requireAuth(request);
+    const userSettings = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        email: true,
+        contextMessageLimit: true,
+        customModelEnabled: true,
+        apiBaseUrl: true,
+        apiKey: true,
+        modelName: true,
+        dailyChatLimit: true,
+      },
+    });
+    if (!userSettings) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const usesCustomModel = Boolean(
+      userSettings.customModelEnabled &&
+        userSettings.apiBaseUrl &&
+        userSettings.apiKey &&
+        userSettings.modelName &&
+        apiBaseUrl &&
+        apiKey &&
+        modelName
+    );
+    const shouldCountQuota = !usesCustomModel && !isAdminEmail(userSettings.email);
+    const dailyChatLimit = userSettings.dailyChatLimit || DAILY_CHAT_LIMIT;
+    const quotaCost = imageAttachments.length > 0 ? IMAGE_CHAT_COST : TEXT_CHAT_COST;
+
+    if (shouldCountQuota) {
+      const day = getQuotaDay();
+      const usage = await prisma.dailyChatUsage.upsert({
+        where: { userId_day: { userId, day } },
+        update: {},
+        create: { userId, day },
+      });
+
+      if (usage.usedCount + quotaCost > dailyChatLimit) {
+        return NextResponse.json(
+          {
+            error: `今日免费聊天次数已用完。你可以明天再来，或在设置里开启自己的模型配置。`,
+            quota: {
+              limit: dailyChatLimit,
+              used: usage.usedCount,
+              remaining: Math.max(0, dailyChatLimit - usage.usedCount),
+              cost: quotaCost,
+            },
+          },
+          { status: 429 }
+        );
+      }
+
+      await prisma.dailyChatUsage.update({
+        where: { userId_day: { userId, day } },
+        data: { usedCount: { increment: quotaCost } },
+      });
+    }
+
     const requestedContextLimit =
-      userId &&
       contextMessageLimit !== undefined && Number.isFinite(Number(contextMessageLimit))
         ? Math.max(1, Math.min(80, Math.round(Number(contextMessageLimit))))
         : null;
@@ -80,17 +145,19 @@ export async function POST(request: Request) {
       resolvedConversationId = conversation.id;
     }
 
-    const conversationSettings =
-      userId && resolvedConversationId
-        ? await prisma.conversation.findFirst({
-            where: { id: resolvedConversationId, userId },
-            select: { contextMessageLimit: true },
-          })
-        : null;
+    const conversationSettings = resolvedConversationId
+      ? await prisma.conversation.findFirst({
+          where: { id: resolvedConversationId, userId },
+          select: { contextMessageLimit: true },
+        })
+      : null;
+    if (resolvedConversationId && !conversationSettings) {
+      return NextResponse.json({ error: 'Conversation not found' }, { status: 404 });
+    }
     const contextLimit = requestedContextLimit || conversationSettings?.contextMessageLimit || userSettings?.contextMessageLimit || 40;
 
     const persistedHistory =
-      userId && resolvedConversationId
+      resolvedConversationId
         ? await prisma.message.findMany({
             where: { conversationId: resolvedConversationId },
             orderBy: { createdAt: 'desc' },
@@ -128,7 +195,7 @@ export async function POST(request: Request) {
     }
 
     // Save user message
-    if (userId && resolvedConversationId && !skipPersistUserMessage) {
+    if (resolvedConversationId && !skipPersistUserMessage) {
       await prisma.message.create({
         data: {
           conversationId: resolvedConversationId,
@@ -165,7 +232,7 @@ export async function POST(request: Request) {
         controller.close();
 
         // Persist assistant message after stream completes
-        if (userId && resolvedConversationId && fullContent) {
+        if (resolvedConversationId && fullContent) {
           await prisma.message.create({
             data: { conversationId: resolvedConversationId, role: 'assistant', content: fullContent },
           });
@@ -182,6 +249,9 @@ export async function POST(request: Request) {
 
     return new Response(readable, { headers });
   } catch (e: any) {
+    if (e.message === 'Unauthorized') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
 }
