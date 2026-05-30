@@ -19,19 +19,20 @@ export async function GET(
     }
 
     const { searchParams } = new URL(request.url);
-    const cursor = searchParams.get('cursor');
-    const limit = Math.min(parseInt(searchParams.get('limit') || '50'), 100);
+    const before = searchParams.get('before');
+    const limit = Math.min(parseInt(searchParams.get('limit') || '30'), 100);
 
-    const messages = await prisma.message.findMany({
+    const rows = await prisma.message.findMany({
       where: {
         conversationId,
-        ...(cursor ? { createdAt: { gt: new Date(cursor) } } : {}),
+        ...(before ? { createdAt: { lt: new Date(before) } } : {}),
       },
-      orderBy: { createdAt: 'asc' },
+      orderBy: { createdAt: 'desc' },
       take: limit,
     });
+    const messages = rows.reverse();
 
-    return NextResponse.json({ messages });
+    return NextResponse.json({ messages, hasMore: rows.length === limit });
   } catch (e: any) {
     if (e.message === 'Unauthorized') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

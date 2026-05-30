@@ -75,8 +75,13 @@ export const conversations = {
       method: 'PATCH',
       body: JSON.stringify(data),
     }),
-  getMessages: (id: string, cursor?: string) =>
-    request<{ messages: any[] }>(`/conversations/${id}/messages${cursor ? `?cursor=${cursor}` : ''}`),
+  getMessages: (id: string, options?: { before?: string; limit?: number }) => {
+    const params = new URLSearchParams();
+    if (options?.before) params.set('before', options.before);
+    if (options?.limit) params.set('limit', String(options.limit));
+    const query = params.toString();
+    return request<{ messages: any[]; hasMore?: boolean }>(`/conversations/${id}/messages${query ? `?${query}` : ''}`);
+  },
   sendMessage: (id: string, content: string) =>
     request<{ message: any }>(`/conversations/${id}/messages`, {
       method: 'POST',
