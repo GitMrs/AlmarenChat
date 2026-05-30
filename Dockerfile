@@ -3,14 +3,13 @@ FROM node:22-bookworm-slim AS builder
 WORKDIR /app
 
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV PRISMA_SKIP_POSTINSTALL_GENERATE=1
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates openssl python3 make g++ \
   && rm -rf /var/lib/apt/lists/*
 
 COPY package.json yarn.lock ./
-COPY prisma ./prisma
-COPY prisma.config.ts ./prisma.config.ts
 RUN yarn install --frozen-lockfile
 
 COPY . .
