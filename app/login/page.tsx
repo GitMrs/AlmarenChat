@@ -330,8 +330,8 @@ export default function LoginPage() {
                   {isRegister ? '注册后开始塑造你的第一个 Agent。' : '登录后继续你的 Agent 对话空间。'}
                 </p>
               </div>
-
-              {<div className="mb-5 grid grid-cols-2 rounded-full bg-[#fbfaf7] p-1">
+              {/* 先不用注册  */}
+              {/* {<div className="mb-5 grid grid-cols-2 rounded-full bg-[#fbfaf7] p-1">
                 {[
                   ['login', '登录'],
                   ['register', '注册'],
@@ -351,7 +351,7 @@ export default function LoginPage() {
                     {label}
                   </button>
                 ))}
-              </div>}
+              </div>} */}
 
               <form onSubmit={handleSubmit} className="space-y-4">
                 {isRegister && (
