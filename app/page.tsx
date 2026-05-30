@@ -223,7 +223,7 @@ export default function HomePage() {
                   <button
                     key={conversation.id}
                     onClick={() => handleResumeConversation(conversation)}
-                    className="group flex items-center gap-4 rounded-[28px] border border-black/[0.06] bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg"
+                    className="group flex min-w-0 items-center gap-4 rounded-[28px] border border-black/[0.06] bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg"
                   >
                     <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#fbfaf7] text-2xl">
                       {conversation.agentAvatar || '🤖'}
@@ -232,7 +232,7 @@ export default function HomePage() {
                       <div className="truncate text-sm font-black text-slate-950">
                         {conversation.agentName || '未知 Agent'}
                       </div>
-                      <div className="mt-1 truncate text-xs text-slate-500">{conversation.title || '继续对话'}</div>
+                      <div className="mt-1 line-clamp-2 break-words text-xs leading-5 text-slate-500">{conversation.title || '继续对话'}</div>
                     </div>
                     <ArrowRight size={16} className="shrink-0 text-slate-300 transition group-hover:translate-x-1 group-hover:text-slate-950" />
                   </button>
