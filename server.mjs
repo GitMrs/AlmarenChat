@@ -2,6 +2,7 @@ import { createServer } from 'http';
 import { parse } from 'url';
 import next from 'next';
 import { Server as SocketIOServer } from 'socket.io';
+import { setupSocket } from './server/socket.mjs';
 
 const dev = process.env.NODE_ENV !== 'production';
 const hostname = '0.0.0.0';
@@ -26,8 +27,6 @@ app.prepare().then(async () => {
     cors: { origin: '*', methods: ['GET', 'POST'] },
   });
 
-  // Import and setup socket handlers
-  const { setupSocket } = await import('./server/socket.ts');
   setupSocket(io);
 
   server.listen(port, hostname, () => {
