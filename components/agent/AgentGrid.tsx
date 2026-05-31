@@ -23,7 +23,7 @@ export default function AgentGrid({
   if (agents.length === 0) {
     return (
       <div className="flex items-center justify-center py-12 text-gray-400 text-sm">
-        暂无 Agent
+        暂无世界
       </div>
     );
   }

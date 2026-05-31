@@ -1,31 +1,32 @@
 import type { Agent } from '@/types';
 
 const CATEGORY_MAP: Record<string, string> = {
-  academic: '学习',
-  career: '生活',
-  copywriting: '写作',
-  design: '创意',
-  education: '学习',
-  emotions: '心理',
-  entertainment: '娱乐',
-  games: '娱乐',
-  general: '工具',
-  life: '生活',
-  marketing: '写作',
-  office: '工具',
-  programming: '编程',
-  translation: '写作',
+  academic: '奇幻冒险',
+  career: '都市剧情',
+  copywriting: '浪漫言情',
+  design: '奇幻冒险',
+  education: '奇幻冒险',
+  emotions: '心理博弈',
+  entertainment: '喜剧搞笑',
+  games: '社交推理',
+  general: '都市剧情',
+  life: '都市剧情',
+  marketing: '浪漫言情',
+  office: '都市剧情',
+  programming: '科幻探索',
+  translation: '浪漫言情',
 };
 
 const CATEGORY_TONE_MAP: Record<string, string> = {
-  学习: '专业',
-  写作: '详细',
-  编程: '冷静',
-  心理: '温柔',
-  创意: '热情',
-  生活: '友好',
-  工具: '简洁',
-  娱乐: '幽默',
+  悬疑推理: '悬疑',
+  浪漫言情: '浪漫',
+  奇幻冒险: '史诗',
+  都市剧情: '沉浸',
+  社交推理: '紧张',
+  心理博弈: '黑暗',
+  喜剧搞笑: '幽默',
+  恐怖惊悚: '紧张',
+  科幻探索: '沉浸',
 };
 
 export interface RawAgent {
@@ -41,7 +42,7 @@ export interface RawAgent {
 }
 
 export function transformAgent(raw: RawAgent): Agent {
-  const category = CATEGORY_MAP[raw.meta.category] || '工具';
+  const category = CATEGORY_MAP[raw.meta.category] || '都市剧情';
 
   return {
     id: raw.identifier,
@@ -49,12 +50,13 @@ export function transformAgent(raw: RawAgent): Agent {
     avatar: raw.meta.avatar,
     description: raw.meta.description,
     category,
-    tone: CATEGORY_TONE_MAP[category] || '专业',
+    tone: CATEGORY_TONE_MAP[category] || '沉浸',
     greeting: `你好，我是 ${raw.meta.title}。${raw.meta.description}`,
     systemPrompt: raw.description || '',
     isPublic: true,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
+    tags: raw.meta.tags,
   };
 }
 
@@ -89,7 +91,7 @@ export function searchAgents(agents: Agent[], query: string): Agent[] {
 }
 
 export function getFeaturedAgents(agents: Agent[], count = 1): Agent[] {
-  const categories = ['写作', '编程', '学习', '心理', '创意', '生活', '工具', '娱乐'];
+  const categories = ['悬疑推理', '浪漫言情', '奇幻冒险', '都市剧情', '社交推理', '心理博弈', '喜剧搞笑', '恐怖惊悚', '科幻探索'];
   const featured: Agent[] = [];
 
   for (const category of categories) {

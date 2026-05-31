@@ -25,8 +25,29 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const userId = requireAuth(request);
-    const { name, avatar, description, category, tone, greeting, systemPrompt, isPublic } =
-      await request.json();
+    const {
+      name,
+      avatar,
+      description,
+      category,
+      tone,
+      greeting,
+      systemPrompt,
+      isPublic,
+      // Entertainment platform fields
+      creationType,
+      hook,
+      worldSetting,
+      playerRole,
+      openingScene,
+      rules,
+      winConditions,
+      estimatedDuration,
+      difficulty,
+      playerCount,
+      tags,
+      builderConfig,
+    } = await request.json();
 
     const agent = await prisma.agent.create({
       data: {
@@ -39,6 +60,18 @@ export async function POST(request: Request) {
         systemPrompt,
         isPublic: isPublic ?? false,
         creatorId: userId,
+        creationType,
+        hook,
+        worldSetting,
+        playerRole,
+        openingScene,
+        rules,
+        winConditions,
+        estimatedDuration,
+        difficulty,
+        playerCount,
+        tags: tags ? JSON.stringify(tags) : null,
+        builderConfig: builderConfig ? JSON.stringify(builderConfig) : null,
       },
     });
 

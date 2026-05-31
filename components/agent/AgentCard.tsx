@@ -1,10 +1,10 @@
 'use client';
 
-import { ArrowRight, Heart, MessageCircle, Sparkles } from 'lucide-react';
+import { ArrowRight, Heart, MapPin, Sparkles } from 'lucide-react';
 import { motion } from 'motion/react';
 import Avatar from '@/components/shared/Avatar';
 import { cn } from '@/lib/utils';
-import { CATEGORY_COLORS } from '@/types';
+import { CATEGORY_COLORS, DIFFICULTY_LABELS } from '@/types';
 import type { Agent } from '@/types';
 
 interface AgentCardProps {
@@ -19,14 +19,15 @@ interface AgentCardProps {
 }
 
 const categoryIntents: Record<string, string> = {
-  写作: '帮你把想法变成能发布的内容',
-  编程: '一起拆问题、看代码、做方案',
-  学习: '把复杂知识讲到你听懂为止',
-  心理: '陪你慢慢梳理情绪和选择',
-  创意: '给灵感一点火花和方向',
-  生活: '处理日常里的小麻烦',
-  工具: '把重复工作变简单',
-  娱乐: '轻松一点，玩点不一样的',
+  悬疑推理: '一桩谜案等你来破解',
+  浪漫言情: '一段心跳加速的邂逅',
+  奇幻冒险: '踏入未知的魔法世界',
+  都市剧情: '都市里的人生百态',
+  社交推理: '谁在说谎？找出真相',
+  心理博弈: '一场心理层面的较量',
+  喜剧搞笑: '轻松一刻，笑到停不下来',
+  恐怖惊悚: '你敢踏入这片黑暗吗？',
+  科幻探索: '探索宇宙的未知角落',
 };
 
 export default function AgentCard({
@@ -39,25 +40,25 @@ export default function AgentCard({
   className,
   showFavorite = true,
 }: AgentCardProps) {
-  const category = agent.category || '工具';
-  const color = CATEGORY_COLORS[category] || '#2563eb';
-  const intent = categoryIntents[category] || '随时准备帮你处理问题';
+  const category = agent.category || '都市剧情';
+  const color = CATEGORY_COLORS[category] || '#6366f1';
+  const intent = categoryIntents[category] || '一段等你开启的故事';
 
   if (variant === 'compact') {
     return (
       <button
         onClick={() => onChat?.(agent)}
         className={cn(
-          'flex w-full items-center gap-3 rounded-2xl border border-black/[0.06] bg-white p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md',
+          'flex w-full items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.05] p-3 text-left transition hover:-translate-y-0.5 hover:bg-white/[0.08]',
           className
         )}
       >
         <Avatar src={agent.avatar} alt={agent.name} size="sm" />
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-bold text-slate-950">{agent.name}</p>
-          <p className="truncate text-xs text-slate-500">{intent}</p>
+          <p className="truncate text-sm font-bold text-white">{agent.name}</p>
+          <p className="truncate text-xs text-white/54">{intent}</p>
         </div>
-        <ArrowRight size={16} className="text-slate-300" />
+        <ArrowRight size={16} className="text-white/30" />
       </button>
     );
   }
@@ -68,7 +69,7 @@ export default function AgentCard({
     <motion.article
       transition={{ duration: 0.2 }}
       className={cn(
-        'relative flex min-h-[265px] cursor-default flex-col overflow-hidden rounded-[24px] border border-black/[0.07] bg-white p-5 text-left shadow-sm',
+        'relative flex min-h-[265px] cursor-default flex-col overflow-hidden rounded-[24px] border border-white/10 bg-[#242039] p-5 text-left shadow-sm',
         isFeatured && 'min-h-[300px] p-6',
         className
       )}
@@ -88,14 +89,14 @@ export default function AgentCard({
 
       <div className="relative flex items-start justify-between gap-4">
         <div className="flex min-w-0 flex-1 items-center gap-3">
-          <div className="rounded-3xl bg-slate-50 p-2 ring-1 ring-black/[0.04]">
+          <div className="rounded-3xl bg-white/[0.08] p-2 ring-1 ring-white/[0.06]">
             <Avatar src={agent.avatar} alt={agent.name} size={isFeatured ? 'lg' : 'md'} />
           </div>
           <div className="min-w-0 flex-1">
             <button
               onClick={() => (onView || onChat)?.(agent)}
               className={cn(
-                'inline-block max-w-full cursor-pointer truncate text-left font-black text-slate-950 transition hover:text-slate-600 hover:underline hover:decoration-slate-300 hover:underline-offset-4',
+                'inline-block max-w-full cursor-pointer truncate text-left font-black text-white transition hover:text-white/70 hover:underline hover:decoration-white/30 hover:underline-offset-4',
                 isFeatured ? 'text-xl' : 'text-base'
               )}
             >
@@ -109,8 +110,13 @@ export default function AgentCard({
                 {category}
               </span>
               {agent.tone && (
-                <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
+                <span className="rounded-full bg-white/[0.08] px-2.5 py-1 text-xs font-semibold text-white/64">
                   {agent.tone}
+                </span>
+              )}
+              {agent.difficulty && (
+                <span className="rounded-full bg-[#d89022]/20 px-2.5 py-1 text-xs font-semibold text-[#d89022]">
+                  {DIFFICULTY_LABELS[agent.difficulty] || agent.difficulty}
                 </span>
               )}
             </div>
@@ -125,40 +131,40 @@ export default function AgentCard({
             }}
             className={cn(
               'shrink-0 cursor-pointer rounded-full p-2 transition',
-              isFavorited ? 'bg-rose-50 text-rose-500' : 'bg-white/80 text-slate-300 hover:text-rose-400'
+              isFavorited ? 'bg-rose-500/20 text-rose-400' : 'bg-white/[0.08] text-white/30 hover:text-rose-400'
             )}
-            aria-label="收藏 Agent"
+            aria-label="收藏"
           >
             <Heart size={18} fill={isFavorited ? 'currentColor' : 'none'} />
           </button>
         )}
       </div>
 
-      <p className={cn('relative mt-5 text-sm leading-6 text-slate-600', isFeatured ? 'line-clamp-3' : 'line-clamp-2')}>
+      <p className={cn('relative mt-5 text-sm leading-6 text-white/58', isFeatured ? 'line-clamp-3' : 'line-clamp-2')}>
         {agent.description}
       </p>
 
-      <div className="relative mt-5 rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-700">
-        <div className="mb-1 flex items-center gap-1.5 text-xs font-bold text-slate-400">
-          <Sparkles size={13} />
-          适合这样开始
+      <div className="relative mt-5 rounded-2xl bg-white/[0.06] px-4 py-3 text-sm text-white/70">
+        <div className="mb-1 flex items-center gap-1.5 text-xs font-bold text-white/40">
+          <MapPin size={13} />
+          故事入口
         </div>
-        <p className="line-clamp-2">“{intent}”</p>
+        <p className="line-clamp-2">"{intent}"</p>
       </div>
 
       <div className="relative mt-auto flex items-center justify-between gap-3 pt-5">
-        <div className="min-w-0 text-xs font-semibold leading-tight text-slate-400">
-          Agent<br className="sm:hidden" /> 身份卡
+        <div className="min-w-0 text-xs font-semibold leading-tight text-white/40">
+          {category}
         </div>
         <button
           onClick={(event) => {
             event.stopPropagation();
             onChat?.(agent);
           }}
-          className="flex shrink-0 cursor-pointer items-center gap-2 whitespace-nowrap rounded-full bg-slate-950 px-4 py-2 text-sm font-bold text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+          className="flex shrink-0 cursor-pointer items-center gap-2 whitespace-nowrap rounded-full bg-white px-4 py-2 text-sm font-bold text-[#19172a] shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
         >
-          <MessageCircle size={16} />
-          开始聊天
+          <Sparkles size={16} />
+          开始冒险
         </button>
       </div>
     </motion.article>

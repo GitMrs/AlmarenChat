@@ -121,7 +121,7 @@ function CollapsibleAssistantMessage({ content, shouldAutoCollapse }: { content:
         <button
           type="button"
           onClick={() => setExpanded((value) => !value)}
-          className="inline-flex items-center text-xs font-black text-slate-500 underline decoration-slate-300 underline-offset-4 transition hover:text-slate-900 hover:decoration-slate-500"
+          className="inline-flex items-center text-xs font-black text-white/54 underline decoration-white/25 underline-offset-4 transition hover:text-white hover:decoration-white/50"
         >
           {expanded ? '收起回答' : '展开完整回答'}
         </button>
@@ -169,7 +169,7 @@ export const MessageItem = memo(function MessageItem({
             'min-w-0 max-w-full rounded-[24px] px-5 py-4 shadow-sm',
             message.role === 'user'
               ? 'rounded-br-md text-white'
-              : 'rounded-bl-md border border-black/[0.06] bg-white text-slate-800'
+              : 'rounded-bl-md border border-white/10 bg-[#242039] text-white/82'
           )}
           style={message.role === 'user' ? { backgroundColor: categoryColor } : undefined}
         >
@@ -187,7 +187,7 @@ export const MessageItem = memo(function MessageItem({
         {message.id !== 'greeting' && (
           <div
             className={cn(
-              'mt-1 flex items-center gap-1 px-2 text-slate-400 transition md:opacity-0 md:group-hover:opacity-100',
+              'mt-1 flex items-center gap-1 px-2 text-white/40 transition md:opacity-0 md:group-hover:opacity-100',
               activeActionMessageId === message.id ? 'opacity-100' : 'opacity-0'
             )}
           >
@@ -208,11 +208,11 @@ export const MessageItem = memo(function MessageItem({
                   event.stopPropagation();
                   onCopy(message.id, message.content);
                 }}
-                className="inline-flex h-7 w-7 items-center justify-center rounded-full transition hover:bg-slate-100 hover:text-slate-700"
+                className="inline-flex h-7 w-7 items-center justify-center rounded-full transition hover:bg-white/[0.08] hover:text-white/70"
                 title={copiedId === message.id ? '已复制' : '复制'}
                 aria-label="复制回复"
               >
-                {copiedId === message.id ? <Check size={13} className="text-emerald-500" /> : <Copy size={13} />}
+                {copiedId === message.id ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
               </button>
             )}
             {message.role === 'assistant' && message.id === latestAssistantMessageId && (
@@ -221,7 +221,7 @@ export const MessageItem = memo(function MessageItem({
                   event.stopPropagation();
                   onRegenerate();
                 }}
-                className="inline-flex h-7 w-7 items-center justify-center rounded-full transition hover:bg-slate-100 hover:text-slate-700"
+                className="inline-flex h-7 w-7 items-center justify-center rounded-full transition hover:bg-white/[0.08] hover:text-white/70"
                 title="重新生成"
                 aria-label="重新生成"
               >
@@ -233,7 +233,7 @@ export const MessageItem = memo(function MessageItem({
                 event.stopPropagation();
                 onDelete(message);
               }}
-              className="inline-flex h-7 w-7 items-center justify-center rounded-full transition hover:bg-rose-50 hover:text-rose-500"
+              className="inline-flex h-7 w-7 items-center justify-center rounded-full transition hover:bg-rose-500/10 hover:text-rose-400"
               title="删除"
               aria-label="删除消息"
             >

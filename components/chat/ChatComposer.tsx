@@ -44,10 +44,10 @@ export default function ChatComposer({
   onStop,
 }: ChatComposerProps) {
   return (
-    <footer className="shrink-0 border-t border-black/[0.06] bg-white/88 px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-4 backdrop-blur sm:px-6">
+    <footer className="shrink-0 border-t border-white/10 bg-[#19172a]/88 px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-4 backdrop-blur sm:px-6">
       <div className="mx-auto max-w-4xl">
         {(pendingAttachment || pendingLargeTextMeta || uploadError) && (
-          <div className="mb-2 flex items-center justify-between gap-3 rounded-2xl border border-black/[0.06] bg-white px-3 py-2 shadow-sm">
+          <div className="mb-2 flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.08] px-3 py-2">
             {pendingAttachment ? (
               <div className="flex min-w-0 items-center gap-3">
                 <img
@@ -56,38 +56,38 @@ export default function ChatComposer({
                   className="h-12 w-12 shrink-0 rounded-xl object-cover"
                 />
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-bold text-slate-700">{pendingAttachment.name || '已选择图片'}</p>
-                  <p className="text-xs font-semibold text-slate-400">发送后会随本条消息交给 AI 分析</p>
+                  <p className="truncate text-sm font-bold text-white/70">{pendingAttachment.name || '已选择图片'}</p>
+                  <p className="text-xs font-semibold text-white/40">发送后会随本条消息交给 AI 分析</p>
                 </div>
               </div>
             ) : pendingLargeTextMeta ? (
               <div className="flex min-w-0 items-center gap-3">
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#fbfaf7] text-xs font-black text-slate-500">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white/[0.08] text-xs font-black text-white/54">
                   TXT
                 </div>
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-bold text-slate-700">
+                  <p className="truncate text-sm font-bold text-white/70">
                     {pendingLargeTextMeta.kind === 'json' ? '已添加 JSON 数据' : '已添加大段文本'}
                   </p>
-                  <p className="text-xs font-semibold text-slate-400">
+                  <p className="text-xs font-semibold text-white/40">
                     {pendingLargeTextMeta.chars.toLocaleString('zh-CN')} 字符，发送时会使用完整内容
                   </p>
                 </div>
               </div>
             ) : (
-              <p className="text-sm font-semibold text-rose-500">{uploadError}</p>
+              <p className="text-sm font-semibold text-rose-400">{uploadError}</p>
             )}
             <button
               type="button"
               onClick={onClearAttachment}
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-white/40 transition hover:bg-white/[0.08] hover:text-white/70"
               aria-label="移除图片"
             >
               <X size={16} />
             </button>
           </div>
         )}
-        <div className="flex items-end gap-3 rounded-[28px] border border-black/[0.08] bg-[#fbfaf7] p-2 shadow-sm">
+        <div className="flex items-end gap-3 rounded-[28px] border border-white/10 bg-white/[0.08] p-2">
           <input
             ref={fileInputRef}
             type="file"
@@ -99,7 +99,7 @@ export default function ChatComposer({
             type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={uploadingImage || isStreaming}
-            className="mb-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-slate-500 transition hover:bg-white hover:text-slate-800 disabled:bg-transparent disabled:text-slate-300"
+            className="mb-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-white/54 transition hover:bg-white/[0.08] hover:text-white disabled:bg-transparent disabled:text-white/30"
             aria-label="上传图片"
             title="上传图片"
           >
@@ -113,7 +113,7 @@ export default function ChatComposer({
             onFocus={onFocus}
             placeholder={`向 ${agentName} 说点什么...`}
             rows={1}
-            className="max-h-36 min-h-11 flex-1 resize-none bg-transparent px-4 py-3 text-sm font-medium leading-6 text-slate-800 outline-none placeholder:text-slate-400"
+            className="max-h-36 min-h-11 flex-1 resize-none bg-transparent px-4 py-3 text-sm font-medium leading-6 text-white outline-none placeholder:text-white/40"
           />
           {isStreaming ? (
             <button

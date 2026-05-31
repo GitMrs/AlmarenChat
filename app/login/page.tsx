@@ -23,34 +23,34 @@ type ActiveField = 'name' | 'email' | 'password' | null;
 const studioAgents = [
   {
     key: 'name',
-    name: '灵感搭档',
-    avatar: '✨',
-    role: '内容和创意',
-    color: '#f59e0b',
-    note: '把零散想法整理成可发布内容',
+    name: '迷雾侦探',
+    avatar: '🔍',
+    role: '悬疑推理',
+    color: '#6366f1',
+    note: '一桩离奇案件等待破解',
     signal: 64,
   },
   {
     key: 'email',
-    name: '代码教练',
-    avatar: '⌘',
-    role: '代码和方案',
-    color: '#2563eb',
-    note: '帮你拆问题、看结构、找路径',
+    name: '星际旅者',
+    avatar: '🚀',
+    role: '科幻探索',
+    color: '#06b6d4',
+    note: '探索宇宙的未知角落',
     signal: 78,
   },
   {
     key: 'password',
-    name: '学习向导',
-    avatar: '∴',
-    role: '知识和练习',
-    color: '#10b981',
-    note: '用例子、追问和复盘讲清楚',
+    name: '奇幻冒险家',
+    avatar: '⚔️',
+    role: '奇幻冒险',
+    color: '#8b5cf6',
+    note: '踏入魔法世界的旅程',
     signal: 88,
   },
 ];
 
-const studioStats = ['会话记忆', '私有维护', '发布广场'];
+const studioStats = ['冒险记忆', '世界创作', '故事广场'];
 
 function AgentStudioStage({
   activeField,
@@ -125,8 +125,8 @@ function AgentStudioStage({
         x: isActive ? 8 : 0,
         scale: isActive ? 1.025 : 1,
         boxShadow: isActive
-          ? '0 18px 44px rgba(15, 23, 42, 0.14)'
-          : '0 10px 24px rgba(15, 23, 42, 0.08)',
+          ? '0 18px 44px rgba(0, 0, 0, 0.3)'
+          : '0 10px 24px rgba(0, 0, 0, 0.2)',
         duration: 0.28,
         ease: 'power2.out',
       });
@@ -141,22 +141,22 @@ function AgentStudioStage({
   }, [activeField, passwordLength, showPassword]);
 
   return (
-    <div ref={stageRef} className="relative hidden min-h-[640px] overflow-hidden bg-[#f8f6f0] p-10 lg:block">
-      <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(255,247,237,0.9),rgba(248,250,252,0.96)_44%,rgba(236,253,245,0.75))]" />
-      <div className="absolute inset-x-10 top-10 h-px bg-black/[0.05]" />
-      <div className="absolute bottom-10 left-10 right-10 h-px bg-black/[0.05]" />
+    <div ref={stageRef} className="relative hidden min-h-[640px] overflow-hidden bg-[#19172a] p-10 lg:block">
+      <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(25,23,42,0.95),rgba(36,32,57,0.98)_44%,rgba(25,23,42,0.9))]" />
+      <div className="absolute inset-x-10 top-10 h-px bg-white/[0.06]" />
+      <div className="absolute bottom-10 left-10 right-10 h-px bg-white/[0.06]" />
 
       <div className="relative z-10 flex h-full flex-col justify-between">
         <div>
-          <div className="mb-7 inline-flex items-center gap-2 rounded-full border border-black/[0.06] bg-white/82 px-4 py-2 text-sm font-bold text-slate-700 shadow-sm backdrop-blur">
-            <Sparkles size={16} className="text-amber-500" />
-            Almaren Agent Studio
+          <div className="mb-7 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.08] px-4 py-2 text-sm font-bold text-white/82 backdrop-blur">
+            <Sparkles size={16} className="text-[#d89022]" />
+            Almaren 故事工坊
           </div>
-          <h1 className="max-w-xl text-5xl font-black leading-tight text-slate-950">
-            回到你的 Agent 工作台。
+          <h1 className="max-w-xl text-5xl font-black leading-tight text-white">
+            回到你的故事世界。
           </h1>
-          <p className="mt-5 max-w-md text-base leading-8 text-slate-600">
-            登录后继续对话、维护自定义 Agent，并把成熟角色发布到广场。
+          <p className="mt-5 max-w-md text-base leading-8 text-white/58">
+            登录后继续冒险、创作世界，并把你的故事发布到广场。
           </p>
         </div>
 
@@ -171,8 +171,8 @@ function AgentStudioStage({
                     railRefs.current[index] = node;
                   }}
                   className={cn(
-                    'studio-panel rounded-[26px] border bg-white/86 p-4 shadow-lg backdrop-blur transition-colors',
-                    isActive ? 'border-slate-950/[0.12]' : 'border-white/80'
+                    'studio-panel rounded-[26px] border bg-white/[0.08] p-4 backdrop-blur transition-colors',
+                    isActive ? 'border-white/20' : 'border-white/10'
                   )}
                 >
                   <div className="mb-3 flex items-center gap-3">
@@ -183,12 +183,12 @@ function AgentStudioStage({
                       {agent.avatar}
                     </div>
                     <div className="min-w-0">
-                      <div className="truncate text-sm font-black text-slate-950">{agent.name}</div>
-                      <div className="truncate text-xs font-bold text-slate-400">{agent.role}</div>
+                      <div className="truncate text-sm font-black text-white">{agent.name}</div>
+                      <div className="truncate text-xs font-bold text-white/40">{agent.role}</div>
                     </div>
                   </div>
-                  <p className="text-xs leading-5 text-slate-500">{agent.note}</p>
-                  <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-100">
+                  <p className="text-xs leading-5 text-white/54">{agent.note}</p>
+                  <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/[0.08]">
                     <div
                       ref={(node) => {
                         signalRefs.current[index] = node;
@@ -204,32 +204,32 @@ function AgentStudioStage({
 
           <div
             ref={previewRef}
-            className="studio-panel relative self-center overflow-hidden rounded-[34px] border border-white/80 bg-white/88 p-5 shadow-2xl backdrop-blur"
+            className="studio-panel relative self-center overflow-hidden rounded-[34px] border border-white/10 bg-white/[0.08] p-5 backdrop-blur"
           >
             <div className="mb-5 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="flex h-12 w-12 items-center justify-center rounded-3xl bg-slate-950 text-white">
+                <div className="flex h-12 w-12 items-center justify-center rounded-3xl bg-white/10 text-white">
                   {mode === 'register' ? <Wand2 size={22} /> : <MessageCircle size={22} />}
                 </div>
                 <div>
-                  <div className="text-base font-black text-slate-950">
-                    {mode === 'register' ? '新 Agent 身份草稿' : '最近的 Agent 会话'}
+                  <div className="text-base font-black text-white">
+                    {mode === 'register' ? '新世界创作草稿' : '最近的冒险记录'}
                   </div>
-                  <div className="text-xs font-bold text-slate-400">
+                  <div className="text-xs font-bold text-white/40">
                     {activeField === 'password' ? '登录信息已隐藏' : '准备继续'}
                   </div>
                 </div>
               </div>
-              <div className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-black text-emerald-700">
+              <div className="rounded-full bg-emerald-500/20 px-3 py-1 text-xs font-black text-emerald-400">
                 Ready
               </div>
             </div>
 
             <div className="space-y-3">
               {[
-                ['灵感搭档', '我已经记住你上次整理到一半的选题。'],
-                ['你', '登录后继续，把它改成可发布的版本。'],
-                ['代码教练', '也可以顺手检查一下当前项目结构。'],
+                ['迷雾侦探', '案件现场发现了新的线索...'],
+                ['你', '让我仔细看看那个可疑的脚印。'],
+                ['星际旅者', '前方探测到未知信号源。'],
               ].map(([speaker, text], index) => (
                 <div
                   key={`${speaker}-${text}`}
@@ -237,11 +237,11 @@ function AgentStudioStage({
                     bubbleRefs.current[index] = node;
                   }}
                   className={cn(
-                    'studio-bubble rounded-2xl px-4 py-3 shadow-sm',
-                    speaker === '你' ? 'ml-10 bg-slate-950 text-white' : 'mr-8 bg-[#fbfaf7] text-slate-700'
+                    'studio-bubble rounded-2xl px-4 py-3',
+                    speaker === '你' ? 'ml-10 bg-white text-[#19172a]' : 'mr-8 bg-white/[0.08] text-white/70'
                   )}
                 >
-                  <div className={cn('mb-1 text-[10px] font-black', speaker === '你' ? 'text-white/50' : 'text-slate-400')}>
+                  <div className={cn('mb-1 text-[10px] font-black', speaker === '你' ? 'text-[#19172a]/50' : 'text-white/40')}>
                     {speaker}
                   </div>
                   <div className="text-sm font-semibold leading-6">{text}</div>
@@ -253,7 +253,7 @@ function AgentStudioStage({
 
         <div className="grid grid-cols-3 gap-3">
           {studioStats.map((item) => (
-            <div key={item} className="rounded-2xl bg-white/75 px-4 py-3 text-center text-sm font-black text-slate-700 shadow-sm">
+            <div key={item} className="rounded-2xl bg-white/[0.08] px-4 py-3 text-center text-sm font-black text-white/70">
               {item}
             </div>
           ))}
@@ -298,17 +298,17 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="min-h-screen bg-[#fbfaf7] px-4 py-6 text-slate-950">
+    <main className="min-h-screen bg-[#19172a] px-4 py-6 text-white">
       <div className="mx-auto flex min-h-[calc(100vh-48px)] max-w-6xl flex-col">
         <Link
           href="/"
-          className="mb-6 inline-flex w-fit items-center gap-2 rounded-full border border-black/[0.06] bg-white px-4 py-2 text-sm font-bold text-slate-600 shadow-sm hover:text-slate-950"
+          className="mb-6 inline-flex w-fit items-center gap-2 rounded-full border border-white/10 bg-white/[0.08] px-4 py-2 text-sm font-bold text-white/70 hover:text-white"
         >
           <ArrowLeft size={16} />
           返回首页
         </Link>
 
-        <div className="grid flex-1 overflow-hidden rounded-[36px] border border-black/[0.06] bg-white shadow-sm lg:grid-cols-[1.08fr_0.92fr]">
+        <div className="grid flex-1 overflow-hidden rounded-[36px] border border-white/10 bg-[#242039] lg:grid-cols-[1.08fr_0.92fr]">
           <AgentStudioStage
             activeField={activeField}
             showPassword={showPassword}
@@ -319,57 +319,35 @@ export default function LoginPage() {
           <section className="flex items-center justify-center p-6 sm:p-10">
             <div className="w-full max-w-md">
               <div className="mb-8">
-                <div className="mb-4 inline-flex items-center gap-2 rounded-full bg-slate-950 px-4 py-2 text-sm font-bold text-white">
-                  <Sparkles size={15} />
+                <div className="mb-4 inline-flex items-center gap-2 rounded-full bg-white/[0.08] px-4 py-2 text-sm font-bold text-white/82">
+                  <Sparkles size={15} className="text-[#d89022]" />
                   AlmarenChat
                 </div>
-                <h2 className="text-3xl font-black text-slate-950">
+                <h2 className="text-3xl font-black text-white">
                   {isRegister ? '创建你的账号' : '欢迎回来'}
                 </h2>
-                <p className="mt-2 text-sm leading-6 text-slate-500">
-                  {isRegister ? '注册后开始塑造你的第一个 Agent。' : '登录后继续你的 Agent 对话空间。'}
+                <p className="mt-2 text-sm leading-6 text-white/54">
+                  {isRegister ? '注册后开始创作你的第一个故事世界。' : '登录后继续你的冒险旅程。'}
                 </p>
               </div>
-              {/* 先不用注册  */}
-              {/* {<div className="mb-5 grid grid-cols-2 rounded-full bg-[#fbfaf7] p-1">
-                {[
-                  ['login', '登录'],
-                  ['register', '注册'],
-                ].map(([value, label]) => (
-                  <button
-                    key={value}
-                    type="button"
-                    onClick={() => {
-                      setMode(value as AuthMode);
-                      setError('');
-                    }}
-                    className={cn(
-                      'rounded-full px-4 py-2 text-sm font-bold transition',
-                      mode === value ? 'bg-slate-950 text-white shadow-sm' : 'text-slate-500'
-                    )}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>} */}
 
               <form onSubmit={handleSubmit} className="space-y-4">
                 {isRegister && (
                   <label className="block">
-                    <span className="mb-2 block text-sm font-bold text-slate-700">昵称</span>
+                    <span className="mb-2 block text-sm font-bold text-white/70">昵称</span>
                     <input
                       value={name}
                       onFocus={() => setActiveField('name')}
                       onBlur={() => setActiveField(null)}
                       onChange={(event) => setName(event.target.value)}
                       placeholder="你希望别人怎么称呼你？"
-                      className="h-12 w-full rounded-2xl border border-black/[0.08] bg-[#fbfaf7] px-4 text-sm font-medium outline-none transition placeholder:text-slate-400 focus:border-slate-300 focus:ring-4 focus:ring-slate-200/70"
+                      className="h-12 w-full rounded-2xl border border-white/10 bg-white/[0.08] px-4 text-sm font-medium text-white outline-none transition placeholder:text-white/40 focus:border-white/20 focus:ring-4 focus:ring-white/[0.06]"
                     />
                   </label>
                 )}
 
                 <label className="block">
-                  <span className="mb-2 block text-sm font-bold text-slate-700">邮箱</span>
+                  <span className="mb-2 block text-sm font-bold text-white/70">邮箱</span>
                   <input
                     type="email"
                     value={email}
@@ -377,12 +355,12 @@ export default function LoginPage() {
                     onBlur={() => setActiveField(null)}
                     onChange={(event) => setEmail(event.target.value)}
                     placeholder="name@example.com"
-                    className="h-12 w-full rounded-2xl border border-black/[0.08] bg-[#fbfaf7] px-4 text-sm font-medium outline-none transition placeholder:text-slate-400 focus:border-slate-300 focus:ring-4 focus:ring-slate-200/70"
+                    className="h-12 w-full rounded-2xl border border-white/10 bg-white/[0.08] px-4 text-sm font-medium text-white outline-none transition placeholder:text-white/40 focus:border-white/20 focus:ring-4 focus:ring-white/[0.06]"
                   />
                 </label>
 
                 <label className="block">
-                  <span className="mb-2 block text-sm font-bold text-slate-700">密码</span>
+                  <span className="mb-2 block text-sm font-bold text-white/70">密码</span>
                   <div className="relative">
                     <input
                       type={showPassword ? 'text' : 'password'}
@@ -391,12 +369,12 @@ export default function LoginPage() {
                       onBlur={() => setActiveField(null)}
                       onChange={(event) => setPassword(event.target.value)}
                       placeholder="至少 6 位"
-                      className="h-12 w-full rounded-2xl border border-black/[0.08] bg-[#fbfaf7] px-4 pr-12 text-sm font-medium outline-none transition placeholder:text-slate-400 focus:border-slate-300 focus:ring-4 focus:ring-slate-200/70"
+                      className="h-12 w-full rounded-2xl border border-white/10 bg-white/[0.08] px-4 pr-12 text-sm font-medium text-white outline-none transition placeholder:text-white/40 focus:border-white/20 focus:ring-4 focus:ring-white/[0.06]"
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword((value) => !value)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-2 text-slate-400 hover:bg-white hover:text-slate-700"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-2 text-white/40 hover:bg-white/[0.08] hover:text-white/70"
                       aria-label={showPassword ? '隐藏密码' : '显示密码'}
                     >
                       {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
@@ -405,7 +383,7 @@ export default function LoginPage() {
                 </label>
 
                 {error && (
-                  <div className="rounded-2xl bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-600">
+                  <div className="rounded-2xl bg-rose-500/10 px-4 py-3 text-sm font-semibold text-rose-400">
                     {error}
                   </div>
                 )}
@@ -416,8 +394,8 @@ export default function LoginPage() {
                   className={cn(
                     'flex h-12 w-full items-center justify-center gap-2 rounded-full text-sm font-black transition',
                     canSubmit && !loading
-                      ? 'bg-slate-950 text-white shadow-sm hover:-translate-y-0.5 hover:shadow-lg'
-                      : 'bg-slate-100 text-slate-400'
+                      ? 'bg-white text-[#19172a] shadow-sm hover:-translate-y-0.5 hover:shadow-lg'
+                      : 'bg-white/[0.08] text-white/30'
                   )}
                 >
                   {loading ? (
@@ -436,7 +414,7 @@ export default function LoginPage() {
                 </button>
               </form>
 
-              <p className="mt-5 text-center text-xs leading-5 text-slate-400">
+              <p className="mt-5 text-center text-xs leading-5 text-white/40">
                 继续即代表你同意在本地保存登录状态。后续可补充服务条款和隐私政策。
               </p>
             </div>

@@ -1,16 +1,16 @@
 'use client';
 
 import { usePathname, useRouter } from 'next/navigation';
-import { Compass, Bot, PlusCircle, MessageSquare, UserRound, Sparkles, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Compass, Globe, PlusCircle, MessageSquare, UserRound, Sparkles, ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState } from 'react';
 
 const navItems = [
   { id: 'discover', label: '发现', icon: Compass, href: '/' },
-  { id: 'agents', label: 'Agent 广场', icon: Bot, href: '/agents' },
-  { id: 'create', label: '创建 Agent', icon: PlusCircle, href: '/create-agent' },
-  { id: 'conversations', label: '对话历史', icon: MessageSquare, href: '/conversations' },
-  { id: 'me', label: '我的空间', icon: UserRound, href: '/me' },
+  { id: 'explore', label: '探索世界', icon: Globe, href: '/agents' },
+  { id: 'create', label: '创作世界', icon: PlusCircle, href: '/create-agent' },
+  { id: 'play', label: '冒险记录', icon: MessageSquare, href: '/conversations' },
+  { id: 'me', label: '我的世界', icon: UserRound, href: '/me' },
 ];
 
 export default function Sidebar() {
@@ -38,7 +38,7 @@ export default function Sidebar() {
         {!collapsed && (
           <div className="min-w-0">
             <span className="text-base font-bold text-gray-900 tracking-tight block">AlmarenChat</span>
-            <p className="text-[10px] text-gray-400 -mt-0.5">AI Agent Platform</p>
+            <p className="text-[10px] text-gray-400 -mt-0.5">可玩的故事世界</p>
           </div>
         )}
       </div>

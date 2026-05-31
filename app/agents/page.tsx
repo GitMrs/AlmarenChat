@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Bot, Search, SlidersHorizontal } from 'lucide-react';
+import { Globe, Search, SlidersHorizontal } from 'lucide-react';
 import AppShell from '@/components/layout/AppShell';
 import AgentCard from '@/components/agent/AgentCard';
 import CategoryFilter from '@/components/agent/CategoryFilter';
@@ -205,14 +205,14 @@ function AgentsContent() {
 
   const renderSearchInput = (compact = false) => (
     <div className="relative">
-      <Search size={compact ? 16 : 19} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+      <Search size={compact ? 16 : 19} className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40" />
       <input
         type="text"
-        placeholder="搜索 Agent 名称、能力或分类..."
+        placeholder="搜索世界名称、类型或标签..."
         value={searchQuery}
         onChange={(event) => handleSearchChange(event.target.value)}
         className={cn(
-          'w-full rounded-full border border-black/[0.08] bg-[#fbfaf7] font-medium text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-slate-300 focus:ring-4 focus:ring-slate-200/70',
+          'w-full rounded-full border border-white/10 bg-white/[0.08] font-medium text-white outline-none transition placeholder:text-white/40 focus:border-white/20 focus:ring-4 focus:ring-white/[0.06]',
           compact ? 'h-10 pl-10 pr-4 text-xs' : 'h-14 pl-13 pr-5 text-sm'
         )}
       />
@@ -227,29 +227,29 @@ function AgentsContent() {
           showFloatingTools ? 'translate-y-0 opacity-100' : '-translate-y-3 opacity-0'
         )}
       >
-        <div className="pointer-events-auto mx-auto max-w-7xl rounded-b-[28px] border-x border-b border-black/[0.06] bg-white/92 p-3 shadow-lg backdrop-blur-xl">
+        <div className="pointer-events-auto mx-auto max-w-7xl rounded-b-[28px] border-x border-b border-white/10 bg-[#19172a]/94 p-3 shadow-lg backdrop-blur-xl">
           <div className="grid gap-3 lg:grid-cols-[minmax(220px,360px)_minmax(0,1fr)_auto] lg:items-center">
             {renderSearchInput(true)}
             <CategoryFilter selected={selectedCategory} onSelect={handleCategorySelect} className="pb-0" />
-            <div className="hidden whitespace-nowrap rounded-full bg-[#fbfaf7] px-3 py-2 text-xs font-black text-slate-500 lg:block">
-              共 {results.length} 个
+            <div className="hidden whitespace-nowrap rounded-full bg-white/[0.08] px-3 py-2 text-xs font-black text-white/50 lg:block">
+              共 {results.length} 个世界
             </div>
           </div>
         </div>
       </div>
 
-      <section className="rounded-[32px] border border-black/[0.06] bg-white/82 p-5 shadow-sm backdrop-blur sm:p-7">
+      <section className="rounded-[32px] border border-white/10 bg-[#19172a] p-5 shadow-sm backdrop-blur sm:p-7">
         <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-2xl">
-            <div className="mb-4 inline-flex items-center gap-2 rounded-full bg-slate-950 px-4 py-2 text-sm font-bold text-white">
-              <Bot size={16} />
-              Agent 广场
+            <div className="mb-4 inline-flex items-center gap-2 rounded-full bg-white/[0.08] px-4 py-2 text-sm font-bold text-white/82 backdrop-blur">
+              <Globe size={16} className="text-[#d89022]" />
+              故事广场
             </div>
-            <h1 className="text-3xl font-black leading-tight text-slate-950 sm:text-4xl">
-              找一个适合此刻任务的 AI 搭档。
+            <h1 className="text-3xl font-black leading-tight text-white sm:text-4xl">
+              发现一个你想进入的故事世界。
             </h1>
-            <p className="mt-3 text-base leading-7 text-slate-500">
-              按用途浏览 Agent 身份卡，从写作、编程、学习到生活灵感，直接进入对话。
+            <p className="mt-3 text-base leading-7 text-white/58">
+              从悬疑推理到奇幻冒险，选择一个世界，开始你的故事。
             </p>
           </div>
 
@@ -258,7 +258,7 @@ function AgentsContent() {
           </div>
         </div>
 
-        <div className="mt-6 border-t border-black/[0.06] pt-5">
+        <div className="mt-6 border-t border-white/10 pt-5">
           <CategoryFilter selected={selectedCategory} onSelect={handleCategorySelect} />
         </div>
       </section>
@@ -272,15 +272,15 @@ function AgentsContent() {
           <>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <p className="text-sm font-bold text-slate-400">Browse Agents</p>
-                <h2 className="text-2xl font-black text-slate-950">
-                  {selectedCategory === '全部' ? '全部 Agent' : selectedCategory}
+                <p className="text-sm font-bold text-[#d89022]">探索世界</p>
+                <h2 className="text-2xl font-black text-white">
+                  {selectedCategory === '全部' ? '全部世界' : selectedCategory}
                 </h2>
               </div>
-              <div className="inline-flex w-fit items-center gap-2 rounded-full border border-black/[0.06] bg-white px-4 py-2 text-sm font-bold text-slate-500 shadow-sm">
+              <div className="inline-flex w-fit items-center gap-2 rounded-full border border-white/10 bg-white/[0.08] px-4 py-2 text-sm font-bold text-white/50 shadow-sm">
                 <SlidersHorizontal size={15} />
-                共 {results.length} 个
-                {displayed.length < results.length && <span className="text-slate-300">已显示 {displayed.length}</span>}
+                共 {results.length} 个世界
+                {displayed.length < results.length && <span className="text-white/30">已显示 {displayed.length}</span>}
               </div>
             </div>
 
@@ -299,8 +299,8 @@ function AgentsContent() {
                 ))}
               </div>
             ) : (
-              <div className="rounded-[28px] border border-dashed border-slate-200 bg-white p-14 text-center">
-                <p className="text-sm font-medium text-slate-400">没有找到匹配的 Agent</p>
+              <div className="rounded-[28px] border border-dashed border-white/18 bg-white/[0.04] p-14 text-center">
+                <p className="text-sm font-medium text-white/42">没有找到匹配的世界</p>
               </div>
             )}
 
@@ -311,7 +311,7 @@ function AgentsContent() {
               </div>
             )}
             {!hasMore && displayed.length > 0 && (
-              <p className="py-6 text-center text-xs font-semibold text-slate-400">已加载全部 Agent</p>
+              <p className="py-6 text-center text-xs font-semibold text-white/40">已加载全部世界</p>
             )}
           </>
         )}

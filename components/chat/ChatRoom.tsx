@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ChevronDown, Loader2, Sparkles, Trash2 } from 'lucide-react';
+import { ChevronDown, Compass, Loader2, Sparkles, Trash2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import Avatar from '@/components/shared/Avatar';
@@ -11,6 +11,7 @@ import LoginRequired from '@/components/auth/LoginRequired';
 import LoadingSpinner from '@/components/shared/LoadingSpinner';
 import AgentDetailsPanel from '@/components/chat/AgentDetailsPanel';
 import ChatComposer from '@/components/chat/ChatComposer';
+import PlayContextPanel from '@/components/chat/PlayContextPanel';
 import { MessageItem } from '@/components/chat/ChatMessageItem';
 import { getBuiltInAgents } from '@/lib/agents-data';
 import { streamChat, conversations as conversationsApi, agents as agentsApi, user as userApi, uploads } from '@/lib/api';
@@ -20,14 +21,15 @@ import type { Agent, MessageAttachment } from '@/types';
 import type { ChatMessage, DisplayAgent } from '@/components/chat/ChatMessageItem';
 
 const promptMap: Record<string, string[]> = {
-  写作: ['帮我把这段话改得更有吸引力', '生成 5 个标题', '把内容改成小红书风格'],
-  编程: ['帮我定位这个报错', '解释这段代码的思路', '给我一个更简单的实现'],
-  学习: ['用简单例子讲清楚这个概念', '帮我总结重点', '出 3 道练习题'],
-  心理: ['我最近有点焦虑，帮我梳理一下', '陪我做一次放松练习', '帮我分析这个选择'],
-  创意: ['给我 10 个新点子', '帮我扩展这个设定', '换一个更有趣的方向'],
-  生活: ['帮我规划一周安排', '给我一个实用清单', '帮我比较几个选择'],
-  工具: ['帮我整理成表格', '提炼成待办事项', '把内容压缩成摘要'],
-  娱乐: ['来一个轻松的话题', '推荐点有趣的内容', '我们玩个小游戏'],
+  悬疑推理: ['我发现了一个可疑线索', '带我去案发现场', '我想审问嫌疑人'],
+  浪漫言情: ['故事从哪里开始？', '我想了解这个角色', '接下来会发生什么？'],
+  奇幻冒险: ['我准备好了，出发！', '这个世界有什么传说？', '我想探索那片区域'],
+  都市剧情: ['我的角色是谁？', '今天发生了什么事？', '我想和那个人谈谈'],
+  社交推理: ['游戏开始了', '我怀疑那个人', '我想进行一轮讨论'],
+  心理博弈: ['来一场较量', '你的策略是什么？', '我想分析当前局势'],
+  喜剧搞笑: ['来点开心的', '讲个笑话吧', '我们来玩个游戏'],
+  恐怖惊悚: ['我准备好了...大概', '那里有什么？', '我不该打开那扇门的...'],
+  科幻探索: ['飞船准备就绪', '前方有什么星球？', '启动跃迁引擎'],
 };
 
 const DEFAULT_CONTEXT_MESSAGE_LIMIT = 40;
@@ -78,6 +80,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
   const [pendingLargeTextMeta, setPendingLargeTextMeta] = useState<{ chars: number; kind: 'json' | 'text' } | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [uploadError, setUploadError] = useState('');
+  const [playContextOpen, setPlayContextOpen] = useState(false);
   const [hasMoreMessages, setHasMoreMessages] = useState(false);
   const [loadingMoreMessages, setLoadingMoreMessages] = useState(false);
   const [shouldStickToBottom, setShouldStickToBottom] = useState(true);
@@ -646,7 +649,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
 
   if (loading) {
     return (
-      <div className="flex h-dvh items-center justify-center bg-[#fbfaf7]">
+      <div className="flex h-dvh items-center justify-center bg-[#19172a]">
         <LoadingSpinner size="lg" />
       </div>
     );
@@ -654,13 +657,13 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
 
   if (!displayAgent) {
     return (
-      <div className="flex h-dvh flex-col items-center justify-center gap-4 bg-[#fbfaf7]">
-        <p className="font-semibold text-slate-500">Agent 不存在</p>
+      <div className="flex h-dvh flex-col items-center justify-center gap-4 bg-[#19172a]">
+        <p className="font-semibold text-white/54">这个世界不存在</p>
         <button
           onClick={() => router.push('/')}
-          className="rounded-full bg-slate-950 px-5 py-2.5 text-sm font-bold text-white"
+          className="rounded-full bg-white px-5 py-2.5 text-sm font-bold text-[#19172a]"
         >
-          返回发现页
+          返回探索
         </button>
       </div>
     );
@@ -668,7 +671,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
 
   return (
     <div
-      className="fixed inset-0 flex flex-col overflow-hidden bg-[#fbfaf7] text-slate-950 lg:flex-row"
+      className="fixed inset-0 flex flex-col overflow-hidden bg-[#19172a] text-white lg:flex-row"
       style={{
         height: viewportHeight ? `${viewportHeight}px` : '100dvh',
         top: viewportOffsetTop ? `${viewportOffsetTop}px` : 0,
@@ -690,6 +693,16 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
       />
 
       <main className="flex min-h-0 min-w-0 flex-1 flex-col">
+        {/* Play Context Toggle - Mobile */}
+        <div className="flex items-center justify-end border-b border-white/10 bg-[#19172a]/80 px-3 py-2 lg:hidden">
+          <button
+            onClick={() => setPlayContextOpen((v) => !v)}
+            className="flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.08] px-3 py-1.5 text-xs font-bold text-white/70"
+          >
+            <Compass size={13} style={{ color: categoryColor }} />
+            冒险面板
+          </button>
+        </div>
         <div
           ref={messagesScrollRef}
           onScroll={handleMessagesScroll}
@@ -698,8 +711,8 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
           <div className="mx-auto max-w-4xl space-y-5">
             {!isLoggedIn && (
               <LoginRequired
-                title="登录后开始聊天"
-                description="聊天会消耗平台模型额度。登录后再开始对话，可以保护 API 额度，也能保存你的会话历史。"
+                title="登录后开始冒险"
+                description="登录后可以保存你的冒险记录，随时回到故事中继续探索。"
               />
             )}
 
@@ -709,7 +722,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
                   type="button"
                   onClick={loadMoreMessages}
                   disabled={loadingMoreMessages}
-                  className="inline-flex h-9 items-center gap-2 rounded-full border border-black/[0.06] bg-white px-4 text-xs font-black text-slate-500 shadow-sm transition hover:text-slate-950 disabled:text-slate-300"
+                  className="inline-flex h-9 items-center gap-2 rounded-full border border-white/10 bg-white/[0.08] px-4 text-xs font-black text-white/54 transition hover:text-white disabled:text-white/30"
                 >
                   {loadingMoreMessages && <Loader2 size={14} className="animate-spin" />}
                   加载更早消息
@@ -718,17 +731,17 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
             )}
 
             {isLoggedIn && messages.length <= 1 && !isStreaming && (
-              <section className="rounded-[24px] bg-white/55 px-4 py-3">
-                <div className="mb-3 flex items-center gap-2 text-xs font-bold text-slate-400">
+              <section className="rounded-[24px] bg-white/[0.06] px-4 py-3">
+                <div className="mb-3 flex items-center gap-2 text-xs font-bold text-white/40">
                   <Sparkles size={14} style={{ color: categoryColor }} />
-                  你可以这样问
+                  你可以这样开始
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {suggestedPrompts.map((prompt) => (
                     <button
                       key={prompt}
                       onClick={() => handleSend(prompt)}
-                      className="rounded-full bg-white px-4 py-2 text-sm font-bold leading-5 text-slate-600 shadow-sm transition hover:-translate-y-0.5 hover:text-slate-950"
+                      className="rounded-full bg-white/[0.08] px-4 py-2 text-sm font-bold leading-5 text-white/64 transition hover:-translate-y-0.5 hover:bg-white/[0.12] hover:text-white"
                     >
                       {prompt}
                     </button>
@@ -756,11 +769,11 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
             {isLoggedIn && isStreaming && streamingContent && (
               <div className="flex justify-start gap-3">
                 <Avatar src={displayAgent.avatar} alt={displayAgent.name} size="sm" className="mt-1 shrink-0" />
-                <div className="min-w-0 max-w-[82%] rounded-[24px] rounded-bl-md border border-black/[0.06] bg-white px-5 py-4 text-slate-800 shadow-sm">
+                <div className="min-w-0 max-w-[82%] rounded-[24px] rounded-bl-md border border-white/10 bg-[#242039] px-5 py-4 text-white/82">
                   <div className="markdown-body min-w-0 max-w-full overflow-hidden text-sm leading-7">
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>{streamingContent}</ReactMarkdown>
                   </div>
-                  <span className="ml-1 inline-block h-4 w-2 animate-pulse rounded-sm bg-slate-300" />
+                  <span className="ml-1 inline-block h-4 w-2 animate-pulse rounded-sm bg-white/30" />
                 </div>
               </div>
             )}
@@ -768,11 +781,11 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
             {isLoggedIn && isStreaming && !streamingContent && (
               <div className="flex justify-start gap-3">
                 <Avatar src={displayAgent.avatar} alt={displayAgent.name} size="sm" className="mt-1 shrink-0" />
-                <div className="rounded-[24px] rounded-bl-md border border-black/[0.06] bg-white px-5 py-4 shadow-sm">
+                <div className="rounded-[24px] rounded-bl-md border border-white/10 bg-[#242039] px-5 py-4">
                   <div className="flex gap-1.5">
-                    <span className="h-2 w-2 animate-bounce rounded-full bg-slate-300" />
-                    <span className="h-2 w-2 animate-bounce rounded-full bg-slate-300 [animation-delay:150ms]" />
-                    <span className="h-2 w-2 animate-bounce rounded-full bg-slate-300 [animation-delay:300ms]" />
+                    <span className="h-2 w-2 animate-bounce rounded-full bg-white/30" />
+                    <span className="h-2 w-2 animate-bounce rounded-full bg-white/30 [animation-delay:150ms]" />
+                    <span className="h-2 w-2 animate-bounce rounded-full bg-white/30 [animation-delay:300ms]" />
                   </div>
                 </div>
               </div>
@@ -782,7 +795,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
             <button
               type="button"
               onClick={jumpToBottom}
-              className="sticky bottom-3 left-full z-10 ml-auto mt-3 flex h-9 w-9 -translate-x-2 items-center justify-center rounded-full border border-black/[0.04] bg-white/75 text-[0px] text-slate-400 shadow-sm backdrop-blur transition hover:bg-white hover:text-slate-700 hover:shadow-md"
+              className="sticky bottom-3 left-full z-10 ml-auto mt-3 flex h-9 w-9 -translate-x-2 items-center justify-center rounded-full border border-white/10 bg-white/[0.08] text-[0px] text-white/40 backdrop-blur transition hover:bg-white/[0.12] hover:text-white"
               title="回到底部"
               aria-label="回到底部"
             >
@@ -819,6 +832,26 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
           />
         )}
       </main>
+
+      {/* Play Context Panel - Desktop toggle button */}
+      {!playContextOpen && (
+        <button
+          onClick={() => setPlayContextOpen(true)}
+          className="hidden lg:flex fixed right-4 top-20 z-20 items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.08] px-3 py-2 text-xs font-bold text-white/70 transition hover:-translate-y-0.5 hover:bg-white/[0.12]"
+        >
+          <Compass size={14} style={{ color: categoryColor }} />
+          冒险面板
+        </button>
+      )}
+
+      <PlayContextPanel
+        displayAgent={displayAgent}
+        categoryColor={categoryColor}
+        isOpen={playContextOpen}
+        onClose={() => setPlayContextOpen(false)}
+        messageCount={messages.length}
+      />
+
       <ConfirmDialog
         open={Boolean(pendingDeleteMessage)}
         title="删除这条消息？"

@@ -6,6 +6,8 @@ export interface User {
   createdAt: string;
 }
 
+// Agent is kept as the underlying data model (backward compatible)
+// UI-facing components use entertainment terminology (Character, Story, World, etc.)
 export interface Agent {
   id: string;
   creatorId?: string;
@@ -20,6 +22,20 @@ export interface Agent {
   isPublic: boolean;
   createdAt: string;
   updatedAt: string;
+  // Entertainment metadata (optional, progressive enhancement)
+  creationType?: 'mystery' | 'world' | 'character' | 'script';
+  genre?: string;
+  hook?: string;
+  worldSetting?: string;
+  playerRole?: string;
+  openingScene?: string;
+  rules?: string;
+  winConditions?: string;
+  estimatedDuration?: string;
+  difficulty?: 'easy' | 'medium' | 'hard';
+  playerCount?: string;
+  tags?: string[];
+  builderConfig?: string; // JSON string of type-specific structured data
 }
 
 export interface Conversation {
@@ -64,42 +80,60 @@ export interface FavoriteAgent {
   createdAt: string;
 }
 
-export const AGENT_CATEGORIES = [
+// Entertainment genre categories (replaces AGENT_CATEGORIES)
+export const CATEGORIES = [
   '全部',
-  '写作',
-  '编程',
-  '学习',
-  '心理',
-  '创意',
-  '生活',
-  '工具',
-  '娱乐',
+  '悬疑推理',
+  '浪漫言情',
+  '奇幻冒险',
+  '都市剧情',
+  '社交推理',
+  '心理博弈',
+  '喜剧搞笑',
+  '恐怖惊悚',
+  '科幻探索',
 ] as const;
 
-export type AgentCategory = (typeof AGENT_CATEGORIES)[number];
+// Keep backward-compatible alias
+export const AGENT_CATEGORIES = CATEGORIES;
 
-export const AGENT_TONES = [
-  '专业',
+export type Category = (typeof CATEGORIES)[number];
+export type AgentCategory = Category;
+
+export const TONES = [
+  '沉浸',
+  '悬疑',
+  '浪漫',
+  '黑暗',
+  '轻松',
+  '史诗',
   '幽默',
-  '温柔',
-  '冷静',
-  '热情',
-  '简洁',
-  '详细',
-  '友好',
+  '紧张',
 ] as const;
 
-export type AgentTone = (typeof AGENT_TONES)[number];
+// Keep backward-compatible alias
+export const AGENT_TONES = TONES;
+
+export type Tone = (typeof TONES)[number];
+export type AgentTone = Tone;
 
 export const CATEGORY_COLORS: Record<string, string> = {
-  写作: '#f59e0b',
-  编程: '#2563eb',
-  学习: '#10b981',
-  心理: '#ec4899',
-  创意: '#8b5cf6',
-  生活: '#f97316',
-  工具: '#6366f1',
-  娱乐: '#ef4444',
+  悬疑推理: '#6366f1',
+  浪漫言情: '#ec4899',
+  奇幻冒险: '#8b5cf6',
+  都市剧情: '#f97316',
+  社交推理: '#14b8a6',
+  心理博弈: '#f43f5e',
+  喜剧搞笑: '#eab308',
+  恐怖惊悚: '#1e293b',
+  科幻探索: '#06b6d4',
 };
 
-export type NavTab = 'discover' | 'agents' | 'create' | 'me' | 'settings';
+// Difficulty labels
+export const DIFFICULTY_LABELS: Record<string, string> = {
+  easy: '轻松',
+  medium: '普通',
+  hard: '烧脑',
+};
+
+export type NavTab = 'discover' | 'explore' | 'create' | 'play' | 'me';

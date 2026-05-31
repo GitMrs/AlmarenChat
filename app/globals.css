@@ -16,15 +16,16 @@
   --color-primary-800: #1e40af;
   --color-primary-900: #1e3a8a;
 
-  /* Category colors */
-  --color-cat-writing: #f59e0b;
-  --color-cat-coding: #3b82f6;
-  --color-cat-learning: #10b981;
-  --color-cat-psychology: #ec4899;
-  --color-cat-creative: #8b5cf6;
-  --color-cat-life: #f97316;
-  --color-cat-tools: #6366f1;
-  --color-cat-entertainment: #ef4444;
+  /* Category colors - Entertainment genres */
+  --color-cat-mystery: #6366f1;
+  --color-cat-romance: #ec4899;
+  --color-cat-fantasy: #8b5cf6;
+  --color-cat-urban: #f97316;
+  --color-cat-deduction: #14b8a6;
+  --color-cat-psychology: #f43f5e;
+  --color-cat-comedy: #eab308;
+  --color-cat-horror: #1e293b;
+  --color-cat-scifi: #06b6d4;
 }
 
 /* Dark mode color inversions */
@@ -225,12 +226,13 @@ button:disabled {
   background-color: #f8fafc;
 }
 
-/* Category color utility classes */
-.cat-writing { --cat-color: var(--color-cat-writing); }
-.cat-coding { --cat-color: var(--color-cat-coding); }
-.cat-learning { --cat-color: var(--color-cat-learning); }
+/* Category color utility classes - Entertainment genres */
+.cat-mystery { --cat-color: var(--color-cat-mystery); }
+.cat-romance { --cat-color: var(--color-cat-romance); }
+.cat-fantasy { --cat-color: var(--color-cat-fantasy); }
+.cat-urban { --cat-color: var(--color-cat-urban); }
+.cat-deduction { --cat-color: var(--color-cat-deduction); }
 .cat-psychology { --cat-color: var(--color-cat-psychology); }
-.cat-creative { --cat-color: var(--color-cat-creative); }
-.cat-life { --cat-color: var(--color-cat-life); }
-.cat-tools { --cat-color: var(--color-cat-tools); }
-.cat-entertainment { --cat-color: var(--color-cat-entertainment); }
+.cat-comedy { --cat-color: var(--color-cat-comedy); }
+.cat-horror { --cat-color: var(--color-cat-horror); }
+.cat-scifi { --cat-color: var(--color-cat-scifi); }

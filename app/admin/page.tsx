@@ -233,7 +233,7 @@ export default function AdminPage() {
 
   if (loading) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-[#fbfaf7]">
+      <main className="flex min-h-screen items-center justify-center bg-[#19172a]">
         <LoadingSpinner size="lg" />
       </main>
     );
@@ -241,24 +241,24 @@ export default function AdminPage() {
 
   if (error) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-[#fbfaf7] px-4">
-        <div className="rounded-2xl border border-red-100 bg-white p-8 text-center shadow-sm">
-          <h1 className="text-xl font-black text-slate-950">无权访问后台</h1>
-          <p className="mt-2 text-sm text-slate-500">{error}</p>
+      <main className="flex min-h-screen items-center justify-center bg-[#19172a] px-4">
+        <div className="rounded-2xl border border-white/10 bg-[#242039] p-8 text-center">
+          <h1 className="text-xl font-black text-white">无权访问后台</h1>
+          <p className="mt-2 text-sm text-white/54">{error}</p>
         </div>
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen bg-[#fbfaf7] px-4 py-6 text-slate-950 sm:px-6 lg:px-8">
+    <main className="min-h-screen bg-[#19172a] px-4 py-6 text-white sm:px-6 lg:px-8">
       <div className="mx-auto max-w-7xl space-y-6">
-        <header className="flex flex-col gap-3 border-b border-black/[0.06] pb-5 sm:flex-row sm:items-end sm:justify-between">
+        <header className="flex flex-col gap-3 border-b border-white/10 pb-5 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="text-sm font-bold text-slate-400">Admin</p>
-            <Link href="/" className="text-3xl font-black hover:text-blue-600 transition-colors">AlmarenChat</Link>
+            <p className="text-sm font-bold text-[#d89022]">Admin</p>
+            <Link href="/" className="text-3xl font-black hover:text-[#d89022] transition-colors">AlmarenChat</Link>
           </div>
-          <div className="text-sm font-semibold text-slate-500">
+          <div className="text-sm font-semibold text-white/54">
             {dashboard.admin.email}
           </div>
         </header>
@@ -267,23 +267,23 @@ export default function AdminPage() {
           {stats.map((item) => {
             const Icon = item.icon;
             return (
-              <div key={item.label} className="rounded-2xl border border-black/[0.06] bg-white p-5 shadow-sm">
-                <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-slate-950 text-white">
+              <div key={item.label} className="rounded-2xl border border-white/10 bg-[#242039] p-5">
+                <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-[#d89022]/20 text-[#d89022]">
                   <Icon size={18} />
                 </div>
                 <div className="text-3xl font-black">{item.value}</div>
-                <div className="mt-1 text-sm font-semibold text-slate-500">{item.label}</div>
+                <div className="mt-1 text-sm font-semibold text-white/54">{item.label}</div>
               </div>
             );
           })}
         </section>
 
-        <div className="inline-flex rounded-full border border-black/[0.06] bg-white p-1 shadow-sm">
+        <div className="inline-flex rounded-full border border-white/10 bg-white/[0.08] p-1">
           <button
             type="button"
             onClick={() => setActiveTab('users')}
             className={`rounded-full px-5 py-2 text-sm font-black transition ${
-              activeTab === 'users' ? 'bg-slate-950 text-white' : 'text-slate-500 hover:text-slate-950'
+              activeTab === 'users' ? 'bg-white text-[#19172a]' : 'text-white/54 hover:text-white'
             }`}
           >
             Users
@@ -292,7 +292,7 @@ export default function AdminPage() {
             type="button"
             onClick={() => setActiveTab('agents')}
             className={`rounded-full px-5 py-2 text-sm font-black transition ${
-              activeTab === 'agents' ? 'bg-slate-950 text-white' : 'text-slate-500 hover:text-slate-950'
+              activeTab === 'agents' ? 'bg-white text-[#19172a]' : 'text-white/54 hover:text-white'
             }`}
           >
             Agents
@@ -302,35 +302,35 @@ export default function AdminPage() {
         <section className="space-y-6">
           {activeTab === 'users' && (
           <div className="space-y-6">
-            <div className="rounded-2xl border border-black/[0.06] bg-white p-5 shadow-sm">
+            <div className="rounded-2xl border border-white/10 bg-[#242039] p-5">
               <h2 className="mb-4 text-lg font-black">Create user</h2>
               <div className="flex flex-wrap items-center gap-3">
-                <input value={newUserEmail} onChange={(event) => setNewUserEmail(event.target.value)} placeholder="Email" className="h-11 min-w-[180px] flex-1 rounded-full border border-black/[0.08] bg-[#fbfaf7] px-4 text-sm outline-none focus:border-slate-300" />
-                <input value={newUserName} onChange={(event) => setNewUserName(event.target.value)} placeholder="Name" className="h-11 min-w-[120px] flex-1 rounded-full border border-black/[0.08] bg-[#fbfaf7] px-4 text-sm outline-none focus:border-slate-300" />
-                <input type="password" value={newUserPassword} onChange={(event) => setNewUserPassword(event.target.value)} placeholder="Password" className="h-11 min-w-[150px] flex-1 rounded-full border border-black/[0.08] bg-[#fbfaf7] px-4 text-sm outline-none focus:border-slate-300" />
-                <input type="number" min={0} max={10000} value={newUserDailyLimit} onChange={(event) => setNewUserDailyLimit(event.target.value)} placeholder="Limit" className="h-11 w-[100px] rounded-full border border-black/[0.08] bg-[#fbfaf7] px-4 text-sm outline-none focus:border-slate-300" />
-                <button type="button" onClick={submitCreateUser} disabled={creatingUser} className="h-11 rounded-full bg-slate-950 px-6 text-sm font-bold text-white disabled:bg-slate-200 disabled:text-slate-400">
+                <input value={newUserEmail} onChange={(event) => setNewUserEmail(event.target.value)} placeholder="Email" className="h-11 min-w-[180px] flex-1 rounded-full border border-white/10 bg-white/[0.08] px-4 text-sm text-white outline-none placeholder:text-white/40 focus:border-white/20" />
+                <input value={newUserName} onChange={(event) => setNewUserName(event.target.value)} placeholder="Name" className="h-11 min-w-[120px] flex-1 rounded-full border border-white/10 bg-white/[0.08] px-4 text-sm text-white outline-none placeholder:text-white/40 focus:border-white/20" />
+                <input type="password" value={newUserPassword} onChange={(event) => setNewUserPassword(event.target.value)} placeholder="Password" className="h-11 min-w-[150px] flex-1 rounded-full border border-white/10 bg-white/[0.08] px-4 text-sm text-white outline-none placeholder:text-white/40 focus:border-white/20" />
+                <input type="number" min={0} max={10000} value={newUserDailyLimit} onChange={(event) => setNewUserDailyLimit(event.target.value)} placeholder="Limit" className="h-11 w-[100px] rounded-full border border-white/10 bg-white/[0.08] px-4 text-sm text-white outline-none placeholder:text-white/40 focus:border-white/20" />
+                <button type="button" onClick={submitCreateUser} disabled={creatingUser} className="h-11 rounded-full bg-white px-6 text-sm font-bold text-[#19172a] disabled:bg-white/[0.08] disabled:text-white/30">
                   {creatingUser ? 'Creating...' : 'Create'}
                 </button>
               </div>
-              {createUserMessage && <div className="mt-2 text-xs font-semibold text-slate-500">{createUserMessage}</div>}
+              {createUserMessage && <div className="mt-2 text-xs font-semibold text-white/54">{createUserMessage}</div>}
             </div>
 
-            <div className="rounded-2xl border border-black/[0.06] bg-white p-5 shadow-sm">
+            <div className="rounded-2xl border border-white/10 bg-[#242039] p-5">
               <div className="mb-4 flex items-center justify-between gap-3">
                 <h2 className="text-lg font-black">用户列表</h2>
                 <div className="flex min-w-0 items-center gap-2">
                   <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40" size={16} />
                     <input
                       value={userQuery}
                       onChange={(event) => setUserQuery(event.target.value)}
                       onKeyDown={(event) => event.key === 'Enter' && searchUsers()}
                       placeholder="搜索邮箱/昵称"
-                      className="h-10 w-44 rounded-full border border-black/[0.08] bg-[#fbfaf7] pl-9 pr-3 text-sm outline-none focus:border-slate-300"
+                      className="h-10 w-44 rounded-full border border-white/10 bg-white/[0.08] pl-9 pr-3 text-sm text-white outline-none placeholder:text-white/40 focus:border-white/20"
                     />
                   </div>
-                  <button onClick={searchUsers} className="h-10 rounded-full bg-slate-950 px-4 text-sm font-bold text-white">
+                  <button onClick={searchUsers} className="h-10 rounded-full bg-white px-4 text-sm font-bold text-[#19172a]">
                     搜索
                   </button>
                 </div>
@@ -340,32 +340,32 @@ export default function AdminPage() {
                   <button
                     key={user.id}
                     onClick={() => openUser(user.id)}
-                    className="w-full rounded-xl border border-black/[0.05] p-4 text-left transition hover:bg-slate-50"
+                    className="w-full rounded-xl border border-white/[0.06] p-4 text-left transition hover:bg-white/[0.04]"
                   >
                     <div className="flex items-center justify-between gap-3">
                       <div className="min-w-0">
                         <div className="truncate text-sm font-black">{user.name}</div>
-                        <div className="truncate text-xs text-slate-500">{user.email}</div>
+                        <div className="truncate text-xs text-white/54">{user.email}</div>
                       </div>
-                      <div className="shrink-0 text-right text-xs font-semibold text-slate-500">
+                      <div className="shrink-0 text-right text-xs font-semibold text-white/54">
                         <div>Agent {user._count.agents}</div>
                         <div>会话 {user._count.conversations}</div>
                       </div>
                     </div>
-                    <div className="mt-2 text-xs text-slate-400">{formatDate(user.createdAt)}</div>
+                    <div className="mt-2 text-xs text-white/40">{formatDate(user.createdAt)}</div>
                   </button>
                 ))}
               </div>
             </div>
 
             {selectedUser && (
-              <div className="rounded-2xl border border-black/[0.06] bg-white p-5 shadow-sm">
+              <div className="rounded-2xl border border-white/10 bg-[#242039] p-5">
                 <div className="mb-4 flex items-center justify-between gap-3">
                   <h2 className="text-lg font-black">用户详情</h2>
                   <button
                     type="button"
                     onClick={() => setPendingDeleteUser(selectedUser)}
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-red-100 text-red-500 transition hover:bg-red-50"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-rose-500/20 text-rose-400 transition hover:bg-rose-500/10"
                     title="Delete user"
                     aria-label="Delete user"
                   >
@@ -374,18 +374,18 @@ export default function AdminPage() {
                 </div>
                 <div className="space-y-2 text-sm">
                   <div className="font-black">{selectedUser.name}</div>
-                  <div className="text-slate-500">{selectedUser.email}</div>
-                  <div className="text-slate-500">创建时间：{formatDate(selectedUser.createdAt)}</div>
-                  <div className="flex items-center gap-2 text-slate-500">
+                  <div className="text-white/54">{selectedUser.email}</div>
+                  <div className="text-white/54">创建时间：{formatDate(selectedUser.createdAt)}</div>
+                  <div className="flex items-center gap-2 text-white/54">
                     <Settings2 size={15} />
                     模型配置：{selectedUser.customModelEnabled ? '已开启' : '未开启'}
                   </div>
-                  <div className="text-slate-500">模型：{selectedUser.modelName || '-'}</div>
-                  <div className="text-slate-500">上下文消息数：{selectedUser.contextMessageLimit || 40}</div>
-                  <div className="text-slate-500">Daily chat limit: {selectedUser.dailyChatLimit ?? 30}</div>
+                  <div className="text-white/54">模型：{selectedUser.modelName || '-'}</div>
+                  <div className="text-white/54">上下文消息数：{selectedUser.contextMessageLimit || 40}</div>
+                  <div className="text-white/54">Daily chat limit: {selectedUser.dailyChatLimit ?? 30}</div>
                 </div>
 
-                <div className="mt-5 rounded-xl bg-[#fbfaf7] p-3">
+                <div className="mt-5 rounded-xl bg-white/[0.06] p-3">
                   <h3 className="mb-2 text-sm font-black">Daily chat limit</h3>
                   <div className="flex gap-2">
                     <input
@@ -395,21 +395,21 @@ export default function AdminPage() {
                       value={dailyChatLimit}
                       onChange={(event) => setDailyChatLimit(event.target.value)}
                       placeholder="Default 30"
-                      className="h-10 min-w-0 flex-1 rounded-full border border-black/[0.08] bg-white px-4 text-sm outline-none focus:border-slate-300"
+                      className="h-10 min-w-0 flex-1 rounded-full border border-white/10 bg-white/[0.08] px-4 text-sm text-white outline-none placeholder:text-white/40 focus:border-white/20"
                     />
                     <button
                       type="button"
                       onClick={submitDailyChatLimit}
                       disabled={savingQuota}
-                      className="h-10 rounded-full bg-slate-950 px-4 text-sm font-bold text-white disabled:bg-slate-200 disabled:text-slate-400"
+                      className="h-10 rounded-full bg-white px-4 text-sm font-bold text-[#19172a] disabled:bg-white/[0.08] disabled:text-white/30"
                     >
                       {savingQuota ? 'Saving' : 'Save'}
                     </button>
                   </div>
-                  <p className="mt-2 text-xs font-semibold text-slate-400">0 disables platform-model chat. Leave empty to use default 30.</p>
-                  {quotaMessage && <div className="mt-2 text-xs font-semibold text-slate-500">{quotaMessage}</div>}
+                  <p className="mt-2 text-xs font-semibold text-white/40">0 disables platform-model chat. Leave empty to use default 30.</p>
+                  {quotaMessage && <div className="mt-2 text-xs font-semibold text-white/54">{quotaMessage}</div>}
                 </div>
-                <div className="mt-5 rounded-xl bg-[#fbfaf7] p-3">
+                <div className="mt-5 rounded-xl bg-white/[0.06] p-3">
                   <h3 className="mb-2 text-sm font-black">重置密码</h3>
                   <div className="flex gap-2">
                     <input
@@ -417,30 +417,30 @@ export default function AdminPage() {
                       value={resetPassword}
                       onChange={(event) => setResetPassword(event.target.value)}
                       placeholder="至少 6 位新密码"
-                      className="h-10 min-w-0 flex-1 rounded-full border border-black/[0.08] bg-white px-4 text-sm outline-none focus:border-slate-300"
+                      className="h-10 min-w-0 flex-1 rounded-full border border-white/10 bg-white/[0.08] px-4 text-sm text-white outline-none placeholder:text-white/40 focus:border-white/20"
                     />
                     <button
                       type="button"
                       onClick={submitPasswordReset}
                       disabled={resetPassword.length < 6 || resettingPassword}
-                      className="h-10 rounded-full bg-slate-950 px-4 text-sm font-bold text-white disabled:bg-slate-200 disabled:text-slate-400"
+                      className="h-10 rounded-full bg-white px-4 text-sm font-bold text-[#19172a] disabled:bg-white/[0.08] disabled:text-white/30"
                     >
                       {resettingPassword ? '处理中' : '重置'}
                     </button>
                   </div>
-                  {resetMessage && <div className="mt-2 text-xs font-semibold text-slate-500">{resetMessage}</div>}
+                  {resetMessage && <div className="mt-2 text-xs font-semibold text-white/54">{resetMessage}</div>}
                 </div>
 
                 <div className="mt-5">
                   <h3 className="mb-2 text-sm font-black">创建的 Agent</h3>
                   <div className="space-y-2">
                     {(selectedUser.agents || []).map((agent: any) => (
-                      <div key={agent.id} className="rounded-xl bg-[#fbfaf7] px-3 py-2 text-sm">
+                      <div key={agent.id} className="rounded-xl bg-white/[0.06] px-3 py-2 text-sm">
                         <span className="font-semibold">{agent.name}</span>
-                        <span className="ml-2 text-xs text-slate-400">{agent.isPublic ? '已上架' : '已下架'}</span>
+                        <span className="ml-2 text-xs text-white/40">{agent.isPublic ? '已上架' : '已下架'}</span>
                       </div>
                     ))}
-                    {(selectedUser.agents || []).length === 0 && <div className="text-sm text-slate-400">暂无 Agent</div>}
+                    {(selectedUser.agents || []).length === 0 && <div className="text-sm text-white/40">暂无 Agent</div>}
                   </div>
                 </div>
 
@@ -448,12 +448,12 @@ export default function AdminPage() {
                   <h3 className="mb-2 text-sm font-black">最近会话</h3>
                   <div className="space-y-2">
                     {(selectedUser.conversations || []).map((conversation: any) => (
-                      <div key={conversation.id} className="rounded-xl bg-[#fbfaf7] px-3 py-2 text-sm">
+                      <div key={conversation.id} className="rounded-xl bg-white/[0.06] px-3 py-2 text-sm">
                         <div className="font-semibold">{conversation.title || conversation.agentName || '未命名会话'}</div>
-                        <div className="text-xs text-slate-400">{formatDate(conversation.updatedAt)}</div>
+                        <div className="text-xs text-white/40">{formatDate(conversation.updatedAt)}</div>
                       </div>
                     ))}
-                    {(selectedUser.conversations || []).length === 0 && <div className="text-sm text-slate-400">暂无会话</div>}
+                    {(selectedUser.conversations || []).length === 0 && <div className="text-sm text-white/40">暂无会话</div>}
                   </div>
                 </div>
               </div>
@@ -462,47 +462,47 @@ export default function AdminPage() {
           )}
 
           {activeTab === 'agents' && (
-          <div className="rounded-2xl border border-black/[0.06] bg-white p-5 shadow-sm">
+          <div className="rounded-2xl border border-white/10 bg-[#242039] p-5">
             <div className="mb-4 flex items-center justify-between gap-3">
               <h2 className="text-lg font-black">Agent 管理</h2>
               <div className="flex min-w-0 items-center gap-2">
                 <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-white/40" size={16} />
                   <input
                     value={agentQuery}
                     onChange={(event) => setAgentQuery(event.target.value)}
                     onKeyDown={(event) => event.key === 'Enter' && searchAgents()}
                     placeholder="搜索 Agent"
-                    className="h-10 w-44 rounded-full border border-black/[0.08] bg-[#fbfaf7] pl-9 pr-3 text-sm outline-none focus:border-slate-300"
+                    className="h-10 w-44 rounded-full border border-white/10 bg-white/[0.08] pl-9 pr-3 text-sm text-white outline-none placeholder:text-white/40 focus:border-white/20"
                   />
                 </div>
-                <button onClick={searchAgents} className="h-10 rounded-full bg-slate-950 px-4 text-sm font-bold text-white">
+                <button onClick={searchAgents} className="h-10 rounded-full bg-white px-4 text-sm font-bold text-[#19172a]">
                   搜索
                 </button>
               </div>
             </div>
 
-            <div className="overflow-hidden rounded-xl border border-black/[0.06]">
-              <div className="grid grid-cols-[1fr_120px_120px] bg-slate-50 px-4 py-3 text-xs font-black text-slate-500">
+            <div className="overflow-hidden rounded-xl border border-white/10">
+              <div className="grid grid-cols-[1fr_120px_120px] bg-white/[0.06] px-4 py-3 text-xs font-black text-white/54">
                 <div>Agent</div>
                 <div>状态</div>
                 <div className="text-right">操作</div>
               </div>
               {agents.map((agent) => (
-                <div key={agent.id} className="grid grid-cols-[1fr_120px_120px] items-center border-t border-black/[0.06] px-4 py-3">
+                <div key={agent.id} className="grid grid-cols-[1fr_120px_120px] items-center border-t border-white/[0.06] px-4 py-3">
                   <div className="min-w-0">
                     <div className="truncate text-sm font-black">{agent.name}</div>
-                    <div className="truncate text-xs text-slate-500">
+                    <div className="truncate text-xs text-white/54">
                       {agent.creator?.email || '系统'} · {agent.category || '未分类'}
                     </div>
                   </div>
-                  <div className="text-sm font-semibold text-slate-600">{agent.isPublic ? '已上架' : '已下架'}</div>
+                  <div className="text-sm font-semibold text-white/64">{agent.isPublic ? '已上架' : '已下架'}</div>
                   <div className="flex justify-end gap-2">
                     <button
                       onClick={() => toggleAgent(agent)}
                       disabled={busyAgentId === agent.id}
                       title={agent.isPublic ? '下架' : '上架'}
-                      className="flex h-9 w-9 items-center justify-center rounded-full border border-black/[0.08] text-slate-700 disabled:opacity-50"
+                      className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 text-white/70 disabled:opacity-50"
                     >
                       {agent.isPublic ? <EyeOff size={16} /> : <Eye size={16} />}
                     </button>
@@ -510,7 +510,7 @@ export default function AdminPage() {
                       onClick={() => deleteAgent(agent)}
                       disabled={busyAgentId === agent.id}
                       title="删除"
-                      className="flex h-9 w-9 items-center justify-center rounded-full border border-red-100 text-red-500 disabled:opacity-50"
+                      className="flex h-9 w-9 items-center justify-center rounded-full border border-rose-500/20 text-rose-400 disabled:opacity-50"
                     >
                       <Trash2 size={16} />
                     </button>
