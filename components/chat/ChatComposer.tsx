@@ -8,6 +8,7 @@ type ChatComposerProps = {
   agentName: string;
   categoryColor: string;
   pendingAttachment: MessageAttachment | null;
+  pendingLargeTextMeta: { chars: number; kind: 'json' | 'text' } | null;
   uploadError: string;
   uploadingImage: boolean;
   isStreaming: boolean;
@@ -15,7 +16,9 @@ type ChatComposerProps = {
   fileInputRef: React.RefObject<HTMLInputElement | null>;
   onImageSelect: (event: React.ChangeEvent<HTMLInputElement>) => void;
   onPaste: (event: React.ClipboardEvent<HTMLTextAreaElement>) => void;
+  onInput: (event: React.FormEvent<HTMLTextAreaElement>) => void;
   onKeyDown: (event: React.KeyboardEvent<HTMLTextAreaElement>) => void;
+  onFocus: () => void;
   onClearAttachment: () => void;
   onSend: () => void;
   onStop: () => void;
@@ -25,6 +28,7 @@ export default function ChatComposer({
   agentName,
   categoryColor,
   pendingAttachment,
+  pendingLargeTextMeta,
   uploadError,
   uploadingImage,
   isStreaming,
@@ -32,7 +36,9 @@ export default function ChatComposer({
   fileInputRef,
   onImageSelect,
   onPaste,
+  onInput,
   onKeyDown,
+  onFocus,
   onClearAttachment,
   onSend,
   onStop,
@@ -40,7 +46,7 @@ export default function ChatComposer({
   return (
     <footer className="shrink-0 border-t border-black/[0.06] bg-white/88 px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-4 backdrop-blur sm:px-6">
       <div className="mx-auto max-w-4xl">
-        {(pendingAttachment || uploadError) && (
+        {(pendingAttachment || pendingLargeTextMeta || uploadError) && (
           <div className="mb-2 flex items-center justify-between gap-3 rounded-2xl border border-black/[0.06] bg-white px-3 py-2 shadow-sm">
             {pendingAttachment ? (
               <div className="flex min-w-0 items-center gap-3">
@@ -52,6 +58,20 @@ export default function ChatComposer({
                 <div className="min-w-0">
                   <p className="truncate text-sm font-bold text-slate-700">{pendingAttachment.name || '已选择图片'}</p>
                   <p className="text-xs font-semibold text-slate-400">发送后会随本条消息交给 AI 分析</p>
+                </div>
+              </div>
+            ) : pendingLargeTextMeta ? (
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#fbfaf7] text-xs font-black text-slate-500">
+                  TXT
+                </div>
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-bold text-slate-700">
+                    {pendingLargeTextMeta.kind === 'json' ? '已添加 JSON 数据' : '已添加大段文本'}
+                  </p>
+                  <p className="text-xs font-semibold text-slate-400">
+                    {pendingLargeTextMeta.chars.toLocaleString('zh-CN')} 字符，发送时会使用完整内容
+                  </p>
                 </div>
               </div>
             ) : (
@@ -88,7 +108,9 @@ export default function ChatComposer({
           <textarea
             ref={inputRef}
             onPaste={onPaste}
+            onInput={onInput}
             onKeyDown={onKeyDown}
+            onFocus={onFocus}
             placeholder={`向 ${agentName} 说点什么...`}
             rows={1}
             className="max-h-36 min-h-11 flex-1 resize-none bg-transparent px-4 py-3 text-sm font-medium leading-6 text-slate-800 outline-none placeholder:text-slate-400"

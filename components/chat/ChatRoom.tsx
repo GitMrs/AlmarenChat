@@ -33,6 +33,16 @@ const promptMap: Record<string, string[]> = {
 const DEFAULT_CONTEXT_MESSAGE_LIMIT = 40;
 const MAX_CONTEXT_MESSAGE_LIMIT = 80;
 const MESSAGE_PAGE_SIZE = 30;
+const LARGE_PASTE_TEXT_LIMIT = 8000;
+
+function getLargeTextKind(text: string) {
+  try {
+    JSON.parse(text);
+    return 'json' as const;
+  } catch {
+    return 'text' as const;
+  }
+}
 
 interface ChatRoomProps {
   agentId?: string;
@@ -63,7 +73,9 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [contextMessageLimit, setContextMessageLimit] = useState(DEFAULT_CONTEXT_MESSAGE_LIMIT);
   const [viewportHeight, setViewportHeight] = useState<number | null>(null);
+  const [viewportOffsetTop, setViewportOffsetTop] = useState(0);
   const [pendingAttachment, setPendingAttachment] = useState<MessageAttachment | null>(null);
+  const [pendingLargeTextMeta, setPendingLargeTextMeta] = useState<{ chars: number; kind: 'json' | 'text' } | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [uploadError, setUploadError] = useState('');
   const [hasMoreMessages, setHasMoreMessages] = useState(false);
@@ -78,6 +90,10 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const messagesRef = useRef<ChatMessage[]>([]);
   const forceScrollToBottomRef = useRef(false);
+  const pendingLargeTextRef = useRef<string | null>(null);
+  const largeTextPasteGuardRef = useRef(false);
+  const skipNextEmptyInputRef = useRef(false);
+  const ignoreInputUntilRef = useRef(0);
 
   useEffect(() => {
     messagesRef.current = messages;
@@ -85,16 +101,21 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
 
   useEffect(() => {
     const updateViewportHeight = () => {
-      const nextHeight = Math.floor(window.visualViewport?.height || window.innerHeight);
+      const viewport = window.visualViewport;
+      const nextHeight = Math.floor(viewport?.height || window.innerHeight);
+      const nextOffsetTop = Math.floor(viewport?.offsetTop || 0);
       setViewportHeight((current) => (Math.abs((current || 0) - nextHeight) > 1 ? nextHeight : current));
+      setViewportOffsetTop((current) => (Math.abs(current - nextOffsetTop) > 1 ? nextOffsetTop : current));
     };
 
     updateViewportHeight();
     window.visualViewport?.addEventListener('resize', updateViewportHeight);
+    window.visualViewport?.addEventListener('scroll', updateViewportHeight);
     window.addEventListener('resize', updateViewportHeight);
 
     return () => {
       window.visualViewport?.removeEventListener('resize', updateViewportHeight);
+      window.visualViewport?.removeEventListener('scroll', updateViewportHeight);
       window.removeEventListener('resize', updateViewportHeight);
     };
   }, []);
@@ -218,7 +239,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
 
       container.scrollTo({ top: container.scrollHeight, behavior: isStreaming ? 'auto' : 'smooth' });
     });
-  }, [messages.length, streamingContent, isStreaming, shouldStickToBottom]);
+  }, [messages.length, streamingContent, isStreaming, shouldStickToBottom, viewportHeight, viewportOffsetTop]);
 
   useEffect(() => {
     const previous = pendingPrependScrollRef.current;
@@ -325,7 +346,21 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
 
   const handlePaste = async (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const file = Array.from(event.clipboardData.files).find((item) => item.type.startsWith('image/'));
-    if (!file) return;
+    if (!file) {
+      const text = event.clipboardData.getData('text');
+      if (text.length <= LARGE_PASTE_TEXT_LIMIT) return;
+
+      event.preventDefault();
+      pendingLargeTextRef.current = text;
+      largeTextPasteGuardRef.current = true;
+      ignoreInputUntilRef.current = Date.now() + 1000;
+      setPendingLargeTextMeta({ chars: text.length, kind: getLargeTextKind(text) });
+      if (inputRef.current) {
+        skipNextEmptyInputRef.current = true;
+        inputRef.current.value = '';
+      }
+      return;
+    }
 
     event.preventDefault();
     if (uploadingImage || isStreaming) return;
@@ -362,7 +397,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
       return;
     }
 
-    const content = text ?? inputRef.current?.value.trim() ?? '';
+    const content = text ?? pendingLargeTextRef.current ?? inputRef.current?.value.trim() ?? '';
     const outgoingAttachments = options.attachmentsOverride || (pendingAttachment ? [pendingAttachment] : []);
     if ((!content && outgoingAttachments.length === 0) || isStreaming || uploadingImage) return;
 
@@ -386,6 +421,8 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
       if (inputRef.current && text === undefined) {
         inputRef.current.value = '';
       }
+      pendingLargeTextRef.current = null;
+      setPendingLargeTextMeta(null);
       setPendingAttachment(null);
       setUploadError('');
     }
@@ -555,6 +592,58 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
     }
   };
 
+  const handleComposerFocus = () => {
+    if (!shouldStickToBottom) return;
+
+    requestAnimationFrame(() => {
+      messagesScrollRef.current?.scrollTo({ top: messagesScrollRef.current.scrollHeight });
+    });
+    window.setTimeout(() => {
+      messagesScrollRef.current?.scrollTo({ top: messagesScrollRef.current.scrollHeight });
+      const value = inputRef.current?.value || '';
+      if (value.length > LARGE_PASTE_TEXT_LIMIT) {
+        pendingLargeTextRef.current = value;
+        ignoreInputUntilRef.current = Date.now() + 1000;
+        setPendingLargeTextMeta({ chars: value.length, kind: getLargeTextKind(value) });
+        if (inputRef.current) {
+          inputRef.current.value = '';
+        }
+      }
+    }, 260);
+  };
+
+  const handleComposerInput = (event: React.FormEvent<HTMLTextAreaElement>) => {
+    if (largeTextPasteGuardRef.current) {
+      largeTextPasteGuardRef.current = false;
+      if (inputRef.current) {
+        skipNextEmptyInputRef.current = true;
+        inputRef.current.value = '';
+      }
+      return;
+    }
+    const value = event.currentTarget.value;
+    if (Date.now() < ignoreInputUntilRef.current) {
+      event.currentTarget.value = '';
+      return;
+    }
+    if (skipNextEmptyInputRef.current && value === '') {
+      skipNextEmptyInputRef.current = false;
+      return;
+    }
+    if (value.length > LARGE_PASTE_TEXT_LIMIT) {
+      pendingLargeTextRef.current = value;
+      ignoreInputUntilRef.current = Date.now() + 1000;
+      setPendingLargeTextMeta({ chars: value.length, kind: getLargeTextKind(value) });
+      skipNextEmptyInputRef.current = true;
+      event.currentTarget.value = '';
+      return;
+    }
+    if (!pendingLargeTextRef.current) return;
+    if (value.trim() === '') return;
+    pendingLargeTextRef.current = null;
+    setPendingLargeTextMeta(null);
+  };
+
   if (loading) {
     return (
       <div className="flex h-dvh items-center justify-center bg-[#fbfaf7]">
@@ -580,7 +669,10 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
   return (
     <div
       className="fixed inset-0 flex flex-col overflow-hidden bg-[#fbfaf7] text-slate-950 lg:flex-row"
-      style={{ height: viewportHeight ? `${viewportHeight}px` : '100dvh' }}
+      style={{
+        height: viewportHeight ? `${viewportHeight}px` : '100dvh',
+        top: viewportOffsetTop ? `${viewportOffsetTop}px` : 0,
+      }}
     >
       <AgentDetailsPanel
         displayAgent={displayAgent}
@@ -601,7 +693,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
         <div
           ref={messagesScrollRef}
           onScroll={handleMessagesScroll}
-          className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-5 scroll-pb-32 sm:px-6 lg:px-10"
+          className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-8 pt-5 scroll-pb-40 sm:px-6 lg:px-10"
         >
           <div className="mx-auto max-w-4xl space-y-5">
             {!isLoggedIn && (
@@ -705,6 +797,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
             agentName={displayAgent.name}
             categoryColor={categoryColor}
             pendingAttachment={pendingAttachment}
+            pendingLargeTextMeta={pendingLargeTextMeta}
             uploadError={uploadError}
             uploadingImage={uploadingImage}
             isStreaming={isStreaming}
@@ -712,9 +805,13 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
             fileInputRef={fileInputRef}
             onImageSelect={handleImageSelect}
             onPaste={handlePaste}
+            onInput={handleComposerInput}
             onKeyDown={handleKeyDown}
+            onFocus={handleComposerFocus}
             onClearAttachment={() => {
               setPendingAttachment(null);
+              pendingLargeTextRef.current = null;
+              setPendingLargeTextMeta(null);
               setUploadError('');
             }}
             onSend={() => handleSend()}
