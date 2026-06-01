@@ -31,14 +31,27 @@ Recommended flow:
 
 ```text
 User input
-  -> Build runtime context
-  -> Ask AI for narrative + proposed events
-  -> Validate proposed events
-  -> Update session state
-  -> Return narrative + updated visible state
+  -> Parse intent
+  -> Match intent against current scene actions
+  -> Engine validates conditions
+  -> Engine applies effects
+  -> AI narrates engine-approved result
+  -> Return narrative + updated visible state + next actions
 ```
 
-The AI should not be the only source of truth. It can propose what happens, but the server decides what is accepted.
+The AI should not be the source of truth. The engine owns what happens. AI can help parse free-form input and narrate results, but the server decides the action, effects, and ending.
+
+The runtime depends on a generated and confirmed blueprint from the creator builder. If the blueprint is weak, runtime cannot be stable. For that reason, the first engine work should be paired with builder work that produces scenes, actions, conditions, effects, clues, and endings as structured data.
+
+Target flow:
+
+```text
+Generated blueprint
+  -> Initialize session state
+  -> Player chooses or describes an action
+  -> Engine resolves the action
+  -> AI renders the result without changing facts
+```
 
 ## 4. Core Concepts
 
@@ -139,10 +152,57 @@ Example:
 
 ## 5. AI Boundary
 
-The AI should produce two things:
+The AI should be downgraded from game master to assistant.
+
+Allowed AI responsibilities:
+
+- parse free-form player text into candidate intent and target
+- narrate engine-approved outcomes
+- vary tone, dialogue, and atmosphere
+- help creators draft or improve blueprint content before publish
+
+Disallowed AI responsibilities:
+
+- invent new clues during play
+- mark clues as discovered without an engine action
+- change the killer, hidden truth, or ending conditions
+- move the player to a scene that the engine did not select
+- grant items or flags without an engine effect
+- skip required conditions because the narration feels dramatic
+
+Old AI-first contract:
 
 1. Narrative response for the player.
 2. Proposed runtime events.
+
+This can still be used as a temporary bridge, but the long-term contract should be engine-first.
+
+Engine-first contract:
+
+1. Engine receives a structured action.
+2. Engine returns an action result.
+3. AI narrates that result.
+
+Example action result:
+
+```json
+{
+  "actionId": "inspect_door_lock",
+  "allowed": true,
+  "result": "discovered_clue",
+  "effects": [
+    { "type": "clue.discover", "clueId": "door_lock_scratch" }
+  ],
+  "visibleFacts": [
+    "There is a thin scratch inside the lock."
+  ],
+  "nextActions": [
+    "Inspect the desk",
+    "Question the butler",
+    "Check the window"
+  ]
+}
+```
 
 The platform should:
 
@@ -152,7 +212,7 @@ The platform should:
 - persist accepted state changes
 - pass updated state into the next AI call
 
-This keeps the AI creative, but prevents it from silently rewriting the game.
+In the final design, most events should be created by the engine rather than proposed by AI. This keeps the AI creative, but prevents it from silently rewriting the game.
 
 ## 6. Minimal V1 Scope
 
@@ -294,42 +354,55 @@ For desktop:
 
 ## 11. Implementation Order
 
-Step 1: Define runtime types
+Step 1: Accept builder blueprint
 
-- Create TypeScript types for state, events, and AI response.
-- Verify with typecheck.
+- Create TypeScript types for blueprint, state, action, condition, effect, and engine result.
+- Verify a generated Mystery Case blueprint can be loaded.
 
-Step 2: Add session runtime persistence
+Step 2: Build pure engine reducer
 
-- Add runtime state fields to conversation.
-- Add migration.
+- Input: blueprint + current state + action id.
+- Output: allowed / blocked result, effects, next state, next actions.
+- Verify it works without calling AI.
+
+Step 3: Add session runtime persistence
+
+- Add runtime state fields to conversation if missing.
+- Store the selected blueprint snapshot for the session.
 - Verify creating and loading sessions still works.
 
-Step 3: Add runtime state initialization
+Step 4: Add runtime state initialization
 
-- When starting a world, create initial state from world metadata.
+- Initialize state from the blueprint initial state.
 - Verify a new session has scene, objective, clues, and inventory defaults.
 
-Step 4: Add AI response contract
+Step 5: Add action execution API
 
-- Update chat API to request narrative plus events.
-- Parse and validate the result.
-- Fall back gracefully if AI returns plain text.
+- Allow the client to submit a structured action id.
+- Resolve the action through the engine.
+- Persist accepted state changes.
 
-Step 5: Add event reducer
+Step 6: Add AI narration
 
-- Implement simple event handlers.
-- Verify each supported event updates state correctly.
+- Send only engine-approved results to AI.
+- Ask AI to narrate visible facts without changing them.
+- Verify AI cannot introduce new clues or effects.
 
-Step 6: Update play UI
+Step 7: Add free-form intent parsing
+
+- Convert player text into candidate intent and target.
+- Match candidate intent against current available actions.
+- Ask for clarification when no action matches.
+
+Step 8: Update play UI
 
 - Show runtime state in chat page.
 - Add quick actions.
 - Verify desktop and mobile layouts.
 
-Step 7: Creator support
+Step 9: Creator support
 
-- Add fields for initial scene, objective, clues, items, and endings.
+- Add builder fields for scenes, actions, conditions, effects, and endings.
 - Verify custom worlds can define playable setup.
 
 ## 12. Success Criteria
@@ -345,10 +418,10 @@ The runtime is successful when:
 
 ## 13. Recommended Next Step
 
-Start with the smallest technical foundation:
+Start with the smallest generation-to-engine foundation:
 
-1. Add runtime TypeScript types.
-2. Add a `runtimeState` field to conversations.
-3. Initialize state when a new session starts.
+1. Define Mystery Case blueprint types.
+2. Generate or hand-write one tiny blueprint.
+3. Build a pure reducer that executes blueprint actions.
 
-After that, connect AI event output.
+After that, connect AI narration. Free-form input parsing can wait until fixed actions work.

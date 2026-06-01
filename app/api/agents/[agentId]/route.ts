@@ -2,6 +2,14 @@ import { NextResponse } from 'next/server';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 
+function normalizeJsonString(value: unknown) {
+  if (value === undefined || value === null || typeof value === 'string') {
+    return value;
+  }
+
+  return JSON.stringify(value);
+}
+
 export async function GET(request: Request, { params }: { params: Promise<{ agentId: string }> }) {
   try {
     const { agentId } = await params;
@@ -21,7 +29,29 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ ag
   try {
     const userId = requireAuth(request);
     const { agentId } = await params;
-    const data = await request.json();
+    const {
+      name,
+      avatar,
+      description,
+      category,
+      tone,
+      greeting,
+      systemPrompt,
+      model,
+      isPublic,
+      creationType,
+      hook,
+      worldSetting,
+      playerRole,
+      openingScene,
+      rules,
+      winConditions,
+      estimatedDuration,
+      difficulty,
+      playerCount,
+      tags,
+      builderConfig,
+    } = await request.json();
 
     const agent = await prisma.agent.findUnique({ where: { id: agentId } });
     if (!agent) {
@@ -34,7 +64,29 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ ag
 
     const updated = await prisma.agent.update({
       where: { id: agentId },
-      data,
+      data: {
+        name,
+        avatar,
+        description,
+        category,
+        tone,
+        greeting,
+        systemPrompt,
+        model,
+        isPublic,
+        creationType,
+        hook,
+        worldSetting,
+        playerRole,
+        openingScene,
+        rules: normalizeJsonString(rules),
+        winConditions,
+        estimatedDuration,
+        difficulty,
+        playerCount,
+        tags: normalizeJsonString(tags),
+        builderConfig: normalizeJsonString(builderConfig),
+      },
     });
 
     return NextResponse.json({ agent: updated });

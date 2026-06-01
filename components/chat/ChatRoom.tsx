@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ChevronDown, Compass, Loader2, Sparkles, Trash2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
@@ -19,6 +19,8 @@ import { cn } from '@/lib/utils';
 import { CATEGORY_COLORS } from '@/types';
 import type { Agent, MessageAttachment } from '@/types';
 import type { ChatMessage, DisplayAgent } from '@/components/chat/ChatMessageItem';
+import type { RuntimeState } from '@/types/runtime';
+import type { BlueprintRuntimeState, MysteryBlueprint } from '@/types/blueprint';
 
 const promptMap: Record<string, string[]> = {
   悬疑推理: ['我发现了一个可疑线索', '带我去案发现场', '我想审问嫌疑人'],
@@ -36,6 +38,30 @@ const DEFAULT_CONTEXT_MESSAGE_LIMIT = 40;
 const MAX_CONTEXT_MESSAGE_LIMIT = 80;
 const MESSAGE_PAGE_SIZE = 30;
 const LARGE_PASTE_TEXT_LIMIT = 8000;
+
+type EngineRuntimeState = {
+  engine: 'blueprint-v1';
+  blueprint: MysteryBlueprint;
+  state: BlueprintRuntimeState;
+  nextActionIds: string[];
+};
+
+function stripRuntimeBlock(text: string): string {
+  // Strip complete runtime block
+  let result = text.replace(/\n?```runtime\n[\s\S]*?```/, '');
+  // Strip incomplete runtime block (during streaming, closing ``` not yet received)
+  result = result.replace(/\n?```runtime\n[\s\S]*$/, '');
+  return result.trim();
+}
+
+function hasBlueprintConfig(agent: any) {
+  if (!agent?.builderConfig) return false;
+  try {
+    return Boolean(JSON.parse(agent.builderConfig)?.blueprint);
+  } catch {
+    return false;
+  }
+}
 
 function getLargeTextKind(text: string) {
   try {
@@ -81,6 +107,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
   const [uploadingImage, setUploadingImage] = useState(false);
   const [uploadError, setUploadError] = useState('');
   const [playContextOpen, setPlayContextOpen] = useState(false);
+  const [runtimeState, setRuntimeState] = useState<RuntimeState | null>(null);
   const [hasMoreMessages, setHasMoreMessages] = useState(false);
   const [loadingMoreMessages, setLoadingMoreMessages] = useState(false);
   const [shouldStickToBottom, setShouldStickToBottom] = useState(true);
@@ -97,6 +124,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
   const largeTextPasteGuardRef = useRef(false);
   const skipNextEmptyInputRef = useRef(false);
   const ignoreInputUntilRef = useRef(0);
+  const creatingEngineConversationRef = useRef(false);
 
   useEffect(() => {
     messagesRef.current = messages;
@@ -177,6 +205,14 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
               )
             );
 
+            // Parse runtime state
+            if (conversation.runtimeState) {
+              try {
+                setRuntimeState(JSON.parse(conversation.runtimeState));
+                setPlayContextOpen(true);
+              } catch {}
+            }
+
             const { messages: existingMessages, hasMore } = await conversationsApi.getMessages(existingConversationId, {
               limit: MESSAGE_PAGE_SIZE,
             });
@@ -218,12 +254,76 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
   }, [isLoggedIn, initialPrompt, agent, existingConversationId, messages.length]);
 
   useEffect(() => {
+    if (
+      !isLoggedIn ||
+      !agentId ||
+      !agent ||
+      existingConversationId ||
+      conversationId ||
+      runtimeState ||
+      !hasBlueprintConfig(agent) ||
+      creatingEngineConversationRef.current
+    ) {
+      return;
+    }
+
+    creatingEngineConversationRef.current = true;
+    conversationsApi
+      .create({ agentId })
+      .then(({ conversation }) => {
+        setConversationId(conversation.id);
+        setConversationAgent({
+          id: conversation.agentId || agentId,
+          name: conversation.agentName || agent.name,
+          avatar: conversation.agentAvatar || agent.avatar,
+          description: conversation.agentDescription || agent.description,
+          category: conversation.agentCategory || agent.category,
+          tone: conversation.agentTone || agent.tone,
+          systemPrompt: conversation.agentSystemPrompt || agent.systemPrompt,
+          greeting: agent.greeting,
+        });
+        if (conversation.runtimeState) {
+          setRuntimeState(JSON.parse(conversation.runtimeState));
+          setPlayContextOpen(true);
+        }
+      })
+      .finally(() => {
+        creatingEngineConversationRef.current = false;
+      });
+  }, [agent, agentId, conversationId, existingConversationId, isLoggedIn, runtimeState]);
+
+  useEffect(() => {
     setActiveActionMessageId(null);
   }, [messages.length]);
 
   const displayAgent = conversationAgent || agent;
   const categoryColor = displayAgent ? CATEGORY_COLORS[displayAgent.category || ''] || '#6366f1' : '#6366f1';
-  const latestAssistantMessageId = [...messages].reverse().find((message) => message.role === 'assistant' && message.id !== 'greeting')?.id;
+  const latestAssistantMessage = [...messages].reverse().find((message) => message.role === 'assistant' && message.id !== 'greeting');
+  const latestAssistantMessageId = latestAssistantMessage?.id;
+  const latestActionHostMessageId = [...messages].reverse().find((message) => message.role === 'assistant')?.id;
+  const engineRuntime = runtimeState && (runtimeState as any).engine === 'blueprint-v1'
+    ? (runtimeState as unknown as EngineRuntimeState)
+    : null;
+  const engineActions = engineRuntime
+    ? engineRuntime.nextActionIds
+        .map((actionId) => engineRuntime.blueprint.actions.find((action) => action.id === actionId))
+        .filter(Boolean)
+    : [];
+  const engineCanAccuse = Boolean(
+    engineRuntime?.blueprint.accusation &&
+      !engineRuntime.state.endedAt &&
+      engineRuntime.blueprint.accusation.requiredClueIds.every((clueId: string) =>
+        engineRuntime.state.discoveredClueIds.includes(clueId)
+      ) &&
+      engineRuntime.blueprint.accusation.enabledWhen.every((condition: any) => {
+        if (condition.type === 'hasClue') return engineRuntime.state.discoveredClueIds.includes(condition.clueId);
+        if (condition.type === 'hasItem') return engineRuntime.state.inventoryItemIds.includes(condition.itemId);
+        if (condition.type === 'flag') return engineRuntime.state.flags[condition.key] === condition.value;
+        if (condition.type === 'flagNot') return engineRuntime.state.flags[condition.key] !== condition.value;
+        if (condition.type === 'inScene') return engineRuntime.state.sceneId === condition.sceneId;
+        return false;
+      })
+  );
 
   useEffect(() => {
     if (!shouldStickToBottom) {
@@ -257,8 +357,30 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
   }, [messages]);
   const suggestedPrompts = useMemo(() => {
     if (!displayAgent) return ['你能帮我做什么？', '给我介绍一下你的能力', '我们从一个小任务开始'];
+
+    // For mystery cases with builderConfig, generate contextual prompts
+    if (agent?.creationType === 'mystery' && agent?.builderConfig) {
+      try {
+        const config = JSON.parse(agent.builderConfig);
+        const publicClues = (config.clues || [])
+          .filter((c: any) => c.visibility === 'public')
+          .slice(0, 3);
+        const prompts: string[] = [];
+        if (config.openingScene) {
+          prompts.push('带我去案发现场看看');
+        }
+        for (const clue of publicClues) {
+          if (clue.name) prompts.push(`检查${clue.name}`);
+        }
+        if ((config.suspects || []).length > 0) {
+          prompts.push(`审问嫌疑人${config.suspects[0].name || ''}`);
+        }
+        if (prompts.length >= 3) return prompts.slice(0, 4);
+      } catch {}
+    }
+
     return promptMap[displayAgent.category || ''] || ['你能帮我做什么？', '给我介绍一下你的能力', '我们从一个小任务开始'];
-  }, [displayAgent]);
+  }, [displayAgent, agent]);
 
   const toChatMessage = (msg: any): ChatMessage => ({
     id: msg.id,
@@ -404,6 +526,14 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
     const outgoingAttachments = options.attachmentsOverride || (pendingAttachment ? [pendingAttachment] : []);
     if ((!content && outgoingAttachments.length === 0) || isStreaming || uploadingImage) return;
 
+    if (engineRuntime) {
+      const matchedAction = engineActions.find((action: any) => action.label === content || action.id === content);
+      if (matchedAction) {
+        handleEngineAction(matchedAction.id);
+      }
+      return;
+    }
+
     setShouldStickToBottom(true);
     setShowJumpToBottom(false);
     forceScrollToBottomRef.current = true;
@@ -479,13 +609,15 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
 
         const chunk = decoder.decode(value, { stream: true });
         fullContent += chunk;
-        setStreamingContent(fullContent);
+        // Strip runtime block from display during streaming
+        const displayContent = stripRuntimeBlock(fullContent);
+        setStreamingContent(displayContent || fullContent);
       }
 
       const assistantMessage: ChatMessage = {
         id: `assistant-${Date.now()}`,
         role: 'assistant',
-        content: fullContent,
+        content: stripRuntimeBlock(fullContent) || fullContent,
         createdAt: new Date().toISOString(),
       };
 
@@ -497,6 +629,14 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
 
       if (result.conversationId) {
         await syncConversationMessages(result.conversationId, messagesWithAssistant);
+
+        // Re-fetch runtime state after AI response
+        try {
+          const { conversation: updated } = await conversationsApi.get(result.conversationId);
+          if (updated.runtimeState) {
+            setRuntimeState(JSON.parse(updated.runtimeState));
+          }
+        } catch {}
       }
     } catch (error: any) {
       if (error.name !== 'AbortError') {
@@ -550,6 +690,98 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
       historyOverride: nextMessages,
       attachmentsOverride: lastUserMessage.attachments || [],
     });
+  };
+
+  const handleEngineAction = async (actionId: string) => {
+    if (!conversationId || isStreaming) return;
+
+    const action = engineRuntime?.blueprint.actions.find((item) => item.id === actionId);
+    const userMessage: ChatMessage = {
+      id: `user-${Date.now()}`,
+      role: 'user',
+      content: action?.label || actionId,
+      createdAt: new Date().toISOString(),
+    };
+
+    setShouldStickToBottom(true);
+    setShowJumpToBottom(false);
+    forceScrollToBottomRef.current = true;
+    setMessages((current) => [...current, userMessage]);
+
+    try {
+      const { result, runtimeState: nextRuntimeState, messages: persistedMessages } = await conversationsApi.engineAction(conversationId, actionId);
+      const persistedUser = persistedMessages?.user ? toChatMessage(persistedMessages.user) : userMessage;
+      const assistantMessage: ChatMessage = persistedMessages?.assistant
+        ? toChatMessage(persistedMessages.assistant)
+        : {
+            id: `assistant-${Date.now()}`,
+            role: 'assistant',
+            content: result.narrative || result.visibleText || (result.allowed ? 'Action completed.' : 'Action blocked.'),
+            createdAt: new Date().toISOString(),
+          };
+      setRuntimeState(nextRuntimeState as any);
+      setMessages((current) => [...current.filter((message) => message.id !== userMessage.id), persistedUser, assistantMessage]);
+    } catch (error: any) {
+      setMessages((current) => [
+        ...current,
+        {
+          id: `error-${Date.now()}`,
+          role: 'assistant',
+          content: error.message || 'Engine action failed.',
+          createdAt: new Date().toISOString(),
+        },
+      ]);
+    }
+  };
+
+  const handleEngineAccuse = async (suspectId: string) => {
+    if (!conversationId || isStreaming || !engineRuntime) return;
+
+    const suspect = engineRuntime.blueprint.suspects.find((item) => item.id === suspectId);
+    const clueIds = engineRuntime.state.discoveredClueIds;
+    const userMessage: ChatMessage = {
+      id: `user-${Date.now()}`,
+      role: 'user',
+      content: `指认 ${suspect?.name || suspectId}`,
+      createdAt: new Date().toISOString(),
+    };
+
+    setShouldStickToBottom(true);
+    setShowJumpToBottom(false);
+    forceScrollToBottomRef.current = true;
+    setMessages((current) => [...current, userMessage]);
+
+    try {
+      const { result, runtimeState: nextRuntimeState, messages: persistedMessages } = await conversationsApi.engineAccuse(conversationId, suspectId, clueIds);
+      const ending = engineRuntime.blueprint.endings.find((item) => item.id === result.endingId);
+      const persistedUser = persistedMessages?.user ? toChatMessage(persistedMessages.user) : userMessage;
+      const assistantMessage: ChatMessage = persistedMessages?.assistant
+        ? toChatMessage(persistedMessages.assistant)
+        : {
+            id: `assistant-${Date.now()}`,
+            role: 'assistant',
+            content:
+              result.narrative ||
+              ending?.description ||
+              ending?.name ||
+              (result.allowed
+                ? result.correct ? '指认正确，案件结束。' : '指认错误，案件结束。'
+                : result.blockedReasons?.join('；') || '证据不足，暂时无法做出可靠指认。'),
+            createdAt: new Date().toISOString(),
+          };
+      setRuntimeState(nextRuntimeState as any);
+      setMessages((current) => [...current.filter((message) => message.id !== userMessage.id), persistedUser, assistantMessage]);
+    } catch (error: any) {
+      setMessages((current) => [
+        ...current,
+        {
+          id: `error-${Date.now()}`,
+          role: 'assistant',
+          content: error.message || 'Accusation failed.',
+          createdAt: new Date().toISOString(),
+        },
+      ]);
+    }
   };
 
   const handleCopy = (id: string, content: string) => {
@@ -752,20 +984,112 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
 
             {isLoggedIn &&
               messages.map((message) => (
-                <MessageItem
-                  key={message.id}
-                  message={message}
-                  displayAgent={displayAgent}
-                  categoryColor={categoryColor}
-                  latestAssistantMessageId={latestAssistantMessageId}
-                  copiedId={copiedId}
-                  activeActionMessageId={activeActionMessageId}
-                  onActivate={(id) => setActiveActionMessageId((current) => (current === id ? null : id))}
-                  onCopy={handleCopy}
-                  onRegenerate={handleRegenerate}
-                  onDelete={setPendingDeleteMessage}
-                />
+                <Fragment key={message.id}>
+                  <MessageItem
+                    message={message}
+                    displayAgent={displayAgent}
+                    categoryColor={categoryColor}
+                    latestAssistantMessageId={latestAssistantMessageId}
+                    copiedId={copiedId}
+                    activeActionMessageId={activeActionMessageId}
+                    onActivate={(id) => setActiveActionMessageId((current) => (current === id ? null : id))}
+                    onCopy={handleCopy}
+                    onRegenerate={handleRegenerate}
+                    onDelete={setPendingDeleteMessage}
+                  />
+
+                  {message.id === latestActionHostMessageId && (
+                    <>
+                      {/* Inline engine actions for blueprint-driven conversations */}
+                      {engineRuntime && !isStreaming && engineActions.length > 0 && (
+                        <section className="rounded-[24px] bg-white/[0.06] px-4 py-3">
+                          <div className="mb-2.5 flex items-center gap-2 text-xs font-bold text-white/40">
+                            <Sparkles size={14} style={{ color: categoryColor }} />
+                            Engine actions
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {engineActions.map((action: any) => (
+                              <button
+                                key={action.id}
+                                onClick={() => handleEngineAction(action.id)}
+                                className="rounded-full bg-white/[0.08] px-4 py-2 text-sm font-bold leading-5 text-white/64 transition hover:-translate-y-0.5 hover:bg-white/[0.12] hover:text-white"
+                              >
+                                {action.label}
+                              </button>
+                            ))}
+                          </div>
+                        </section>
+                      )}
+
+                      {engineRuntime && engineCanAccuse && !isStreaming && (
+                        <section className="rounded-[24px] bg-white/[0.06] px-4 py-3">
+                          <div className="mb-2.5 flex items-center gap-2 text-xs font-bold text-white/40">
+                            <Sparkles size={14} style={{ color: categoryColor }} />
+                            Accuse
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {engineRuntime.blueprint.suspects.map((suspect) => (
+                              <button
+                                key={suspect.id}
+                                onClick={() => handleEngineAccuse(suspect.id)}
+                                className="rounded-full bg-white/[0.08] px-4 py-2 text-sm font-bold leading-5 text-white/64 transition hover:-translate-y-0.5 hover:bg-white/[0.12] hover:text-white"
+                              >
+                                {suspect.name}
+                              </button>
+                            ))}
+                          </div>
+                        </section>
+                      )}
+
+                      {/* Inline suggested actions for runtime-enabled conversations */}
+                      {runtimeState && !engineRuntime && !isStreaming && messages.length > 1 && (() => {
+                        const rawActions = runtimeState.suggestedActions?.length
+                          ? runtimeState.suggestedActions
+                          : [];
+
+                        // Filter out actions that overlap with recent user messages.
+                        const recentUserTexts = messages
+                          .filter(m => m.role === 'user')
+                          .slice(-6)
+                          .map(m => m.content.toLowerCase());
+                        const inlineActions = rawActions.filter(action => {
+                          const actionLower = action.toLowerCase();
+                          return !recentUserTexts.some(userText =>
+                            userText.includes(actionLower) || actionLower.includes(userText.slice(0, 15))
+                          );
+                        });
+
+                        const displayActions = inlineActions.length >= 2
+                          ? inlineActions
+                          : rawActions;
+
+                        if (displayActions.length === 0) return null;
+
+                        return (
+                          <section className="rounded-[24px] bg-white/[0.06] px-4 py-3">
+                            <div className="mb-2.5 flex items-center gap-2 text-xs font-bold text-white/40">
+                              <Sparkles size={14} style={{ color: categoryColor }} />
+                              你可以这样做
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              {displayActions.map((action) => (
+                                <button
+                                  key={action}
+                                  onClick={() => handleSend(action)}
+                                  className="rounded-full bg-white/[0.08] px-4 py-2 text-sm font-bold leading-5 text-white/64 transition hover:-translate-y-0.5 hover:bg-white/[0.12] hover:text-white"
+                                >
+                                  {action}
+                                </button>
+                              ))}
+                            </div>
+                          </section>
+                        );
+                      })()}
+                    </>
+                  )}
+                </Fragment>
               ))}
+
             {isLoggedIn && isStreaming && streamingContent && (
               <div className="flex justify-start gap-3">
                 <Avatar src={displayAgent.avatar} alt={displayAgent.name} size="sm" className="mt-1 shrink-0" />
@@ -850,6 +1174,10 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
         isOpen={playContextOpen}
         onClose={() => setPlayContextOpen(false)}
         messageCount={messages.length}
+        runtimeState={runtimeState}
+        onQuickAction={(action) => handleSend(action)}
+        recentUserTexts={messages.filter(m => m.role === 'user').slice(-6).map(m => m.content)}
+        actionHistory={messages.filter(m => m.role === 'user' && m.content.trim()).map(m => m.content)}
       />
 
       <ConfirmDialog

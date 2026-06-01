@@ -3,6 +3,13 @@ import OpenAI from 'openai';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { isAdminEmail } from '@/app/api/_lib/admin';
+import { maintainMysteryBlueprint } from '@/lib/blueprint-maintenance';
+import {
+  createBlueprintRuntimeState,
+  executeBlueprintAction,
+  getAvailableBlueprintActions,
+} from '@/lib/story-engine';
+import type { BlueprintRuntimeState, MysteryBlueprint } from '@/types/blueprint';
 
 const DAILY_CREATE_LIMIT = 50;
 
@@ -13,6 +20,402 @@ interface CreateRequest {
   step: number;
   concept?: string;
   confirmedData?: Record<string, any>;
+}
+
+function asArray(value: unknown): any[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function collectIds(items: any[], groupName: string, notes: string[]) {
+  const ids = new Set<string>();
+
+  for (const item of items) {
+    if (!item?.id || typeof item.id !== 'string') {
+      notes.push(`${groupName} has an item without a string id`);
+      continue;
+    }
+    if (ids.has(item.id)) {
+      notes.push(`${groupName} has duplicate id: ${item.id}`);
+    }
+    ids.add(item.id);
+  }
+
+  return ids;
+}
+
+function uniqueStrings(values: string[]) {
+  return Array.from(new Set(values.filter((value) => typeof value === 'string' && value.length > 0)));
+}
+
+function ensureOneShotAction(action: any) {
+  const key = `done_${action.id}`;
+  action.conditions = [
+    ...asArray(action.conditions).filter((condition) => condition.type !== 'flagNot' || condition.key !== key),
+    { type: 'flagNot', key, value: true },
+  ];
+  action.effects = asArray(action.effects);
+  if (!action.effects.some((effect) => effect.type === 'flag.set' && effect.key === key)) {
+    action.effects.push({ type: 'flag.set', key, value: true });
+  }
+}
+
+function clueDiscoveryActionId(actions: any[], clueId: string): string | undefined {
+  const action = actions.find((item) =>
+    asArray(item.effects).some((effect) => effect.type === 'clue.discover' && effect.clueId === clueId)
+  );
+  return action?.id;
+}
+
+function repairEvidenceChain(blueprint: MysteryBlueprint) {
+  const clues = asArray(blueprint.clues);
+  const actions = asArray(blueprint.actions);
+  const requiredClueIds = new Set(asArray(blueprint.accusation?.requiredClueIds));
+  const existingEvidence = asArray(blueprint.evidenceChain);
+  const evidenceByClueId = new Map<string, any>();
+
+  for (const evidence of existingEvidence) {
+    if (evidence?.clueId) evidenceByClueId.set(evidence.clueId, evidence);
+  }
+
+  blueprint.evidenceChain = clues.map((clue) => {
+    const existing = evidenceByClueId.get(clue.id);
+    const obtainedByActionId = existing?.obtainedByActionId || clueDiscoveryActionId(actions, clue.id);
+    return {
+      id: existing?.id || `evidence_${clue.id}`,
+      title: existing?.title || clue.name || clue.id,
+      proves: asArray(existing?.proves).length > 0 ? asArray(existing.proves) : [clue.description || clue.name || clue.id],
+      clueId: clue.id,
+      suspectIds: asArray(existing?.suspectIds),
+      requiredForAccusation: Boolean(existing?.requiredForAccusation || requiredClueIds.has(clue.id)),
+      ...(obtainedByActionId ? { obtainedByActionId } : {}),
+    };
+  });
+}
+
+function dryRunStateKey(state: BlueprintRuntimeState, depth: number) {
+  return JSON.stringify({
+    depth,
+    sceneId: state.sceneId,
+    flags: state.flags,
+    clues: [...state.discoveredClueIds].sort(),
+    inventory: [...state.inventoryItemIds].sort(),
+    endingId: state.endingId || '',
+  });
+}
+
+function createBlueprintDryRunReport(blueprint: MysteryBlueprint, maxDepth = 6) {
+  const initialState = createBlueprintRuntimeState(blueprint);
+  const queue: Array<{ state: BlueprintRuntimeState; depth: number }> = [{ state: initialState, depth: 0 }];
+  const visited = new Set<string>();
+  const reachedSceneIds = new Set<string>([initialState.sceneId]);
+  const reachedActionIds = new Set<string>();
+  const reachedClueIds = new Set<string>(initialState.discoveredClueIds);
+  const deadEnds: Array<{ sceneId: string; depth: number; discoveredClueIds: string[] }> = [];
+
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (!current) continue;
+
+    const key = dryRunStateKey(current.state, current.depth);
+    if (visited.has(key)) continue;
+    visited.add(key);
+
+    const availableActions = getAvailableBlueprintActions(blueprint, current.state);
+    if (availableActions.length === 0 && !current.state.endedAt) {
+      deadEnds.push({
+        sceneId: current.state.sceneId,
+        depth: current.depth,
+        discoveredClueIds: current.state.discoveredClueIds,
+      });
+      continue;
+    }
+
+    if (current.depth >= maxDepth) continue;
+
+    for (const action of availableActions) {
+      reachedActionIds.add(action.id);
+      const result = executeBlueprintAction(blueprint, current.state, action.id);
+      if (!result.allowed) continue;
+      reachedSceneIds.add(result.state.sceneId);
+      for (const clueId of result.state.discoveredClueIds) reachedClueIds.add(clueId);
+      queue.push({ state: result.state, depth: current.depth + 1 });
+    }
+  }
+
+  const missingRequiredEvidenceIds = asArray(blueprint.evidenceChain)
+    .filter((evidence) => evidence.requiredForAccusation && evidence.clueId && !reachedClueIds.has(evidence.clueId))
+    .map((evidence) => evidence.id);
+
+  const notes: string[] = [];
+  if (missingRequiredEvidenceIds.length > 0) {
+    notes.push(`dry-run cannot reach required evidence: ${missingRequiredEvidenceIds.join(', ')}`);
+  }
+  if (deadEnds.length > 0) {
+    notes.push(`dry-run found dead ends before story ending: ${deadEnds.length}`);
+  }
+
+  return {
+    maxDepth,
+    reachedSceneIds: Array.from(reachedSceneIds),
+    reachedActionIds: Array.from(reachedActionIds),
+    reachedClueIds: Array.from(reachedClueIds),
+    missingRequiredEvidenceIds,
+    deadEnds,
+    notes,
+  };
+}
+
+function repairMysteryBlueprint(blueprint: MysteryBlueprint): MysteryBlueprint {
+  const suspects = asArray(blueprint.suspects);
+  if (suspects.length === 0) return blueprint;
+
+  const scenes = asArray(blueprint.scenes);
+  const actions = asArray(blueprint.actions);
+  const sceneIds = new Set(scenes.map((scene) => scene.id));
+  const initialSceneId = blueprint.initialState?.sceneId;
+  const mainScene = scenes.find((scene) => scene.id === initialSceneId) || scenes[0];
+  if (!mainScene) return blueprint;
+
+  let interrogationScene = scenes.find((scene) => scene.id === 'interrogation_room');
+  if (!interrogationScene) {
+    interrogationScene = {
+      id: 'interrogation_room',
+      name: '审问室',
+      description: '你可以在这里逐一审问嫌疑人，核对他们的说法与证据。',
+      objectIds: [],
+      actionIds: [],
+    };
+    blueprint.scenes = [...scenes, interrogationScene];
+  }
+
+  const moveActionId = 'move_to_interrogation_room';
+  const existingMoveAction = actions.find(
+    (action) => action.intent === 'move' && action.targetId === 'interrogation_room'
+  );
+  let moveAction = existingMoveAction || actions.find((action) => action.id === moveActionId);
+  if (!moveAction) {
+    moveAction = {
+      id: moveActionId,
+      label: '进入审问室',
+      intent: 'move',
+      targetId: 'interrogation_room',
+      conditions: [],
+      effects: [
+        { type: 'scene.change', sceneId: 'interrogation_room' },
+        { type: 'objective.update', objective: '选择一名嫌疑人进行审问，核对证词与证据。' },
+      ],
+      successText: '你进入审问室。接下来需要选择一名嫌疑人进行正式审问。',
+      blockedText: '暂时无法进入审问室。',
+    };
+    blueprint.actions = [...asArray(blueprint.actions), moveAction];
+  }
+  moveAction.effects = asArray(moveAction.effects);
+  if (!moveAction.effects.some((effect) => effect.type === 'scene.change' && effect.sceneId === 'interrogation_room')) {
+    moveAction.effects.push({ type: 'scene.change', sceneId: 'interrogation_room' });
+  }
+  if (!moveAction.effects.some((effect) => effect.type === 'objective.update')) {
+    moveAction.effects.push({ type: 'objective.update', objective: '选择一名嫌疑人进行审问，核对证词与证据。' });
+  }
+  mainScene.actionIds = uniqueStrings([...asArray(mainScene.actionIds), moveAction.id]);
+
+  for (const action of actions) {
+    action.conditions = asArray(action.conditions);
+    action.effects = asArray(action.effects);
+
+    if (action.intent === 'move' && sceneIds.has(action.targetId)) {
+      if (!action.effects.some((effect) => effect.type === 'scene.change' && effect.sceneId === action.targetId)) {
+        action.effects.push({ type: 'scene.change', sceneId: action.targetId });
+      }
+      if (action.targetId === mainScene.id && !action.effects.some((effect) => effect.type === 'objective.update')) {
+        action.effects.push({ type: 'objective.update', objective: blueprint.initialState?.objective || '继续调查案件现场。' });
+      }
+    }
+
+    if (action.intent === 'inspect' || action.intent === 'use') {
+      ensureOneShotAction(action);
+    }
+  }
+
+  for (const scene of scenes) {
+    scene.actionIds = uniqueStrings(asArray(scene.actionIds)).filter((actionId) => {
+      const action = actions.find((item) => item.id === actionId);
+      return action?.intent !== 'accuse';
+    });
+  }
+  blueprint.actions = asArray(blueprint.actions).filter((action) => action.intent !== 'accuse');
+
+  const nextActions = asArray(blueprint.actions);
+  for (const suspect of suspects) {
+    if (!suspect?.id || !suspect?.name) continue;
+
+    const existingAskAction = nextActions.find((action) => action.intent === 'ask' && action.targetId === suspect.id);
+    const askActionId = existingAskAction?.id || `ask_${suspect.id}`;
+    if (existingAskAction) {
+      existingAskAction.conditions = [
+        ...asArray(existingAskAction.conditions).filter(
+          (condition) =>
+            (condition.type !== 'flagNot' || condition.key !== `asked_${suspect.id}`) &&
+            (condition.type !== 'inScene' || condition.sceneId !== 'interrogation_room')
+        ),
+        { type: 'inScene', sceneId: 'interrogation_room' },
+        { type: 'flagNot', key: `asked_${suspect.id}`, value: true },
+      ];
+      existingAskAction.effects = asArray(existingAskAction.effects);
+      if (!existingAskAction.effects.some((effect) => effect.type === 'flag.set' && effect.key === `asked_${suspect.id}`)) {
+        existingAskAction.effects.push({ type: 'flag.set', key: `asked_${suspect.id}`, value: true });
+      }
+    } else {
+      nextActions.push({
+        id: askActionId,
+        label: `审问${suspect.name}`,
+        intent: 'ask',
+        targetId: suspect.id,
+        conditions: [
+          { type: 'inScene', sceneId: 'interrogation_room' },
+          { type: 'flagNot', key: `asked_${suspect.id}`, value: true },
+        ],
+        effects: [{ type: 'flag.set', key: `asked_${suspect.id}`, value: true }],
+        successText: `你开始审问${suspect.name}。对方的证词需要结合已有线索判断真假。`,
+        blockedText: '需要先进入审问室。',
+      });
+    }
+    interrogationScene.actionIds = uniqueStrings([...asArray(interrogationScene.actionIds), askActionId]);
+  }
+  blueprint.actions = nextActions;
+  repairEvidenceChain(blueprint);
+
+  return blueprint;
+}
+
+function validateMysteryBlueprint(blueprint: MysteryBlueprint | null | undefined): string[] {
+  const notes: string[] = [];
+  if (!blueprint || typeof blueprint !== 'object') {
+    return ['blueprint is missing or invalid'];
+  }
+
+  const suspects = asArray(blueprint.suspects);
+  const clues = asArray(blueprint.clues);
+  const scenes = asArray(blueprint.scenes);
+  const objects = asArray(blueprint.objects);
+  const actions = asArray(blueprint.actions);
+  const endings = asArray(blueprint.endings);
+  const evidenceChain = asArray(blueprint.evidenceChain);
+
+  const suspectIds = collectIds(suspects, 'suspects', notes);
+  const clueIds = collectIds(clues, 'clues', notes);
+  const sceneIds = collectIds(scenes, 'scenes', notes);
+  const objectIds = collectIds(objects, 'objects', notes);
+  const actionIds = collectIds(actions, 'actions', notes);
+  const endingIds = collectIds(endings, 'endings', notes);
+  collectIds(evidenceChain, 'evidenceChain', notes);
+
+  const initialSceneId = blueprint.initialState?.sceneId;
+  if (!initialSceneId || !sceneIds.has(initialSceneId)) {
+    notes.push('initialState.sceneId does not reference an existing scene');
+  }
+
+  for (const scene of scenes) {
+    for (const objectId of asArray(scene.objectIds)) {
+      if (!objectIds.has(objectId)) notes.push(`scene ${scene.id} references missing object: ${objectId}`);
+    }
+    for (const actionId of asArray(scene.actionIds)) {
+      if (!actionIds.has(actionId)) notes.push(`scene ${scene.id} references missing action: ${actionId}`);
+    }
+  }
+
+  for (const object of objects) {
+    if (!sceneIds.has(object.sceneId)) {
+      notes.push(`object ${object.id} references missing scene: ${object.sceneId}`);
+    }
+  }
+
+  const discoveredByAction = new Set<string>();
+  const targetIds = new Set([...objectIds, ...suspectIds, ...sceneIds, ...clueIds]);
+  for (const action of actions) {
+    if (action.targetId && !targetIds.has(action.targetId)) {
+      notes.push(`action ${action.id} references missing target: ${action.targetId}`);
+    }
+    if (action.intent === 'accuse') {
+      notes.push(`action ${action.id} uses accuse intent; use blueprint.accusation instead`);
+    }
+    const effects = asArray(action.effects);
+    if (effects.length === 0) {
+      notes.push(`action ${action.id} has no effects`);
+    }
+    if (action.intent === 'move') {
+      const hasSceneChange = effects.some((effect) => effect.type === 'scene.change' && effect.sceneId === action.targetId);
+      if (!hasSceneChange) notes.push(`move action ${action.id} does not change to its target scene`);
+    }
+    if ((action.intent === 'inspect' || action.intent === 'ask' || action.intent === 'use') && !effects.some((effect) => effect.type === 'flag.set')) {
+      notes.push(`one-shot action ${action.id} does not mark itself done`);
+    }
+    for (const effect of effects) {
+      if (effect.type === 'clue.discover') {
+        if (!clueIds.has(effect.clueId)) {
+          notes.push(`action ${action.id} discovers missing clue: ${effect.clueId}`);
+        } else {
+          discoveredByAction.add(effect.clueId);
+        }
+      }
+      if (effect.type === 'scene.change' && !sceneIds.has(effect.sceneId)) {
+        notes.push(`action ${action.id} changes to missing scene: ${effect.sceneId}`);
+      }
+      if (effect.type === 'ending.reach' && !endingIds.has(effect.endingId)) {
+        notes.push(`action ${action.id} reaches missing ending: ${effect.endingId}`);
+      }
+    }
+  }
+
+  for (const suspect of suspects) {
+    const hasAskAction = actions.some((action) => action.intent === 'ask' && action.targetId === suspect.id);
+    if (!hasAskAction) {
+      notes.push(`suspect ${suspect.id} has no ask action`);
+    }
+  }
+
+  for (const clue of clues) {
+    if (clue.visibility === 'hidden' && !discoveredByAction.has(clue.id)) {
+      notes.push(`hidden clue is not discoverable by any action: ${clue.id}`);
+    }
+  }
+
+  for (const evidence of evidenceChain) {
+    if (evidence.clueId && !clueIds.has(evidence.clueId)) {
+      notes.push(`evidence ${evidence.id} references missing clue: ${evidence.clueId}`);
+    }
+    if (evidence.obtainedByActionId && !actionIds.has(evidence.obtainedByActionId)) {
+      notes.push(`evidence ${evidence.id} references missing action: ${evidence.obtainedByActionId}`);
+    }
+    for (const suspectId of asArray(evidence.suspectIds)) {
+      if (!suspectIds.has(suspectId)) notes.push(`evidence ${evidence.id} references missing suspect: ${suspectId}`);
+    }
+    if (evidence.requiredForAccusation && evidence.clueId && !discoveredByAction.has(evidence.clueId)) {
+      notes.push(`required evidence is not discoverable by any action: ${evidence.id}`);
+    }
+  }
+
+  const accusation = blueprint.accusation;
+  if (accusation) {
+    if (!suspectIds.has(accusation.correctSuspectId)) {
+      notes.push(`accusation.correctSuspectId is missing: ${accusation.correctSuspectId}`);
+    }
+    for (const clueId of asArray(accusation.requiredClueIds)) {
+      if (!clueIds.has(clueId)) notes.push(`accusation requires missing clue: ${clueId}`);
+      if (!evidenceChain.some((evidence) => evidence.clueId === clueId && evidence.requiredForAccusation)) {
+        notes.push(`accusation required clue is not represented in evidenceChain: ${clueId}`);
+      }
+    }
+    if (!endingIds.has(accusation.successEndingId)) {
+      notes.push(`accusation.successEndingId is missing: ${accusation.successEndingId}`);
+    }
+    if (!endingIds.has(accusation.failureEndingId)) {
+      notes.push(`accusation.failureEndingId is missing: ${accusation.failureEndingId}`);
+    }
+  } else {
+    notes.push('accusation is missing');
+  }
+
+  return Array.from(new Set(notes));
 }
 
 // Mystery Case prompt templates
@@ -120,6 +523,125 @@ ${JSON.stringify(data.confirmedData || {}, null, 2)}
 - crimeScene 描述案件发生地点
 - greeting 是玩家看到的第一条消息
 - systemPrompt 是运行时使用的完整提示词，包含所有已确认的内容`,
+  }),
+  5: (data) => ({
+    system: `You are a game systems designer converting a confirmed mystery case into an executable text-game blueprint.
+Output valid JSON only. No markdown, no explanation, no code blocks.
+The JSON field names must be English. Player-facing text may be Chinese.
+
+The blueprint is the source of truth for a future engine. Do not rely on a system prompt to enforce gameplay.`,
+    user: `Creation type: mystery_case
+Confirmed data:
+${JSON.stringify(data.confirmedData || {}, null, 2)}
+
+Generate a playable blueprint for a text game engine.
+
+Required output format:
+{
+  "blueprint": {
+    "blueprintVersion": 1,
+    "initialState": {
+      "sceneId": "crime_scene",
+      "objective": "string",
+      "flags": {},
+      "discoveredClueIds": [],
+      "inventoryItemIds": []
+    },
+    "suspects": [
+      { "id": "stable_ascii_id", "name": "string", "role": "string" }
+    ],
+    "clues": [
+      { "id": "stable_ascii_id", "name": "string", "visibility": "public_or_hidden" }
+    ],
+    "evidenceChain": [
+      {
+        "id": "stable_ascii_id",
+        "title": "string",
+        "proves": ["what this evidence proves"],
+        "clueId": "stable_ascii_id",
+        "suspectIds": ["stable_ascii_id"],
+        "requiredForAccusation": true,
+        "obtainedByActionId": "stable_ascii_id"
+      }
+    ],
+    "scenes": [
+      {
+        "id": "stable_ascii_id",
+        "name": "string",
+        "description": "player-visible text",
+        "objectIds": ["stable_ascii_id"],
+        "actionIds": ["stable_ascii_id"]
+      }
+    ],
+    "objects": [
+      {
+        "id": "stable_ascii_id",
+        "name": "string",
+        "sceneId": "stable_ascii_id",
+        "description": "player-visible text"
+      }
+    ],
+    "actions": [
+      {
+        "id": "stable_ascii_id",
+        "label": "player-facing action label",
+        "intent": "inspect | ask | move | use | reason | accuse",
+        "targetId": "stable_ascii_id",
+        "conditions": [],
+        "effects": [
+          { "type": "clue.discover", "clueId": "stable_ascii_id" }
+        ],
+        "successText": "engine-approved result to narrate",
+        "blockedText": "text shown when conditions are not met"
+      }
+    ],
+    "accusation": {
+      "enabledWhen": [],
+      "correctSuspectId": "stable_ascii_id",
+      "requiredClueIds": ["stable_ascii_id"],
+      "successEndingId": "stable_ascii_id",
+      "failureEndingId": "stable_ascii_id"
+    },
+    "failState": {
+      "maxActionCount": 100,
+      "endingId": "stable_ascii_id"
+    },
+    "endings": [
+      { "id": "stable_ascii_id", "name": "string", "description": "string" }
+    ],
+    "validationNotes": []
+  }
+}
+
+Rules:
+- Every id must be stable, ASCII, lowercase, and unique.
+- Only mark a clue public if the player should know it at the start; clues discovered by actions must be hidden.
+- Every hidden clue must have at least one discovery action.
+- Every accusation-required clue must appear in evidenceChain with requiredForAccusation true.
+- Every evidenceChain item should point to the action that discovers its clue through obtainedByActionId.
+- Every action must reference an existing object, suspect, scene, or clue target.
+- Every effect must reference existing content.
+- Branching choices must be represented as engine actions, not only described in successText.
+- Include an interrogation_room scene when suspects exist.
+- Include one ask action per suspect, with targetId set to that suspect id.
+- Include a move action from the main investigation scene to interrogation_room.
+- The interrogation_room scene actionIds must include those suspect ask actions.
+- Include reason confrontation actions in interrogation_room that use key clues to confront the culprit.
+- Each confrontation action should require inScene interrogation_room, hasClue for the key clue, and flag asked_<culpritId> true.
+- Each confrontation action should discover a hidden deduction clue that is required for final accusation.
+- Confrontation successText must be specific: name the evidence, the suspect's conflicting claim, and what contradiction is exposed.
+- Include a final reason action like review_case / 整理案情 after confrontation clues are discovered.
+- Final accusation should require this case-review flag, so accusation appears after investigation, interrogation, confrontation, and review.
+- Avoid exposing all deep investigation actions at the start. Use conditions so deeper checks unlock after a simpler visible action on the same object or clue path.
+- A good mystery rhythm is: broad scene scan -> focused object inspection -> hidden technical detail -> suspect ask -> evidence confrontation -> review -> accusation.
+- If an action result asks the player to choose from options, those options must be next available blueprint actions.
+- The correct accusation must require the culprit and key evidence.
+- accusation.enabledWhen must include hasClue conditions for every requiredClueIds item, so accusation is not available too early.
+- Include one wrong accusation ending.
+- If you include a timeout, fog, unresolved, or too-slow ending, connect it through failState.endingId.
+- failState.maxActionCount should usually be 80-120 for a mystery case.
+- Do not expose hidden truth in scene or object descriptions.
+- The blueprint must be playable from opening to at least one ending.`,
   }),
 };
 
@@ -439,6 +961,10 @@ export async function POST(request: Request) {
       } else {
         return NextResponse.json({ error: 'Invalid AI response format' }, { status: 500 });
       }
+    }
+
+    if (creationType === 'mystery' && step === 5 && parsed.blueprint) {
+      parsed.blueprint = maintainMysteryBlueprint(parsed.blueprint);
     }
 
     return NextResponse.json({

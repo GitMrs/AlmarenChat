@@ -74,6 +74,15 @@ model Conversation {
   agentSystemPrompt   String?
   contextMessageLimit Int?
   title               String?
+
+  // Runtime fields
+  runtimeState     String?   // JSON: current runtime state (clues, inventory, flags, etc.)
+  runtimeSummary   String?   // AI-generated session summary
+  currentScene     String?   // Current scene ID
+  currentObjective String?   // Current player objective
+  endedAt          DateTime? // When the session ended
+  endingType       String?   // Which ending was reached
+
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
   messages            Message[]

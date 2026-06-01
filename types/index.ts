@@ -137,3 +137,22 @@ export const DIFFICULTY_LABELS: Record<string, string> = {
 };
 
 export type NavTab = 'discover' | 'explore' | 'create' | 'play' | 'me';
+
+export type {
+  BlueprintAccusation,
+  BlueprintAccusationResult,
+  BlueprintAction,
+  BlueprintActionIntent,
+  BlueprintActionResult,
+  BlueprintClue,
+  BlueprintCondition,
+  BlueprintEffect,
+  BlueprintEnding,
+  BlueprintInitialState,
+  BlueprintItem,
+  BlueprintObject,
+  BlueprintRuntimeState,
+  BlueprintScene,
+  BlueprintSuspect,
+  MysteryBlueprint,
+} from './blueprint';

@@ -91,6 +91,16 @@ export const conversations = {
     request<{ success: boolean }>(`/conversations/${conversationId}/messages/${messageId}`, {
       method: 'DELETE',
     }),
+  engineAction: (conversationId: string, actionId: string) =>
+    request<{ result: any; runtimeState: any; messages?: { user: any; assistant: any } }>(`/conversations/${conversationId}/engine`, {
+      method: 'POST',
+      body: JSON.stringify({ mode: 'action', actionId }),
+    }),
+  engineAccuse: (conversationId: string, suspectId: string, clueIds: string[]) =>
+    request<{ result: any; runtimeState: any; messages?: { user: any; assistant: any } }>(`/conversations/${conversationId}/engine`, {
+      method: 'POST',
+      body: JSON.stringify({ mode: 'accuse', suspectId, clueIds }),
+    }),
 };
 
 // Favorites
