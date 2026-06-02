@@ -436,6 +436,7 @@ function CreateAgentContent() {
     if (sectionId === 'blueprint') return Boolean(truth?.killer) && clues.length > 0 && endings.length > 0 && Boolean(openingScene || generatedGreeting);
     if (sectionId === 'character_base') return characterConcept.trim().length > 0;
     if (sectionId === 'character_details') return Boolean(name.trim()) && Boolean(characterIdentity.trim());
+    if (sectionId === 'character_assets') return Boolean(name.trim()) && Boolean(characterIdentity.trim());
     return true;
   };
 
@@ -447,6 +448,7 @@ function CreateAgentContent() {
     if (sectionId === 'blueprint') return 'Please complete truth, endings, and opening first';
     if (sectionId === 'character_base') return '先写一句角色概念';
     if (sectionId === 'character_details') return '请先生成或填写角色基础设定';
+    if (sectionId === 'character_assets') return '请先生成或填写角色基础设定';
     return '';
   };
 
@@ -559,6 +561,20 @@ function CreateAgentContent() {
           speakingStyle: characterSpeakingStyle,
           scenario: characterScenario,
         };
+      } else if (sectionId === 'character_assets') {
+        step = 3;
+        confirmedData = {
+          name,
+          description,
+          identity: characterIdentity,
+          personality: characterPersonality,
+          speakingStyle: characterSpeakingStyle,
+          scenario: characterScenario,
+          relationshipToPlayer: characterRelationship,
+          boundaries: characterBoundaries,
+          existingWorldNotes: characterWorldNotes,
+          existingSkillCards: characterSkillCards,
+        };
       }
 
       const response = await fetch('/api/create', {
@@ -621,6 +637,9 @@ function CreateAgentContent() {
         if (data.greeting) setGeneratedGreeting(data.greeting);
         if (data.exampleDialogues) setCharacterExampleDialogues(data.exampleDialogues);
         if (data.systemPrompt) setGeneratedSystemPrompt(data.systemPrompt);
+      } else if (sectionId === 'character_assets') {
+        if (data.worldNotes) setCharacterWorldNotes(data.worldNotes);
+        if (data.skillCards) setCharacterSkillCards(data.skillCards);
       }
     } catch (error: any) {
       console.error('Generation error:', error);
@@ -1780,14 +1799,30 @@ function CreateAgentContent() {
               </section>
 
               <section className="rounded-[28px] border border-white/10 bg-[#242039] p-5 sm:p-6">
-                <div className="mb-5 flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#06b6d4]/20 text-[#67e8f9]">
-                    <BookOpen size={18} />
+                <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#06b6d4]/20 text-[#67e8f9]">
+                      <BookOpen size={18} />
+                    </div>
+                    <div>
+                      <h2 className="text-xl font-black text-white">世界资料</h2>
+                      <p className="mt-1 text-xs text-white/40">角色稳定知道的事实。每行一条，会写入运行提示词。</p>
+                    </div>
                   </div>
-                  <div>
-                    <h2 className="text-xl font-black text-white">世界资料</h2>
-                    <p className="mt-1 text-xs text-white/40">角色稳定知道的事实。每行一条，会写入运行提示词。</p>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleGenerate('character_assets')}
+                    disabled={generatingSection === 'character_assets' || !canGenerateSection('character_assets')}
+                    className={cn(
+                      'inline-flex h-9 items-center justify-center gap-2 rounded-full px-4 text-xs font-bold transition',
+                      generatingSection === 'character_assets' || !canGenerateSection('character_assets')
+                        ? 'bg-white/[0.08] text-white/30'
+                        : 'bg-white/[0.08] text-white/64 hover:bg-white/[0.12]'
+                    )}
+                  >
+                    {generatingSection === 'character_assets' ? <LoadingSpinner size="sm" /> : <Sparkles size={14} />}
+                    AI 生成玩法资产
+                  </button>
                 </div>
                 <textarea
                   value={characterWorldNotes.join('\n')}
@@ -1811,6 +1846,20 @@ function CreateAgentContent() {
                       <p className="mt-1 text-xs text-white/40">无代码技能，不执行插件，只指导角色在特定互动中怎么做。</p>
                     </div>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => handleGenerate('character_assets')}
+                    disabled={generatingSection === 'character_assets' || !canGenerateSection('character_assets')}
+                    className={cn(
+                      'inline-flex h-9 items-center justify-center gap-2 rounded-full px-4 text-xs font-bold transition',
+                      generatingSection === 'character_assets' || !canGenerateSection('character_assets')
+                        ? 'bg-white/[0.08] text-white/30'
+                        : 'bg-white/[0.08] text-white/64 hover:bg-white/[0.12]'
+                    )}
+                  >
+                    {generatingSection === 'character_assets' ? <LoadingSpinner size="sm" /> : <Sparkles size={14} />}
+                    AI 生成技能
+                  </button>
                   <button
                     type="button"
                     onClick={() =>

@@ -775,6 +775,40 @@ The JSON must be in Chinese.`,
 - systemPrompt 是运行时使用的完整提示词，必须包含身份、性格、说话方式、当前情境、关系和边界
 - systemPrompt 必须要求角色保持一致、自然回应、不要替用户行动、不要主动暴露系统设定`,
   }),
+  3: (data) => ({
+    system: `You are a roleplay content designer creating no-code assets for a character agent.
+Output valid JSON only. No markdown, no explanation, no code blocks.
+The JSON must be in Chinese.`,
+    user: `创建类型：character_assets
+已确认的角色卡：${JSON.stringify(data.confirmedData || {})}
+
+请为这个角色生成可编辑的世界资料和无代码技能卡。
+输出格式：
+{
+  "worldNotes": [
+    "稳定世界资料1",
+    "稳定世界资料2"
+  ],
+  "skillCards": [
+    {
+      "name": "技能名",
+      "trigger": "什么时候触发",
+      "instruction": "角色应该如何执行",
+      "boundaries": "这个技能不能做什么",
+      "example": "一段角色口吻的示例回复"
+    }
+  ]
+}
+
+要求：
+- worldNotes 生成 5-8 条，必须是角色稳定知道的事实、地点、关系、秘密、规则或常被提及的话题
+- skillCards 生成 2-4 张，必须是无代码技能，不要写 JavaScript，不要要求调用外部工具
+- 每张技能卡要能带来具体互动玩法，例如占卜、案件分析、掷骰判定、记忆回溯、情绪安抚、课程训练等
+- trigger 要清楚说明用户怎样触发
+- instruction 要让角色先询问必要信息，再给出回应，不能替用户做选择
+- boundaries 要限制过度承诺、越权行动和跳出角色
+- example 必须符合角色的说话风格`,
+  }),
 };
 
 // Interactive Script prompt templates
