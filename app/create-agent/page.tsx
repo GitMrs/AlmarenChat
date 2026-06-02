@@ -587,15 +587,22 @@ function CreateAgentContent() {
       } else if (sectionId === 'character_details') {
         step = 2;
         confirmedData = {
+          concept: characterConcept,
           name,
           identity: characterIdentity,
           personality: characterPersonality,
           speakingStyle: characterSpeakingStyle,
           scenario: characterScenario,
+          storyTitle: roleplayStoryTitle,
+          worldSetting: roleplayWorldSetting,
+          playerRole: roleplayPlayerRole,
+          currentScene: roleplayCurrentScene,
+          objective: roleplayObjective,
         };
       } else if (sectionId === 'character_assets') {
         step = 3;
         confirmedData = {
+          concept: characterConcept,
           name,
           description,
           identity: characterIdentity,
