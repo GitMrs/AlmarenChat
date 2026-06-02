@@ -984,10 +984,17 @@ export async function POST(request: Request) {
       response_format: { type: 'json_object' },
     });
 
-    const content = completion.choices[0]?.message?.content;
+    const choices = Array.isArray(completion.choices) ? completion.choices : [];
+    const content = choices[0]?.message?.content;
 
     if (!content) {
-      return NextResponse.json({ error: 'AI generation failed' }, { status: 500 });
+      return NextResponse.json(
+        {
+          error: 'AI 没有返回可用内容，请稍后重试或检查模型配置。',
+          reason: choices.length === 0 ? 'empty_choices' : 'empty_message_content',
+        },
+        { status: 502 }
+      );
     }
 
     // Parse JSON response
@@ -997,10 +1004,20 @@ export async function POST(request: Request) {
     } catch {
       // Try to extract JSON from the response
       const jsonMatch = content.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
+      if (!jsonMatch) {
+        return NextResponse.json(
+          { error: 'AI 返回的内容不是有效 JSON，请重新生成。', reason: 'invalid_json' },
+          { status: 502 }
+        );
+      }
+
+      try {
         parsed = JSON.parse(jsonMatch[0]);
-      } else {
-        return NextResponse.json({ error: 'Invalid AI response format' }, { status: 500 });
+      } catch {
+        return NextResponse.json(
+          { error: 'AI 返回的 JSON 无法解析，请重新生成。', reason: 'invalid_extracted_json' },
+          { status: 502 }
+        );
       }
     }
 
