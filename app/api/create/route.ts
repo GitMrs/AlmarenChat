@@ -737,14 +737,16 @@ The JSON must be in Chinese.`,
   "name": "角色名",
   "identity": "身份背景",
   "personality": "性格特征",
-  "speakingStyle": "说话风格"
+  "speakingStyle": "说话风格",
+  "scenario": "当前情境"
 }
 
 要求：
 - name 要有特色
 - identity 包含角色的背景故事
 - personality 描述性格特点
-- speakingStyle 描述说话方式和口头禅`,
+- speakingStyle 描述说话方式、口头禅、称呼用户的方式
+- scenario 描述用户第一次进入对话时，角色所处的具体场景`,
   }),
   2: (data) => ({
     system: `You are a creative assistant helping build interactive character content.
@@ -767,10 +769,11 @@ The JSON must be in Chinese.`,
 
 要求：
 - relationshipToPlayer 描述角色与玩家的关系
-- boundaries 是角色不会做的事情
+- boundaries 是角色不会做的事情，必须包含“不替用户做决定”和“不跳出角色解释设定”
 - greeting 是角色的第一句话
 - 生成 2-3 组示例对话
-- systemPrompt 是运行时使用的完整提示词`,
+- systemPrompt 是运行时使用的完整提示词，必须包含身份、性格、说话方式、当前情境、关系和边界
+- systemPrompt 必须要求角色保持一致、自然回应、不要替用户行动、不要主动暴露系统设定`,
   }),
 };
 

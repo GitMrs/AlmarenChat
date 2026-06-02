@@ -591,6 +591,7 @@ function CreateAgentContent() {
         }
         if (data.personality) setCharacterPersonality(data.personality);
         if (data.speakingStyle) setCharacterSpeakingStyle(data.speakingStyle);
+        if (data.scenario) setCharacterScenario(data.scenario);
         setCategory('角色扮演');
         setTone('沉浸');
         setSelectedAvatar('🎭');
@@ -1777,6 +1778,31 @@ function CreateAgentContent() {
                   )}
                 </section>
               )}
+
+              <section className="rounded-[28px] border border-white/10 bg-[#242039] p-5 sm:p-6">
+                <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <h2 className="text-xl font-black text-white">运行提示词</h2>
+                    <p className="mt-1 text-xs text-white/40">
+                      最终会注入给模型的角色规则。留空时会根据上面的角色卡自动生成。
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSystemPrompt(finalPrompt)}
+                    className="inline-flex h-9 items-center justify-center rounded-full bg-white/[0.08] px-4 text-xs font-bold text-white/64 transition hover:bg-white/[0.12]"
+                  >
+                    使用自动提示词
+                  </button>
+                </div>
+                <textarea
+                  value={systemPrompt}
+                  onChange={(event) => setSystemPrompt(event.target.value)}
+                  placeholder={finalPrompt}
+                  rows={10}
+                  className="w-full resize-y rounded-2xl border border-white/10 bg-white/[0.08] px-4 py-3 font-mono text-xs leading-5 text-white outline-none transition placeholder:text-white/30 focus:border-white/20 focus:ring-4 focus:ring-white/[0.06]"
+                />
+              </section>
             </div>
 
             <aside className="lg:sticky lg:top-24 lg:self-start">
