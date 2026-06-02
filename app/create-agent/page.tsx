@@ -487,6 +487,11 @@ function CreateAgentContent() {
               )
               .join('\n\n')}`
           : '',
+        characterExampleDialogues.length > 0
+          ? `示例对话：\n${characterExampleDialogues
+              .map((dialogue) => `玩家：${dialogue.player || ''}\n${name || '角色'}：${dialogue.character || ''}`)
+              .join('\n\n')}`
+          : '',
         characterBoundaries.length > 0 ? `边界：${characterBoundaries.join('；')}` : '',
         '你需要始终保持角色一致，用自然对话回应用户，不要替用户做决定。',
       ].filter(Boolean).join('\n');
@@ -495,6 +500,7 @@ function CreateAgentContent() {
   }, [
     category,
     characterBoundaries,
+    characterExampleDialogues,
     characterIdentity,
     characterPersonality,
     characterRelationship,
@@ -1957,27 +1963,89 @@ function CreateAgentContent() {
                 )}
               </section>
 
-              {(generatedGreeting || generatedSystemPrompt || characterExampleDialogues.length > 0) && (
-                <section className="rounded-[28px] border border-white/10 bg-[#242039] p-5 sm:p-6">
-                  <h2 className="text-xl font-black text-white">生成结果</h2>
-                  {generatedGreeting && (
-                    <div className="mt-4 rounded-2xl bg-white/[0.06] p-4">
-                      <div className="mb-2 text-xs font-bold text-white/40">开场白</div>
-                      <p className="text-sm leading-6 text-white/70">{generatedGreeting}</p>
-                    </div>
-                  )}
-                  {characterExampleDialogues.length > 0 && (
-                    <div className="mt-3 space-y-3">
-                      {characterExampleDialogues.map((dialogue, index) => (
-                        <div key={index} className="rounded-2xl bg-white/[0.06] p-4 text-sm leading-6">
-                          <div className="text-white/48">玩家：{dialogue.player}</div>
-                          <div className="mt-1 text-white/74">{name || '角色'}：{dialogue.character}</div>
+              <section className="rounded-[28px] border border-white/10 bg-[#242039] p-5 sm:p-6">
+                <div className="mb-4">
+                  <h2 className="text-xl font-black text-white">开场白</h2>
+                  <p className="mt-1 text-xs text-white/40">玩家进入对话时看到的第一句话。留空时使用 AI 生成或自动开场。</p>
+                </div>
+                <textarea
+                  value={greeting}
+                  onChange={(event) => setGreeting(event.target.value)}
+                  placeholder={finalGreeting}
+                  rows={4}
+                  className="w-full resize-y rounded-2xl border border-white/10 bg-white/[0.08] px-4 py-3 text-sm leading-6 text-white outline-none transition placeholder:text-white/35 focus:border-white/20 focus:ring-4 focus:ring-white/[0.06]"
+                />
+              </section>
+
+              <section className="rounded-[28px] border border-white/10 bg-[#242039] p-5 sm:p-6">
+                <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h2 className="text-xl font-black text-white">示例对话</h2>
+                    <p className="mt-1 text-xs text-white/40">用几组样例固定角色的回应质感。AI 生成后也可以继续手动打磨。</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setCharacterExampleDialogues([
+                        ...characterExampleDialogues,
+                        { player: '', character: '' },
+                      ])
+                    }
+                    className="inline-flex h-9 items-center justify-center rounded-full bg-white/[0.08] px-4 text-xs font-bold text-white/64 transition hover:bg-white/[0.12]"
+                  >
+                    + 添加对话
+                  </button>
+                </div>
+
+                {characterExampleDialogues.length === 0 ? (
+                  <div className="rounded-2xl bg-white/[0.06] p-4 text-sm leading-6 text-white/45">
+                    暂无示例对话。可以点击“补充细节”让 AI 生成，或手动添加几组典型问答。
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {characterExampleDialogues.map((dialogue, index) => (
+                      <div key={index} className="rounded-2xl bg-white/[0.06] p-4">
+                        <div className="mb-3 flex items-center justify-between">
+                          <div className="text-sm font-black text-white/70">样例 {index + 1}</div>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setCharacterExampleDialogues(characterExampleDialogues.filter((_, itemIndex) => itemIndex !== index))
+                            }
+                            className="text-xs font-bold text-rose-400 hover:text-rose-300"
+                          >
+                            删除
+                          </button>
                         </div>
-                      ))}
-                    </div>
-                  )}
-                </section>
-              )}
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <textarea
+                            value={dialogue.player || ''}
+                            onChange={(event) => {
+                              const updated = [...characterExampleDialogues];
+                              updated[index] = { ...updated[index], player: event.target.value };
+                              setCharacterExampleDialogues(updated);
+                            }}
+                            rows={3}
+                            placeholder="玩家会怎么说"
+                            className="w-full resize-none rounded-xl border border-white/10 bg-white/[0.08] px-3 py-2 text-sm leading-6 text-white outline-none placeholder:text-white/40"
+                          />
+                          <textarea
+                            value={dialogue.character || ''}
+                            onChange={(event) => {
+                              const updated = [...characterExampleDialogues];
+                              updated[index] = { ...updated[index], character: event.target.value };
+                              setCharacterExampleDialogues(updated);
+                            }}
+                            rows={3}
+                            placeholder="角色应该如何回应"
+                            className="w-full resize-none rounded-xl border border-white/10 bg-white/[0.08] px-3 py-2 text-sm leading-6 text-white outline-none placeholder:text-white/40"
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
 
               <section className="rounded-[28px] border border-white/10 bg-[#242039] p-5 sm:p-6">
                 <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
