@@ -628,6 +628,8 @@ function CreateAgentContent() {
         if (data.personality) setCharacterPersonality(data.personality);
         if (data.speakingStyle) setCharacterSpeakingStyle(data.speakingStyle);
         if (data.scenario) setCharacterScenario(data.scenario);
+        if (data.relationshipToPlayer && !characterRelationship) setCharacterRelationship(data.relationshipToPlayer);
+        if (data.boundaries && characterBoundaries.length === 0) setCharacterBoundaries(data.boundaries);
         setCategory('角色扮演');
         setTone('沉浸');
         setSelectedAvatar('🎭');

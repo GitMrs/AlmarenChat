@@ -738,7 +738,9 @@ The JSON must be in Chinese.`,
   "identity": "身份背景",
   "personality": "性格特征",
   "speakingStyle": "说话风格",
-  "scenario": "当前情境"
+  "scenario": "当前情境",
+  "relationshipToPlayer": "与玩家的关系",
+  "boundaries": ["边界1", "边界2"]
 }
 
 要求：
@@ -746,7 +748,9 @@ The JSON must be in Chinese.`,
 - identity 包含角色的背景故事
 - personality 描述性格特点
 - speakingStyle 描述说话方式、口头禅、称呼用户的方式
-- scenario 描述用户第一次进入对话时，角色所处的具体场景`,
+- scenario 描述用户第一次进入对话时，角色所处的具体场景
+- relationshipToPlayer 描述角色默认如何看待用户
+- boundaries 是角色不会做的事情，必须包含“不替用户做决定”和“不跳出角色解释设定”`,
   }),
   2: (data) => ({
     system: `You are a creative assistant helping build interactive character content.
