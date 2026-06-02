@@ -72,12 +72,55 @@ Fields:
 - boundaries
 - greeting
 - example dialogue
+- world notes
+- skill cards
 
 Runtime relevance:
 
 - can be used inside a story world
 - can be chatted with directly
 - can become an NPC in future multi-character rooms
+
+### Roleplay Assets
+
+Character creation should move toward asset-based authoring instead of one large prompt.
+
+Short-term asset layers:
+
+- Character card: identity, personality, speaking style, scenario, relationship, boundaries.
+- World notes: stable facts the character knows, such as locations, organizations, backstory, secrets, and recurring topics.
+- Skill cards: no-code behavior recipes that describe what the character can do when the user asks for a specific interaction.
+- Prompt preview: the final runtime prompt composed from confirmed assets, editable before publish.
+
+Skill cards are not executable plugins in V1. They are prompt assets.
+
+Example skill card:
+
+```json
+{
+  "name": "塔罗占卜",
+  "trigger": "当用户询问运势、抽牌、选择牌阵时",
+  "instruction": "先让用户选择牌阵或抽牌数量，再用角色口吻解释牌意。",
+  "boundaries": "不要把占卜说成确定命运，不要替用户做重大决定。",
+  "example": "你可以先选三张牌：过去、现在、可能的方向。"
+}
+```
+
+Why start with no-code skill cards:
+
+- much safer than arbitrary JS plugins
+- easy for creators to understand and edit
+- directly improves roleplay quality
+- can later become the schema for real tools or plugins
+
+Do not build in this phase:
+
+- plugin marketplace
+- executable JavaScript plugins
+- permission prompts
+- sandboxing
+- external API tools
+- skill runtime dispatch beyond prompt composition
 
 ### Story World
 

@@ -336,6 +336,8 @@ function CreateAgentContent() {
   const [characterRelationship, setCharacterRelationship] = useState('');
   const [characterBoundaries, setCharacterBoundaries] = useState<string[]>([]);
   const [characterExampleDialogues, setCharacterExampleDialogues] = useState<any[]>([]);
+  const [characterWorldNotes, setCharacterWorldNotes] = useState<string[]>([]);
+  const [characterSkillCards, setCharacterSkillCards] = useState<any[]>([]);
 
   useEffect(() => {
     if (!localStorage.getItem('token')) {
@@ -389,6 +391,8 @@ function CreateAgentContent() {
               setCharacterRelationship(config.relationshipToPlayer || '');
               setCharacterBoundaries(config.boundaries || []);
               setCharacterExampleDialogues(config.exampleDialogues || []);
+              setCharacterWorldNotes(config.worldNotes || []);
+              setCharacterSkillCards(config.skillCards || []);
             } catch {}
           }
         } finally {
@@ -467,6 +471,20 @@ function CreateAgentContent() {
         characterSpeakingStyle ? `说话风格：${characterSpeakingStyle}` : '',
         characterScenario ? `当前情境：${characterScenario}` : '',
         characterRelationship ? `与用户关系：${characterRelationship}` : '',
+        characterWorldNotes.length > 0 ? `世界资料：\n${characterWorldNotes.map((note) => `- ${note}`).join('\n')}` : '',
+        characterSkillCards.length > 0
+          ? `技能卡：\n${characterSkillCards
+              .map((skill) =>
+                [
+                  `【${skill.name || '未命名技能'}】`,
+                  skill.trigger ? `触发：${skill.trigger}` : '',
+                  skill.instruction ? `行为：${skill.instruction}` : '',
+                  skill.boundaries ? `边界：${skill.boundaries}` : '',
+                  skill.example ? `示例：${skill.example}` : '',
+                ].filter(Boolean).join('\n')
+              )
+              .join('\n\n')}`
+          : '',
         characterBoundaries.length > 0 ? `边界：${characterBoundaries.join('；')}` : '',
         '你需要始终保持角色一致，用自然对话回应用户，不要替用户做决定。',
       ].filter(Boolean).join('\n');
@@ -479,7 +497,9 @@ function CreateAgentContent() {
     characterPersonality,
     characterRelationship,
     characterScenario,
+    characterSkillCards,
     characterSpeakingStyle,
+    characterWorldNotes,
     creationType,
     generatedSystemPrompt,
     name,
@@ -671,6 +691,8 @@ function CreateAgentContent() {
         relationshipToPlayer: characterRelationship,
         boundaries: characterBoundaries,
         exampleDialogues: characterExampleDialogues,
+        worldNotes: characterWorldNotes,
+        skillCards: characterSkillCards,
         greeting: generatedGreeting,
         systemPrompt: generatedSystemPrompt,
       } : undefined;
@@ -1757,6 +1779,133 @@ function CreateAgentContent() {
                 </div>
               </section>
 
+              <section className="rounded-[28px] border border-white/10 bg-[#242039] p-5 sm:p-6">
+                <div className="mb-5 flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#06b6d4]/20 text-[#67e8f9]">
+                    <BookOpen size={18} />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-black text-white">世界资料</h2>
+                    <p className="mt-1 text-xs text-white/40">角色稳定知道的事实。每行一条，会写入运行提示词。</p>
+                  </div>
+                </div>
+                <textarea
+                  value={characterWorldNotes.join('\n')}
+                  onChange={(event) =>
+                    setCharacterWorldNotes(event.target.value.split('\n').map((item) => item.trim()).filter(Boolean))
+                  }
+                  rows={6}
+                  placeholder={'例如：\n旧书店位于雾港东区，只在雨夜后半夜营业\n角色认识失踪的钟表匠，但不愿主动提起\n银色书签是识别老顾客的暗号'}
+                  className="w-full resize-y rounded-2xl border border-white/10 bg-white/[0.08] px-4 py-3 text-sm leading-6 text-white outline-none placeholder:text-white/35 focus:border-white/20 focus:ring-4 focus:ring-white/[0.06]"
+                />
+              </section>
+
+              <section className="rounded-[28px] border border-white/10 bg-[#242039] p-5 sm:p-6">
+                <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#10b981]/20 text-[#6ee7b7]">
+                      <Wand2 size={18} />
+                    </div>
+                    <div>
+                      <h2 className="text-xl font-black text-white">技能卡</h2>
+                      <p className="mt-1 text-xs text-white/40">无代码技能，不执行插件，只指导角色在特定互动中怎么做。</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setCharacterSkillCards([
+                        ...characterSkillCards,
+                        { name: '', trigger: '', instruction: '', boundaries: '', example: '' },
+                      ])
+                    }
+                    className="inline-flex h-9 items-center justify-center rounded-full bg-white/[0.08] px-4 text-xs font-bold text-white/64 transition hover:bg-white/[0.12]"
+                  >
+                    + 添加技能
+                  </button>
+                </div>
+
+                {characterSkillCards.length === 0 ? (
+                  <div className="rounded-2xl bg-white/[0.06] p-4 text-sm leading-6 text-white/45">
+                    暂无技能卡。可以添加“占卜”“案件分析”“掷骰判定”“情绪安抚”等角色专属玩法。
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {characterSkillCards.map((skill, index) => (
+                      <div key={index} className="rounded-2xl bg-white/[0.06] p-4">
+                        <div className="mb-3 flex items-center justify-between gap-3">
+                          <input
+                            value={skill.name}
+                            onChange={(event) => {
+                              const updated = [...characterSkillCards];
+                              updated[index] = { ...updated[index], name: event.target.value };
+                              setCharacterSkillCards(updated);
+                            }}
+                            placeholder="技能名，例如：塔罗占卜"
+                            className="h-10 flex-1 rounded-xl border border-white/10 bg-white/[0.08] px-3 text-sm text-white outline-none placeholder:text-white/40"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setCharacterSkillCards(characterSkillCards.filter((_, itemIndex) => itemIndex !== index))}
+                            className="text-xs font-bold text-rose-400 hover:text-rose-300"
+                          >
+                            删除
+                          </button>
+                        </div>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <textarea
+                            value={skill.trigger}
+                            onChange={(event) => {
+                              const updated = [...characterSkillCards];
+                              updated[index] = { ...updated[index], trigger: event.target.value };
+                              setCharacterSkillCards(updated);
+                            }}
+                            rows={3}
+                            placeholder="触发方式：用户什么时候会用到它"
+                            className="w-full resize-none rounded-xl border border-white/10 bg-white/[0.08] px-3 py-2 text-sm leading-6 text-white outline-none placeholder:text-white/40"
+                          />
+                          <textarea
+                            value={skill.instruction}
+                            onChange={(event) => {
+                              const updated = [...characterSkillCards];
+                              updated[index] = { ...updated[index], instruction: event.target.value };
+                              setCharacterSkillCards(updated);
+                            }}
+                            rows={3}
+                            placeholder="行为规则：角色应该怎样执行"
+                            className="w-full resize-none rounded-xl border border-white/10 bg-white/[0.08] px-3 py-2 text-sm leading-6 text-white outline-none placeholder:text-white/40"
+                          />
+                        </div>
+                        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                          <textarea
+                            value={skill.boundaries}
+                            onChange={(event) => {
+                              const updated = [...characterSkillCards];
+                              updated[index] = { ...updated[index], boundaries: event.target.value };
+                              setCharacterSkillCards(updated);
+                            }}
+                            rows={2}
+                            placeholder="技能边界：不能做什么"
+                            className="w-full resize-none rounded-xl border border-white/10 bg-white/[0.08] px-3 py-2 text-sm leading-6 text-white outline-none placeholder:text-white/40"
+                          />
+                          <textarea
+                            value={skill.example}
+                            onChange={(event) => {
+                              const updated = [...characterSkillCards];
+                              updated[index] = { ...updated[index], example: event.target.value };
+                              setCharacterSkillCards(updated);
+                            }}
+                            rows={2}
+                            placeholder="示例回复"
+                            className="w-full resize-none rounded-xl border border-white/10 bg-white/[0.08] px-3 py-2 text-sm leading-6 text-white outline-none placeholder:text-white/40"
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+
               {(generatedGreeting || generatedSystemPrompt || characterExampleDialogues.length > 0) && (
                 <section className="rounded-[28px] border border-white/10 bg-[#242039] p-5 sm:p-6">
                   <h2 className="text-xl font-black text-white">生成结果</h2>
@@ -1850,6 +1999,18 @@ function CreateAgentContent() {
                       <div className="mt-4 rounded-2xl bg-white/[0.08] p-4">
                         <div className="mb-1 text-xs font-bold text-white/40">说话方式</div>
                         <p className="text-sm leading-6 text-white/68">{characterSpeakingStyle}</p>
+                      </div>
+                    )}
+                    {(characterWorldNotes.length > 0 || characterSkillCards.length > 0) && (
+                      <div className="mt-4 grid grid-cols-2 gap-2">
+                        <div className="rounded-2xl bg-white/[0.08] px-3 py-2">
+                          <div className="text-xs font-bold text-white/40">世界资料</div>
+                          <div className="mt-1 text-lg font-black text-white">{characterWorldNotes.length}</div>
+                        </div>
+                        <div className="rounded-2xl bg-white/[0.08] px-3 py-2">
+                          <div className="text-xs font-bold text-white/40">技能卡</div>
+                          <div className="mt-1 text-lg font-black text-white">{characterSkillCards.length}</div>
+                        </div>
                       </div>
                     )}
                     <div className="mt-4 rounded-2xl bg-white/[0.08] p-4">
