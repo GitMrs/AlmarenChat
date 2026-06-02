@@ -462,7 +462,7 @@ function CreateAgentContent() {
     if (sectionId === 'truth') return '请先补充嫌疑人和线索';
     if (sectionId === 'opening') return '请先生成真相和结局';
     if (sectionId === 'blueprint') return 'Please complete truth, endings, and opening first';
-    if (sectionId === 'character_base') return '先写一句角色概念';
+    if (sectionId === 'character_base') return '先写一句角色体验概念';
     if (sectionId === 'character_details') return '请先生成或填写角色基础设定';
     if (sectionId === 'character_assets') return '请先生成或填写角色基础设定';
     return '';
@@ -604,6 +604,11 @@ function CreateAgentContent() {
           scenario: characterScenario,
           relationshipToPlayer: characterRelationship,
           boundaries: characterBoundaries,
+          storyTitle: roleplayStoryTitle,
+          worldSetting: roleplayWorldSetting,
+          playerRole: roleplayPlayerRole,
+          currentScene: roleplayCurrentScene,
+          objective: roleplayObjective,
           existingWorldNotes: characterWorldNotes,
           existingSkillCards: characterSkillCards,
         };
@@ -662,6 +667,11 @@ function CreateAgentContent() {
         if (data.scenario) setCharacterScenario(data.scenario);
         if (data.relationshipToPlayer && !characterRelationship) setCharacterRelationship(data.relationshipToPlayer);
         if (data.boundaries && characterBoundaries.length === 0) setCharacterBoundaries(data.boundaries);
+        if (data.storyTitle && !roleplayStoryTitle) setRoleplayStoryTitle(data.storyTitle);
+        if (data.worldSetting && !roleplayWorldSetting) setRoleplayWorldSetting(data.worldSetting);
+        if (data.playerRole && !roleplayPlayerRole) setRoleplayPlayerRole(data.playerRole);
+        if (data.currentScene && !roleplayCurrentScene) setRoleplayCurrentScene(data.currentScene);
+        if (data.objective && !roleplayObjective) setRoleplayObjective(data.objective);
         setCategory('角色扮演');
         setTone('沉浸');
         setSelectedAvatar('🎭');
@@ -1708,9 +1718,9 @@ function CreateAgentContent() {
                 <div className="mb-4 flex items-start justify-between gap-4">
                   <div>
                     <p className="text-sm font-black text-[#d89022]">1. 角色是谁</p>
-                    <h2 className="mt-1 text-2xl font-black text-white">用一句话搭出角色核心</h2>
+                    <h2 className="mt-1 text-2xl font-black text-white">用一句话搭出角色体验</h2>
                     <p className="mt-2 text-sm leading-6 text-white/54">
-                      AI 会先补出角色名、身份、性格、说话方式、当前情境、关系和边界。
+                      AI 会同时补出角色卡和故事入口，避免先生成孤立角色、后面再硬塞进故事。
                     </p>
                   </div>
                   <div className="shrink-0 rounded-full bg-white/[0.08] px-3 py-1.5 text-xs font-bold text-white/54">
@@ -1721,7 +1731,7 @@ function CreateAgentContent() {
                   <input
                     value={characterConcept}
                     onChange={(event) => setCharacterConcept(event.target.value)}
-                    placeholder="例如：一位住在旧书店里的温柔占卜师，知道很多不该知道的事。"
+                    placeholder="例如：玩家深夜走进雾港旧书店，遇见一位温柔但知道秘密的占卜师。"
                     className="h-12 rounded-2xl border border-white/10 bg-white/[0.08] px-4 text-sm font-medium text-white outline-none transition placeholder:text-white/40 focus:border-white/20 focus:ring-4 focus:ring-white/[0.06]"
                   />
                   <button
@@ -1730,7 +1740,7 @@ function CreateAgentContent() {
                     className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-white px-5 text-sm font-black text-[#19172a] transition hover:-translate-y-0.5 disabled:bg-white/[0.08] disabled:text-white/30"
                   >
                     {generatingSection === 'character_base' ? <LoadingSpinner size="sm" /> : <Sparkles size={16} />}
-                    生成角色设定
+                    生成角色体验
                   </button>
                 </div>
               </section>

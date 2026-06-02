@@ -728,10 +728,10 @@ const CHARACTER_PROMPTS: Record<number, (data: Record<string, any>) => { system:
     system: `You are a creative assistant helping build interactive character content.
 Output valid JSON only. No markdown, no explanation, no code blocks.
 The JSON must be in Chinese.`,
-    user: `创建类型：character
+    user: `创建类型：roleplay_character_experience
 概念：${data.concept || ''}
 
-请生成这个角色的基本设定。
+请生成这个角色体验的基础设定。它不是孤立角色卡，而是一个自带故事入口的角色 Agent。
 输出格式：
 {
   "name": "角色名",
@@ -740,7 +740,12 @@ The JSON must be in Chinese.`,
   "speakingStyle": "说话风格",
   "scenario": "当前情境",
   "relationshipToPlayer": "与玩家的关系",
-  "boundaries": ["边界1", "边界2"]
+  "boundaries": ["边界1", "边界2"],
+  "storyTitle": "故事标题",
+  "worldSetting": "世界背景",
+  "playerRole": "玩家身份",
+  "currentScene": "当前场景",
+  "objective": "互动目标"
 }
 
 要求：
@@ -750,7 +755,12 @@ The JSON must be in Chinese.`,
 - speakingStyle 描述说话方式、口头禅、称呼用户的方式
 - scenario 描述用户第一次进入对话时，角色所处的具体场景
 - relationshipToPlayer 描述角色默认如何看待用户
-- boundaries 是角色不会做的事情，必须包含“不替用户做决定”和“不跳出角色解释设定”`,
+- boundaries 是角色不会做的事情，必须包含“不替用户做决定”和“不跳出角色解释设定”
+- storyTitle 要概括这个角色体验，不只是角色名
+- worldSetting 描述角色所在的故事世界、氛围和关键规则
+- playerRole 描述用户以什么身份进入故事
+- currentScene 描述第一幕正在发生什么
+- objective 描述互动要推动的方向，但不要替玩家决定结局`,
   }),
   2: (data) => ({
     system: `You are a creative assistant helping build interactive character content.
