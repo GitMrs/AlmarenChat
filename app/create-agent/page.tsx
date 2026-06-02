@@ -430,6 +430,12 @@ function CreateAgentContent() {
     characterIdentity.trim().length > 0 &&
     characterPersonality.trim().length > 0 &&
     characterSpeakingStyle.trim().length > 0;
+  const roleplaySteps = [
+    { label: '角色是谁', done: Boolean(name.trim() && characterIdentity.trim() && characterPersonality.trim()) },
+    { label: '故事在哪里', done: Boolean(roleplayStoryTitle.trim() || roleplayWorldSetting.trim() || roleplayCurrentScene.trim()) },
+    { label: '角色会什么', done: characterWorldNotes.length > 0 || characterSkillCards.length > 0 },
+    { label: '开场与预览', done: Boolean((greeting.trim() || generatedGreeting.trim() || name.trim()) && (systemPrompt.trim() || generatedSystemPrompt.trim() || characterExampleDialogues.length > 0)) },
+  ];
   const canCreate =
     name.trim().length > 0 &&
     description.trim().length > 0 &&
@@ -1674,12 +1680,37 @@ function CreateAgentContent() {
           <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
             <div className="space-y-4">
               <section className="rounded-[28px] border border-white/10 bg-[#242039] p-5 sm:p-6">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                  <div>
+                    <p className="text-sm font-black text-[#d89022]">角色体验创建器</p>
+                    <h2 className="mt-1 text-2xl font-black text-white">创建一个自带故事入口的角色 Agent</h2>
+                    <p className="mt-2 text-sm leading-6 text-white/54">
+                      先确定角色是谁，再说明它所在的故事场景，最后补上玩法资产、开场白和示例对话。
+                    </p>
+                  </div>
+                  <div className="grid min-w-[280px] grid-cols-2 gap-2">
+                    {roleplaySteps.map((step, index) => (
+                      <div
+                        key={step.label}
+                        className={cn(
+                          'rounded-2xl px-3 py-2 text-xs font-bold',
+                          step.done ? 'bg-emerald-500/14 text-emerald-300' : 'bg-white/[0.06] text-white/36'
+                        )}
+                      >
+                        {index + 1}. {step.label}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </section>
+
+              <section className="rounded-[28px] border border-white/10 bg-[#242039] p-5 sm:p-6">
                 <div className="mb-4 flex items-start justify-between gap-4">
                   <div>
-                    <p className="text-sm font-black text-[#d89022]">角色卡</p>
-                    <h2 className="mt-1 text-2xl font-black text-white">先用一句话搭出角色</h2>
+                    <p className="text-sm font-black text-[#d89022]">1. 角色是谁</p>
+                    <h2 className="mt-1 text-2xl font-black text-white">用一句话搭出角色核心</h2>
                     <p className="mt-2 text-sm leading-6 text-white/54">
-                      角色扮演 Agent 先维护角色资产：身份、性格、说话方式、当前情境和边界。
+                      AI 会先补出角色名、身份、性格、说话方式、当前情境、关系和边界。
                     </p>
                   </div>
                   <div className="shrink-0 rounded-full bg-white/[0.08] px-3 py-1.5 text-xs font-bold text-white/54">
@@ -1710,7 +1741,7 @@ function CreateAgentContent() {
                     <Scroll size={18} />
                   </div>
                   <div>
-                    <h2 className="text-xl font-black text-white">故事入口</h2>
+                    <h2 className="text-xl font-black text-white">2. 故事在哪里</h2>
                     <p className="mt-1 text-xs text-white/40">说明这个角色被放进什么故事里，用户以什么身份进入。</p>
                   </div>
                 </div>
@@ -1906,7 +1937,7 @@ function CreateAgentContent() {
                       <BookOpen size={18} />
                     </div>
                     <div>
-                      <h2 className="text-xl font-black text-white">世界资料</h2>
+                      <h2 className="text-xl font-black text-white">3. 角色会什么</h2>
                       <p className="mt-1 text-xs text-white/40">角色稳定知道的事实。每行一条，会写入运行提示词。</p>
                     </div>
                   </div>
@@ -2058,7 +2089,7 @@ function CreateAgentContent() {
 
               <section className="rounded-[28px] border border-white/10 bg-[#242039] p-5 sm:p-6">
                 <div className="mb-4">
-                  <h2 className="text-xl font-black text-white">开场白</h2>
+                  <h2 className="text-xl font-black text-white">4. 开场与预览</h2>
                   <p className="mt-1 text-xs text-white/40">玩家进入对话时看到的第一句话。留空时使用 AI 生成或自动开场。</p>
                 </div>
                 <textarea
