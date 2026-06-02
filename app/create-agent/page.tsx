@@ -338,6 +338,11 @@ function CreateAgentContent() {
   const [characterExampleDialogues, setCharacterExampleDialogues] = useState<any[]>([]);
   const [characterWorldNotes, setCharacterWorldNotes] = useState<string[]>([]);
   const [characterSkillCards, setCharacterSkillCards] = useState<any[]>([]);
+  const [roleplayStoryTitle, setRoleplayStoryTitle] = useState('');
+  const [roleplayWorldSetting, setRoleplayWorldSetting] = useState('');
+  const [roleplayPlayerRole, setRoleplayPlayerRole] = useState('');
+  const [roleplayCurrentScene, setRoleplayCurrentScene] = useState('');
+  const [roleplayObjective, setRoleplayObjective] = useState('');
 
   useEffect(() => {
     if (!localStorage.getItem('token')) {
@@ -393,6 +398,11 @@ function CreateAgentContent() {
               setCharacterExampleDialogues(config.exampleDialogues || []);
               setCharacterWorldNotes(config.worldNotes || []);
               setCharacterSkillCards(config.skillCards || []);
+              setRoleplayStoryTitle(config.storyTitle || '');
+              setRoleplayWorldSetting(config.worldSetting || '');
+              setRoleplayPlayerRole(config.playerRole || '');
+              setRoleplayCurrentScene(config.currentScene || '');
+              setRoleplayObjective(config.objective || '');
             } catch {}
           }
         } finally {
@@ -473,6 +483,11 @@ function CreateAgentContent() {
         characterSpeakingStyle ? `说话风格：${characterSpeakingStyle}` : '',
         characterScenario ? `当前情境：${characterScenario}` : '',
         characterRelationship ? `与用户关系：${characterRelationship}` : '',
+        roleplayStoryTitle ? `故事标题：${roleplayStoryTitle}` : '',
+        roleplayWorldSetting ? `世界背景：${roleplayWorldSetting}` : '',
+        roleplayPlayerRole ? `用户身份：${roleplayPlayerRole}` : '',
+        roleplayCurrentScene ? `当前场景：${roleplayCurrentScene}` : '',
+        roleplayObjective ? `互动目标：${roleplayObjective}` : '',
         characterWorldNotes.length > 0 ? `世界资料：\n${characterWorldNotes.map((note) => `- ${note}`).join('\n')}` : '',
         characterSkillCards.length > 0
           ? `技能卡：\n${characterSkillCards
@@ -493,7 +508,7 @@ function CreateAgentContent() {
               .join('\n\n')}`
           : '',
         characterBoundaries.length > 0 ? `边界：${characterBoundaries.join('；')}` : '',
-        '你需要始终保持角色一致，用自然对话回应用户，不要替用户做决定。',
+        '你需要始终保持角色一致，用自然对话回应用户，不要替用户做决定。你可以推动当前场景，但不能替用户行动或宣布用户已经做出选择。',
       ].filter(Boolean).join('\n');
     }
     return `你是一个${category}类型的故事世界。氛围风格是${tone}。你需要引导玩家进入故事，做出选择，推动剧情发展。`;
@@ -511,6 +526,11 @@ function CreateAgentContent() {
     creationType,
     generatedSystemPrompt,
     name,
+    roleplayCurrentScene,
+    roleplayObjective,
+    roleplayPlayerRole,
+    roleplayStoryTitle,
+    roleplayWorldSetting,
     systemPrompt,
     tone,
   ]);
@@ -720,6 +740,11 @@ function CreateAgentContent() {
         exampleDialogues: characterExampleDialogues,
         worldNotes: characterWorldNotes,
         skillCards: characterSkillCards,
+        storyTitle: roleplayStoryTitle,
+        worldSetting: roleplayWorldSetting,
+        playerRole: roleplayPlayerRole,
+        currentScene: roleplayCurrentScene,
+        objective: roleplayObjective,
         greeting: generatedGreeting,
         systemPrompt: generatedSystemPrompt,
       } : undefined;
@@ -736,9 +761,10 @@ function CreateAgentContent() {
         creationType,
         builderConfig,
         hook: description,
-        openingScene: openingScene || undefined,
-        playerRole: undefined,
-        rules: undefined,
+        worldSetting: creationType === 'character' ? roleplayWorldSetting || undefined : undefined,
+        openingScene: creationType === 'character' ? roleplayCurrentScene || characterScenario || undefined : openingScene || undefined,
+        playerRole: creationType === 'character' ? roleplayPlayerRole || undefined : undefined,
+        rules: creationType === 'character' ? roleplayObjective || undefined : undefined,
         winConditions: solutionCondition || undefined,
       };
 
@@ -1679,6 +1705,73 @@ function CreateAgentContent() {
               </section>
 
               <section className="rounded-[28px] border border-white/10 bg-[#242039] p-5 sm:p-6">
+                <div className="mb-5 flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#f59e0b]/20 text-[#fbbf24]">
+                    <Scroll size={18} />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-black text-white">故事入口</h2>
+                    <p className="mt-1 text-xs text-white/40">说明这个角色被放进什么故事里，用户以什么身份进入。</p>
+                  </div>
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-bold text-white/70">故事标题</span>
+                    <input
+                      value={roleplayStoryTitle}
+                      onChange={(event) => setRoleplayStoryTitle(event.target.value)}
+                      placeholder="例如：雾港旧书店"
+                      className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.08] px-3 text-sm text-white outline-none placeholder:text-white/40"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-bold text-white/70">玩家身份</span>
+                    <input
+                      value={roleplayPlayerRole}
+                      onChange={(event) => setRoleplayPlayerRole(event.target.value)}
+                      placeholder="例如：第一次来到书店的访客"
+                      className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.08] px-3 text-sm text-white outline-none placeholder:text-white/40"
+                    />
+                  </label>
+                </div>
+
+                <label className="mt-4 block">
+                  <span className="mb-2 block text-sm font-bold text-white/70">世界背景</span>
+                  <textarea
+                    value={roleplayWorldSetting}
+                    onChange={(event) => setRoleplayWorldSetting(event.target.value)}
+                    rows={4}
+                    placeholder="这个故事世界的基本背景、氛围、地点规则。"
+                    className="w-full resize-none rounded-2xl border border-white/10 bg-white/[0.08] px-4 py-3 text-sm leading-6 text-white outline-none placeholder:text-white/40"
+                  />
+                </label>
+
+                <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-bold text-white/70">当前场景</span>
+                    <textarea
+                      value={roleplayCurrentScene}
+                      onChange={(event) => setRoleplayCurrentScene(event.target.value)}
+                      rows={3}
+                      placeholder="玩家进入对话时，眼前正在发生什么。"
+                      className="w-full resize-none rounded-2xl border border-white/10 bg-white/[0.08] px-4 py-3 text-sm leading-6 text-white outline-none placeholder:text-white/40"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-bold text-white/70">互动目标</span>
+                    <textarea
+                      value={roleplayObjective}
+                      onChange={(event) => setRoleplayObjective(event.target.value)}
+                      rows={3}
+                      placeholder="例如：让玩家探索一封神秘委托，逐步了解角色隐藏的过去。"
+                      className="w-full resize-none rounded-2xl border border-white/10 bg-white/[0.08] px-4 py-3 text-sm leading-6 text-white outline-none placeholder:text-white/40"
+                    />
+                  </label>
+                </div>
+              </section>
+
+              <section className="rounded-[28px] border border-white/10 bg-[#242039] p-5 sm:p-6">
                 <div className="mb-5 flex items-center justify-between gap-4">
                   <div className="flex items-center gap-3">
                     <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#8b5cf6]/20 text-[#c4b5fd]">
@@ -2114,6 +2207,18 @@ function CreateAgentContent() {
                     <p className="min-h-[48px] text-sm leading-6 text-white/64">
                       {description || characterIdentity || '填写角色简介后，这里会展示给玩家。'}
                     </p>
+                    {(roleplayStoryTitle || roleplayPlayerRole || roleplayObjective) && (
+                      <div className="mt-4 rounded-2xl bg-white/[0.08] p-4">
+                        <div className="mb-1 text-xs font-bold text-white/40">故事入口</div>
+                        <p className="text-sm font-bold text-white/78">{roleplayStoryTitle || '未命名故事'}</p>
+                        {roleplayPlayerRole && (
+                          <p className="mt-1 text-xs leading-5 text-white/52">玩家身份：{roleplayPlayerRole}</p>
+                        )}
+                        {roleplayObjective && (
+                          <p className="mt-1 text-xs leading-5 text-white/52">目标：{roleplayObjective}</p>
+                        )}
+                      </div>
+                    )}
                     {characterSpeakingStyle && (
                       <div className="mt-4 rounded-2xl bg-white/[0.08] p-4">
                         <div className="mb-1 text-xs font-bold text-white/40">说话方式</div>
