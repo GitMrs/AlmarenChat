@@ -328,6 +328,14 @@ function CreateAgentContent() {
   const [blueprintGraphOpen, setBlueprintGraphOpen] = useState(false);
   const [blueprintView, setBlueprintView] = useState<'overview' | 'evidence' | 'diagnostics' | 'json'>('overview');
   const [checkingBlueprint, setCheckingBlueprint] = useState(false);
+  const [characterConcept, setCharacterConcept] = useState('');
+  const [characterIdentity, setCharacterIdentity] = useState('');
+  const [characterPersonality, setCharacterPersonality] = useState('');
+  const [characterSpeakingStyle, setCharacterSpeakingStyle] = useState('');
+  const [characterScenario, setCharacterScenario] = useState('');
+  const [characterRelationship, setCharacterRelationship] = useState('');
+  const [characterBoundaries, setCharacterBoundaries] = useState<string[]>([]);
+  const [characterExampleDialogues, setCharacterExampleDialogues] = useState<any[]>([]);
 
   useEffect(() => {
     if (!localStorage.getItem('token')) {
@@ -373,6 +381,14 @@ function CreateAgentContent() {
               setGeneratedGreeting(config.greeting || '');
               setGeneratedSystemPrompt(config.systemPrompt || '');
               setBlueprint(config.blueprint || null);
+              setCharacterConcept(config.characterConcept || '');
+              setCharacterIdentity(config.identity || '');
+              setCharacterPersonality(config.personality || '');
+              setCharacterSpeakingStyle(config.speakingStyle || '');
+              setCharacterScenario(config.scenario || '');
+              setCharacterRelationship(config.relationshipToPlayer || '');
+              setCharacterBoundaries(config.boundaries || []);
+              setCharacterExampleDialogues(config.exampleDialogues || []);
             } catch {}
           }
         } finally {
@@ -394,12 +410,19 @@ function CreateAgentContent() {
   ];
   const completedSections = publishChecks.filter((c) => c.done).length;
   const mysteryReady = publishChecks.every((c) => c.done);
+  const characterReady =
+    name.trim().length > 0 &&
+    description.trim().length > 0 &&
+    characterIdentity.trim().length > 0 &&
+    characterPersonality.trim().length > 0 &&
+    characterSpeakingStyle.trim().length > 0;
   const canCreate =
     name.trim().length > 0 &&
     description.trim().length > 0 &&
     category &&
     tone &&
-    (creationType !== 'mystery' || mysteryReady);
+    (creationType !== 'mystery' || mysteryReady) &&
+    (creationType !== 'character' || characterReady);
 
   const canGenerateSection = (sectionId: string) => {
     if (sectionId === 'concept') return concept.trim().length > 0;
@@ -407,6 +430,8 @@ function CreateAgentContent() {
     if (sectionId === 'truth') return suspects.length > 0 && clues.length > 0;
     if (sectionId === 'opening') return Boolean(truth?.killer) && endings.length > 0;
     if (sectionId === 'blueprint') return Boolean(truth?.killer) && clues.length > 0 && endings.length > 0 && Boolean(openingScene || generatedGreeting);
+    if (sectionId === 'character_base') return characterConcept.trim().length > 0;
+    if (sectionId === 'character_details') return Boolean(name.trim()) && Boolean(characterIdentity.trim());
     return true;
   };
 
@@ -416,21 +441,51 @@ function CreateAgentContent() {
     if (sectionId === 'truth') return '请先补充嫌疑人和线索';
     if (sectionId === 'opening') return '请先生成真相和结局';
     if (sectionId === 'blueprint') return 'Please complete truth, endings, and opening first';
+    if (sectionId === 'character_base') return '先写一句角色概念';
+    if (sectionId === 'character_details') return '请先生成或填写角色基础设定';
     return '';
   };
 
   const finalGreeting = useMemo(() => {
     if (greeting.trim()) return greeting;
     if (generatedGreeting) return generatedGreeting;
+    if (creationType === 'character' && name.trim()) {
+      return `你好，我是${name}。${characterScenario || '接下来，我们可以从这里开始。'}`;
+    }
     if (!name.trim()) return '欢迎来到这个世界。你的冒险从这里开始。';
     return `欢迎来到${name}。你的冒险从这里开始。`;
-  }, [greeting, generatedGreeting, name]);
+  }, [characterScenario, creationType, greeting, generatedGreeting, name]);
 
   const finalPrompt = useMemo(() => {
     if (systemPrompt.trim()) return systemPrompt;
     if (generatedSystemPrompt) return generatedSystemPrompt;
+    if (creationType === 'character') {
+      return [
+        `你正在扮演角色：${name || '未命名角色'}。`,
+        characterIdentity ? `身份背景：${characterIdentity}` : '',
+        characterPersonality ? `性格特征：${characterPersonality}` : '',
+        characterSpeakingStyle ? `说话风格：${characterSpeakingStyle}` : '',
+        characterScenario ? `当前情境：${characterScenario}` : '',
+        characterRelationship ? `与用户关系：${characterRelationship}` : '',
+        characterBoundaries.length > 0 ? `边界：${characterBoundaries.join('；')}` : '',
+        '你需要始终保持角色一致，用自然对话回应用户，不要替用户做决定。',
+      ].filter(Boolean).join('\n');
+    }
     return `你是一个${category}类型的故事世界。氛围风格是${tone}。你需要引导玩家进入故事，做出选择，推动剧情发展。`;
-  }, [category, systemPrompt, tone, generatedSystemPrompt]);
+  }, [
+    category,
+    characterBoundaries,
+    characterIdentity,
+    characterPersonality,
+    characterRelationship,
+    characterScenario,
+    characterSpeakingStyle,
+    creationType,
+    generatedSystemPrompt,
+    name,
+    systemPrompt,
+    tone,
+  ]);
 
   // AI Generate for a specific section
   const handleGenerate = async (sectionId: string) => {
@@ -471,6 +526,18 @@ function CreateAgentContent() {
           openingScene,
           crimeScene,
           greeting: generatedGreeting,
+        };
+      } else if (sectionId === 'character_base') {
+        step = 1;
+        confirmedData = { concept: characterConcept };
+      } else if (sectionId === 'character_details') {
+        step = 2;
+        confirmedData = {
+          name,
+          identity: characterIdentity,
+          personality: characterPersonality,
+          speakingStyle: characterSpeakingStyle,
+          scenario: characterScenario,
         };
       }
 
@@ -516,6 +583,23 @@ function CreateAgentContent() {
         if (data.systemPrompt) setGeneratedSystemPrompt(data.systemPrompt);
       } else if (sectionId === 'blueprint') {
         if (data.blueprint) setBlueprint(data.blueprint);
+      } else if (sectionId === 'character_base') {
+        if (data.name) setName(data.name);
+        if (data.identity) {
+          setCharacterIdentity(data.identity);
+          if (!description) setDescription(data.identity.slice(0, 120));
+        }
+        if (data.personality) setCharacterPersonality(data.personality);
+        if (data.speakingStyle) setCharacterSpeakingStyle(data.speakingStyle);
+        setCategory('角色扮演');
+        setTone('沉浸');
+        setSelectedAvatar('🎭');
+      } else if (sectionId === 'character_details') {
+        if (data.relationshipToPlayer) setCharacterRelationship(data.relationshipToPlayer);
+        if (data.boundaries) setCharacterBoundaries(data.boundaries);
+        if (data.greeting) setGeneratedGreeting(data.greeting);
+        if (data.exampleDialogues) setCharacterExampleDialogues(data.exampleDialogues);
+        if (data.systemPrompt) setGeneratedSystemPrompt(data.systemPrompt);
       }
     } catch (error: any) {
       console.error('Generation error:', error);
@@ -576,6 +660,18 @@ function CreateAgentContent() {
         greeting: generatedGreeting,
         systemPrompt: generatedSystemPrompt,
         blueprint,
+      } : creationType === 'character' ? {
+        type: 'character',
+        characterConcept,
+        identity: characterIdentity,
+        personality: characterPersonality,
+        speakingStyle: characterSpeakingStyle,
+        scenario: characterScenario,
+        relationshipToPlayer: characterRelationship,
+        boundaries: characterBoundaries,
+        exampleDialogues: characterExampleDialogues,
+        greeting: generatedGreeting,
+        systemPrompt: generatedSystemPrompt,
       } : undefined;
 
       const payload = {
@@ -672,18 +768,20 @@ function CreateAgentContent() {
               {CREATION_TYPES.map((type) => (
                 <button
                   key={type.id}
-                  disabled={type.id !== 'mystery'}
+                  disabled={type.id !== 'mystery' && type.id !== 'character'}
                   onClick={() => {
-                    if (type.id !== 'mystery') return;
+                    if (type.id !== 'mystery' && type.id !== 'character') return;
                     setCreationType(type.id);
                     if (type.id === 'mystery') setCategory('悬疑推理');
-                    else if (type.id === 'world') setCategory('奇幻冒险');
-                    else if (type.id === 'character') setCategory('角色扮演');
-                    else if (type.id === 'script') setCategory('浪漫言情');
+                    if (type.id === 'character') {
+                      setCategory('角色扮演');
+                      setTone('沉浸');
+                      setSelectedAvatar('🎭');
+                    }
                   }}
                   className={cn(
                     'group rounded-[28px] border border-white/10 bg-[#242039] p-6 text-left transition',
-                    type.id === 'mystery'
+                    type.id === 'mystery' || type.id === 'character'
                       ? 'hover:-translate-y-1 hover:border-white/20 hover:shadow-xl'
                       : 'cursor-not-allowed opacity-45'
                   )}
@@ -697,7 +795,7 @@ function CreateAgentContent() {
                   <h3 className="mb-2 text-lg font-black text-white">{type.name}</h3>
                   <p className="text-sm leading-6 text-white/54">{type.description}</p>
                   <div className="mt-4 inline-flex items-center gap-1 text-sm font-bold text-white/40 transition group-hover:text-white/70">
-                    {type.id === 'mystery' ? '开始创作' : '即将开放'}
+                    {type.id === 'mystery' || type.id === 'character' ? '开始创作' : '即将开放'}
                     <ChevronRight size={14} />
                   </div>
                 </button>
@@ -1496,8 +1594,288 @@ function CreateAgentContent() {
           </div>
         )}
 
+        {creationType === 'character' && (
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
+            <div className="space-y-4">
+              <section className="rounded-[28px] border border-white/10 bg-[#242039] p-5 sm:p-6">
+                <div className="mb-4 flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-black text-[#d89022]">角色卡</p>
+                    <h2 className="mt-1 text-2xl font-black text-white">先用一句话搭出角色</h2>
+                    <p className="mt-2 text-sm leading-6 text-white/54">
+                      角色扮演 Agent 先维护角色资产：身份、性格、说话方式、当前情境和边界。
+                    </p>
+                  </div>
+                  <div className="shrink-0 rounded-full bg-white/[0.08] px-3 py-1.5 text-xs font-bold text-white/54">
+                    角色扮演
+                  </div>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+                  <input
+                    value={characterConcept}
+                    onChange={(event) => setCharacterConcept(event.target.value)}
+                    placeholder="例如：一位住在旧书店里的温柔占卜师，知道很多不该知道的事。"
+                    className="h-12 rounded-2xl border border-white/10 bg-white/[0.08] px-4 text-sm font-medium text-white outline-none transition placeholder:text-white/40 focus:border-white/20 focus:ring-4 focus:ring-white/[0.06]"
+                  />
+                  <button
+                    onClick={() => handleGenerate('character_base')}
+                    disabled={generatingSection === 'character_base'}
+                    className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-white px-5 text-sm font-black text-[#19172a] transition hover:-translate-y-0.5 disabled:bg-white/[0.08] disabled:text-white/30"
+                  >
+                    {generatingSection === 'character_base' ? <LoadingSpinner size="sm" /> : <Sparkles size={16} />}
+                    生成角色设定
+                  </button>
+                </div>
+              </section>
+
+              <section className="rounded-[28px] border border-white/10 bg-[#242039] p-5 sm:p-6">
+                <div className="mb-5 flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#8b5cf6]/20 text-[#c4b5fd]">
+                      <Palette size={18} />
+                    </div>
+                    <div>
+                      <h2 className="text-xl font-black text-white">角色资料</h2>
+                      <p className="mt-1 text-xs text-white/40">这些内容会组成运行时系统提示词。</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleGenerate('character_details')}
+                    disabled={generatingSection === 'character_details' || !canGenerateSection('character_details')}
+                    className={cn(
+                      'flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-bold transition',
+                      generatingSection === 'character_details' || !canGenerateSection('character_details')
+                        ? 'bg-white/[0.08] text-white/30'
+                        : 'bg-white/[0.08] text-white/64 hover:bg-white/[0.12]'
+                    )}
+                  >
+                    {generatingSection === 'character_details' ? (
+                      <>
+                        <LoadingSpinner size="sm" />
+                        生成中
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles size={14} />
+                        补充细节
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-bold text-white/70">角色名</span>
+                    <input
+                      value={name}
+                      onChange={(event) => setName(event.target.value)}
+                      placeholder="角色名"
+                      className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.08] px-3 text-sm text-white outline-none placeholder:text-white/40"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-bold text-white/70">一句话简介</span>
+                    <input
+                      value={description}
+                      onChange={(event) => setDescription(event.target.value)}
+                      placeholder="展示在卡片上的简介"
+                      className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.08] px-3 text-sm text-white outline-none placeholder:text-white/40"
+                    />
+                  </label>
+                </div>
+
+                <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-bold text-white/70">身份背景</span>
+                    <textarea
+                      value={characterIdentity}
+                      onChange={(event) => setCharacterIdentity(event.target.value)}
+                      rows={5}
+                      placeholder="角色的身份、经历、秘密或背景。"
+                      className="w-full resize-none rounded-2xl border border-white/10 bg-white/[0.08] px-4 py-3 text-sm leading-6 text-white outline-none placeholder:text-white/40"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-bold text-white/70">性格特征</span>
+                    <textarea
+                      value={characterPersonality}
+                      onChange={(event) => setCharacterPersonality(event.target.value)}
+                      rows={5}
+                      placeholder="角色的性格、习惯、情绪底色。"
+                      className="w-full resize-none rounded-2xl border border-white/10 bg-white/[0.08] px-4 py-3 text-sm leading-6 text-white outline-none placeholder:text-white/40"
+                    />
+                  </label>
+                </div>
+
+                <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-bold text-white/70">说话方式</span>
+                    <textarea
+                      value={characterSpeakingStyle}
+                      onChange={(event) => setCharacterSpeakingStyle(event.target.value)}
+                      rows={4}
+                      placeholder="语气、口头禅、句式、称呼玩家的方式。"
+                      className="w-full resize-none rounded-2xl border border-white/10 bg-white/[0.08] px-4 py-3 text-sm leading-6 text-white outline-none placeholder:text-white/40"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-bold text-white/70">当前情境</span>
+                    <textarea
+                      value={characterScenario}
+                      onChange={(event) => setCharacterScenario(event.target.value)}
+                      rows={4}
+                      placeholder="玩家第一次见到角色时，正在发生什么。"
+                      className="w-full resize-none rounded-2xl border border-white/10 bg-white/[0.08] px-4 py-3 text-sm leading-6 text-white outline-none placeholder:text-white/40"
+                    />
+                  </label>
+                </div>
+
+                <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-bold text-white/70">与玩家的关系</span>
+                    <textarea
+                      value={characterRelationship}
+                      onChange={(event) => setCharacterRelationship(event.target.value)}
+                      rows={3}
+                      placeholder="例如：旧友、雇主、同行、第一次见面的陌生人。"
+                      className="w-full resize-none rounded-2xl border border-white/10 bg-white/[0.08] px-4 py-3 text-sm leading-6 text-white outline-none placeholder:text-white/40"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-2 block text-sm font-bold text-white/70">角色边界</span>
+                    <textarea
+                      value={characterBoundaries.join('\n')}
+                      onChange={(event) =>
+                        setCharacterBoundaries(event.target.value.split('\n').map((item) => item.trim()).filter(Boolean))
+                      }
+                      rows={3}
+                      placeholder={'每行一条，例如：\n不替玩家行动\n不跳出角色解释设定'}
+                      className="w-full resize-none rounded-2xl border border-white/10 bg-white/[0.08] px-4 py-3 text-sm leading-6 text-white outline-none placeholder:text-white/40"
+                    />
+                  </label>
+                </div>
+              </section>
+
+              {(generatedGreeting || generatedSystemPrompt || characterExampleDialogues.length > 0) && (
+                <section className="rounded-[28px] border border-white/10 bg-[#242039] p-5 sm:p-6">
+                  <h2 className="text-xl font-black text-white">生成结果</h2>
+                  {generatedGreeting && (
+                    <div className="mt-4 rounded-2xl bg-white/[0.06] p-4">
+                      <div className="mb-2 text-xs font-bold text-white/40">开场白</div>
+                      <p className="text-sm leading-6 text-white/70">{generatedGreeting}</p>
+                    </div>
+                  )}
+                  {characterExampleDialogues.length > 0 && (
+                    <div className="mt-3 space-y-3">
+                      {characterExampleDialogues.map((dialogue, index) => (
+                        <div key={index} className="rounded-2xl bg-white/[0.06] p-4 text-sm leading-6">
+                          <div className="text-white/48">玩家：{dialogue.player}</div>
+                          <div className="mt-1 text-white/74">{name || '角色'}：{dialogue.character}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </section>
+              )}
+            </div>
+
+            <aside className="lg:sticky lg:top-24 lg:self-start">
+              <div className="overflow-hidden rounded-[32px] border border-white/10 bg-[#242039]">
+                <div className="h-2 bg-[#8b5cf6]" />
+                <div className="p-6">
+                  <div className="mb-5 flex items-center justify-between">
+                    <div className="inline-flex items-center gap-2 rounded-full bg-white/[0.08] px-3 py-1.5 text-xs font-bold text-white/64">
+                      <Eye size={14} />
+                      角色预览
+                    </div>
+                    <button
+                      onClick={() => setIsPublic(!isPublic)}
+                      className={cn(
+                        'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold transition',
+                        isPublic ? 'bg-emerald-500/20 text-emerald-400' : 'bg-white/[0.08] text-white/64'
+                      )}
+                    >
+                      {isPublic ? <Check size={14} /> : <Lock size={14} />}
+                      {isPublic ? '公开' : '私有'}
+                    </button>
+                  </div>
+
+                  <div className="rounded-[28px] bg-white/[0.06] p-5">
+                    <div className="mb-5 flex items-start gap-4">
+                      <div className="flex h-16 w-16 items-center justify-center rounded-3xl bg-white/[0.08] text-4xl">
+                        {selectedAvatar}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <h3 className="truncate text-xl font-black text-white">{name || '未命名角色'}</h3>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <span className="rounded-full bg-[#8b5cf6] px-2.5 py-1 text-xs font-bold text-white">
+                            角色扮演
+                          </span>
+                          <span className="rounded-full bg-white/[0.08] px-2.5 py-1 text-xs font-bold text-white/64">
+                            {tone}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    <p className="min-h-[48px] text-sm leading-6 text-white/64">
+                      {description || characterIdentity || '填写角色简介后，这里会展示给玩家。'}
+                    </p>
+                    {characterSpeakingStyle && (
+                      <div className="mt-4 rounded-2xl bg-white/[0.08] p-4">
+                        <div className="mb-1 text-xs font-bold text-white/40">说话方式</div>
+                        <p className="text-sm leading-6 text-white/68">{characterSpeakingStyle}</p>
+                      </div>
+                    )}
+                    <div className="mt-4 rounded-2xl bg-white/[0.08] p-4">
+                      <div className="mb-1 text-xs font-bold text-white/40">开场白</div>
+                      <p className="text-sm leading-6 text-white/68">{finalGreeting}</p>
+                    </div>
+                  </div>
+
+                  <div className="mt-4">
+                    <div className="mb-2 text-sm font-bold text-white/70">头像</div>
+                    <div className="grid grid-cols-8 gap-2">
+                      {AVATAR_OPTIONS.slice(0, 16).map((avatar) => (
+                        <button
+                          key={avatar}
+                          onClick={() => setSelectedAvatar(avatar)}
+                          className={cn(
+                            'flex h-9 w-9 items-center justify-center rounded-xl text-lg transition',
+                            selectedAvatar === avatar ? 'bg-white text-[#19172a]' : 'bg-white/[0.08] hover:bg-white/[0.12]'
+                          )}
+                        >
+                          {avatar}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={handleSubmit}
+                    disabled={!canCreate || submitting}
+                    className={cn(
+                      'mt-5 flex h-12 w-full items-center justify-center gap-2 rounded-full text-sm font-black transition',
+                      canCreate && !submitting
+                        ? 'bg-white text-[#19172a] shadow-sm hover:-translate-y-0.5 hover:shadow-lg'
+                        : 'bg-white/[0.08] text-white/30'
+                    )}
+                  >
+                    <Sparkles size={16} />
+                    {submitting ? '保存中...' : editingAgentId ? '保存修改' : '创建角色'}
+                  </button>
+                  {!canCreate && (
+                    <p className="mt-2 text-center text-xs text-white/40">
+                      请至少填写名称、简介、身份、性格和说话方式
+                    </p>
+                  )}
+                </div>
+              </div>
+            </aside>
+          </div>
+        )}
+
         {/* Other creation types placeholder */}
-        {creationType && creationType !== 'mystery' && (
+        {creationType && creationType !== 'mystery' && creationType !== 'character' && (
           <div className="rounded-[32px] border border-dashed border-white/18 bg-white/[0.04] p-12 text-center">
             <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-3xl bg-white/[0.08] text-3xl">
               {CREATION_TYPES.find((t) => t.id === creationType)?.icon}
