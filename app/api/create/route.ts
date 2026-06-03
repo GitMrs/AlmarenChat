@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
-import OpenAI from 'openai';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { isAdminEmail } from '@/app/api/_lib/admin';
+import { createOpenAIClient } from '@/app/api/_lib/ai';
 import { maintainMysteryBlueprint } from '@/lib/blueprint-maintenance';
 import {
   createBlueprintRuntimeState,
@@ -732,8 +732,9 @@ The JSON must be in Chinese.`,
 概念：${data.concept || ''}
 
 请生成这个角色体验的基础设定。它不是孤立角色卡，而是一个自带故事入口的角色 Agent。
-用户输入的概念是最高优先级锚点，必须保留其中的核心事件、物象、情绪和危险感。
+用户输入的概念是最高优先级锚点，必须保留其中的关键词、核心意象、主题关系和情绪方向。
 如果概念很短，只能从这个概念直接扩写，不能替换成无关题材。
+不要沿用示例、上一次生成结果或常见套路；只根据本次概念生成。
 输出格式：
 {
   "name": "角色名",
@@ -751,9 +752,15 @@ The JSON must be in Chinese.`,
 }
 
 要求：
-- 每个字段都必须能明显关联“概念”，不要引入与概念无关的主场景、主身份或核心危机
-- 必须先回答“发生了什么异变、谁最先感知、玩家如何进入这件事”
-- 如果概念包含明确事件，例如“月亮变成红色”，故事入口必须围绕红月异变、异常征兆、现场反应和玩家介入展开
+- 每个字段都必须能明显关联“概念”，不要引入与概念无关的主场景、主身份、主矛盾或核心规则
+- 先判断概念类型，再选择展开方式；不要把所有概念都写成灾难、谜案或末日
+- 如果概念是主题词组合，就围绕主题之间的张力、隐喻和角色处境展开
+- 如果概念是角色/职业/身份，就围绕这个角色的日常、欲望、秘密和与玩家的关系展开
+- 如果概念是地点/物品/组织，就让角色成为最适合带玩家进入它的人，并围绕它的用途、规则和传闻展开
+- 如果概念是关系/情绪/一句话，就把它作为第一幕的关系状态、语气和未说出口的问题
+- 如果概念是校园、恋爱、陪伴、治愈、日常等轻关系题材，优先生成低强度、贴近日常的互动，不要加入废墟、诅咒、失忆、末日、追杀、超自然灾难等重题材
+- 如果概念包含明确事件，故事入口才围绕这个事件的原因、影响、见证者和玩家介入方式展开
+- 不要输出“概念分析”字段，只把判断结果体现在各字段内容里
 - name 要有特色
 - identity 包含角色的背景故事
 - personality 描述性格特点
@@ -775,7 +782,8 @@ The JSON must be in Chinese.`,
 已确认的角色设定：${JSON.stringify(data.confirmedData || {})}
 
 请生成角色的详细信息。
-所有内容必须延续已确认设定里的原始概念、故事标题、世界背景、当前场景和互动目标，不能重新发明另一套世界观。
+所有内容必须延续已确认设定里的原始概念、关键词、故事标题、世界背景、当前场景和互动目标，不能重新发明另一套世界观。
+不要把非危机型概念强行改写成调查、逃亡、灾难或拯救世界。
 输出格式：
 {
   "relationshipToPlayer": "与玩家的关系",
@@ -788,8 +796,8 @@ The JSON must be in Chinese.`,
 }
 
 要求：
-- greeting 必须发生在已确认的当前场景里，并直接回应原始概念中的核心事件
-- exampleDialogues 必须围绕玩家如何理解、追问或推进这个事件
+- greeting 必须发生在已确认的当前场景里，并直接回应原始概念中的关键词或核心事件
+- exampleDialogues 必须围绕玩家如何理解、追问或推进这些关键词对应的关系、情绪、规则或矛盾
 - relationshipToPlayer 描述角色与玩家的关系
 - boundaries 是角色不会做的事情，必须包含“不替用户做决定”和“不跳出角色解释设定”
 - greeting 是角色的第一句话
@@ -806,6 +814,7 @@ The JSON must be in Chinese.`,
 
 请为这个角色生成可编辑的世界资料和无代码技能卡。
 世界资料和技能卡必须从已确认角色卡的原始概念、故事入口、世界背景、当前场景和目标派生，不能加入无关主题。
+不要把技能卡固定成推理、追踪或生存玩法；根据概念选择适合的互动能力。
 输出格式：
 {
   "worldNotes": [
@@ -824,7 +833,7 @@ The JSON must be in Chinese.`,
 }
 
 要求：
-- worldNotes 必须稳定解释核心异变、相关地点、角色知道的限制、玩家可追问的信息
+- worldNotes 必须稳定解释核心概念、相关地点、角色知道的限制、玩家可追问的信息
 - skillCards 必须服务于这次角色体验的玩法，不要生成和当前故事无关的通用技能
 - worldNotes 生成 5-8 条，必须是角色稳定知道的事实、地点、关系、秘密、规则或常被提及的话题
 - skillCards 生成 2-4 张，必须是无代码技能，不要写 JavaScript，不要要求调用外部工具
@@ -986,13 +995,7 @@ export async function POST(request: Request) {
     // Get prompt template
     const promptTemplate = stepPrompts[step]({ concept, confirmedData });
 
-    // Create OpenAI client
-    const client = new OpenAI({
-      baseURL: userSettings.apiBaseUrl || 'https://api-inference.modelscope.cn/v1',
-      apiKey: userSettings.apiKey || process.env.apiKey,
-    });
-
-    const model = userSettings.modelName || 'deepseek-ai/DeepSeek-V4-Flash';
+    const { client, model } = createOpenAIClient(userSettings);
 
     // Call AI
     const completion = await client.chat.completions.create({

@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import OpenAI from 'openai';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { isAdminEmail } from '@/app/api/_lib/admin';
+import { createOpenAIClient } from '@/app/api/_lib/ai';
 import { createBlueprintRuntimeState, getAvailableBlueprintActions } from '@/lib/story-engine';
 import { createInitialRuntimeState } from '@/types/runtime';
 import type { RuntimeState, RuntimeEvent, AIResponseContract } from '@/types/runtime';
@@ -450,13 +450,7 @@ suggestedActions 规则（非常重要，违反会导致游戏体验极差）：
         },
       });
     }
-    // Use custom config if provided, otherwise fall back to platform default (Gemini via OpenAI-compatible API)
-    const client = new OpenAI({
-      baseURL: apiBaseUrl || 'https://api-inference.modelscope.cn/v1',
-      apiKey: apiKey || process.env.apiKey,
-    });
-
-    const model = modelName || 'deepseek-ai/DeepSeek-V4-Flash';
+    const { client, model } = createOpenAIClient({ apiBaseUrl, apiKey, modelName });
     const stream = await client.chat.completions.create({
       model,
       messages: openaiMessages,

@@ -23,9 +23,11 @@ import {
   RefreshCw,
   Scroll,
   Search,
+  Send,
   Sparkles,
   Workflow,
   Wand2,
+  X,
 } from 'lucide-react';
 import AppShell from '@/components/layout/AppShell';
 import LoginRequired from '@/components/auth/LoginRequired';
@@ -37,6 +39,11 @@ import { agents, auth } from '@/lib/api';
 const AVATAR_OPTIONS = ['🎭', '🏰', '🔍', '💜', '⚔️', '🌟', '👻', '🎪', '🧩', '🗡️', '📖', '🌙', '🔮', '🎯', '🏴‍☠️', '🦋'];
 
 type CreationType = 'mystery' | 'world' | 'character' | 'script';
+
+type TestChatMessage = {
+  role: 'user' | 'assistant';
+  content: string;
+};
 
 interface CreationTypeOption {
   id: CreationType;
@@ -310,6 +317,10 @@ function CreateAgentContent() {
   const [creationType, setCreationType] = useState<CreationType | null>(null);
   const [activeTab, setActiveTab] = useState('concept');
   const [generatingSection, setGeneratingSection] = useState<string | null>(null);
+  const [testChatOpen, setTestChatOpen] = useState(false);
+  const [testChatInput, setTestChatInput] = useState('');
+  const [testChatMessages, setTestChatMessages] = useState<TestChatMessage[]>([]);
+  const [testChatLoading, setTestChatLoading] = useState(false);
 
   // Mystery Case fields (manual or AI-assisted)
   const [concept, setConcept] = useState('');
@@ -343,6 +354,54 @@ function CreateAgentContent() {
   const [roleplayPlayerRole, setRoleplayPlayerRole] = useState('');
   const [roleplayCurrentScene, setRoleplayCurrentScene] = useState('');
   const [roleplayObjective, setRoleplayObjective] = useState('');
+
+  const resetCreator = () => {
+    setActiveTab('concept');
+    setGeneratingSection(null);
+    setTestChatOpen(false);
+    setTestChatInput('');
+    setTestChatMessages([]);
+    setTestChatLoading(false);
+    setName('');
+    setDescription('');
+    setCategory('悬疑推理');
+    setTone('悬疑');
+    setGreeting('');
+    setSystemPrompt('');
+    setSelectedAvatar('🎭');
+    setIsPublic(false);
+    setConcept('');
+    setSuspects([]);
+    setCoreTrick('');
+    setClues([]);
+    setRedHerrings([]);
+    setTruth(null);
+    setSolutionCondition('');
+    setEndings([]);
+    setOpeningScene('');
+    setCrimeScene('');
+    setGeneratedGreeting('');
+    setGeneratedSystemPrompt('');
+    setBlueprint(null);
+    setBlueprintGraphOpen(false);
+    setBlueprintView('overview');
+    setCheckingBlueprint(false);
+    setCharacterConcept('');
+    setCharacterIdentity('');
+    setCharacterPersonality('');
+    setCharacterSpeakingStyle('');
+    setCharacterScenario('');
+    setCharacterRelationship('');
+    setCharacterBoundaries([]);
+    setCharacterExampleDialogues([]);
+    setCharacterWorldNotes([]);
+    setCharacterSkillCards([]);
+    setRoleplayStoryTitle('');
+    setRoleplayWorldSetting('');
+    setRoleplayPlayerRole('');
+    setRoleplayCurrentScene('');
+    setRoleplayObjective('');
+  };
 
   useEffect(() => {
     if (!localStorage.getItem('token')) {
@@ -433,7 +492,7 @@ function CreateAgentContent() {
   const roleplaySteps = [
     { label: '角色是谁', done: Boolean(name.trim() && characterIdentity.trim() && characterPersonality.trim()) },
     { label: '故事在哪里', done: Boolean(roleplayStoryTitle.trim() || roleplayWorldSetting.trim() || roleplayCurrentScene.trim()) },
-    { label: '角色会什么', done: characterWorldNotes.length > 0 || characterSkillCards.length > 0 },
+    { label: '世界资料与技能', done: characterWorldNotes.length > 0 || characterSkillCards.length > 0 },
     { label: '开场与预览', done: Boolean((greeting.trim() || generatedGreeting.trim() || name.trim()) && (systemPrompt.trim() || generatedSystemPrompt.trim() || characterExampleDialogues.length > 0)) },
   ];
   const canCreate =
@@ -541,6 +600,22 @@ function CreateAgentContent() {
     tone,
   ]);
 
+  const readApiError = async (response: Response, fallback: string) => {
+    const statusText = `HTTP ${response.status}`;
+    try {
+      const data = await response.json();
+      const parts = [
+        data.error || fallback,
+        data.reason ? `原因：${data.reason}` : '',
+        data.details ? `详情：${typeof data.details === 'string' ? data.details : JSON.stringify(data.details)}` : '',
+      ].filter(Boolean);
+      return `${statusText}：${parts.join('\n')}`;
+    } catch {
+      const text = await response.text().catch(() => '');
+      return `${statusText}：${text || fallback}`;
+    }
+  };
+
   // AI Generate for a specific section
   const handleGenerate = async (sectionId: string) => {
     if (generatingSection) return;
@@ -621,6 +696,7 @@ function CreateAgentContent() {
         };
       }
 
+      const requestConcept = creationType === 'character' ? characterConcept : concept;
       const response = await fetch('/api/create', {
         method: 'POST',
         headers: {
@@ -630,14 +706,13 @@ function CreateAgentContent() {
         body: JSON.stringify({
           creationType,
           step,
-          concept,
+          concept: requestConcept,
           confirmedData,
         }),
       });
 
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Generation failed');
+        throw new Error(await readApiError(response, 'Generation failed'));
       }
 
       const result = await response.json();
@@ -715,8 +790,7 @@ function CreateAgentContent() {
       });
 
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Blueprint check failed');
+        throw new Error(await readApiError(response, 'Blueprint check failed'));
       }
 
       const result = await response.json();
@@ -727,6 +801,44 @@ function CreateAgentContent() {
       alert(error.message || '骨架检查失败，请重试');
     } finally {
       setCheckingBlueprint(false);
+    }
+  };
+
+  const handleSendTestChat = async () => {
+    const text = testChatInput.trim();
+    if (!text || testChatLoading) return;
+
+    const nextMessages: TestChatMessage[] = [...testChatMessages, { role: 'user', content: text }];
+    setTestChatMessages(nextMessages);
+    setTestChatInput('');
+    setTestChatLoading(true);
+
+    try {
+      const response = await fetch('/api/create/test-chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${localStorage.getItem('token')}`,
+        },
+        body: JSON.stringify({
+          systemPrompt: finalPrompt,
+          greeting: finalGreeting,
+          messages: nextMessages,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(await readApiError(response, '测试对话失败'));
+      }
+
+      const result = await response.json();
+      setTestChatMessages([...nextMessages, { role: 'assistant', content: result.reply || '' }]);
+    } catch (error: any) {
+      console.error('Test chat failed:', error);
+      alert(error.message || '测试对话失败');
+      setTestChatMessages(testChatMessages);
+    } finally {
+      setTestChatLoading(false);
     }
   };
 
@@ -848,13 +960,22 @@ function CreateAgentContent() {
               </p>
             </div>
             {creationType && (
-              <button
-                onClick={() => setCreationType(null)}
-                className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.08] px-4 py-2 text-sm font-bold text-white/70 transition hover:bg-white/[0.12]"
-              >
-                <RefreshCw size={14} />
-                重新选择类型
-              </button>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  onClick={resetCreator}
+                  className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.08] px-4 py-2 text-sm font-bold text-white/70 transition hover:bg-white/[0.12]"
+                >
+                  <RefreshCw size={14} />
+                  重置
+                </button>
+                <button
+                  onClick={() => setCreationType(null)}
+                  className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.08] px-4 py-2 text-sm font-bold text-white/70 transition hover:bg-white/[0.12]"
+                >
+                  <RefreshCw size={14} />
+                  重新选择类型
+                </button>
+              </div>
             )}
           </div>
         </section>
@@ -1560,8 +1681,8 @@ function CreateAgentContent() {
             <aside className="lg:sticky lg:top-24 lg:self-start">
               <div className="overflow-hidden rounded-[32px] border border-white/10 bg-[#242039]">
                 <div className="h-2 bg-[#6366f1]" />
-                <div className="p-6">
-                  <div className="mb-5 flex items-center justify-between">
+                <div className="p-5">
+                  <div className="mb-4 flex items-center justify-between">
                     <div className="inline-flex items-center gap-2 rounded-full bg-white/[0.08] px-3 py-1.5 text-xs font-bold text-white/64">
                       <Eye size={14} />
                       创建检查
@@ -1599,9 +1720,9 @@ function CreateAgentContent() {
                     </div>
                   </div>
 
-                  <div className="rounded-[28px] bg-white/[0.06] p-5">
-                    <div className="mb-5 flex items-start gap-4">
-                      <div className="flex h-16 w-16 items-center justify-center rounded-3xl bg-white/[0.08] text-4xl">
+                  <div className="rounded-3xl bg-white/[0.06] p-4">
+                    <div className="mb-3 flex items-start gap-3">
+                      <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/[0.08] text-3xl">
                         {selectedAvatar}
                       </div>
                       <div className="min-w-0 flex-1">
@@ -1668,6 +1789,20 @@ function CreateAgentContent() {
                       />
                     </label>
                   </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTestChatMessages(finalGreeting ? [{ role: 'assistant', content: finalGreeting }] : []);
+                      setTestChatInput('');
+                      setTestChatOpen(true);
+                    }}
+                    className="mt-5 flex h-12 w-full items-center justify-center gap-2 rounded-full border border-white/10 bg-white/[0.08] text-sm font-black text-white/72 transition hover:-translate-y-0.5 hover:bg-white/[0.12]"
+                  >
+                    <Eye size={16} />
+                    测试对话
+                  </button>
+                  <p className="mt-2 text-center text-xs text-white/38">临时测试，不保存聊天记录</p>
 
                   <button
                     onClick={handleSubmit}
@@ -1954,8 +2089,8 @@ function CreateAgentContent() {
                       <BookOpen size={18} />
                     </div>
                     <div>
-                      <h2 className="text-xl font-black text-white">3. 角色会什么</h2>
-                      <p className="mt-1 text-xs text-white/40">角色稳定知道的事实。每行一条，会写入运行提示词。</p>
+                      <h2 className="text-xl font-black text-white">3. 世界资料</h2>
+                      <p className="mt-1 text-xs text-white/40">角色稳定知道的事实、地点、关系和规则。每行一条，会写入运行提示词。</p>
                     </div>
                   </div>
                   <button
@@ -1970,7 +2105,7 @@ function CreateAgentContent() {
                     )}
                   >
                     {generatingSection === 'character_assets' ? <LoadingSpinner size="sm" /> : <Sparkles size={14} />}
-                    AI 生成玩法资产
+                    AI 生成世界资料和技能
                   </button>
                 </div>
                 <textarea
@@ -1995,20 +2130,6 @@ function CreateAgentContent() {
                       <p className="mt-1 text-xs text-white/40">无代码技能，不执行插件，只指导角色在特定互动中怎么做。</p>
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => handleGenerate('character_assets')}
-                    disabled={generatingSection === 'character_assets' || !canGenerateSection('character_assets')}
-                    className={cn(
-                      'inline-flex h-9 items-center justify-center gap-2 rounded-full px-4 text-xs font-bold transition',
-                      generatingSection === 'character_assets' || !canGenerateSection('character_assets')
-                        ? 'bg-white/[0.08] text-white/30'
-                        : 'bg-white/[0.08] text-white/64 hover:bg-white/[0.12]'
-                    )}
-                  >
-                    {generatingSection === 'character_assets' ? <LoadingSpinner size="sm" /> : <Sparkles size={14} />}
-                    AI 生成技能
-                  </button>
                   <button
                     type="button"
                     onClick={() =>
@@ -2252,29 +2373,29 @@ function CreateAgentContent() {
                         </div>
                       </div>
                     </div>
-                    <p className="min-h-[48px] text-sm leading-6 text-white/64">
+                    <p className="line-clamp-2 text-sm leading-6 text-white/64">
                       {description || characterIdentity || '填写角色简介后，这里会展示给玩家。'}
                     </p>
                     {(roleplayStoryTitle || roleplayPlayerRole || roleplayObjective) && (
-                      <div className="mt-4 rounded-2xl bg-white/[0.08] p-4">
+                      <div className="mt-3 rounded-2xl bg-white/[0.08] p-3">
                         <div className="mb-1 text-xs font-bold text-white/40">故事入口</div>
-                        <p className="text-sm font-bold text-white/78">{roleplayStoryTitle || '未命名故事'}</p>
+                        <p className="truncate text-sm font-bold text-white/78">{roleplayStoryTitle || '未命名故事'}</p>
                         {roleplayPlayerRole && (
-                          <p className="mt-1 text-xs leading-5 text-white/52">玩家身份：{roleplayPlayerRole}</p>
+                          <p className="mt-1 truncate text-xs leading-5 text-white/52">玩家：{roleplayPlayerRole}</p>
                         )}
                         {roleplayObjective && (
-                          <p className="mt-1 text-xs leading-5 text-white/52">目标：{roleplayObjective}</p>
+                          <p className="mt-1 line-clamp-2 text-xs leading-5 text-white/52">目标：{roleplayObjective}</p>
                         )}
                       </div>
                     )}
                     {characterSpeakingStyle && (
-                      <div className="mt-4 rounded-2xl bg-white/[0.08] p-4">
+                      <div className="mt-3 rounded-2xl bg-white/[0.08] p-3">
                         <div className="mb-1 text-xs font-bold text-white/40">说话方式</div>
-                        <p className="text-sm leading-6 text-white/68">{characterSpeakingStyle}</p>
+                        <p className="line-clamp-2 text-sm leading-6 text-white/68">{characterSpeakingStyle}</p>
                       </div>
                     )}
                     {(characterWorldNotes.length > 0 || characterSkillCards.length > 0) && (
-                      <div className="mt-4 grid grid-cols-2 gap-2">
+                      <div className="mt-3 grid grid-cols-2 gap-2">
                         <div className="rounded-2xl bg-white/[0.08] px-3 py-2">
                           <div className="text-xs font-bold text-white/40">世界资料</div>
                           <div className="mt-1 text-lg font-black text-white">{characterWorldNotes.length}</div>
@@ -2285,16 +2406,16 @@ function CreateAgentContent() {
                         </div>
                       </div>
                     )}
-                    <div className="mt-4 rounded-2xl bg-white/[0.08] p-4">
+                    <div className="mt-3 rounded-2xl bg-white/[0.08] p-3">
                       <div className="mb-1 text-xs font-bold text-white/40">开场白</div>
-                      <p className="text-sm leading-6 text-white/68">{finalGreeting}</p>
+                      <p className="line-clamp-3 text-sm leading-6 text-white/68">{finalGreeting}</p>
                     </div>
                   </div>
 
-                  <div className="mt-4">
+                  <div className="mt-3">
                     <div className="mb-2 text-sm font-bold text-white/70">头像</div>
                     <div className="grid grid-cols-8 gap-2">
-                      {AVATAR_OPTIONS.slice(0, 16).map((avatar) => (
+                      {AVATAR_OPTIONS.slice(0, 8).map((avatar) => (
                         <button
                           key={avatar}
                           onClick={() => setSelectedAvatar(avatar)}
@@ -2309,19 +2430,34 @@ function CreateAgentContent() {
                     </div>
                   </div>
 
-                  <button
-                    onClick={handleSubmit}
-                    disabled={!canCreate || submitting}
-                    className={cn(
-                      'mt-5 flex h-12 w-full items-center justify-center gap-2 rounded-full text-sm font-black transition',
-                      canCreate && !submitting
-                        ? 'bg-white text-[#19172a] shadow-sm hover:-translate-y-0.5 hover:shadow-lg'
-                        : 'bg-white/[0.08] text-white/30'
-                    )}
-                  >
-                    <Sparkles size={16} />
-                    {submitting ? '保存中...' : editingAgentId ? '保存修改' : '创建角色'}
-                  </button>
+                  <div className="mt-4 grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTestChatMessages(finalGreeting ? [{ role: 'assistant', content: finalGreeting }] : []);
+                        setTestChatInput('');
+                        setTestChatOpen(true);
+                      }}
+                      className="flex h-11 items-center justify-center gap-2 rounded-full border border-white/10 bg-white/[0.08] text-sm font-black text-white/72 transition hover:-translate-y-0.5 hover:bg-white/[0.12]"
+                    >
+                      <Eye size={16} />
+                      测试
+                    </button>
+                    <button
+                      onClick={handleSubmit}
+                      disabled={!canCreate || submitting}
+                      className={cn(
+                        'flex h-11 items-center justify-center gap-2 rounded-full text-sm font-black transition',
+                        canCreate && !submitting
+                          ? 'bg-white text-[#19172a] shadow-sm hover:-translate-y-0.5 hover:shadow-lg'
+                          : 'bg-white/[0.08] text-white/30'
+                      )}
+                    >
+                      <Sparkles size={16} />
+                      {submitting ? '保存中' : editingAgentId ? '保存' : '创建'}
+                    </button>
+                  </div>
+                  <p className="mt-2 text-center text-xs text-white/38">测试对话不会保存</p>
                   {!canCreate && (
                     <p className="mt-2 text-center text-xs text-white/40">
                       请至少填写名称、简介、身份、性格和说话方式
@@ -2351,6 +2487,84 @@ function CreateAgentContent() {
             >
               返回选择
             </button>
+          </div>
+        )}
+
+        {testChatOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+            <div className="flex h-[78vh] w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-white/10 bg-[#19172a] shadow-2xl">
+              <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
+                <div>
+                  <div className="text-sm font-black text-white">测试对话</div>
+                  <div className="mt-1 text-xs text-white/40">临时沙盒，关闭后不会保存记录。</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setTestChatOpen(false)}
+                  className="flex h-9 w-9 items-center justify-center rounded-full bg-white/[0.08] text-white/64 transition hover:bg-white/[0.12] hover:text-white"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 py-4">
+                {testChatMessages.map((message, index) => (
+                  <div
+                    key={`${message.role}-${index}`}
+                    className={cn('flex', message.role === 'user' ? 'justify-end' : 'justify-start')}
+                  >
+                    <div
+                      className={cn(
+                        'max-w-[82%] rounded-2xl px-4 py-3 text-sm leading-6',
+                        message.role === 'user'
+                          ? 'bg-white text-[#19172a]'
+                          : 'bg-white/[0.08] text-white/76'
+                      )}
+                    >
+                      {message.content}
+                    </div>
+                  </div>
+                ))}
+                {testChatLoading && (
+                  <div className="flex justify-start">
+                    <div className="inline-flex items-center gap-2 rounded-2xl bg-white/[0.08] px-4 py-3 text-sm text-white/54">
+                      <LoadingSpinner size="sm" />
+                      正在回复...
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="border-t border-white/10 p-4">
+                <div className="flex gap-2">
+                  <input
+                    value={testChatInput}
+                    onChange={(event) => setTestChatInput(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' && !event.shiftKey) {
+                        event.preventDefault();
+                        handleSendTestChat();
+                      }
+                    }}
+                    placeholder="输入一句话测试角色反应..."
+                    className="h-11 min-w-0 flex-1 rounded-2xl border border-white/10 bg-white/[0.08] px-4 text-sm text-white outline-none placeholder:text-white/35 focus:border-white/20 focus:ring-4 focus:ring-white/[0.06]"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSendTestChat}
+                    disabled={!testChatInput.trim() || testChatLoading}
+                    className={cn(
+                      'flex h-11 w-11 items-center justify-center rounded-2xl transition',
+                      testChatInput.trim() && !testChatLoading
+                        ? 'bg-white text-[#19172a] hover:-translate-y-0.5'
+                        : 'bg-white/[0.08] text-white/30'
+                    )}
+                  >
+                    <Send size={16} />
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </div>
