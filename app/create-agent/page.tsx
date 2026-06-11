@@ -25,6 +25,7 @@ import MysterySectionTabs from './MysterySectionTabs';
 import MysteryPublishPanel from './MysteryPublishPanel';
 import TestChatDialog from './TestChatDialog';
 import UnsupportedCreationTypePanel from './UnsupportedCreationTypePanel';
+import type { CreationStage, CreationStageStatus } from './CreationStagePanel';
 import type { CreationType, TestChatMessage } from './types';
 
 function CreateAgentContent() {
@@ -53,6 +54,7 @@ function CreateAgentContent() {
   const [testChatInput, setTestChatInput] = useState('');
   const [testChatMessages, setTestChatMessages] = useState<TestChatMessage[]>([]);
   const [testChatLoading, setTestChatLoading] = useState(false);
+  const [stageStatuses, setStageStatuses] = useState<Record<string, CreationStageStatus>>({});
 
   // Mystery Case fields (manual or AI-assisted)
   const [concept, setConcept] = useState('');
@@ -94,6 +96,7 @@ function CreateAgentContent() {
     setTestChatInput('');
     setTestChatMessages([]);
     setTestChatLoading(false);
+    setStageStatuses({});
     setName('');
     setDescription('');
     setCategory('悬疑推理');
@@ -194,6 +197,7 @@ function CreateAgentContent() {
               setRoleplayPlayerRole(config.playerRole || '');
               setRoleplayCurrentScene(config.currentScene || '');
               setRoleplayObjective(config.objective || '');
+              setStageStatuses(config.stageStatuses || {});
             } catch {}
           }
         } finally {
@@ -221,12 +225,6 @@ function CreateAgentContent() {
     characterIdentity.trim().length > 0 &&
     characterPersonality.trim().length > 0 &&
     characterSpeakingStyle.trim().length > 0;
-  const roleplaySteps = [
-    { label: '角色是谁', done: Boolean(name.trim() && characterIdentity.trim() && characterPersonality.trim()) },
-    { label: '故事在哪里', done: Boolean(roleplayStoryTitle.trim() || roleplayWorldSetting.trim() || roleplayCurrentScene.trim()) },
-    { label: '世界资料与技能', done: characterWorldNotes.length > 0 || characterSkillCards.length > 0 },
-    { label: '开场与预览', done: Boolean((greeting.trim() || generatedGreeting.trim() || name.trim()) && (systemPrompt.trim() || generatedSystemPrompt.trim() || characterExampleDialogues.length > 0)) },
-  ];
   const canCreate =
     name.trim().length > 0 &&
     description.trim().length > 0 &&
@@ -234,6 +232,17 @@ function CreateAgentContent() {
     tone &&
     (creationType !== 'mystery' || mysteryReady) &&
     (creationType !== 'character' || characterReady);
+  const setStageStatus = (stageId: string, status: CreationStageStatus | null) => {
+    setStageStatuses((current) => {
+      const next = { ...current };
+      if (status) {
+        next[stageId] = status;
+      } else {
+        delete next[stageId];
+      }
+      return next;
+    });
+  };
 
   const canGenerateSection = (sectionId: string) => {
     if (sectionId === 'concept') return concept.trim().length > 0;
@@ -331,6 +340,76 @@ function CreateAgentContent() {
     systemPrompt,
     tone,
   ]);
+
+  const publishInfoReady = Boolean(name.trim() && description.trim() && category && tone);
+  const characterPreviewReady = Boolean(publishInfoReady && finalGreeting.trim() && finalPrompt.trim());
+
+  const mysteryStages: CreationStage[] = [
+    {
+      id: 'concept',
+      title: '案件概念',
+      description: '嫌疑人、核心诡计和基础设定',
+      status: stageStatuses.concept || (suspects.length >= 3 && coreTrick.trim() ? 'approved' : concept.trim() ? 'revision' : 'draft'),
+    },
+    {
+      id: 'evidence',
+      title: '证据链',
+      description: '关键线索、干扰项和真相条件',
+      status: stageStatuses.evidence || (clues.length >= 3 && truth?.killer ? 'approved' : clues.length > 0 ? 'revision' : 'draft'),
+    },
+    {
+      id: 'opening',
+      title: '开场体验',
+      description: '玩家第一幕、开场白和目标',
+      status: stageStatuses.opening || (openingScene.trim() || generatedGreeting.trim() ? 'approved' : 'draft'),
+    },
+    {
+      id: 'publish',
+      title: '发布准备',
+      description: '名称、简介和可玩性检查',
+      status: stageStatuses.publish || (canCreate ? 'locked' : name.trim() || description.trim() ? 'revision' : 'draft'),
+    },
+  ];
+  const characterStages: CreationStage[] = [
+    {
+      id: 'character-card',
+      title: '角色卡',
+      description: '身份、性格和说话方式',
+      status: stageStatuses['character-card'] || (characterReady ? 'approved' : characterIdentity.trim() || characterPersonality.trim() ? 'revision' : 'draft'),
+    },
+    {
+      id: 'world-entry',
+      title: '故事入口',
+      description: '世界背景、玩家身份和当前场景',
+      status: stageStatuses['world-entry'] || (roleplayStoryTitle.trim() || roleplayWorldSetting.trim() || roleplayCurrentScene.trim() ? 'approved' : 'draft'),
+    },
+    {
+      id: 'play-assets',
+      title: '玩法资产',
+      description: '世界资料、技能卡和示例对话',
+      status: stageStatuses['play-assets'] || (characterWorldNotes.length > 0 || characterSkillCards.length > 0 ? 'approved' : characterExampleDialogues.length > 0 ? 'revision' : 'draft'),
+    },
+    {
+      id: 'preview',
+      title: '测试与发布',
+      description: '开场白、系统提示词和发布信息',
+      status: stageStatuses.preview || (characterPreviewReady ? 'approved' : finalGreeting.trim() || finalPrompt.trim() || publishInfoReady ? 'revision' : 'draft'),
+    },
+  ];
+  const mysteryStagesLocked = mysteryStages.every((stage) => stage.status === 'locked');
+  const characterStagesLocked = characterStages.every((stage) => stage.status === 'locked');
+  const canPublish =
+    canCreate &&
+    (creationType !== 'mystery' || mysteryStagesLocked) &&
+    (creationType !== 'character' || characterStagesLocked);
+  const publishBlockedReason =
+    !canCreate
+      ? ''
+      : creationType === 'mystery' && !mysteryStagesLocked
+        ? '请先锁定所有创作阶段后再发布'
+        : creationType === 'character' && !characterStagesLocked
+          ? '请先锁定所有创作阶段后再发布'
+          : '';
 
   const readApiError = async (response: Response, fallback: string) => {
     const statusText = `HTTP ${response.status}`;
@@ -536,8 +615,8 @@ function CreateAgentContent() {
     }
   };
 
-  const handleSendTestChat = async () => {
-    const text = testChatInput.trim();
+  const handleSendTestChat = async (actionText?: string) => {
+    const text = (actionText ?? testChatInput).trim();
     if (!text || testChatLoading) return;
 
     const nextMessages: TestChatMessage[] = [...testChatMessages, { role: 'user', content: text }];
@@ -564,7 +643,14 @@ function CreateAgentContent() {
       }
 
       const result = await response.json();
-      setTestChatMessages([...nextMessages, { role: 'assistant', content: result.reply || '' }]);
+      setTestChatMessages([
+        ...nextMessages,
+        {
+          role: 'assistant',
+          content: result.reply || '',
+          actions: Array.isArray(result.actions) ? result.actions.slice(0, 4) : [],
+        },
+      ]);
     } catch (error: any) {
       console.error('Test chat failed:', error);
       alert(error.message || '测试对话失败');
@@ -576,7 +662,7 @@ function CreateAgentContent() {
 
   // Submit the agent
   const handleSubmit = async () => {
-    if (!canCreate || submitting) return;
+    if (!canPublish || submitting) return;
 
     setSubmitting(true);
     try {
@@ -595,6 +681,7 @@ function CreateAgentContent() {
         greeting: generatedGreeting,
         systemPrompt: generatedSystemPrompt,
         blueprint,
+        stageStatuses,
       } : creationType === 'character' ? {
         type: 'character',
         characterConcept,
@@ -614,6 +701,7 @@ function CreateAgentContent() {
         objective: roleplayObjective,
         greeting: generatedGreeting,
         systemPrompt: generatedSystemPrompt,
+        stageStatuses,
       } : undefined;
 
       const payload = {
@@ -1309,10 +1397,13 @@ function CreateAgentContent() {
               suspects={suspects}
               clues={clues}
               truth={truth}
-              canCreate={canCreate}
+              canCreate={canPublish}
+              publishBlockedReason={publishBlockedReason}
               submitting={submitting}
               editingAgentId={editingAgentId}
               mysteryReady={mysteryReady}
+              stages={mysteryStages}
+              onStageStatusChange={setStageStatus}
               onNameChange={setName}
               onDescriptionChange={setDescription}
               onPublicChange={setIsPublic}
@@ -1330,28 +1421,13 @@ function CreateAgentContent() {
           <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
             <div className="space-y-4">
               <section className="rounded-[28px] border border-white/10 bg-[#242039] p-5 sm:p-6">
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                  <div>
+                <div>
                     <p className="text-sm font-black text-[#d89022]">角色体验创建器</p>
                     <h2 className="mt-1 text-2xl font-black text-white">创建一个自带故事入口的角色 Agent</h2>
                     <p className="mt-2 text-sm leading-6 text-white/54">
                       先确定角色是谁，再说明它所在的故事场景，最后补上玩法资产、开场白和示例对话。
                     </p>
                   </div>
-                  <div className="grid min-w-[280px] grid-cols-2 gap-2">
-                    {roleplaySteps.map((step, index) => (
-                      <div
-                        key={step.label}
-                        className={cn(
-                          'rounded-2xl px-3 py-2 text-xs font-bold',
-                          step.done ? 'bg-emerald-500/14 text-emerald-300' : 'bg-white/[0.06] text-white/36'
-                        )}
-                      >
-                        {index + 1}. {step.label}
-                      </div>
-                    ))}
-                  </div>
-                </div>
               </section>
 
               <section className="rounded-[28px] border border-white/10 bg-[#242039] p-5 sm:p-6">
@@ -1847,9 +1923,12 @@ function CreateAgentContent() {
               roleplayPlayerRole={roleplayPlayerRole}
               roleplayObjective={roleplayObjective}
               finalGreeting={finalGreeting}
-              canCreate={canCreate}
+              canCreate={canPublish}
+              publishBlockedReason={publishBlockedReason}
               submitting={submitting}
               editingAgentId={editingAgentId}
+              stages={characterStages}
+              onStageStatusChange={setStageStatus}
               onAvatarChange={setSelectedAvatar}
               onPublicChange={setIsPublic}
               onOpenTestChat={() => {

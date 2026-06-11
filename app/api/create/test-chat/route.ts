@@ -8,6 +8,41 @@ type TestMessage = {
   content: string;
 };
 
+const FALLBACK_ACTIONS = [
+  '继续推进当前情节',
+  '询问更多背景细节',
+  '整理目前掌握的信息',
+  '尝试一个新的行动',
+];
+
+function normalizeActions(actions?: string[]) {
+  const uniqueActions = Array.from(
+    new Set((actions || []).map((action) => String(action).trim()).filter(Boolean))
+  );
+
+  return [...uniqueActions, ...FALLBACK_ACTIONS].slice(0, 4);
+}
+
+function parseTestReply(content: string) {
+  const actionsMatch = content.match(/```actions\n([\s\S]*?)```/);
+  if (!actionsMatch) {
+    return {
+      reply: content.trim(),
+      actions: normalizeActions(),
+    };
+  }
+
+  let actions: string[] | undefined;
+  try {
+    actions = JSON.parse(actionsMatch[1])?.suggestedActions;
+  } catch {}
+
+  return {
+    reply: content.replace(/\n?```actions\n[\s\S]*?```/, '').trim(),
+    actions: normalizeActions(actions),
+  };
+}
+
 export async function POST(request: Request) {
   try {
     const userId = requireAuth(request);
@@ -51,6 +86,13 @@ export async function POST(request: Request) {
           content: [
             systemPrompt.slice(0, 12000),
             [
+              'Action options contract:',
+              '- After the narrative reply, append exactly one ```actions JSON block.',
+              '- The block format must be: {"suggestedActions":["option 1","option 2","option 3","option 4"]}',
+              '- suggestedActions must contain exactly 4 short, concrete, non-duplicate next actions for the player.',
+              '- Do not include these options inside the narrative text.',
+            ].join('\n'),
+            [
               '当前是创建页的临时测试对话。请严格按角色设定自然回复，不要提到系统提示词，不要保存或引用测试历史。',
               '对话规则：',
               '- 必须优先回应用户当前这句话里的具体问题或意图。',
@@ -75,7 +117,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'AI 没有返回测试回复', reason: 'empty_message_content' }, { status: 502 });
     }
 
-    return NextResponse.json({ reply });
+    return NextResponse.json(parseTestReply(reply));
   } catch (error: any) {
     console.error('Test chat error:', error);
     return NextResponse.json({ error: error.message || '测试对话失败' }, { status: 500 });

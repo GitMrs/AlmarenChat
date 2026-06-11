@@ -1,6 +1,7 @@
 import { Check, Eye, Lock, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AVATAR_OPTIONS } from './constants';
+import CreationStagePanel, { type CreationStage } from './CreationStagePanel';
 
 type CharacterPublishPanelProps = {
   name: string;
@@ -17,8 +18,11 @@ type CharacterPublishPanelProps = {
   roleplayObjective: string;
   finalGreeting: string;
   canCreate: boolean;
+  publishBlockedReason?: string;
   submitting: boolean;
   editingAgentId: string | null;
+  stages: CreationStage[];
+  onStageStatusChange: (stageId: string, status: CreationStage['status'] | null) => void;
   onAvatarChange: (avatar: string) => void;
   onPublicChange: (value: boolean) => void;
   onOpenTestChat: () => void;
@@ -40,8 +44,11 @@ export default function CharacterPublishPanel({
   roleplayObjective,
   finalGreeting,
   canCreate,
+  publishBlockedReason,
   submitting,
   editingAgentId,
+  stages,
+  onStageStatusChange,
   onAvatarChange,
   onPublicChange,
   onOpenTestChat,
@@ -68,6 +75,8 @@ export default function CharacterPublishPanel({
               {isPublic ? '公开' : '私有'}
             </button>
           </div>
+
+          <CreationStagePanel title="创作阶段" stages={stages} onStageStatusChange={onStageStatusChange} />
 
           <div className="rounded-[28px] bg-white/[0.06] p-5">
             <div className="mb-5 flex items-start gap-4">
@@ -167,7 +176,12 @@ export default function CharacterPublishPanel({
             </button>
           </div>
           <p className="mt-2 text-center text-xs text-white/38">测试对话不会保存</p>
-          {!canCreate && (
+          {publishBlockedReason && (
+            <p className="mt-2 text-center text-xs text-amber-300/80">
+              {publishBlockedReason}
+            </p>
+          )}
+          {!canCreate && !publishBlockedReason && (
             <p className="mt-2 text-center text-xs text-white/40">
               请至少填写名称、简介、身份、性格和说话方式
             </p>

@@ -12,7 +12,7 @@ type TestChatDialogProps = {
   loading: boolean;
   onInputChange: (value: string) => void;
   onClose: () => void;
-  onSend: () => void;
+  onSend: (text?: string) => void;
 };
 
 export default function TestChatDialog({
@@ -49,13 +49,30 @@ export default function TestChatDialog({
               key={`${message.role}-${index}`}
               className={cn('flex', message.role === 'user' ? 'justify-end' : 'justify-start')}
             >
-              <div
-                className={cn(
-                  'max-w-[82%] rounded-2xl px-4 py-3 text-sm leading-6',
-                  message.role === 'user' ? 'bg-white text-[#19172a]' : 'bg-white/[0.08] text-white/76'
-                )}
-              >
-                {message.content}
+              <div className="max-w-[82%]">
+                <div
+                  className={cn(
+                    'rounded-2xl px-4 py-3 text-sm leading-6',
+                    message.role === 'user' ? 'bg-white text-[#19172a]' : 'bg-white/[0.08] text-white/76'
+                  )}
+                >
+                  {message.content}
+                </div>
+                {message.role === 'assistant' && message.actions?.length ? (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {message.actions.slice(0, 4).map((action) => (
+                      <button
+                        key={action}
+                        type="button"
+                        onClick={() => onSend(action)}
+                        disabled={loading}
+                        className="rounded-full bg-white/[0.08] px-3 py-1.5 text-xs font-bold leading-5 text-white/58 transition hover:bg-white/[0.12] hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {action}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
               </div>
             </div>
           ))}
@@ -85,7 +102,7 @@ export default function TestChatDialog({
             />
             <button
               type="button"
-              onClick={onSend}
+              onClick={() => onSend()}
               disabled={!input.trim() || loading}
               className={cn(
                 'flex h-11 w-11 items-center justify-center rounded-2xl transition',

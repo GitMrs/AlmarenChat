@@ -5,6 +5,7 @@ export type CreationType = 'mystery' | 'world' | 'character' | 'script';
 export type TestChatMessage = {
   role: 'user' | 'assistant';
   content: string;
+  actions?: string[];
 };
 
 export interface CreationTypeOption {

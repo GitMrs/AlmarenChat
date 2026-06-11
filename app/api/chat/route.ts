@@ -182,6 +182,21 @@ function generateSummary(state: RuntimeState): string {
   return parts.join(' | ');
 }
 
+const FALLBACK_SUGGESTED_ACTIONS = [
+  '继续推进当前情节',
+  '询问更多背景细节',
+  '整理目前掌握的信息',
+  '尝试一个新的行动',
+];
+
+function normalizeSuggestedActions(actions?: string[]): string[] {
+  const uniqueActions = Array.from(
+    new Set((actions || []).map((action) => String(action).trim()).filter(Boolean))
+  );
+
+  return [...uniqueActions, ...FALLBACK_SUGGESTED_ACTIONS].slice(0, 4);
+}
+
 export async function POST(request: Request) {
   try {
     const {
@@ -317,7 +332,7 @@ export async function POST(request: Request) {
     const conversationSettings = resolvedConversationId
       ? await prisma.conversation.findFirst({
           where: { id: resolvedConversationId, userId },
-          select: { contextMessageLimit: true, runtimeState: true, currentScene: true, currentObjective: true },
+          select: { agentId: true, contextMessageLimit: true, runtimeState: true, currentScene: true, currentObjective: true },
         })
       : null;
     if (resolvedConversationId && !conversationSettings) {
@@ -345,6 +360,19 @@ export async function POST(request: Request) {
           });
         }
       } catch {}
+    }
+
+    if (!runtimeState && conversationSettings?.agentId) {
+      const agent = await prisma.agent.findUnique({
+        where: { id: conversationSettings.agentId },
+        select: { builderConfig: true },
+      });
+
+      if (agent?.builderConfig && !createEngineRuntimeState(agent.builderConfig)) {
+        try {
+          runtimeState = createInitialRuntimeState(JSON.parse(agent.builderConfig));
+        } catch {}
+      }
     }
 
     const persistedHistory =
@@ -416,7 +444,14 @@ suggestedActions 规则（非常重要，违反会导致游戏体验极差）：
 
 你必须每次都包含这个runtime代码块，否则游戏系统将无法正常运行。
 [/运行时状态]`;
-      systemPrompt = systemPrompt + '\n\n' + runtimeContext;
+      const actionContract = `
+[Action options contract - internal]
+Every reply for this interactive story must end with exactly one \`\`\`runtime JSON block.
+The JSON must contain "suggestedActions" with exactly 4 short, concrete, non-duplicate options.
+These options should be meaningful next actions for the player, not explanations, and must not repeat the user's recent actions.
+Do not show the options in the narrative text; only put them in suggestedActions.
+[/Action options contract]`;
+      systemPrompt = systemPrompt + '\n\n' + runtimeContext + actionContract;
     }
 
     if (systemPrompt) openaiMessages.unshift({ role: 'system', content: systemPrompt });
@@ -488,10 +523,7 @@ suggestedActions 规则（非常重要，违反会导致游戏体验极差）：
                   updatedState = applyRuntimeEvents(runtimeState, runtimeData.events);
                 }
 
-                // Update suggested actions
-                if (runtimeData.suggestedActions) {
-                  updatedState.suggestedActions = runtimeData.suggestedActions;
-                }
+                updatedState.suggestedActions = normalizeSuggestedActions(runtimeData.suggestedActions);
 
                 // Update summary periodically
                 updatedState.summary = generateSummary(updatedState);

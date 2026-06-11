@@ -72,6 +72,47 @@ function getLargeTextKind(text: string) {
   }
 }
 
+function uniqueActionList(values: string[]) {
+  return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
+}
+
+function getFallbackActions(agent: Agent | DisplayAgent | null): string[] {
+  const genericActions = ['继续推进当前情节', '询问更多背景细节', '整理目前的信息', '尝试一个不同的行动'];
+  if (!agent) return genericActions;
+
+  let config: any = null;
+  if ('builderConfig' in agent && agent.builderConfig) {
+    try {
+      config = JSON.parse(agent.builderConfig);
+    } catch {}
+  }
+
+  if (config?.type === 'mystery' || ('creationType' in agent && agent.creationType === 'mystery')) {
+    const publicClue = (config?.clues || []).find((clue: any) => clue?.name);
+    const suspect = (config?.suspects || []).find((item: any) => item?.name);
+    return uniqueActionList([
+      config?.openingScene ? '进入案发现场查看情况' : '',
+      publicClue?.name ? `检查${publicClue.name}` : '寻找新的线索',
+      suspect?.name ? `询问${suspect.name}` : '询问在场的人',
+      '整理目前发现的线索',
+      ...genericActions,
+    ]).slice(0, 4);
+  }
+
+  if (config?.type === 'character' || ('creationType' in agent && agent.creationType === 'character')) {
+    return uniqueActionList([
+      config?.currentScene ? '观察眼前的场景' : '',
+      config?.objective ? `推进目标：${config.objective}` : '',
+      config?.playerRole ? `以${config.playerRole}的身份回应` : '',
+      config?.worldNotes?.[0] ? '询问这个世界的规则' : '询问更多背景细节',
+      '表达自己的下一步想法',
+      ...genericActions,
+    ]).slice(0, 4);
+  }
+
+  return (promptMap[agent.category || ''] || genericActions).slice(0, 4);
+}
+
 interface ChatRoomProps {
   agentId?: string;
   conversationId?: string;
@@ -309,6 +350,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
         .map((actionId) => engineRuntime.blueprint.actions.find((action) => action.id === actionId))
         .filter(Boolean)
     : [];
+  const shouldShowStoryActions = Boolean(runtimeState || agent?.creationType || (displayAgent as any)?.creationType);
   const engineCanAccuse = Boolean(
     engineRuntime?.blueprint.accusation &&
       !engineRuntime.state.endedAt &&
@@ -379,7 +421,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
       } catch {}
     }
 
-    return promptMap[displayAgent.category || ''] || ['你能帮我做什么？', '给我介绍一下你的能力', '我们从一个小任务开始'];
+    return getFallbackActions(displayAgent);
   }, [displayAgent, agent]);
 
   const toChatMessage = (msg: any): ChatMessage => ({
@@ -1041,11 +1083,12 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
                         </section>
                       )}
 
-                      {/* Inline suggested actions for runtime-enabled conversations */}
-                      {runtimeState && !engineRuntime && !isStreaming && messages.length > 1 && (() => {
-                        const rawActions = runtimeState.suggestedActions?.length
-                          ? runtimeState.suggestedActions
-                          : [];
+                      {/* Inline suggested actions for story conversations */}
+                      {shouldShowStoryActions && !engineRuntime && !isStreaming && messages.length > 1 && (() => {
+                        const rawActions = uniqueActionList([
+                          ...(runtimeState?.suggestedActions?.length ? runtimeState.suggestedActions : []),
+                          ...getFallbackActions(displayAgent),
+                        ]).slice(0, 4);
 
                         // Filter out actions that overlap with recent user messages.
                         const recentUserTexts = messages
@@ -1059,9 +1102,9 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
                           );
                         });
 
-                        const displayActions = inlineActions.length >= 2
+                        const displayActions = (inlineActions.length >= 2
                           ? inlineActions
-                          : rawActions;
+                          : rawActions).slice(0, 4);
 
                         if (displayActions.length === 0) return null;
 

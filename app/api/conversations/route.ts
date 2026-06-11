@@ -2,7 +2,9 @@ import { NextResponse } from 'next/server';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { createBlueprintRuntimeState, getAvailableBlueprintActions } from '@/lib/story-engine';
+import { createInitialRuntimeState } from '@/types/runtime';
 import type { MysteryBlueprint } from '@/types/blueprint';
+import type { RuntimeState } from '@/types/runtime';
 
 function createEngineRuntimeState(builderConfig?: string | null) {
   if (!builderConfig) return null;
@@ -59,6 +61,18 @@ export async function POST(request: Request) {
 
     const agent = await prisma.agent.findUnique({ where: { id: agentId } });
     const engineRuntimeState = createEngineRuntimeState(agent?.builderConfig);
+    let runtimeState: ReturnType<typeof createEngineRuntimeState> | RuntimeState = engineRuntimeState;
+    let currentScene = engineRuntimeState?.state.sceneId || null;
+    let currentObjective = engineRuntimeState?.state.objective || null;
+
+    if (!runtimeState && agent?.builderConfig) {
+      try {
+        const storyRuntimeState = createInitialRuntimeState(JSON.parse(agent.builderConfig));
+        runtimeState = storyRuntimeState;
+        currentScene = storyRuntimeState.sceneId;
+        currentObjective = storyRuntimeState.objective;
+      } catch {}
+    }
 
     const conversation = await prisma.conversation.create({
       data: {
@@ -70,9 +84,9 @@ export async function POST(request: Request) {
         agentTone: agent?.tone || null,
         agentDescription: agent?.description || null,
         agentSystemPrompt: agent?.systemPrompt || null,
-        runtimeState: engineRuntimeState ? JSON.stringify(engineRuntimeState) : null,
-        currentScene: engineRuntimeState?.state.sceneId || null,
-        currentObjective: engineRuntimeState?.state.objective || null,
+        runtimeState: runtimeState ? JSON.stringify(runtimeState) : null,
+        currentScene,
+        currentObjective,
         title,
       },
     });

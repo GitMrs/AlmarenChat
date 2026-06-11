@@ -1,5 +1,6 @@
 import { Check, Eye, Lock, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import CreationStagePanel, { type CreationStage } from './CreationStagePanel';
 
 type PublishCheck = {
   label: string;
@@ -20,9 +21,12 @@ type MysteryPublishPanelProps = {
   clues: any[];
   truth: any;
   canCreate: boolean;
+  publishBlockedReason?: string;
   submitting: boolean;
   editingAgentId: string | null;
   mysteryReady: boolean;
+  stages: CreationStage[];
+  onStageStatusChange: (stageId: string, status: CreationStage['status'] | null) => void;
   onNameChange: (value: string) => void;
   onDescriptionChange: (value: string) => void;
   onPublicChange: (value: boolean) => void;
@@ -44,9 +48,12 @@ export default function MysteryPublishPanel({
   clues,
   truth,
   canCreate,
+  publishBlockedReason,
   submitting,
   editingAgentId,
   mysteryReady,
+  stages,
+  onStageStatusChange,
   onNameChange,
   onDescriptionChange,
   onPublicChange,
@@ -74,6 +81,8 @@ export default function MysteryPublishPanel({
               {isPublic ? '公开' : '私有'}
             </button>
           </div>
+
+          <CreationStagePanel title="创作阶段" stages={stages} onStageStatusChange={onStageStatusChange} />
 
           <div className="mb-4 rounded-[24px] bg-white/[0.06] p-4">
             <div className="mb-3 flex items-center justify-between">
@@ -189,7 +198,12 @@ export default function MysteryPublishPanel({
             <Sparkles size={16} />
             {submitting ? '保存中...' : editingAgentId ? '保存修改' : '创建体验'}
           </button>
-          {!canCreate && !mysteryReady && (
+          {publishBlockedReason && (
+            <p className="mt-2 text-center text-xs text-amber-300/80">
+              {publishBlockedReason}
+            </p>
+          )}
+          {!canCreate && !publishBlockedReason && !mysteryReady && (
             <p className="mt-2 text-center text-xs text-white/40">
               请完成上方 4 项检查后再创建
             </p>
