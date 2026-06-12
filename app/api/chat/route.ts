@@ -195,7 +195,8 @@ export async function POST(request: Request) {
     if (finalContext) openaiMessages.unshift({ role: 'system', content: finalContext });
 
     const lastMessage = openaiMessages[openaiMessages.length - 1];
-    if (!(skipPersistUserMessage && imageAttachments.length === 0 && lastMessage?.role === 'user' && lastMessage.content === textMessage)) {
+    const textAlreadyInMessages = imageAttachments.length === 0 && lastMessage?.role === 'user' && lastMessage.content === textMessage;
+    if (!textAlreadyInMessages) {
       if (imageAttachments.length > 0) {
         const imageContent = await Promise.all(
           imageAttachments.map(async (attachment) => ({
