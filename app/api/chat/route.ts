@@ -5,6 +5,7 @@ import OpenAI from 'openai';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { isAdminEmail } from '@/app/api/_lib/admin';
+import { buildWebSearchContext } from '@/lib/web-search';
 
 const DAILY_CHAT_LIMIT = 30;
 const TEXT_CHAT_COST = 1;
@@ -52,6 +53,7 @@ export async function POST(request: Request) {
       contextMessageLimit,
       skipPersistUserMessage,
       attachments,
+      webSearchEnabled,
     } = await request.json();
     const imageAttachments: ChatAttachment[] = Array.isArray(attachments)
       ? attachments.filter((attachment: ChatAttachment) => attachment?.type === 'image' && attachment.url)
@@ -68,11 +70,21 @@ export async function POST(request: Request) {
         apiBaseUrl: true,
         apiKey: true,
         modelName: true,
+        tavilyApiKey: true,
         dailyChatLimit: true,
       },
     });
     if (!userSettings) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    if (webSearchEnabled && !textMessage.trim()) {
+      return NextResponse.json({ error: '联网搜索需要输入文本问题。' }, { status: 400 });
+    }
+    if (webSearchEnabled && !userSettings.tavilyApiKey && !process.env.TAVILY_API_KEY) {
+      return NextResponse.json(
+        { error: '联网搜索未配置：请在用户中心填写 Tavily API Key，或配置平台 TAVILY_API_KEY。' },
+        { status: 400 }
+      );
     }
 
     const usesCustomModel = Boolean(
@@ -174,7 +186,13 @@ export async function POST(request: Request) {
         role: msg.role === 'user' ? ('user' as const) : ('assistant' as const),
         content: msg.content,
       }));
-    if (context) openaiMessages.unshift({ role: 'system', content: context });
+    let finalContext = context;
+    if (webSearchEnabled) {
+      const webSearchContext = await buildWebSearchContext(textMessage, userSettings.tavilyApiKey);
+      finalContext = [context, webSearchContext].filter(Boolean).join('\n\n');
+    }
+
+    if (finalContext) openaiMessages.unshift({ role: 'system', content: finalContext });
 
     const lastMessage = openaiMessages[openaiMessages.length - 1];
     if (!(skipPersistUserMessage && imageAttachments.length === 0 && lastMessage?.role === 'user' && lastMessage.content === textMessage)) {

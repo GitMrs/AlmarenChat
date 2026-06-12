@@ -12,6 +12,7 @@ import {
   Moon,
   Palette,
   PlugZap,
+  Search,
   ToggleLeft,
   ToggleRight,
   User,
@@ -35,6 +36,10 @@ type ModelSnapshot = {
   contextMessageLimit: number;
 };
 
+type SearchSnapshot = {
+  tavilyApiKey: string;
+};
+
 export default function SettingsPanel() {
   const router = useRouter();
 
@@ -46,14 +51,18 @@ export default function SettingsPanel() {
   const [modelName, setModelName] = useState('');
   const [defaultStyle, setDefaultStyle] = useState('详细');
   const [contextMessageLimit, setContextMessageLimit] = useState(40);
+  const [tavilyApiKey, setTavilyApiKey] = useState('');
   const [initialAccount, setInitialAccount] = useState<AccountSnapshot | null>(null);
   const [initialModel, setInitialModel] = useState<ModelSnapshot | null>(null);
+  const [initialSearch, setInitialSearch] = useState<SearchSnapshot | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [savingAccount, setSavingAccount] = useState(false);
   const [savingModel, setSavingModel] = useState(false);
+  const [savingSearch, setSavingSearch] = useState(false);
   const [accountSaved, setAccountSaved] = useState(false);
   const [modelSaved, setModelSaved] = useState(false);
+  const [searchSaved, setSearchSaved] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [error, setError] = useState('');
@@ -78,6 +87,8 @@ export default function SettingsPanel() {
   );
   const hasAccountChanges = initialAccount ? JSON.stringify(currentAccount) !== JSON.stringify(initialAccount) : false;
   const hasModelChanges = initialModel ? JSON.stringify(currentModel) !== JSON.stringify(initialModel) : false;
+  const currentSearch = useMemo(() => ({ tavilyApiKey: tavilyApiKey.trim() }), [tavilyApiKey]);
+  const hasSearchChanges = initialSearch ? JSON.stringify(currentSearch) !== JSON.stringify(initialSearch) : false;
   const canTestModel = Boolean(apiBaseUrl.trim() && apiKey.trim() && modelName.trim());
   const modelConfigIncomplete = customModelEnabled && !canTestModel;
 
@@ -98,6 +109,7 @@ export default function SettingsPanel() {
         setApiBaseUrl(u.apiBaseUrl || '');
         setApiKey(u.apiKey || '');
         setModelName(u.modelName || '');
+        setTavilyApiKey(u.tavilyApiKey || '');
         setDefaultStyle(u.defaultStyle || '详细');
         setContextMessageLimit(u.contextMessageLimit || 40);
         setInitialAccount({ name: u.name || '' });
@@ -109,6 +121,7 @@ export default function SettingsPanel() {
           defaultStyle: u.defaultStyle || '详细',
           contextMessageLimit: u.contextMessageLimit || 40,
         });
+        setInitialSearch({ tavilyApiKey: u.tavilyApiKey || '' });
       })
       .catch((err: any) => {
         if (err.message === 'Unauthorized') {
@@ -168,6 +181,26 @@ export default function SettingsPanel() {
       setError(err.message || '保存失败');
     } finally {
       setSavingModel(false);
+    }
+  };
+
+  const handleSaveSearch = async () => {
+    if (!hasSearchChanges || savingSearch) return;
+
+    setSavingSearch(true);
+    setError('');
+    setSearchSaved(false);
+
+    try {
+      await userApi.update({ tavilyApiKey: currentSearch.tavilyApiKey || null });
+      setTavilyApiKey(currentSearch.tavilyApiKey);
+      setInitialSearch(currentSearch);
+      setSearchSaved(true);
+      setTimeout(() => setSearchSaved(false), 2000);
+    } catch (err: any) {
+      setError(err.message || '保存失败');
+    } finally {
+      setSavingSearch(false);
     }
   };
 
@@ -270,6 +303,52 @@ export default function SettingsPanel() {
                 />
               </label>
             </div>
+          </section>
+
+          <section className="rounded-[28px] border border-black/[0.06] bg-white p-5 shadow-sm sm:p-6">
+            <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-100 text-slate-700">
+                  <Search size={18} />
+                </div>
+                <div>
+                  <h2 className="text-xl font-black text-slate-950">联网搜索设置</h2>
+                  <p className="text-sm text-slate-500">填写 Tavily API Key 后，可在聊天输入框手动开启联网搜索。</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleSaveSearch}
+                disabled={savingSearch || !hasSearchChanges}
+                className={cn(
+                  'inline-flex h-10 w-fit items-center justify-center gap-2 rounded-full px-4 text-sm font-black transition',
+                  hasSearchChanges && !savingSearch
+                    ? 'bg-slate-950 text-white shadow-sm hover:-translate-y-0.5'
+                    : 'bg-slate-100 text-slate-400'
+                )}
+              >
+                {savingSearch ? (
+                  <Loader2 className="animate-spin" size={15} />
+                ) : searchSaved ? (
+                  <Check size={15} />
+                ) : null}
+                {savingSearch ? '保存中...' : hasSearchChanges ? '保存搜索设置' : searchSaved ? '已保存' : '无需保存'}
+              </button>
+            </div>
+
+            <label className="block">
+              <span className="mb-2 block text-sm font-bold text-slate-700">Tavily API Key</span>
+              <input
+                value={tavilyApiKey}
+                onChange={(e) => setTavilyApiKey(e.target.value)}
+                placeholder="tvly-..."
+                type="password"
+                className="h-12 w-full rounded-2xl border border-black/[0.08] bg-[#fbfaf7] px-4 text-sm font-medium text-slate-800 outline-none focus:border-slate-300 focus:ring-4 focus:ring-slate-200/70"
+              />
+              <p className="mt-2 text-xs leading-5 text-slate-400">
+                聊天时只有手动开启联网搜索才会消耗 Tavily 额度。未填写时会尝试使用平台默认 TAVILY_API_KEY。
+              </p>
+            </label>
           </section>
 
           <section className="rounded-[28px] border border-black/[0.06] bg-white p-5 shadow-sm sm:p-6">

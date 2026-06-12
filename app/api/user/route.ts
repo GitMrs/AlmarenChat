@@ -17,6 +17,7 @@ export async function GET(request: Request) {
         apiKey: true,
         modelName: true,
         customModelEnabled: true,
+        tavilyApiKey: true,
         defaultStyle: true,
         contextMessageLimit: true,
         createdAt: true,
@@ -41,7 +42,7 @@ export async function PATCH(request: Request) {
     const userId = requireAuth(request);
     const body = await request.json();
 
-    const allowedFields = ['name', 'avatar', 'apiBaseUrl', 'apiKey', 'modelName', 'customModelEnabled', 'defaultStyle', 'contextMessageLimit'] as const;
+    const allowedFields = ['name', 'avatar', 'apiBaseUrl', 'apiKey', 'modelName', 'customModelEnabled', 'tavilyApiKey', 'defaultStyle', 'contextMessageLimit'] as const;
     const data: Record<string, any> = {};
     for (const field of allowedFields) {
       if (body[field] !== undefined) {
@@ -65,6 +66,7 @@ export async function PATCH(request: Request) {
         apiKey: true,
         modelName: true,
         customModelEnabled: true,
+        tavilyApiKey: true,
         defaultStyle: true,
         contextMessageLimit: true,
         createdAt: true,

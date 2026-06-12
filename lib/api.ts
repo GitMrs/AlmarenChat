@@ -160,6 +160,7 @@ export async function streamChat(data: {
   agentId?: string;
   contextMessageLimit?: number;
   skipPersistUserMessage?: boolean;
+  webSearchEnabled?: boolean;
   signal?: AbortSignal;
 }): Promise<{ stream: ReadableStream<Uint8Array>; conversationId?: string }> {
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
@@ -193,6 +194,7 @@ export const user = {
     apiKey?: string | null;
     modelName?: string | null;
     customModelEnabled?: boolean;
+    tavilyApiKey?: string | null;
     defaultStyle?: string | null;
     contextMessageLimit?: number;
   }) =>

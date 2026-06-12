@@ -1,6 +1,6 @@
 'use client';
 
-import { ImagePlus, Loader2, Send, Square, X } from 'lucide-react';
+import { Globe2, ImagePlus, Loader2, Send, Square, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { MessageAttachment } from '@/types';
 
@@ -22,6 +22,8 @@ type ChatComposerProps = {
   onClearAttachment: () => void;
   onSend: () => void;
   onStop: () => void;
+  webSearchEnabled: boolean;
+  onToggleWebSearch: () => void;
 };
 
 export default function ChatComposer({
@@ -42,6 +44,8 @@ export default function ChatComposer({
   onClearAttachment,
   onSend,
   onStop,
+  webSearchEnabled,
+  onToggleWebSearch,
 }: ChatComposerProps) {
   return (
     <footer className="shrink-0 border-t border-black/[0.06] bg-white/88 px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-4 backdrop-blur sm:px-6">
@@ -95,6 +99,20 @@ export default function ChatComposer({
             className="hidden"
             onChange={onImageSelect}
           />
+          <button
+            type="button"
+            onClick={onToggleWebSearch}
+            disabled={isStreaming}
+            className={cn(
+              'mb-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl transition disabled:bg-transparent disabled:text-slate-300',
+              webSearchEnabled ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:bg-white hover:text-slate-800'
+            )}
+            aria-label={webSearchEnabled ? '关闭联网搜索' : '开启联网搜索'}
+            aria-pressed={webSearchEnabled}
+            title={webSearchEnabled ? '联网搜索已开启' : '联网搜索已关闭'}
+          >
+            <Globe2 size={18} />
+          </button>
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}

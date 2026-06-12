@@ -17,6 +17,7 @@ model User {
   apiKey       String?
   modelName    String?
   customModelEnabled Boolean @default(false)
+  tavilyApiKey String?
   defaultStyle String?
   contextMessageLimit Int @default(40)
   dailyChatLimit Int?

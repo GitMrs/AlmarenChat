@@ -78,6 +78,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
   const [pendingLargeTextMeta, setPendingLargeTextMeta] = useState<{ chars: number; kind: 'json' | 'text' } | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [uploadError, setUploadError] = useState('');
+  const [webSearchEnabled, setWebSearchEnabled] = useState(false);
   const [hasMoreMessages, setHasMoreMessages] = useState(false);
   const [loadingMoreMessages, setLoadingMoreMessages] = useState(false);
   const [shouldStickToBottom, setShouldStickToBottom] = useState(true);
@@ -448,6 +449,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
         attachments: outgoingAttachments,
         contextMessageLimit,
         skipPersistUserMessage: options.reuseLastUserMessage,
+        webSearchEnabled,
         agentSnapshot: displayAgent
           ? {
               name: displayAgent.name,
@@ -816,6 +818,8 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
             }}
             onSend={() => handleSend()}
             onStop={handleStop}
+            webSearchEnabled={webSearchEnabled}
+            onToggleWebSearch={() => setWebSearchEnabled((value) => !value)}
           />
         )}
       </main>
