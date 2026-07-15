@@ -6,6 +6,7 @@ import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { isAdminEmail } from '@/app/api/_lib/admin';
 import { buildWebSearchContext } from '@/lib/web-search';
+import { formatKnowledgeContext, getKnowledgeHits } from '@/lib/knowledge';
 
 const DAILY_CHAT_LIMIT = 30;
 const TEXT_CHAT_COST = 1;
@@ -54,6 +55,7 @@ export async function POST(request: Request) {
       skipPersistUserMessage,
       attachments,
       webSearchEnabled,
+      knowledgeEnabled,
     } = await request.json();
     const imageAttachments: ChatAttachment[] = Array.isArray(attachments)
       ? attachments.filter((attachment: ChatAttachment) => attachment?.type === 'image' && attachment.url)
@@ -186,10 +188,40 @@ export async function POST(request: Request) {
         role: msg.role === 'user' ? ('user' as const) : ('assistant' as const),
         content: msg.content,
       }));
+    // Use custom config if provided, otherwise fall back to platform default (Gemini via OpenAI-compatible API)
+    const client = new OpenAI({
+      baseURL: apiBaseUrl || 'https://api-inference.modelscope.cn/v1',
+      apiKey: apiKey || process.env.apiKey,
+    });
+
+    const model = modelName || 'deepseek-ai/DeepSeek-V4-Flash';
+
     let finalContext = context;
+    if (knowledgeEnabled && agentId && textMessage.trim()) {
+      const hits = await getKnowledgeHits(agentId, textMessage);
+      if (hits.length > 0) {
+        const checkChunks = hits.map((hit) => hit.content.slice(0, 250)).join('\n---\n');
+        const check = await client.chat.completions.create({
+          model,
+          messages: [
+            {
+              role: 'system',
+              content: '严格判断：这些片段能切实回答用户问题吗？不确定就答“不能”。只回“能”或“不能”。',
+            },
+            { role: 'user', content: `问题: ${textMessage}\n\n片段:\n${checkChunks}` },
+          ],
+          max_tokens: 4,
+          stream: false,
+        });
+        const verdict = check.choices[0]?.message?.content || '';
+        if (verdict.includes('能') && !verdict.includes('不能')) {
+          finalContext = [finalContext, formatKnowledgeContext(hits)].filter(Boolean).join('\n\n');
+        }
+      }
+    }
     if (webSearchEnabled) {
       const webSearchContext = await buildWebSearchContext(textMessage, userSettings.tavilyApiKey);
-      finalContext = [context, webSearchContext].filter(Boolean).join('\n\n');
+      finalContext = [finalContext, webSearchContext].filter(Boolean).join('\n\n');
     }
 
     if (finalContext) openaiMessages.unshift({ role: 'system', content: finalContext });
@@ -224,13 +256,6 @@ export async function POST(request: Request) {
         },
       });
     }
-    // Use custom config if provided, otherwise fall back to platform default (Gemini via OpenAI-compatible API)
-    const client = new OpenAI({
-      baseURL: apiBaseUrl || 'https://api-inference.modelscope.cn/v1',
-      apiKey: apiKey || process.env.apiKey,
-    });
-
-    const model = modelName || 'deepseek-ai/DeepSeek-V4-Flash';
     const stream = await client.chat.completions.create({
       model,
       messages: openaiMessages,

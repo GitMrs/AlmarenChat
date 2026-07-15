@@ -2,9 +2,10 @@
 
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Bot, Check, Eye, Loader2, Lock, MessageCircle, Palette, Sparkles, Wand2 } from 'lucide-react';
+import { Bot, Check, Database, Eye, Loader2, Lock, MessageCircle, Palette, Sparkles, Wand2 } from 'lucide-react';
 import AppShell from '@/components/layout/AppShell';
 import LoginRequired from '@/components/auth/LoginRequired';
+import KnowledgeManager from '@/components/agent/KnowledgeManager';
 import { cn } from '@/lib/utils';
 import { AGENT_CATEGORIES, AGENT_TONES, CATEGORY_COLORS } from '@/types';
 import { agents, auth } from '@/lib/api';
@@ -22,6 +23,7 @@ function CreateAgentContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const editingAgentId = searchParams.get('agentId');
+  const activeTab = editingAgentId && searchParams.get('tab') === 'knowledge' ? 'knowledge' : 'create';
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -71,6 +73,15 @@ function CreateAgentContent() {
 
   const categoryColor = CATEGORY_COLORS[category] || '#6366f1';
   const canCreate = name.trim().length > 0 && description.trim().length > 0 && category && tone;
+
+  const switchTab = (tab: 'create' | 'knowledge') => {
+    const params = new URLSearchParams();
+    if (editingAgentId) params.set('agentId', editingAgentId);
+    if (tab === 'knowledge') params.set('tab', 'knowledge');
+
+    const query = params.toString();
+    router.push(query ? `/create-agent?${query}` : '/create-agent');
+  };
 
   const finalGreeting = useMemo(() => {
     if (greeting.trim()) return greeting;
@@ -178,7 +189,33 @@ function CreateAgentContent() {
           </div>
         </section>
 
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
+        <section className="mb-6 flex flex-wrap gap-2 rounded-[28px] border border-black/[0.06] bg-white p-2 shadow-sm">
+          {[
+            { id: 'create', label: '基础设置', icon: Bot, disabled: false },
+            { id: 'knowledge', label: '向量维护', icon: Database, disabled: !editingAgentId },
+          ].map((tab) => {
+            const Icon = tab.icon;
+            const active = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => !tab.disabled && switchTab(tab.id as 'create' | 'knowledge')}
+                disabled={tab.disabled}
+                title={tab.disabled ? '保存 Agent 后再维护向量数据' : tab.label}
+                className={cn(
+                  'inline-flex cursor-pointer items-center gap-2 rounded-full px-4 py-2 text-sm font-black transition',
+                  active ? 'bg-slate-950 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-950',
+                  tab.disabled && 'cursor-default text-slate-300 hover:bg-transparent hover:text-slate-300'
+                )}
+              >
+                <Icon size={16} />
+                {tab.label}
+              </button>
+            );
+          })}
+        </section>
+
+        {activeTab === 'create' ? <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
           <div className="space-y-6">
             <section className="rounded-[28px] border border-black/[0.06] bg-white p-5 shadow-sm sm:p-6">
               <div className="mb-5 flex items-center gap-3">
@@ -413,7 +450,9 @@ function CreateAgentContent() {
               </div>
             </div>
           </aside>
-        </div>
+        </div> : (
+          <KnowledgeManager agentId={editingAgentId} agentName={name} />
+        )}
       </div>
     </AppShell>
   );

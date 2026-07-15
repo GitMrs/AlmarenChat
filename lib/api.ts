@@ -55,6 +55,35 @@ export const agents = {
     request<{ success: boolean }>(`/agents/${id}`, {
       method: 'DELETE',
     }),
+  knowledge: (id: string) => request<{ documents: any[] }>(`/agents/${id}/knowledge`),
+  knowledgeChunks: (id: string, documentId: string) =>
+    request<{ document: any; chunks: any[] }>(`/agents/${id}/knowledge?documentId=${encodeURIComponent(documentId)}`),
+  searchKnowledge: (id: string, query: string) =>
+    request<{ hits: any[] }>(`/agents/${id}/knowledge?q=${encodeURIComponent(query)}`),
+  deleteKnowledge: (id: string, documentId: string) =>
+    request<{ success: boolean }>(`/agents/${id}/knowledge?documentId=${encodeURIComponent(documentId)}`, {
+      method: 'DELETE',
+    }),
+  uploadKnowledge: async (id: string, file: File) => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const res = await fetch(`${API_BASE}/agents/${id}/knowledge`, {
+      method: 'POST',
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: formData,
+    });
+
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({ error: 'Upload failed' }));
+      throw new Error(error.error || `HTTP ${res.status}`);
+    }
+
+    return res.json() as Promise<{ document: any; chunkCount: number }>;
+  },
 };
 
 // Conversations
@@ -161,6 +190,7 @@ export async function streamChat(data: {
   contextMessageLimit?: number;
   skipPersistUserMessage?: boolean;
   webSearchEnabled?: boolean;
+  knowledgeEnabled?: boolean;
   signal?: AbortSignal;
 }): Promise<{ stream: ReadableStream<Uint8Array>; conversationId?: string }> {
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;

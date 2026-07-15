@@ -45,6 +45,36 @@ model Agent {
   isPublic     Boolean        @default(true)
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
+
+  knowledgeDocuments KnowledgeDocument[]
+}
+
+model KnowledgeDocument {
+  id        String   @id @default(uuid())
+  agentId   String
+  agent     Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  fileName  String
+  mimeType  String?
+  size      Int?
+  createdAt DateTime @default(now())
+
+  chunks KnowledgeChunk[]
+
+  @@index([agentId])
+}
+
+model KnowledgeChunk {
+  id         String            @id @default(uuid())
+  documentId String
+  document   KnowledgeDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  agentId    String
+  chunkIndex Int
+  content    String
+  embedding  Json
+  createdAt  DateTime @default(now())
+
+  @@index([agentId])
+  @@index([documentId])
 }
 
 model Conversation {

@@ -7,6 +7,7 @@ import {
   Bot,
   Clock3,
   Edit3,
+  FileText,
   Heart,
   Loader2,
   MessageSquare,
@@ -45,6 +46,8 @@ function MeContent() {
   const [error, setError] = useState('');
   const [needsLogin, setNeedsLogin] = useState(false);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [uploadingKnowledgeId, setUploadingKnowledgeId] = useState<string | null>(null);
+  const [knowledgeNotice, setKnowledgeNotice] = useState('');
   const [pendingDeleteAgent, setPendingDeleteAgent] = useState<Agent | null>(null);
 
   useEffect(() => {
@@ -103,6 +106,24 @@ function MeContent() {
       setError(err.message || '删除 Agent 失败');
     } finally {
       setUpdatingId(null);
+    }
+  };
+
+  const uploadKnowledge = async (agent: Agent, file?: File) => {
+    if (!file || uploadingKnowledgeId) return;
+
+    setUploadingKnowledgeId(agent.id);
+    setError('');
+    setKnowledgeNotice('');
+
+    try {
+      const result = await agentsApi.uploadKnowledge(agent.id, file);
+      setKnowledgeNotice(`已为「${agent.name}」上传 ${file.name}，生成 ${result.chunkCount} 个知识片段。`);
+      window.setTimeout(() => setKnowledgeNotice(''), 4000);
+    } catch (err: any) {
+      setError(err.message || '上传知识库失败');
+    } finally {
+      setUploadingKnowledgeId(null);
     }
   };
 
@@ -187,6 +208,12 @@ function MeContent() {
           </div>
         )}
 
+        {knowledgeNotice && (
+          <div className="rounded-2xl bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
+            {knowledgeNotice}
+          </div>
+        )}
+
         {needsLogin && (
           <LoginRequired
             title="登录后维护你的 Agent"
@@ -220,6 +247,7 @@ function MeContent() {
               <div className="grid gap-4">
                 {myAgents.map((agent) => {
                   const isUpdating = updatingId === agent.id;
+                  const isUploadingKnowledge = uploadingKnowledgeId === agent.id;
                   return (
                     <article
                       key={agent.id}
@@ -261,6 +289,26 @@ function MeContent() {
                             <MessageSquare size={15} />
                             测试
                           </button>
+                          <label
+                            className={cn(
+                              'inline-flex cursor-pointer items-center gap-2 rounded-full border border-black/[0.06] bg-white px-4 py-2 text-sm font-bold text-slate-700 shadow-sm',
+                              isUploadingKnowledge && 'cursor-default text-slate-400'
+                            )}
+                          >
+                            {isUploadingKnowledge ? <Loader2 className="animate-spin" size={15} /> : <FileText size={15} />}
+                            知识库
+                            <input
+                              type="file"
+                              accept=".txt,.md,text/plain,text/markdown"
+                              className="hidden"
+                              disabled={isUploadingKnowledge}
+                              onChange={(event) => {
+                                const file = event.target.files?.[0];
+                                event.target.value = '';
+                                uploadKnowledge(agent, file);
+                              }}
+                            />
+                          </label>
                           <button
                             onClick={() => togglePublish(agent)}
                             disabled={isUpdating}

@@ -450,6 +450,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
         contextMessageLimit,
         skipPersistUserMessage: options.reuseLastUserMessage,
         webSearchEnabled,
+        knowledgeEnabled: true,
         agentSnapshot: displayAgent
           ? {
               name: displayAgent.name,
