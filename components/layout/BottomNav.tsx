@@ -1,13 +1,13 @@
 'use client';
 
 import { usePathname, useRouter } from 'next/navigation';
-import { Bot, Compass, PlusCircle, UserRound,MessageCircle } from 'lucide-react';
+import { Bot, Compass, PanelsTopLeft, UserRound, MessageCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const tabs = [
   { id: 'discover', label: '发现', icon: Compass, href: '/' },
   { id: 'agents', label: '广场', icon: Bot, href: '/agents' },
-  { id: 'create', label: '创建', icon: PlusCircle, href: '/create-agent' },
+  { id: 'spaces', label: '空间', icon: PanelsTopLeft, href: '/spaces' },
   { id: 'conversations', label: '会话', icon: MessageCircle, href: '/conversations' },
   { id: 'me', label: '我的', icon: UserRound, href: '/me' },
 ];

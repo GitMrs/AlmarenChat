@@ -122,6 +122,64 @@ export const conversations = {
     }),
 };
 
+// Spaces
+export const spaces = {
+  list: () => request<{ spaces: any[] }>('/spaces'),
+  create: (data: { name: string; description?: string; agentIds?: string[] }) =>
+    request<{ space: any }>('/spaces', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  get: (id: string) => request<{ space: any }>(`/spaces/${id}`),
+  update: (id: string, data: { name?: string; description?: string | null; hostAgentId?: string | null }) =>
+    request<{ space: any }>(`/spaces/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+  delete: (id: string) =>
+    request<{ success: boolean }>(`/spaces/${id}`, {
+      method: 'DELETE',
+    }),
+  members: (id: string) => request<{ members: any[] }>(`/spaces/${id}/members`),
+  addMember: (id: string, data: { agentId: string; roleName?: string }) =>
+    request<{ member: any }>(`/spaces/${id}/members`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  removeMember: (spaceId: string, memberId: string) =>
+    request<{ success: boolean }>(`/spaces/${spaceId}/members/${memberId}`, {
+      method: 'DELETE',
+    }),
+  messages: (id: string, options?: { before?: string; limit?: number }) => {
+    const params = new URLSearchParams();
+    if (options?.before) params.set('before', options.before);
+    if (options?.limit) params.set('limit', String(options.limit));
+    const query = params.toString();
+    return request<{ messages: any[]; hasMore?: boolean }>(`/spaces/${id}/messages${query ? `?${query}` : ''}`);
+  },
+  files: (id: string) => request<{ files: any[] }>(`/spaces/${id}/files`),
+  uploadFile: async (id: string, file: File) => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const res = await fetch(`${API_BASE}/spaces/${id}/files`, {
+      method: 'POST',
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: formData,
+    });
+
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({ error: 'Upload failed' }));
+      throw new Error(error.error || `HTTP ${res.status}`);
+    }
+
+    return res.json() as Promise<{ file: any }>;
+  },
+};
+
 // Favorites
 export const favorites = {
   list: () => request<{ favorites: any[] }>('/favorites'),
@@ -212,6 +270,41 @@ export async function streamChat(data: {
 
   const conversationId = res.headers.get('x-conversation-id') || undefined;
   return { stream: res.body!, conversationId };
+}
+
+export async function streamSpaceMessage(data: {
+  spaceId: string;
+  message: string;
+  history: { role: string; content: string; speakerAgentId?: string | null }[];
+  targetAgentId?: string;
+  signal?: AbortSignal;
+}): Promise<{ stream: ReadableStream<Uint8Array>; speakerAgentId?: string; speakerAgentName?: string }> {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+
+  const res = await fetch(`${API_BASE}/spaces/${data.spaceId}/messages`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({
+      message: data.message,
+      history: data.history,
+      targetAgentId: data.targetAgentId,
+    }),
+    signal: data.signal,
+  });
+
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ error: `Space message failed: ${res.status}` }));
+    throw new Error(error.error || `Space message failed: ${res.status}`);
+  }
+
+  return {
+    stream: res.body!,
+    speakerAgentId: res.headers.get('x-speaker-agent-id') || undefined,
+    speakerAgentName: decodeURIComponent(res.headers.get('x-speaker-agent-name') || ''),
+  };
 }
 
 // User

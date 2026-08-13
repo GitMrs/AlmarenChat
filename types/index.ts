@@ -47,6 +47,50 @@ export interface Message {
   createdAt: string;
 }
 
+export interface Space {
+  id: string;
+  userId: string;
+  name: string;
+  description?: string | null;
+  hostAgentId?: string | null;
+  hostAgent?: Agent | null;
+  createdAt: string;
+  updatedAt: string;
+  members?: SpaceMember[];
+  messages?: SpaceMessage[];
+  files?: SpaceFile[];
+}
+
+export interface SpaceMember {
+  id: string;
+  spaceId: string;
+  agentId: string;
+  roleName?: string | null;
+  sortOrder: number;
+  createdAt: string;
+  agent?: Agent | null;
+}
+
+export interface SpaceMessage {
+  id: string;
+  spaceId: string;
+  role: 'user' | 'assistant' | 'system';
+  speakerAgentId?: string | null;
+  content: string;
+  attachments?: MessageAttachment[];
+  createdAt: string;
+}
+
+export interface SpaceFile {
+  id: string;
+  spaceId: string;
+  fileName: string;
+  mimeType?: string | null;
+  size?: number | null;
+  relativePath: string;
+  createdAt: string;
+}
+
 export interface MessageAttachment {
   type: 'image';
   url: string;

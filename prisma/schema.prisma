@@ -26,6 +26,7 @@ model User {
 
   conversations Conversation[]
   agents        Agent[]
+  spaces        Space[]
   favorites     FavoriteAgent[]
   chatUsages    DailyChatUsage[]
 }
@@ -47,6 +48,64 @@ model Agent {
   updatedAt    DateTime       @updatedAt
 
   knowledgeDocuments KnowledgeDocument[]
+}
+
+model Space {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  hostAgentId String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  members  SpaceMember[]
+  messages SpaceMessage[]
+  files    SpaceFile[]
+
+  @@index([userId, updatedAt])
+}
+
+model SpaceMember {
+  id        String   @id @default(uuid())
+  spaceId   String
+  space     Space    @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  agentId   String
+  roleName  String?
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@unique([spaceId, agentId])
+  @@index([spaceId, sortOrder])
+  @@index([agentId])
+}
+
+model SpaceMessage {
+  id             String   @id @default(uuid())
+  spaceId        String
+  space          Space    @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  role           String   // "user" | "assistant" | "system"
+  speakerAgentId String?
+  content        String
+  attachments    Json?
+  createdAt      DateTime @default(now())
+
+  @@index([spaceId, createdAt])
+  @@index([speakerAgentId])
+}
+
+model SpaceFile {
+  id           String   @id @default(uuid())
+  spaceId      String
+  space        Space    @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  fileName     String
+  mimeType     String?
+  size         Int?
+  relativePath String
+  createdAt    DateTime @default(now())
+
+  @@index([spaceId])
 }
 
 model KnowledgeDocument {
