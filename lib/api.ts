@@ -218,6 +218,25 @@ export const spaces = {
 
     return res.json() as Promise<{ file: any }>;
   },
+  getCompressionStats: (id: string) =>
+    request<{
+      originalCount: number;
+      originalTokens: number;
+      compressedCount: number;
+      compressedTokens: number;
+      reductionPercentage: number;
+      compressionLevel: 'none' | 'light' | 'moderate' | 'aggressive';
+      budgetExceeded: boolean;
+      messageCount: number;
+      compressionHistory: Array<{
+        timestamp: string;
+        reductionPercentage: number;
+        level: string;
+        originalTokens: number;
+        compressedTokens: number;
+      }>;
+      lastCompressedAt: string | null;
+    }>(`/spaces/${id}/compression-stats`),
 };
 
 export const agentRuns = {

@@ -20,6 +20,7 @@ import {
   writeMarkdownArtifact,
 } from './runtime-tools.mjs';
 import { collectChatCompletionStream, runToolLoop, withTransientModelRetry } from './tool-loop.mjs';
+import { contextManager } from './context-manager.mjs';
 
 const workerDir = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(workerDir, '..');
@@ -522,9 +523,52 @@ async function executeTask(run, task, context, previousResults) {
   if (fakeMode) {
     result = `[测试结果] ${agent.name}已完成“${task.title}”，目标是：${run.input}`;
   } else {
-    const prior = previousResults.length
-      ? `\n\n前序步骤结果：\n${previousResults.map((item) => `【${item.title}】\n${item.result}`).join('\n\n')}`
-      : '';
+    // 智能压缩前序步骤结果，避免上下文过长
+    let priorContent = '';
+    if (previousResults.length > 0) {
+      const rawPriorText = previousResults.map((item) => `【${item.title}】\n${item.result}`).join('\n\n');
+
+      // 如果前序结果太长，进行压缩
+      if (rawPriorText.length > 4000) {
+        const priorMessages = previousResults.map((item, index) => ({
+          id: String(index),
+          role: 'assistant',
+          content: `【${item.title}】\n${item.result}`,
+          createdAt: new Date().toISOString(),
+        }));
+        const compressionResult = contextManager.compress(
+          priorMessages,
+          {
+            targetTokens: 3000,
+            maxMessages: previousResults.length,
+            preserveRecent: Math.max(2, Math.floor(previousResults.length * 0.3)),
+          }
+        );
+
+        const selectedIds = new Set(compressionResult.compressed.map((message) => message.id));
+        const omittedTitles = previousResults
+          .filter((_, index) => !selectedIds.has(String(index)))
+          .map((item) => item.title);
+        const omissionNotice = omittedTitles.length > 0
+          ? `上下文预算已省略以下较早步骤的正文：${omittedTitles.join('、')}。如当前步骤依赖这些结果，应明确说明信息不足。\n\n`
+          : '';
+        priorContent = omissionNotice + compressionResult.compressed.map((message) => message.content).join('\n\n');
+
+        if (compressionResult.stats.reductionTokens > 500) {
+          addEvent(run.id, 'CONTEXT_COMPRESSED', `前序步骤上下文已压缩：减少 ${compressionResult.stats.reductionPercentage}%`, {
+            originalTokens: compressionResult.stats.originalTokens,
+            compressedTokens: compressionResult.stats.compressedTokens,
+            reductionPercentage: compressionResult.stats.reductionPercentage,
+            compressionLevel: compressionResult.stats.compressionLevel,
+            omittedTitles,
+          });
+        }
+      } else {
+        priorContent = rawPriorText;
+      }
+    }
+
+    const prior = priorContent ? `\n\n前序步骤结果：\n${priorContent}` : '';
     const research = context.researchContext && taskNeedsResearchContext(task)
       ? `\n\n受控联网资料：\n${context.researchContext}`
       : '';

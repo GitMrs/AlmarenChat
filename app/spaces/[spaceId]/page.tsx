@@ -14,6 +14,7 @@ import SpaceMessageItem from '@/components/spaces/SpaceMessageItem';
 import TaskProposalDialog, { type TaskProposalRevision } from '@/components/spaces/TaskProposalDialog';
 import TaskReviewDialog from '@/components/spaces/TaskReviewDialog';
 import SpaceFileEditorDialog from '@/components/spaces/SpaceFileEditorDialog';
+import { CompressionStatusPanel } from '@/components/spaces/CompressionStatusPanel';
 import { agentRuns as agentRunsApi, agents as agentsApi, spaces as spacesApi, streamSpaceMessage } from '@/lib/api';
 import { getBuiltInAgents } from '@/lib/agents-data';
 import { taskProposalCapabilities } from '@/lib/task-proposals';
@@ -682,6 +683,7 @@ export default function SpaceDetailPage() {
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto">
+              <CompressionStatusPanel spaceId={spaceId} compact />
               <section className="border-b border-black/[0.06] px-6 py-5">
                 <div className="mb-4 flex items-center justify-between">
                   <div className="flex items-center gap-2 text-xs font-black text-slate-500">

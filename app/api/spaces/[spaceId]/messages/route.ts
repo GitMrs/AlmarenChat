@@ -13,6 +13,7 @@ import {
 import { executeWorkspaceTool, workspaceToolSchemas } from '../../../../../worker/runtime-tools.mjs';
 import { collectChatCompletionStream, runToolLoop } from '../../../../../worker/tool-loop.mjs';
 import { taskProposalCapabilities } from '@/lib/task-proposals';
+import { compressConversationContext, estimateMessagesTokens } from '@/lib/context-compression';
 
 const MESSAGE_PAGE_SIZE = 40;
 const READ_ONLY_WORKSPACE_TOOLS = new Set(['list_files', 'read_file', 'check_files']);
@@ -147,10 +148,32 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
     const persistedHistory = await prisma.spaceMessage.findMany({
       where: { spaceId },
       orderBy: { createdAt: 'desc' },
-      take: Math.max(1, Math.min(80, settings.contextMessageLimit)),
+      take: Math.max(1, Math.min(80, settings.contextMessageLimit * 2)), // 获取更多消息以便智能压缩
     });
     const fallbackHistory = Array.isArray(history) ? history : [];
-    const sourceHistory = persistedHistory.length > 0 ? persistedHistory.reverse() : fallbackHistory.slice(-settings.contextMessageLimit);
+    const rawHistory = persistedHistory.length > 0 ? persistedHistory.reverse() : fallbackHistory.slice(-settings.contextMessageLimit * 2);
+
+    // 智能上下文压缩
+    let sourceHistory = rawHistory;
+    const originalTokenCount = estimateMessagesTokens(rawHistory);
+    const targetTokens = 6000; // 目标 token 数量
+
+    if (rawHistory.length > settings.contextMessageLimit || originalTokenCount > targetTokens) {
+      const compressionResult = compressConversationContext(rawHistory, {
+        maxMessages: settings.contextMessageLimit,
+        targetTokens,
+        preserveRecent: Math.max(1, Math.floor(settings.contextMessageLimit * 0.4)),
+        aggressiveAfter: Math.floor(settings.contextMessageLimit * 1.5),
+        preserveSystem: false,
+      }, new Map(allAgents.map(agent => [agent.id, agent])));
+
+      sourceHistory = compressionResult.compressedMessages;
+
+      // 记录压缩统计（可选，用于监控）
+      if (compressionResult.stats.reductionTokens > 1000) {
+        console.log(`[Space ${spaceId}] 上下文压缩: ${compressionResult.stats.originalCount}条消息 -> ${compressionResult.stats.compressedCount}条, 减少${compressionResult.stats.reductionPercentage}% tokens`);
+      }
+    }
 
     const availableTools = [
       ...workspaceToolSchemas.filter((tool: any) => READ_ONLY_WORKSPACE_TOOLS.has(tool.function.name)),
