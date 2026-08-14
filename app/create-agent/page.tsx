@@ -148,7 +148,7 @@ function CreateAgentContent() {
         <div className="py-8">
           <LoginRequired
             title="登录后创建你的 Agent"
-            description="创建 Agent 会保存头像、设定、开场白和发布状态。登录后可以在我的空间继续维护。"
+            description="创建 Agent 会保存头像、设定、开场白和发布状态。登录后可以在个人中心继续维护。"
           />
         </div>
       </AppShell>

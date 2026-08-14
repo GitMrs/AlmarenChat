@@ -194,7 +194,7 @@ export async function POST(request: Request) {
       apiKey: apiKey || process.env.apiKey,
     });
 
-    const model = modelName || 'deepseek-ai/DeepSeek-V4-Flash';
+    const model = modelName || 'deepseek-ai/DeepSeek-V4-Flash-0731';
 
     let finalContext = context;
     if (knowledgeEnabled && agentId && textMessage.trim()) {

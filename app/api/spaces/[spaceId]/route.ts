@@ -20,12 +20,12 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ sp
   try {
     const userId = requireAuth(request);
     const { spaceId } = await params;
-    const { name, description, hostAgentId } = await request.json();
+    const { name, description, instructions, hostAgentId } = await request.json();
 
     const space = await prisma.space.findFirst({ where: { id: spaceId, userId } });
     if (!space) return NextResponse.json({ error: 'Space not found' }, { status: 404 });
 
-    const data: { name?: string; description?: string | null; hostAgentId?: string | null } = {};
+    const data: { name?: string; description?: string | null; instructions?: string | null; hostAgentId?: string | null } = {};
     if (name !== undefined) {
       const title = typeof name === 'string' ? name.trim() : '';
       if (!title) return NextResponse.json({ error: '空间名称不能为空' }, { status: 400 });
@@ -33,6 +33,13 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ sp
     }
     if (description !== undefined) {
       data.description = typeof description === 'string' ? description.trim() || null : null;
+    }
+    if (instructions !== undefined) {
+      const value = typeof instructions === 'string' ? instructions.trim() : '';
+      if (value.length > 12_000) {
+        return NextResponse.json({ error: '空间规则不能超过 12000 字' }, { status: 400 });
+      }
+      data.instructions = value || null;
     }
     if (hostAgentId !== undefined) {
       if (hostAgentId === null || hostAgentId === '' || hostAgentId === SPACE_COORDINATOR_ID) {

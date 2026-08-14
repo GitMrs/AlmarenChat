@@ -29,6 +29,7 @@ model User {
   spaces        Space[]
   favorites     FavoriteAgent[]
   chatUsages    DailyChatUsage[]
+  agentRuns     AgentRun[]
 }
 
 model Agent {
@@ -56,6 +57,7 @@ model Space {
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   name        String
   description String?
+  instructions String?
   hostAgentId String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -63,6 +65,7 @@ model Space {
   members  SpaceMember[]
   messages SpaceMessage[]
   files    SpaceFile[]
+  runs     AgentRun[]
 
   @@index([userId, updatedAt])
 }
@@ -103,9 +106,15 @@ model SpaceFile {
   mimeType     String?
   size         Int?
   relativePath String
+  runId        String?
+  taskId       String?
+  status       String   @default("READY")
   createdAt    DateTime @default(now())
+  updatedAt    DateTime? @updatedAt
 
   @@index([spaceId])
+  @@index([runId])
+  @@index([taskId])
 }
 
 model KnowledgeDocument {
@@ -188,4 +197,65 @@ model DailyChatUsage {
 
   @@unique([userId, day])
   @@index([day])
+}
+
+model AgentRun {
+  id          String    @id @default(uuid())
+  spaceId     String
+  space       Space     @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  input       String
+  status      String    @default("QUEUED")
+  result      String?
+  error       String?
+  retryOfId   String?
+  attempt     Int       @default(1)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  startedAt   DateTime?
+  completedAt DateTime?
+
+  tasks  AgentTask[]
+  events AgentRunEvent[]
+
+  @@index([spaceId, createdAt])
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+}
+
+model AgentTask {
+  id          String    @id @default(uuid())
+  runId       String
+  run         AgentRun  @relation(fields: [runId], references: [id], onDelete: Cascade)
+  agentId     String
+  agentName   String
+  title       String
+  instruction String
+  status      String    @default("PENDING")
+  result      String?
+  error       String?
+  reviewFeedback String?
+  attempt     Int       @default(1)
+  sortOrder   Int
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  startedAt   DateTime?
+  completedAt DateTime?
+  reviewedAt  DateTime?
+
+  @@index([runId, sortOrder])
+  @@index([status])
+}
+
+model AgentRunEvent {
+  id        String   @id @default(uuid())
+  runId     String
+  run       AgentRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  type      String
+  message   String
+  payload   Json?
+  createdAt DateTime @default(now())
+
+  @@index([runId, createdAt])
 }

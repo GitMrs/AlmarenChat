@@ -7,6 +7,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "NODE_ENV=production node server.mjs",
+    "db:upgrade-agent-runtime": "node scripts/upgrade-agent-runtime.mjs",
+    "worker": "node worker/agent-runtime.mjs",
     "lint": "next lint",
     "postinstall": "node scripts/postinstall.mjs"
   },

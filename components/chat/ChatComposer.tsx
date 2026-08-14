@@ -1,6 +1,7 @@
 'use client';
 
 import { Globe2, ImagePlus, Loader2, Send, Square, X } from 'lucide-react';
+import ComposerShell from '@/components/chat/ComposerShell';
 import { cn } from '@/lib/utils';
 import type { MessageAttachment } from '@/types';
 
@@ -91,7 +92,7 @@ export default function ChatComposer({
             </button>
           </div>
         )}
-        <div className="flex items-end gap-3 rounded-[28px] border border-black/[0.08] bg-[#fbfaf7] p-2 shadow-sm">
+        <ComposerShell rowClassName="gap-3">
           <input
             ref={fileInputRef}
             type="file"
@@ -155,7 +156,7 @@ export default function ChatComposer({
               <Send size={17} />
             </button>
           )}
-        </div>
+        </ComposerShell>
       </div>
     </footer>
   );

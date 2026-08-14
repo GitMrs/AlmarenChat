@@ -27,6 +27,7 @@ export default function SpacesPage() {
   const [selectedAgentIds, setSelectedAgentIds] = useState<string[]>([]);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [instructions, setInstructions] = useState('');
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
@@ -80,6 +81,7 @@ export default function SpacesPage() {
       const result = await spacesApi.create({
         name: name.trim(),
         description: description.trim(),
+        instructions: instructions.trim(),
         agentIds: selectedAgentIds,
       });
       router.push(`/spaces/${result.space.id}`);
@@ -236,6 +238,20 @@ export default function SpacesPage() {
                   rows={3}
                   className="w-full resize-none rounded-2xl border border-black/[0.08] bg-[#fbfaf7] px-4 py-3 text-sm font-medium leading-6 text-slate-800 outline-none focus:border-slate-300 focus:ring-4 focus:ring-slate-200/70"
                 />
+                <div>
+                  <label htmlFor="space-instructions" className="mb-2 block text-sm font-black text-slate-700">
+                    空间规则
+                  </label>
+                  <textarea
+                    id="space-instructions"
+                    value={instructions}
+                    onChange={(event) => setInstructions(event.target.value)}
+                    maxLength={12_000}
+                    placeholder="例如：使用 TypeScript；修改后运行类型检查；所有报告使用中文。"
+                    rows={4}
+                    className="w-full resize-y rounded-2xl border border-black/[0.08] bg-[#fbfaf7] px-4 py-3 text-sm font-medium leading-6 text-slate-800 outline-none focus:border-slate-300 focus:ring-4 focus:ring-slate-200/70"
+                  />
+                </div>
 
                 <div>
                   <div className="mb-3 flex items-center gap-2 text-sm font-black text-slate-700">

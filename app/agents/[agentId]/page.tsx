@@ -14,6 +14,7 @@ import { CATEGORY_COLORS } from '@/types';
 import type { Agent } from '@/types';
 
 const CATEGORY_CAPABILITIES: Record<string, { icon: typeof Zap; items: string[] }> = {
+  专业: { icon: Zap, items: ['专业分析', '方案设计', '边界判断', '结果交付'] },
   写作: { icon: BookOpen, items: ['文章撰写', '文案润色', '创意写作', '内容策划'] },
   编程: { icon: Code, items: ['代码编写', 'Bug 调试', '架构设计', '代码审查'] },
   学习: { icon: BookOpen, items: ['知识讲解', '学习规划', '概念解析', '考试辅导'] },

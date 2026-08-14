@@ -9,6 +9,9 @@ import { cn } from '@/lib/utils';
 
 interface AppShellProps {
   children: React.ReactNode;
+  mainClassName?: string;
+  hideHeader?: boolean;
+  hideBottomNav?: boolean;
 }
 
 const navItems = [
@@ -19,7 +22,12 @@ const navItems = [
   { label: '会话', href: '/conversations', icon: MessageCircle },
 ];
 
-export default function AppShell({ children }: AppShellProps) {
+export default function AppShell({
+  children,
+  mainClassName,
+  hideHeader = false,
+  hideBottomNav = false,
+}: AppShellProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -35,7 +43,7 @@ export default function AppShell({ children }: AppShellProps) {
 
   return (
     <div className="min-h-screen bg-[#fbfaf7] text-slate-950">
-      <header className="sticky top-0 z-40 border-b border-black/[0.06] bg-[#fbfaf7]/88 backdrop-blur-xl">
+      {!hideHeader && <header className="sticky top-0 z-40 border-b border-black/[0.06] bg-[#fbfaf7]/88 backdrop-blur-xl">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
           <Link href="/" className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-950 text-white shadow-sm">
@@ -85,10 +93,10 @@ export default function AppShell({ children }: AppShellProps) {
             </Link>
           )}
         </div>
-      </header>
+      </header>}
 
-      <main className="mx-auto w-full max-w-7xl px-4 pb-24 sm:px-6 lg:px-8">{children}</main>
-      <BottomNav />
+      <main className={cn('mx-auto w-full max-w-7xl px-4 pb-24 sm:px-6 lg:px-8', mainClassName)}>{children}</main>
+      {!hideBottomNav && <BottomNav />}
     </div>
   );
 }

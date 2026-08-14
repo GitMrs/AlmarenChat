@@ -52,6 +52,7 @@ export interface Space {
   userId: string;
   name: string;
   description?: string | null;
+  instructions?: string | null;
   hostAgentId?: string | null;
   hostAgent?: Agent | null;
   createdAt: string;
@@ -59,6 +60,7 @@ export interface Space {
   members?: SpaceMember[];
   messages?: SpaceMessage[];
   files?: SpaceFile[];
+  runs?: AgentRun[];
 }
 
 export interface SpaceMember {
@@ -77,7 +79,7 @@ export interface SpaceMessage {
   role: 'user' | 'assistant' | 'system';
   speakerAgentId?: string | null;
   content: string;
-  attachments?: MessageAttachment[];
+  attachments?: SpaceMessageAttachment[];
   createdAt: string;
 }
 
@@ -88,6 +90,73 @@ export interface SpaceFile {
   mimeType?: string | null;
   size?: number | null;
   relativePath: string;
+  runId?: string | null;
+  taskId?: string | null;
+  status?: 'GENERATING' | 'WAITING_APPROVAL' | 'READY' | 'INCOMPLETE';
+  createdAt: string;
+  updatedAt?: string | null;
+}
+
+export type SpaceTaskCapability = 'workspace_read' | 'workspace_write' | 'web_research';
+
+export interface SpaceTaskProposal {
+  type: 'task_proposal';
+  title: string;
+  goal: string;
+  summary: string;
+  steps: string[];
+  deliverables: string[];
+  capabilities?: SpaceTaskCapability[];
+  status: 'pending' | 'approved' | 'rejected';
+  runId?: string;
+}
+
+export type SpaceMessageAttachment = MessageAttachment | SpaceTaskProposal;
+
+export interface AgentRun {
+  id: string;
+  spaceId: string;
+  userId: string;
+  input: string;
+  status: string;
+  result?: string | null;
+  error?: string | null;
+  retryOfId?: string | null;
+  attempt: number;
+  createdAt: string;
+  updatedAt: string;
+  startedAt?: string | null;
+  completedAt?: string | null;
+  tasks: AgentTask[];
+  events: AgentRunEvent[];
+}
+
+export interface AgentTask {
+  id: string;
+  runId: string;
+  agentId: string;
+  agentName: string;
+  title: string;
+  instruction: string;
+  status: string;
+  result?: string | null;
+  error?: string | null;
+  reviewFeedback?: string | null;
+  attempt: number;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+  startedAt?: string | null;
+  completedAt?: string | null;
+  reviewedAt?: string | null;
+}
+
+export interface AgentRunEvent {
+  id: string;
+  runId: string;
+  type: string;
+  message: string;
+  payload?: unknown;
   createdAt: string;
 }
 
@@ -110,6 +179,7 @@ export interface FavoriteAgent {
 
 export const AGENT_CATEGORIES = [
   '全部',
+  '专业',
   '写作',
   '编程',
   '学习',
@@ -136,6 +206,7 @@ export const AGENT_TONES = [
 export type AgentTone = (typeof AGENT_TONES)[number];
 
 export const CATEGORY_COLORS: Record<string, string> = {
+  专业: '#0f766e',
   写作: '#f59e0b',
   编程: '#2563eb',
   学习: '#10b981',

@@ -1,3 +1,5 @@
+import type { AgentRun } from '@/types';
+
 const API_BASE = '/api';
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
@@ -125,13 +127,13 @@ export const conversations = {
 // Spaces
 export const spaces = {
   list: () => request<{ spaces: any[] }>('/spaces'),
-  create: (data: { name: string; description?: string; agentIds?: string[] }) =>
+  create: (data: { name: string; description?: string; instructions?: string; agentIds?: string[] }) =>
     request<{ space: any }>('/spaces', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
   get: (id: string) => request<{ space: any }>(`/spaces/${id}`),
-  update: (id: string, data: { name?: string; description?: string | null; hostAgentId?: string | null }) =>
+  update: (id: string, data: { name?: string; description?: string | null; instructions?: string | null; hostAgentId?: string | null }) =>
     request<{ space: any }>(`/spaces/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
@@ -157,7 +159,45 @@ export const spaces = {
     const query = params.toString();
     return request<{ messages: any[]; hasMore?: boolean }>(`/spaces/${id}/messages${query ? `?${query}` : ''}`);
   },
+  deleteMessage: (spaceId: string, messageId: string) =>
+    request<{ success: boolean }>(`/spaces/${spaceId}/messages/${messageId}`, { method: 'DELETE' }),
   files: (id: string) => request<{ files: any[] }>(`/spaces/${id}/files`),
+  downloadFile: async (spaceId: string, fileId: string) => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    const res = await fetch(`${API_BASE}/spaces/${spaceId}/files/${fileId}`, {
+      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    });
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({ error: 'Download failed' }));
+      throw new Error(error.error || `HTTP ${res.status}`);
+    }
+    return res.blob();
+  },
+  readFileText: (spaceId: string, fileId: string) =>
+    request<{ content: string; updatedAt: string | null; readOnlyReason: string | null }>(
+      `/spaces/${spaceId}/files/${fileId}?mode=edit`
+    ),
+  updateFileText: (spaceId: string, fileId: string, content: string, updatedAt: string | null) =>
+    request<{ file: any }>(`/spaces/${spaceId}/files/${fileId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ content, updatedAt }),
+    }),
+  runs: (id: string) => request<{ runs: AgentRun[] }>(`/spaces/${id}/runs`),
+  createRun: (
+    id: string,
+    input: string,
+    proposalMessageId?: string,
+    revisedProposal?: { goal: string; steps: string[]; deliverables: string[] }
+  ) =>
+    request<{ run: AgentRun }>(`/spaces/${id}/runs`, {
+      method: 'POST',
+      body: JSON.stringify({ input, proposalMessageId, revisedProposal }),
+    }),
+  rejectTaskProposal: (spaceId: string, messageId: string) =>
+    request<{ message: any }>(`/spaces/${spaceId}/messages/${messageId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ action: 'reject_task_proposal' }),
+    }),
   uploadFile: async (id: string, file: File) => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
     const formData = new FormData();
@@ -178,6 +218,21 @@ export const spaces = {
 
     return res.json() as Promise<{ file: any }>;
   },
+};
+
+export const agentRuns = {
+  get: (id: string) => request<{ run: AgentRun }>(`/runs/${id}`),
+  cancel: (id: string) =>
+    request<{ run: AgentRun }>(`/runs/${id}/cancel`, { method: 'POST' }),
+  cancelTask: (runId: string, taskId: string) =>
+    request<{ run: AgentRun }>(`/runs/${runId}/tasks/${taskId}/cancel`, { method: 'POST' }),
+  reviewTask: (runId: string, taskId: string, action: 'approve' | 'retry' | 'skip', feedback?: string) =>
+    request<{ run: AgentRun }>(`/runs/${runId}/tasks/${taskId}/review`, {
+      method: 'POST',
+      body: JSON.stringify({ action, feedback }),
+    }),
+  retry: (id: string) =>
+    request<{ run: AgentRun }>(`/runs/${id}/retry`, { method: 'POST' }),
 };
 
 // Favorites
@@ -277,8 +332,9 @@ export async function streamSpaceMessage(data: {
   message: string;
   history: { role: string; content: string; speakerAgentId?: string | null }[];
   targetAgentId?: string;
+  skipPersistUserMessage?: boolean;
   signal?: AbortSignal;
-}): Promise<{ stream: ReadableStream<Uint8Array>; speakerAgentId?: string; speakerAgentName?: string }> {
+}): Promise<{ stream: ReadableStream<Uint8Array>; speakerAgentId?: string; speakerAgentName?: string; workspaceFilesChanged: number }> {
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
 
   const res = await fetch(`${API_BASE}/spaces/${data.spaceId}/messages`, {
@@ -291,6 +347,7 @@ export async function streamSpaceMessage(data: {
       message: data.message,
       history: data.history,
       targetAgentId: data.targetAgentId,
+      skipPersistUserMessage: data.skipPersistUserMessage,
     }),
     signal: data.signal,
   });
@@ -304,6 +361,7 @@ export async function streamSpaceMessage(data: {
     stream: res.body!,
     speakerAgentId: res.headers.get('x-speaker-agent-id') || undefined,
     speakerAgentName: decodeURIComponent(res.headers.get('x-speaker-agent-name') || ''),
+    workspaceFilesChanged: Number.parseInt(res.headers.get('x-workspace-files-changed') || '0', 10) || 0,
   };
 }
 

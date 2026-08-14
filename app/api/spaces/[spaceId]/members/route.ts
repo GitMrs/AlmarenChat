@@ -31,16 +31,17 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
 
     const agent = await resolveAgent(String(agentId || ''), userId);
     if (!agent) return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
+    const defaultRoleName = agent.category === '专业' ? agent.name : agent.category || null;
 
     const member = await prisma.spaceMember.upsert({
       where: { spaceId_agentId: { spaceId, agentId: agent.id } },
       update: {
-        roleName: typeof roleName === 'string' ? roleName.trim() || agent.category || null : agent.category || null,
+        roleName: typeof roleName === 'string' ? roleName.trim() || defaultRoleName : defaultRoleName,
       },
       create: {
         spaceId,
         agentId: agent.id,
-        roleName: typeof roleName === 'string' ? roleName.trim() || agent.category || null : agent.category || null,
+        roleName: typeof roleName === 'string' ? roleName.trim() || defaultRoleName : defaultRoleName,
         sortOrder: space.members.length,
       },
     });

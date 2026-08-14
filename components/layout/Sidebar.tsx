@@ -11,7 +11,7 @@ const navItems = [
   { id: 'spaces', label: '空间', icon: PanelsTopLeft, href: '/spaces' },
   { id: 'create', label: '创建 Agent', icon: PlusCircle, href: '/create-agent' },
   { id: 'conversations', label: '对话历史', icon: MessageSquare, href: '/conversations' },
-  { id: 'me', label: '我的空间', icon: UserRound, href: '/me' },
+  { id: 'me', label: '个人中心', icon: UserRound, href: '/me' },
 ];
 
 export default function Sidebar() {

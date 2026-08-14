@@ -19,6 +19,7 @@ interface AgentCardProps {
 }
 
 const categoryIntents: Record<string, string> = {
+  专业: '按专业角色处理复杂任务',
   写作: '帮你把想法变成能发布的内容',
   编程: '一起拆问题、看代码、做方案',
   学习: '把复杂知识讲到你听懂为止',

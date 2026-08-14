@@ -11,3 +11,6 @@ coverage/
 *.db
 .next/
 tsconfig.tsbuildinfo
+data/spaces/**
+dev.db-shm
+dev.db-wal

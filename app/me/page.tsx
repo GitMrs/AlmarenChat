@@ -139,7 +139,7 @@ function MeContent() {
             <div className="max-w-3xl">
               <div className="mb-4 inline-flex items-center gap-2 rounded-full bg-slate-950 px-4 py-2 text-sm font-bold text-white">
                 <Sparkles size={16} />
-                我的空间
+                个人中心
               </div>
               <h1 className="text-4xl font-black leading-tight text-slate-950 sm:text-5xl">
                 管理你的 Agent、模型和账号。
@@ -217,7 +217,7 @@ function MeContent() {
         {needsLogin && (
           <LoginRequired
             title="登录后维护你的 Agent"
-            description="我的空间会保存你创建的 Agent、发布状态、收藏和最近会话。登录后就能继续维护。"
+            description="个人中心会保存你创建的 Agent、发布状态、收藏和最近会话。登录后就能继续维护。"
           />
         )}
 

@@ -13,6 +13,7 @@ const CATEGORY_MAP: Record<string, string> = {
   life: '生活',
   marketing: '写作',
   office: '工具',
+  professional: '专业',
   programming: '编程',
   translation: '写作',
 };
@@ -89,7 +90,7 @@ export function searchAgents(agents: Agent[], query: string): Agent[] {
 }
 
 export function getFeaturedAgents(agents: Agent[], count = 1): Agent[] {
-  const categories = ['写作', '编程', '学习', '心理', '创意', '生活', '工具', '娱乐'];
+  const categories = ['专业', '写作', '编程', '学习', '心理', '创意', '生活', '工具', '娱乐'];
   const featured: Agent[] = [];
 
   for (const category of categories) {

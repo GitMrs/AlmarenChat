@@ -1,0 +1,156 @@
+import 'dotenv/config';
+import path from 'node:path';
+import Database from 'better-sqlite3';
+
+function resolveDatabasePath() {
+  const url = (process.env.DATABASE_URL || 'file:./dev.db').replace(/^['"]|['"]$/g, '');
+  if (!url.startsWith('file:')) throw new Error('Agent Runtime 第一阶段仅支持 SQLite DATABASE_URL');
+  return path.resolve(process.cwd(), url.slice('file:'.length));
+}
+
+const db = new Database(resolveDatabasePath());
+db.pragma('foreign_keys = ON');
+
+function hasTable(name) {
+  return Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(name));
+}
+
+function hasColumn(table, column) {
+  return db.prepare(`PRAGMA table_info("${table}")`).all().some((item) => item.name === column);
+}
+
+try {
+  if (!hasTable('User') || !hasTable('Agent')) {
+    throw new Error('未找到基础表；全新数据库请先执行 prisma migrate deploy');
+  }
+
+  db.transaction(() => {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS "Space" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "userId" TEXT NOT NULL,
+        "name" TEXT NOT NULL,
+        "description" TEXT,
+        "instructions" TEXT,
+        "hostAgentId" TEXT,
+        "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" DATETIME NOT NULL,
+        CONSTRAINT "Space_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+      );
+    `);
+    if (!hasColumn('Space', 'hostAgentId')) db.exec('ALTER TABLE "Space" ADD COLUMN "hostAgentId" TEXT');
+    if (!hasColumn('Space', 'instructions')) db.exec('ALTER TABLE "Space" ADD COLUMN "instructions" TEXT');
+
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS "SpaceMember" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "spaceId" TEXT NOT NULL,
+        "agentId" TEXT NOT NULL,
+        "roleName" TEXT,
+        "sortOrder" INTEGER NOT NULL DEFAULT 0,
+        "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "SpaceMember_spaceId_fkey" FOREIGN KEY ("spaceId") REFERENCES "Space" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+      );
+      CREATE TABLE IF NOT EXISTS "SpaceMessage" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "spaceId" TEXT NOT NULL,
+        "role" TEXT NOT NULL,
+        "speakerAgentId" TEXT,
+        "content" TEXT NOT NULL,
+        "attachments" JSONB,
+        "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "SpaceMessage_spaceId_fkey" FOREIGN KEY ("spaceId") REFERENCES "Space" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+      );
+      CREATE TABLE IF NOT EXISTS "SpaceFile" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "spaceId" TEXT NOT NULL,
+        "fileName" TEXT NOT NULL,
+        "mimeType" TEXT,
+        "size" INTEGER,
+        "relativePath" TEXT NOT NULL,
+        "runId" TEXT,
+        "taskId" TEXT,
+        "status" TEXT NOT NULL DEFAULT 'READY',
+        "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" DATETIME,
+        CONSTRAINT "SpaceFile_spaceId_fkey" FOREIGN KEY ("spaceId") REFERENCES "Space" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+      );
+      CREATE TABLE IF NOT EXISTS "AgentRun" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "spaceId" TEXT NOT NULL,
+        "userId" TEXT NOT NULL,
+        "input" TEXT NOT NULL,
+        "status" TEXT NOT NULL DEFAULT 'QUEUED',
+        "result" TEXT,
+        "error" TEXT,
+        "retryOfId" TEXT,
+        "attempt" INTEGER NOT NULL DEFAULT 1,
+        "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" DATETIME NOT NULL,
+        "startedAt" DATETIME,
+        "completedAt" DATETIME,
+        CONSTRAINT "AgentRun_spaceId_fkey" FOREIGN KEY ("spaceId") REFERENCES "Space" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+        CONSTRAINT "AgentRun_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+      );
+      CREATE TABLE IF NOT EXISTS "AgentTask" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "runId" TEXT NOT NULL,
+        "agentId" TEXT NOT NULL,
+        "agentName" TEXT NOT NULL,
+        "title" TEXT NOT NULL,
+        "instruction" TEXT NOT NULL,
+        "status" TEXT NOT NULL DEFAULT 'PENDING',
+        "result" TEXT,
+        "error" TEXT,
+        "reviewFeedback" TEXT,
+        "attempt" INTEGER NOT NULL DEFAULT 1,
+        "sortOrder" INTEGER NOT NULL,
+        "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" DATETIME NOT NULL,
+        "startedAt" DATETIME,
+        "completedAt" DATETIME,
+        "reviewedAt" DATETIME,
+        CONSTRAINT "AgentTask_runId_fkey" FOREIGN KEY ("runId") REFERENCES "AgentRun" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+      );
+      CREATE TABLE IF NOT EXISTS "AgentRunEvent" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "runId" TEXT NOT NULL,
+        "type" TEXT NOT NULL,
+        "message" TEXT NOT NULL,
+        "payload" JSONB,
+        "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "AgentRunEvent_runId_fkey" FOREIGN KEY ("runId") REFERENCES "AgentRun" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS "Space_userId_updatedAt_idx" ON "Space"("userId", "updatedAt");
+      CREATE INDEX IF NOT EXISTS "SpaceMember_spaceId_sortOrder_idx" ON "SpaceMember"("spaceId", "sortOrder");
+      CREATE INDEX IF NOT EXISTS "SpaceMember_agentId_idx" ON "SpaceMember"("agentId");
+      CREATE UNIQUE INDEX IF NOT EXISTS "SpaceMember_spaceId_agentId_key" ON "SpaceMember"("spaceId", "agentId");
+      CREATE INDEX IF NOT EXISTS "SpaceMessage_spaceId_createdAt_idx" ON "SpaceMessage"("spaceId", "createdAt");
+      CREATE INDEX IF NOT EXISTS "SpaceMessage_speakerAgentId_idx" ON "SpaceMessage"("speakerAgentId");
+      CREATE INDEX IF NOT EXISTS "SpaceFile_spaceId_idx" ON "SpaceFile"("spaceId");
+      CREATE INDEX IF NOT EXISTS "AgentRun_spaceId_createdAt_idx" ON "AgentRun"("spaceId", "createdAt");
+      CREATE INDEX IF NOT EXISTS "AgentRun_userId_createdAt_idx" ON "AgentRun"("userId", "createdAt");
+      CREATE INDEX IF NOT EXISTS "AgentRun_status_createdAt_idx" ON "AgentRun"("status", "createdAt");
+      CREATE INDEX IF NOT EXISTS "AgentTask_runId_sortOrder_idx" ON "AgentTask"("runId", "sortOrder");
+      CREATE INDEX IF NOT EXISTS "AgentTask_status_idx" ON "AgentTask"("status");
+      CREATE INDEX IF NOT EXISTS "AgentRunEvent_runId_createdAt_idx" ON "AgentRunEvent"("runId", "createdAt");
+      UPDATE "Space" SET "hostAgentId" = 'space-coordinator' WHERE "hostAgentId" IS NULL;
+    `);
+    if (!hasColumn('SpaceFile', 'runId')) db.exec('ALTER TABLE "SpaceFile" ADD COLUMN "runId" TEXT');
+    if (!hasColumn('SpaceFile', 'taskId')) db.exec('ALTER TABLE "SpaceFile" ADD COLUMN "taskId" TEXT');
+    if (!hasColumn('SpaceFile', 'status')) db.exec(`ALTER TABLE "SpaceFile" ADD COLUMN "status" TEXT NOT NULL DEFAULT 'READY'`);
+    if (!hasColumn('SpaceFile', 'updatedAt')) db.exec('ALTER TABLE "SpaceFile" ADD COLUMN "updatedAt" DATETIME');
+    if (!hasColumn('AgentTask', 'reviewFeedback')) db.exec('ALTER TABLE "AgentTask" ADD COLUMN "reviewFeedback" TEXT');
+    if (!hasColumn('AgentTask', 'attempt')) db.exec('ALTER TABLE "AgentTask" ADD COLUMN "attempt" INTEGER NOT NULL DEFAULT 1');
+    if (!hasColumn('AgentTask', 'reviewedAt')) db.exec('ALTER TABLE "AgentTask" ADD COLUMN "reviewedAt" DATETIME');
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS "SpaceFile_runId_idx" ON "SpaceFile"("runId");
+      CREATE INDEX IF NOT EXISTS "SpaceFile_taskId_idx" ON "SpaceFile"("taskId");
+    `);
+  })();
+
+  console.log('Space and Agent Runtime database upgrade completed.');
+} finally {
+  db.close();
+}
