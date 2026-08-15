@@ -8,7 +8,7 @@ export default function StaticHtmlPreview({
   return (
     <iframe
       title={`${title} 预览`}
-      sandbox="allow-scripts"
+      sandbox="allow-scripts allow-forms"
       referrerPolicy="no-referrer"
       src={entryUrl}
       className="block h-full w-full border-0 bg-white"

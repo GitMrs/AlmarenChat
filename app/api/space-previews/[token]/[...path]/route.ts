@@ -29,7 +29,7 @@ function previewPolicy(request: Request, token: string) {
   const origin = new URL(request.url).origin;
   const root = `${origin}/api/space-previews/${token}/`;
   return [
-    "sandbox allow-scripts",
+    "sandbox allow-scripts allow-forms",
     "default-src 'none'",
     `script-src 'unsafe-inline' ${root}`,
     `style-src 'unsafe-inline' ${root}`,
@@ -40,7 +40,7 @@ function previewPolicy(request: Request, token: string) {
     "object-src 'none'",
     "frame-src 'none'",
     "worker-src 'none'",
-    "form-action 'none'",
+    `form-action ${root}`,
     "base-uri 'none'",
   ].join('; ');
 }

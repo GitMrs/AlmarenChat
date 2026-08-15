@@ -10,7 +10,7 @@ const MAX_SHARED_FILE_BYTES = 5 * 1024 * 1024;
 function sharePolicy(request: Request, shareId: string) {
   const root = `${new URL(request.url).origin}/share/${shareId}/`;
   return [
-    'sandbox allow-scripts',
+    'sandbox allow-scripts allow-forms',
     "default-src 'none'",
     `script-src 'unsafe-inline' ${root}`,
     `style-src 'unsafe-inline' ${root}`,
@@ -22,7 +22,7 @@ function sharePolicy(request: Request, shareId: string) {
     "frame-src 'none'",
     "frame-ancestors 'none'",
     "worker-src 'none'",
-    "form-action 'none'",
+    `form-action ${root}`,
     "base-uri 'none'",
   ].join('; ');
 }
