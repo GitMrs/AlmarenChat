@@ -2,7 +2,6 @@
 
 set -e
 
-APP_NAME="almaren-chat"
 ENV_FILE="${ENV_FILE:-.env.production}"
 PORT="${PORT:-8001}"
 
@@ -40,16 +39,13 @@ yarn build
 
 echo "Starting with PM2..."
 export PORT
-if pm2 describe "$APP_NAME" >/dev/null 2>&1; then
-  pm2 reload ecosystem.config.cjs --env production --update-env
-else
-  pm2 start ecosystem.config.cjs --env production --update-env
-fi
+pm2 startOrReload ecosystem.config.cjs --env production --update-env
 
 pm2 save
 
 echo ""
 echo "PM2 deployment complete."
-echo "Logs: pm2 logs $APP_NAME"
+echo "Web logs: pm2 logs almaren-chat"
+echo "Worker logs: pm2 logs almaren-chat-worker"
 echo "Status: pm2 status"
 echo "URL: http://localhost:$PORT"
