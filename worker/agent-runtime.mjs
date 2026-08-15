@@ -268,7 +268,7 @@ function loadRunContext(run) {
       baseURL: useCustomModel ? user.apiBaseUrl : 'https://api-inference.modelscope.cn/v1',
       name: useCustomModel ? user.modelName : 'deepseek-ai/DeepSeek-V4-Flash',
     },
-    tavilyApiKey: user.tavilyApiKey || process.env.TAVILY_API_KEY || null,
+    tavilyApiKey: user.tavilyApiKey?.trim() || null,
     researchAudit: null,
     researchResultAudits: [],
     researchSources: [],
@@ -349,11 +349,13 @@ function parseResearchPlan(content, fallbackQuery) {
 
 async function createResearchPlan(run, context) {
   if (fakeMode) return { queries: normalizeSearchQueries([run.input]), officialDomains: [] };
+  const currentDate = new Date().toISOString();
   const content = await complete(context.model, [
     {
       role: 'system',
       content:
-        '为用户目标生成 1 到 2 个简短、具体的联网检索关键词，并识别目标实体已知的官方网站域名。' +
+        `当前绝对时间（UTC）是 ${currentDate}。为用户目标生成 1 到 2 个简短、具体、互补的联网检索关键词，并识别目标实体已知的官方网站域名。` +
+        '时效性问题要把当前年份或明确日期写入至少一个查询，另一个查询优先定位官方公告、发布记录或原始数据。' +
         '只输出 JSON：{"queries":["关键词"],"officialDomains":["example.com"]}。' +
         '域名只能填写你确定属于目标实体的官方网站根域名，不要填写路径、搜索引擎、媒体、百科或不确定的域名；无法确定时返回空数组。' +
         '不要输出解释，不要包含隐私数据。',
@@ -367,12 +369,11 @@ async function buildResearchContext(run, context) {
   if (!wantsWebResearch(run.input)) return '';
   const { queries, officialDomains } = await createResearchPlan(run, context);
   if (queries.length === 0) return '';
-  if (!context.tavilyApiKey) {
-    addEvent(run.id, 'WEB_SEARCH_SKIPPED', '联网搜索未配置 Tavily API Key', { queries });
-    return '当前任务需要联网资料，但尚未配置 Tavily API Key。不要虚构搜索结果或最新信息，明确说明此限制。';
-  }
-
-  addEvent(run.id, 'WEB_SEARCH_STARTED', `开始执行 ${queries.length} 次受控联网检索`, { queries });
+  const provider = context.tavilyApiKey ? 'tavily' : 'duckduckgo';
+  addEvent(run.id, 'WEB_SEARCH_STARTED', `开始通过 ${provider === 'tavily' ? 'Tavily' : 'DuckDuckGo'} 执行 ${queries.length} 次受控联网检索`, {
+    queries,
+    provider,
+  });
   try {
     const result = await searchWeb(queries, context.tavilyApiKey, {
       officialDomains,
@@ -382,6 +383,7 @@ async function buildResearchContext(run, context) {
     context.researchSources = result.sources.map((source) => ({ url: source.url }));
     addEvent(run.id, 'WEB_SEARCH_COMPLETED', `联网检索完成，获得 ${result.resultCount} 条来源`, {
       queries,
+      provider: result.provider,
       officialDomains: result.officialDomains,
       timeRange: result.timeRange,
       resultCount: result.resultCount,

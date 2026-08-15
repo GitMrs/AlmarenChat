@@ -44,7 +44,9 @@ test('research source audit enforces primary and freshness evidence', () => {
   );
   assert.equal(requirements.timeSensitive, true);
   assert.equal(requirements.primaryRequired, true);
-  assert.equal(requirements.timeRange, 'year');
+  assert.equal(requirements.timeRange, 'month');
+  assert.equal(requirements.topic, 'general');
+  assert.equal(researchRequirements('查找今天的财经新闻').topic, 'finance');
   assert.equal(researchRequirements('查找今天的公告').timeRange, 'day');
   assert.equal(researchRequirements('整理本周动态').timeRange, 'week');
   assert.equal(researchRequirements('汇总本月新闻').timeRange, 'month');
@@ -76,6 +78,7 @@ test('research result audit validates citation mapping and conflict disclosure',
 
 test('web research searches official domains and extracts primary pages first', async () => {
   const calls = [];
+  const recentDate = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
   const client = {
     async search(query, options) {
       calls.push({ type: 'search', query, options });
@@ -86,7 +89,7 @@ test('web research searches official domains and extracts primary pages first', 
               title: 'Official pricing',
               url: 'https://docs.example.com/pricing',
               content: 'Official summary',
-              publishedDate: '2026-08-01',
+              publishedDate: recentDate,
               score: 0.8,
             },
           ],
@@ -98,7 +101,7 @@ test('web research searches official domains and extracts primary pages first', 
             title: 'Third-party article',
             url: 'https://news.example.net/article',
             content: 'Article summary',
-            publishedDate: '2026-08-02',
+            publishedDate: recentDate,
             score: 0.9,
           },
         ],
@@ -116,18 +119,52 @@ test('web research searches official domains and extracts primary pages first', 
   const result = await searchWeb(['example pricing'], 'test-key', {
     client,
     officialDomains: ['example.com'],
-    requirements: { timeSensitive: true, primaryRequired: true, timeRange: 'year' },
+    requirements: { timeSensitive: true, primaryRequired: true, timeRange: 'year', topic: 'general' },
   });
 
   assert.equal(calls[0].options.timeRange, 'year');
   assert.deepEqual(calls[1].options.includeDomains, ['example.com']);
-  assert.equal(calls[1].options.timeRange, undefined);
+  assert.equal(calls[1].options.timeRange, 'year');
+  assert.equal(calls[0].options.autoParameters, true);
   assert.equal(calls[2].urls[0], 'https://docs.example.com/pricing');
   assert.equal(result.sources[0].isPrimary, true);
   assert.equal(result.sources[0].sourceTier, 'A');
   assert.equal(result.sources[0].extractionStatus, 'extracted');
   assert.equal(result.audit.accepted, true);
   assert.match(result.context, /Retrieved at:/);
+});
+
+test('web research falls back to DuckDuckGo when Tavily is not configured', async () => {
+  const calls = [];
+  const recentTimestamp = Math.floor((Date.now() - 60 * 60 * 1000) / 1000);
+  const ddgClient = {
+    async search() {
+      throw new Error('news queries should use DuckDuckGo News');
+    },
+    async searchNews(query, options) {
+      calls.push({ query, options });
+      return {
+        results: [
+          {
+            title: 'Recent market news',
+            url: 'https://news.example.com/recent',
+            excerpt: 'Recent verified summary',
+            date: recentTimestamp,
+          },
+        ],
+      };
+    },
+  };
+
+  const requirements = researchRequirements('查找今天的财经新闻');
+  const result = await searchWeb(['今天的财经新闻'], null, { ddgClient, requirements });
+
+  assert.equal(result.provider, 'duckduckgo');
+  assert.equal(result.resultCount, 1);
+  assert.equal(result.sources[0].extractionStatus, 'not_requested');
+  assert.equal(result.audit.accepted, true);
+  assert.equal(calls[0].options.time, 'd');
+  assert.match(result.context, /搜索提供方：DuckDuckGo/);
 });
 
 test('task intent detection stays narrow', () => {

@@ -82,13 +82,6 @@ export async function POST(request: Request) {
     if (webSearchEnabled && !textMessage.trim()) {
       return NextResponse.json({ error: '联网搜索需要输入文本问题。' }, { status: 400 });
     }
-    if (webSearchEnabled && !userSettings.tavilyApiKey && !process.env.TAVILY_API_KEY) {
-      return NextResponse.json(
-        { error: '联网搜索未配置：请在用户中心填写 Tavily API Key，或配置平台 TAVILY_API_KEY。' },
-        { status: 400 }
-      );
-    }
-
     const usesCustomModel = Boolean(
       userSettings.customModelEnabled &&
         userSettings.apiBaseUrl &&

@@ -313,7 +313,7 @@ export default function SettingsPanel() {
                 </div>
                 <div>
                   <h2 className="text-xl font-black text-slate-950">联网搜索设置</h2>
-                  <p className="text-sm text-slate-500">填写 Tavily API Key 后，可在聊天输入框手动开启联网搜索。</p>
+                  <p className="text-sm text-slate-500">可选填 Tavily API Key；未配置时自动使用免费的 DuckDuckGo。</p>
                 </div>
               </div>
               <button
@@ -346,7 +346,7 @@ export default function SettingsPanel() {
                 className="h-12 w-full rounded-2xl border border-black/[0.08] bg-[#fbfaf7] px-4 text-sm font-medium text-slate-800 outline-none focus:border-slate-300 focus:ring-4 focus:ring-slate-200/70"
               />
               <p className="mt-2 text-xs leading-5 text-slate-400">
-                聊天时只有手动开启联网搜索才会消耗 Tavily 额度。未填写时会尝试使用平台默认 TAVILY_API_KEY。
+                填写后使用你的 Tavily 额度；未填写时自动使用免费的 DuckDuckGo，无需 API Key。
               </p>
             </label>
           </section>
