@@ -5,6 +5,7 @@ import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { ensureSpaceRoot, getSpaceForUser, resolveSpacePath } from '@/app/api/_lib/spaces';
 import { isEditableSpaceFile, MAX_EDITABLE_SPACE_FILE_BYTES } from '@/lib/space-files';
+import { workspaceAttemptFile } from '@/lib/workspace-staging.mjs';
 
 const EDIT_BLOCKING_RUN_STATUSES = ['QUEUED', 'PLANNING', 'RUNNING', 'SUMMARIZING', 'CANCEL_REQUESTED'];
 
@@ -28,9 +29,19 @@ export async function GET(
     const file = await prisma.spaceFile.findFirst({ where: { id: fileId, spaceId } });
     if (!file) return NextResponse.json({ error: 'File not found' }, { status: 404 });
 
-    const root = await ensureSpaceRoot(userId, spaceId);
-    const target = resolveSpacePath(userId, spaceId, file.relativePath);
-    const [actualRoot, actualTarget] = await Promise.all([realpath(root), realpath(target)]);
+    const stagedTask = file.taskId && ['GENERATING', 'WAITING_APPROVAL'].includes(file.status)
+      ? await prisma.agentTask.findUnique({ where: { id: file.taskId }, select: { attempt: true } })
+      : null;
+    const staged = stagedTask
+      ? workspaceAttemptFile({ projectRoot: process.cwd(), userId, spaceId, taskId: file.taskId, attempt: stagedTask.attempt }, file.relativePath)
+      : null;
+    const root = staged?.root || await ensureSpaceRoot(userId, spaceId);
+    const target = staged?.target || resolveSpacePath(userId, spaceId, file.relativePath);
+    const spaceRoot = await ensureSpaceRoot(userId, spaceId);
+    const [actualSpaceRoot, actualRoot, actualTarget] = await Promise.all([realpath(spaceRoot), realpath(root), realpath(target)]);
+    if (actualRoot !== actualSpaceRoot && !actualRoot.startsWith(actualSpaceRoot + path.sep)) {
+      return NextResponse.json({ error: 'Invalid file path' }, { status: 400 });
+    }
     if (actualTarget !== actualRoot && !actualTarget.startsWith(actualRoot + path.sep)) {
       return NextResponse.json({ error: 'Invalid file path' }, { status: 400 });
     }

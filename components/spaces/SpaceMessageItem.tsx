@@ -5,15 +5,19 @@ import MessageActions from '@/components/chat/MessageActions';
 import MessageBubbleFrame from '@/components/chat/MessageBubbleFrame';
 import MessageContent from '@/components/chat/MessageContent';
 import { taskProposalCapabilities } from '@/lib/task-proposals';
-import type { Agent, AgentRun, SpaceMessage, SpaceTaskProposal } from '@/types';
+import type { Agent, AgentRun, SpaceMessage, SpaceRunResultAttachment, SpaceTaskProposal } from '@/types';
 
 const RUN_STATUS_LABELS: Record<string, string> = {
   QUEUED: '等待执行',
   PLANNING: '正在规划',
   RUNNING: '正在执行',
+  WAITING: '等待补充信息',
   WAITING_APPROVAL: '等待审核',
   SUMMARIZING: '正在汇总',
   COMPLETED: '已完成',
+  PARTIAL: '部分完成',
+  FAILED_VALIDATION: '验收失败',
+  BLOCKED: '缺少必要条件',
   FAILED: '执行失败',
   CANCEL_REQUESTED: '正在取消',
   CANCELLED: '已取消',
@@ -136,12 +140,12 @@ function TaskProposal({
         <button type="button" onClick={onOpenRun} className="mt-4 flex w-full items-center gap-3 border-t border-black/[0.06] pt-3 text-left">
           <div className="min-w-0 flex-1">
             <div className="flex items-center justify-between gap-3 text-xs font-black">
-              <span className={run?.status === 'FAILED' ? 'text-rose-500' : run?.status === 'COMPLETED' ? 'text-emerald-600' : 'text-slate-700'}>
+              <span className={['FAILED', 'FAILED_VALIDATION'].includes(run?.status || '') ? 'text-rose-500' : run?.status === 'BLOCKED' ? 'text-amber-600' : run?.status === 'COMPLETED' ? 'text-emerald-600' : 'text-slate-700'}>
                 {run ? RUN_STATUS_LABELS[run.status] || run.status : '任务已确认'}
               </span>
               {run && <span className="text-slate-400">{completed}/{run.tasks.length || '—'}</span>}
             </div>
-            {run && !['COMPLETED', 'FAILED', 'CANCELLED'].includes(run.status) && (
+            {run && !['COMPLETED', 'PARTIAL', 'FAILED_VALIDATION', 'BLOCKED', 'FAILED', 'CANCELLED'].includes(run.status) && (
               <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100">
                 <div className="h-full rounded-full bg-slate-950 transition-all" style={{ width: `${Math.max(4, progress)}%` }} />
               </div>
@@ -193,6 +197,7 @@ export default function SpaceMessageItem({
 }) {
   const isUser = message.role === 'user';
   const proposal = message.attachments?.find((attachment): attachment is SpaceTaskProposal => attachment.type === 'task_proposal');
+  const runResult = message.attachments?.find((attachment): attachment is SpaceRunResultAttachment => attachment.type === 'run_result');
   return (
     <MessageBubbleFrame
       role={message.role}
@@ -232,6 +237,12 @@ export default function SpaceMessageItem({
           onReject={onRejectProposal}
           onOpenRun={onOpenRun}
         />
+      )}
+      {runResult && run && (
+        <button type="button" onClick={onOpenRun} className="mt-3 inline-flex items-center gap-1.5 text-xs font-black text-slate-500 transition hover:text-slate-950">
+          查看任务详情
+          <ChevronRight size={14} />
+        </button>
       )}
     </MessageBubbleFrame>
   );

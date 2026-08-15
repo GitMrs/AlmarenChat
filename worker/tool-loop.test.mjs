@@ -79,6 +79,26 @@ test('tool loop rejects a model result when cancellation arrives during the requ
   );
 });
 
+test('tool loop stops before another model request when a tool pauses the workflow', async () => {
+  let modelRequests = 0;
+  const result = await runToolLoop({
+    messages: [],
+    tools: [{ type: 'function', function: { name: 'request_user_input' } }],
+    requestCompletion: async () => {
+      modelRequests += 1;
+      return {
+        role: 'assistant',
+        content: null,
+        tool_calls: [{ id: 'input-1', type: 'function', function: { name: 'request_user_input', arguments: '{}' } }],
+      };
+    },
+    executeTool: async () => ({ ok: true, pause: true }),
+  });
+  assert.equal(result.paused, true);
+  assert.equal(result.content, '');
+  assert.equal(modelRequests, 1);
+});
+
 test('transient model failures retry once', async () => {
   let attempts = 0;
   let retries = 0;
@@ -122,4 +142,36 @@ test('stream collector assembles content and fragmented tool calls', async () =>
     path: 'index.html',
     content: 'ok',
   });
+});
+
+test('tool loop stops repeated no-progress calls and reports the limit', async () => {
+  const limits = [];
+  await assert.rejects(
+    runToolLoop({
+      messages: [],
+      tools: [],
+      requestCompletion: async () => ({
+        role: 'assistant',
+        content: null,
+        tool_calls: [{ id: Math.random().toString(), type: 'function', function: { name: 'read_file', arguments: '{"path":"same.md"}' } }],
+      }),
+      executeTool: async () => ({ ok: true }),
+      onLimit: (limit) => limits.push(limit),
+    }),
+    (error) => error.code === 'TOOL_LOOP_LIMIT' && error.reason === 'no_progress'
+  );
+  assert.equal(limits[0].reason, 'no_progress');
+});
+
+test('tool loop enforces task deadlines before another model request', async () => {
+  await assert.rejects(
+    runToolLoop({
+      messages: [],
+      tools: [],
+      deadlineAt: Date.now() - 1,
+      requestCompletion: async () => ({ role: 'assistant', content: 'late' }),
+      executeTool: async () => ({ ok: true }),
+    }),
+    (error) => error.code === 'TOOL_LOOP_LIMIT' && error.reason === 'deadline'
+  );
 });

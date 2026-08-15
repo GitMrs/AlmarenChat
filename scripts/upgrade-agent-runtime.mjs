@@ -58,6 +58,7 @@ try {
         "speakerAgentId" TEXT,
         "content" TEXT NOT NULL,
         "attachments" JSONB,
+        "sourceKey" TEXT,
         "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         CONSTRAINT "SpaceMessage_spaceId_fkey" FOREIGN KEY ("spaceId") REFERENCES "Space" ("id") ON DELETE CASCADE ON UPDATE CASCADE
       );
@@ -85,6 +86,9 @@ try {
         "error" TEXT,
         "retryOfId" TEXT,
         "attempt" INTEGER NOT NULL DEFAULT 1,
+        "workerId" TEXT,
+        "heartbeatAt" DATETIME,
+        "completionId" TEXT,
         "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         "updatedAt" DATETIME NOT NULL,
         "startedAt" DATETIME,
@@ -103,6 +107,10 @@ try {
         "result" TEXT,
         "error" TEXT,
         "reviewFeedback" TEXT,
+        "waitQuestion" TEXT,
+        "waitReason" TEXT,
+        "waitAnswer" TEXT,
+        "waitingAt" DATETIME,
         "attempt" INTEGER NOT NULL DEFAULT 1,
         "sortOrder" INTEGER NOT NULL,
         "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -118,8 +126,74 @@ try {
         "type" TEXT NOT NULL,
         "message" TEXT NOT NULL,
         "payload" JSONB,
+        "idempotencyKey" TEXT,
         "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         CONSTRAINT "AgentRunEvent_runId_fkey" FOREIGN KEY ("runId") REFERENCES "AgentRun" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+      );
+      CREATE TABLE IF NOT EXISTS "AgentRunOutbox" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "runId" TEXT NOT NULL,
+        "idempotencyKey" TEXT NOT NULL,
+        "payload" JSONB NOT NULL,
+        "status" TEXT NOT NULL DEFAULT 'PENDING',
+        "attempts" INTEGER NOT NULL DEFAULT 0,
+        "lastError" TEXT,
+        "availableAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "claimedBy" TEXT,
+        "claimedAt" DATETIME,
+        "deliveredAt" DATETIME,
+        "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" DATETIME NOT NULL,
+        CONSTRAINT "AgentRunOutbox_runId_fkey" FOREIGN KEY ("runId") REFERENCES "AgentRun" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+      );
+      CREATE TABLE IF NOT EXISTS "AgentArtifactManifest" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "runId" TEXT NOT NULL,
+        "taskId" TEXT NOT NULL,
+        "attempt" INTEGER NOT NULL,
+        "status" TEXT NOT NULL DEFAULT 'BASELINED',
+        "baseline" JSONB NOT NULL,
+        "entries" JSONB,
+        "validation" JSONB,
+        "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" DATETIME NOT NULL,
+        "completedAt" DATETIME,
+        CONSTRAINT "AgentArtifactManifest_runId_fkey" FOREIGN KEY ("runId") REFERENCES "AgentRun" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+        CONSTRAINT "AgentArtifactManifest_taskId_fkey" FOREIGN KEY ("taskId") REFERENCES "AgentTask" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+      );
+      CREATE TABLE IF NOT EXISTS "SpaceDiscussion" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "spaceId" TEXT NOT NULL,
+        "userId" TEXT NOT NULL,
+        "topic" TEXT NOT NULL,
+        "participantIds" JSONB NOT NULL,
+        "transcript" JSONB,
+        "status" TEXT NOT NULL DEFAULT 'QUEUED',
+        "currentRound" INTEGER NOT NULL DEFAULT 1,
+        "currentIndex" INTEGER NOT NULL DEFAULT 0,
+        "maxRounds" INTEGER NOT NULL DEFAULT 2,
+        "allowWeb" BOOLEAN NOT NULL DEFAULT false,
+        "webSearchCount" INTEGER NOT NULL DEFAULT 0,
+        "pendingResearch" JSONB,
+        "researchContext" TEXT,
+        "result" TEXT,
+        "error" TEXT,
+        "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" DATETIME NOT NULL,
+        "startedAt" DATETIME,
+        "completedAt" DATETIME,
+        CONSTRAINT "SpaceDiscussion_spaceId_fkey" FOREIGN KEY ("spaceId") REFERENCES "Space" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+        CONSTRAINT "SpaceDiscussion_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+      );
+      CREATE TABLE IF NOT EXISTS "SpaceMemory" (
+        "spaceId" TEXT NOT NULL PRIMARY KEY,
+        "recentActivity" JSONB NOT NULL,
+        "rollingSummary" TEXT,
+        "historySummary" TEXT,
+        "activityCount" INTEGER NOT NULL DEFAULT 0,
+        "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" DATETIME NOT NULL,
+        CONSTRAINT "SpaceMemory_spaceId_fkey" FOREIGN KEY ("spaceId") REFERENCES "Space" ("id") ON DELETE CASCADE ON UPDATE CASCADE
       );
 
       CREATE INDEX IF NOT EXISTS "Space_userId_updatedAt_idx" ON "Space"("userId", "updatedAt");
@@ -135,18 +209,44 @@ try {
       CREATE INDEX IF NOT EXISTS "AgentTask_runId_sortOrder_idx" ON "AgentTask"("runId", "sortOrder");
       CREATE INDEX IF NOT EXISTS "AgentTask_status_idx" ON "AgentTask"("status");
       CREATE INDEX IF NOT EXISTS "AgentRunEvent_runId_createdAt_idx" ON "AgentRunEvent"("runId", "createdAt");
+      CREATE UNIQUE INDEX IF NOT EXISTS "AgentRunOutbox_runId_key" ON "AgentRunOutbox"("runId");
+      CREATE UNIQUE INDEX IF NOT EXISTS "AgentRunOutbox_idempotencyKey_key" ON "AgentRunOutbox"("idempotencyKey");
+      CREATE INDEX IF NOT EXISTS "AgentRunOutbox_status_availableAt_idx" ON "AgentRunOutbox"("status", "availableAt");
+      CREATE INDEX IF NOT EXISTS "AgentRunOutbox_claimedBy_claimedAt_idx" ON "AgentRunOutbox"("claimedBy", "claimedAt");
+      CREATE UNIQUE INDEX IF NOT EXISTS "AgentArtifactManifest_taskId_attempt_key" ON "AgentArtifactManifest"("taskId", "attempt");
+      CREATE INDEX IF NOT EXISTS "AgentArtifactManifest_runId_createdAt_idx" ON "AgentArtifactManifest"("runId", "createdAt");
+      CREATE INDEX IF NOT EXISTS "SpaceDiscussion_spaceId_createdAt_idx" ON "SpaceDiscussion"("spaceId", "createdAt");
+      CREATE INDEX IF NOT EXISTS "SpaceDiscussion_userId_createdAt_idx" ON "SpaceDiscussion"("userId", "createdAt");
+      CREATE INDEX IF NOT EXISTS "SpaceDiscussion_status_createdAt_idx" ON "SpaceDiscussion"("status", "createdAt");
       UPDATE "Space" SET "hostAgentId" = 'space-coordinator' WHERE "hostAgentId" IS NULL;
     `);
     if (!hasColumn('SpaceFile', 'runId')) db.exec('ALTER TABLE "SpaceFile" ADD COLUMN "runId" TEXT');
     if (!hasColumn('SpaceFile', 'taskId')) db.exec('ALTER TABLE "SpaceFile" ADD COLUMN "taskId" TEXT');
     if (!hasColumn('SpaceFile', 'status')) db.exec(`ALTER TABLE "SpaceFile" ADD COLUMN "status" TEXT NOT NULL DEFAULT 'READY'`);
     if (!hasColumn('SpaceFile', 'updatedAt')) db.exec('ALTER TABLE "SpaceFile" ADD COLUMN "updatedAt" DATETIME');
+    if (!hasColumn('SpaceFile', 'shareId')) db.exec('ALTER TABLE "SpaceFile" ADD COLUMN "shareId" TEXT');
+    if (!hasColumn('SpaceFile', 'shareEnabled')) db.exec(`ALTER TABLE "SpaceFile" ADD COLUMN "shareEnabled" BOOLEAN NOT NULL DEFAULT false`);
+    if (!hasColumn('SpaceFile', 'sharedAt')) db.exec('ALTER TABLE "SpaceFile" ADD COLUMN "sharedAt" DATETIME');
     if (!hasColumn('AgentTask', 'reviewFeedback')) db.exec('ALTER TABLE "AgentTask" ADD COLUMN "reviewFeedback" TEXT');
+    if (!hasColumn('AgentTask', 'waitQuestion')) db.exec('ALTER TABLE "AgentTask" ADD COLUMN "waitQuestion" TEXT');
+    if (!hasColumn('AgentTask', 'waitReason')) db.exec('ALTER TABLE "AgentTask" ADD COLUMN "waitReason" TEXT');
+    if (!hasColumn('AgentTask', 'waitAnswer')) db.exec('ALTER TABLE "AgentTask" ADD COLUMN "waitAnswer" TEXT');
+    if (!hasColumn('AgentTask', 'waitingAt')) db.exec('ALTER TABLE "AgentTask" ADD COLUMN "waitingAt" DATETIME');
     if (!hasColumn('AgentTask', 'attempt')) db.exec('ALTER TABLE "AgentTask" ADD COLUMN "attempt" INTEGER NOT NULL DEFAULT 1');
     if (!hasColumn('AgentTask', 'reviewedAt')) db.exec('ALTER TABLE "AgentTask" ADD COLUMN "reviewedAt" DATETIME');
+    if (!hasColumn('AgentRun', 'workerId')) db.exec('ALTER TABLE "AgentRun" ADD COLUMN "workerId" TEXT');
+    if (!hasColumn('AgentRun', 'heartbeatAt')) db.exec('ALTER TABLE "AgentRun" ADD COLUMN "heartbeatAt" DATETIME');
+    if (!hasColumn('AgentRun', 'completionId')) db.exec('ALTER TABLE "AgentRun" ADD COLUMN "completionId" TEXT');
+    if (!hasColumn('AgentRunEvent', 'idempotencyKey')) db.exec('ALTER TABLE "AgentRunEvent" ADD COLUMN "idempotencyKey" TEXT');
+    if (!hasColumn('SpaceMessage', 'sourceKey')) db.exec('ALTER TABLE "SpaceMessage" ADD COLUMN "sourceKey" TEXT');
     db.exec(`
       CREATE INDEX IF NOT EXISTS "SpaceFile_runId_idx" ON "SpaceFile"("runId");
       CREATE INDEX IF NOT EXISTS "SpaceFile_taskId_idx" ON "SpaceFile"("taskId");
+      CREATE UNIQUE INDEX IF NOT EXISTS "SpaceFile_shareId_key" ON "SpaceFile"("shareId");
+      CREATE INDEX IF NOT EXISTS "AgentRun_workerId_heartbeatAt_idx" ON "AgentRun"("workerId", "heartbeatAt");
+      CREATE UNIQUE INDEX IF NOT EXISTS "AgentRun_completionId_key" ON "AgentRun"("completionId");
+      CREATE UNIQUE INDEX IF NOT EXISTS "AgentRunEvent_idempotencyKey_key" ON "AgentRunEvent"("idempotencyKey");
+      CREATE UNIQUE INDEX IF NOT EXISTS "SpaceMessage_sourceKey_key" ON "SpaceMessage"("sourceKey");
     `);
   })();
 

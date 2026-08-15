@@ -30,6 +30,7 @@ model User {
   favorites     FavoriteAgent[]
   chatUsages    DailyChatUsage[]
   agentRuns     AgentRun[]
+  discussions   SpaceDiscussion[]
 }
 
 model Agent {
@@ -66,6 +67,8 @@ model Space {
   messages SpaceMessage[]
   files    SpaceFile[]
   runs     AgentRun[]
+  discussions SpaceDiscussion[]
+  memory      SpaceMemory?
 
   @@index([userId, updatedAt])
 }
@@ -92,6 +95,7 @@ model SpaceMessage {
   speakerAgentId String?
   content        String
   attachments    Json?
+  sourceKey      String?  @unique
   createdAt      DateTime @default(now())
 
   @@index([spaceId, createdAt])
@@ -109,6 +113,9 @@ model SpaceFile {
   runId        String?
   taskId       String?
   status       String   @default("READY")
+  shareId      String?  @unique
+  shareEnabled Boolean  @default(false)
+  sharedAt     DateTime?
   createdAt    DateTime @default(now())
   updatedAt    DateTime? @updatedAt
 
@@ -199,6 +206,46 @@ model DailyChatUsage {
   @@index([day])
 }
 
+model SpaceMemory {
+  spaceId         String   @id
+  space           Space    @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  recentActivity  Json
+  rollingSummary  String?
+  historySummary  String?
+  activityCount   Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model SpaceDiscussion {
+  id                String    @id @default(uuid())
+  spaceId           String
+  space             Space     @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  userId            String
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  topic             String
+  participantIds    Json
+  transcript        Json?
+  status            String    @default("QUEUED")
+  currentRound      Int       @default(1)
+  currentIndex      Int       @default(0)
+  maxRounds         Int       @default(2)
+  allowWeb          Boolean   @default(false)
+  webSearchCount    Int       @default(0)
+  pendingResearch   Json?
+  researchContext   String?
+  result            String?
+  error             String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  startedAt         DateTime?
+  completedAt       DateTime?
+
+  @@index([spaceId, createdAt])
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+}
+
 model AgentRun {
   id          String    @id @default(uuid())
   spaceId     String
@@ -211,6 +258,9 @@ model AgentRun {
   error       String?
   retryOfId   String?
   attempt     Int       @default(1)
+  workerId    String?
+  heartbeatAt DateTime?
+  completionId String?   @unique
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   startedAt   DateTime?
@@ -218,10 +268,13 @@ model AgentRun {
 
   tasks  AgentTask[]
   events AgentRunEvent[]
+  outbox AgentRunOutbox?
+  artifactManifests AgentArtifactManifest[]
 
   @@index([spaceId, createdAt])
   @@index([userId, createdAt])
   @@index([status, createdAt])
+  @@index([workerId, heartbeatAt])
 }
 
 model AgentTask {
@@ -236,6 +289,10 @@ model AgentTask {
   result      String?
   error       String?
   reviewFeedback String?
+  waitQuestion String?
+  waitReason   String?
+  waitAnswer   String?
+  waitingAt    DateTime?
   attempt     Int       @default(1)
   sortOrder   Int
   createdAt   DateTime  @default(now())
@@ -244,8 +301,29 @@ model AgentTask {
   completedAt DateTime?
   reviewedAt  DateTime?
 
+  artifactManifests AgentArtifactManifest[]
+
   @@index([runId, sortOrder])
   @@index([status])
+}
+
+model AgentArtifactManifest {
+  id          String    @id @default(uuid())
+  runId       String
+  run         AgentRun  @relation(fields: [runId], references: [id], onDelete: Cascade)
+  taskId      String
+  task        AgentTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  attempt     Int
+  status      String    @default("BASELINED")
+  baseline    Json
+  entries     Json?
+  validation  Json?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  completedAt DateTime?
+
+  @@unique([taskId, attempt])
+  @@index([runId, createdAt])
 }
 
 model AgentRunEvent {
@@ -255,7 +333,28 @@ model AgentRunEvent {
   type      String
   message   String
   payload   Json?
+  idempotencyKey String? @unique
   createdAt DateTime @default(now())
 
   @@index([runId, createdAt])
+}
+
+model AgentRunOutbox {
+  id             String   @id @default(uuid())
+  runId          String   @unique
+  run            AgentRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  idempotencyKey String   @unique
+  payload        Json
+  status         String   @default("PENDING")
+  attempts       Int      @default(0)
+  lastError      String?
+  availableAt    DateTime @default(now())
+  claimedBy      String?
+  claimedAt      DateTime?
+  deliveredAt    DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([status, availableAt])
+  @@index([claimedBy, claimedAt])
 }

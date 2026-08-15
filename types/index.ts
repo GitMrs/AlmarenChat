@@ -80,6 +80,7 @@ export interface SpaceMessage {
   speakerAgentId?: string | null;
   content: string;
   attachments?: SpaceMessageAttachment[];
+  sourceKey?: string | null;
   createdAt: string;
 }
 
@@ -93,7 +94,20 @@ export interface SpaceFile {
   runId?: string | null;
   taskId?: string | null;
   status?: 'GENERATING' | 'WAITING_APPROVAL' | 'READY' | 'INCOMPLETE';
+  shareId?: string | null;
+  shareEnabled?: boolean;
+  sharedAt?: string | null;
   createdAt: string;
+  updatedAt?: string | null;
+}
+
+export interface SpaceFileShare {
+  id: string;
+  fileName: string;
+  spaceId: string;
+  spaceName: string;
+  url: string;
+  sharedAt?: string | null;
   updatedAt?: string | null;
 }
 
@@ -111,7 +125,49 @@ export interface SpaceTaskProposal {
   runId?: string;
 }
 
-export type SpaceMessageAttachment = MessageAttachment | SpaceTaskProposal;
+export interface SpaceDiscussionAttachment {
+  type: 'discussion_turn' | 'discussion_summary';
+  discussionId: string;
+  round?: number;
+  failed?: boolean;
+}
+
+export interface SpaceRunResultAttachment {
+  type: 'run_result';
+  runId: string;
+  status: string;
+}
+
+export interface SpaceDiscussionResearchRequest {
+  query: string;
+  reason: string;
+  agentId: string;
+  agentName: string;
+  approved?: boolean;
+}
+
+export interface SpaceDiscussion {
+  id: string;
+  spaceId: string;
+  userId: string;
+  topic: string;
+  participantIds: string[];
+  status: 'QUEUED' | 'RUNNING' | 'WAITING_RESEARCH' | 'CANCEL_REQUESTED' | 'CANCELLED' | 'COMPLETED' | 'FAILED';
+  currentRound: number;
+  currentIndex: number;
+  maxRounds: number;
+  allowWeb: boolean;
+  webSearchCount: number;
+  pendingResearch?: SpaceDiscussionResearchRequest | null;
+  result?: string | null;
+  error?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  startedAt?: string | null;
+  completedAt?: string | null;
+}
+
+export type SpaceMessageAttachment = MessageAttachment | SpaceTaskProposal | SpaceDiscussionAttachment | SpaceRunResultAttachment;
 
 export interface AgentRun {
   id: string;
@@ -121,9 +177,12 @@ export interface AgentRun {
   status: string;
   result?: string | null;
   error?: string | null;
-  retryOfId?: string | null;
-  attempt: number;
-  createdAt: string;
+    retryOfId?: string | null;
+    attempt: number;
+    workerId?: string | null;
+    heartbeatAt?: string | null;
+    completionId?: string | null;
+    createdAt: string;
   updatedAt: string;
   startedAt?: string | null;
   completedAt?: string | null;
@@ -140,9 +199,13 @@ export interface AgentTask {
   instruction: string;
   status: string;
   result?: string | null;
-  error?: string | null;
-  reviewFeedback?: string | null;
-  attempt: number;
+    error?: string | null;
+    reviewFeedback?: string | null;
+    waitQuestion?: string | null;
+    waitReason?: string | null;
+    waitAnswer?: string | null;
+    waitingAt?: string | null;
+    attempt: number;
   sortOrder: number;
   createdAt: string;
   updatedAt: string;
@@ -157,6 +220,7 @@ export interface AgentRunEvent {
   type: string;
   message: string;
   payload?: unknown;
+  idempotencyKey?: string | null;
   createdAt: string;
 }
 

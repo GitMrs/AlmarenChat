@@ -2,10 +2,11 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowRight, Loader2, PanelsTopLeft, Plus, Search, Trash2, UsersRound } from 'lucide-react';
+import { ArrowRight, Loader2, PanelsTopLeft, Plus, Search, Trash2 } from 'lucide-react';
 import AppShell from '@/components/layout/AppShell';
 import LoginRequired from '@/components/auth/LoginRequired';
 import Avatar from '@/components/shared/Avatar';
+import CreateSpaceDialog, { type CreateSpaceInput } from '@/components/spaces/CreateSpaceDialog';
 import { spaces as spacesApi, agents as agentsApi } from '@/lib/api';
 import { getBuiltInAgents } from '@/lib/agents-data';
 import type { Agent } from '@/types';
@@ -24,13 +25,11 @@ export default function SpacesPage() {
   const router = useRouter();
   const [spaces, setSpaces] = useState<any[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
-  const [selectedAgentIds, setSelectedAgentIds] = useState<string[]>([]);
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [instructions, setInstructions] = useState('');
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [createError, setCreateError] = useState('');
   const [needsLogin, setNeedsLogin] = useState(false);
   const [error, setError] = useState('');
 
@@ -66,27 +65,16 @@ export default function SpacesPage() {
     ? spaces.filter((space) => `${space.name} ${space.description || ''}`.toLowerCase().includes(query.toLowerCase()))
     : spaces;
 
-  const toggleAgent = (agentId: string) => {
-    setSelectedAgentIds((current) =>
-      current.includes(agentId) ? current.filter((id) => id !== agentId) : [...current, agentId].slice(0, 6)
-    );
-  };
-
-  const createSpace = async () => {
-    if (!name.trim() || creating) return;
+  const createSpace = async (input: CreateSpaceInput) => {
+    if (!input.name || creating) return;
 
     setCreating(true);
-    setError('');
+    setCreateError('');
     try {
-      const result = await spacesApi.create({
-        name: name.trim(),
-        description: description.trim(),
-        instructions: instructions.trim(),
-        agentIds: selectedAgentIds,
-      });
+      const result = await spacesApi.create(input);
       router.push(`/spaces/${result.space.id}`);
     } catch (err: any) {
-      setError(err.message || '创建空间失败');
+      setCreateError(err.message || '创建空间失败');
     } finally {
       setCreating(false);
     }
@@ -135,20 +123,31 @@ export default function SpacesPage() {
             <Loader2 className="animate-spin" size={24} />
           </div>
         ) : (
-          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px]">
+          <div>
             <section className="space-y-4">
               <div className="flex items-end justify-between">
                 <div>
                   <p className="text-sm font-bold text-slate-400">Spaces</p>
                   <h2 className="text-2xl font-black text-slate-950">我的空间</h2>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCreateError('');
+                    setCreateDialogOpen(true);
+                  }}
+                  className="inline-flex h-10 items-center gap-2 rounded-lg bg-slate-950 px-4 text-sm font-black text-white transition hover:bg-slate-800"
+                >
+                  <Plus size={16} />
+                  新建空间
+                </button>
               </div>
 
               {error && <div className="rounded-2xl bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-600">{error}</div>}
 
               {filteredSpaces.length === 0 ? (
                 <div className="rounded-[28px] border border-dashed border-slate-200 bg-white p-10 text-center text-slate-400">
-                  还没有空间。先在右侧创建一个。
+                  还没有空间。先新建一个空间。
                 </div>
               ) : (
                 <div className="grid gap-4">
@@ -212,91 +211,18 @@ export default function SpacesPage() {
                 </div>
               )}
             </section>
-
-            <aside className="rounded-[28px] border border-black/[0.06] bg-white p-5 shadow-sm">
-              <div className="mb-5 flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-950 text-white">
-                  <Plus size={18} />
-                </div>
-                <div>
-                  <h2 className="text-xl font-black text-slate-950">新建空间</h2>
-                  <p className="text-sm text-slate-500">先选一个主题，再拉几个 Agent。</p>
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <input
-                  value={name}
-                  onChange={(event) => setName(event.target.value)}
-                  placeholder="例如：末日无期互动故事"
-                  className="h-12 w-full rounded-2xl border border-black/[0.08] bg-[#fbfaf7] px-4 text-sm font-bold text-slate-800 outline-none focus:border-slate-300 focus:ring-4 focus:ring-slate-200/70"
-                />
-                <textarea
-                  value={description}
-                  onChange={(event) => setDescription(event.target.value)}
-                  placeholder="这个空间要一起推进什么？"
-                  rows={3}
-                  className="w-full resize-none rounded-2xl border border-black/[0.08] bg-[#fbfaf7] px-4 py-3 text-sm font-medium leading-6 text-slate-800 outline-none focus:border-slate-300 focus:ring-4 focus:ring-slate-200/70"
-                />
-                <div>
-                  <label htmlFor="space-instructions" className="mb-2 block text-sm font-black text-slate-700">
-                    空间规则
-                  </label>
-                  <textarea
-                    id="space-instructions"
-                    value={instructions}
-                    onChange={(event) => setInstructions(event.target.value)}
-                    maxLength={12_000}
-                    placeholder="例如：使用 TypeScript；修改后运行类型检查；所有报告使用中文。"
-                    rows={4}
-                    className="w-full resize-y rounded-2xl border border-black/[0.08] bg-[#fbfaf7] px-4 py-3 text-sm font-medium leading-6 text-slate-800 outline-none focus:border-slate-300 focus:ring-4 focus:ring-slate-200/70"
-                  />
-                </div>
-
-                <div>
-                  <div className="mb-3 flex items-center gap-2 text-sm font-black text-slate-700">
-                    <UsersRound size={16} />
-                    初始成员
-                  </div>
-                  <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
-                    {agents.slice(0, 30).map((agent) => {
-                      const selected = selectedAgentIds.includes(agent.id);
-                      return (
-                        <button
-                          key={agent.id}
-                          type="button"
-                          onClick={() => toggleAgent(agent.id)}
-                          className={`flex w-full items-center gap-3 rounded-2xl border px-3 py-2 text-left transition ${
-                            selected ? 'border-slate-950 bg-slate-950 text-white' : 'border-black/[0.06] bg-[#fbfaf7] text-slate-700 hover:bg-white'
-                          }`}
-                        >
-                          <Avatar src={agent.avatar || '🤖'} alt={agent.name} size="sm" />
-                          <div className="min-w-0 flex-1">
-                            <div className="truncate text-sm font-black">{agent.name}</div>
-                            <div className={`truncate text-xs font-semibold ${selected ? 'text-white/65' : 'text-slate-400'}`}>
-                              {agent.category || 'Agent'}
-                            </div>
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={createSpace}
-                  disabled={!name.trim() || creating}
-                  className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-slate-950 text-sm font-black text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg disabled:bg-slate-200 disabled:text-slate-400 disabled:hover:translate-y-0 disabled:hover:shadow-sm"
-                >
-                  {creating ? <Loader2 className="animate-spin" size={16} /> : <Plus size={16} />}
-                  创建空间
-                </button>
-              </div>
-            </aside>
           </div>
         )}
       </div>
+      {createDialogOpen && (
+        <CreateSpaceDialog
+          agents={agents}
+          busy={creating}
+          error={createError}
+          onClose={() => setCreateDialogOpen(false)}
+          onCreate={createSpace}
+        />
+      )}
     </AppShell>
   );
 }

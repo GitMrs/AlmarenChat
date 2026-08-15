@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { getAgentRunForUser, isAgentRunActive } from '@/app/api/_lib/agent-runs';
+import { completionIdFor } from '@/lib/agent-completion-policy.mjs';
+import { discardWorkspaceAttempt } from '@/lib/workspace-staging.mjs';
+import { persistSpaceMemory } from '@/app/api/_lib/space-memory';
 
 export async function POST(request: Request, { params }: { params: Promise<{ runId: string }> }) {
   try {
@@ -11,31 +14,76 @@ export async function POST(request: Request, { params }: { params: Promise<{ run
     if (!existing) return NextResponse.json({ error: 'Run not found' }, { status: 404 });
     if (!isAgentRunActive(existing.status)) return NextResponse.json({ run: existing });
 
-    const immediate = ['QUEUED', 'WAITING_APPROVAL'].includes(existing.status);
+    const immediate = ['QUEUED', 'WAITING', 'WAITING_APPROVAL'].includes(existing.status);
     const timestamp = new Date();
+    const completionId = completionIdFor(runId);
     await prisma.$transaction(async (transaction) => {
       if (immediate) {
         await transaction.agentTask.updateMany({
-          where: { runId, status: { in: ['PENDING', 'RUNNING', 'WAITING_APPROVAL', 'CANCEL_REQUESTED'] } },
+          where: { runId, status: { in: ['PENDING', 'RUNNING', 'WAITING', 'WAITING_APPROVAL', 'CANCEL_REQUESTED'] } },
           data: { status: 'CANCELLED', completedAt: timestamp },
         });
-        await transaction.spaceFile.updateMany({
+        await transaction.spaceFile.deleteMany({
           where: { runId, status: { in: ['GENERATING', 'WAITING_APPROVAL'] } },
-          data: { status: 'INCOMPLETE', updatedAt: timestamp },
         });
       }
       await transaction.agentRun.update({
         where: { id: runId },
-        data: { status: immediate ? 'CANCELLED' : 'CANCEL_REQUESTED', completedAt: immediate ? timestamp : undefined },
+        data: {
+          status: immediate ? 'CANCELLED' : 'CANCEL_REQUESTED',
+          completionId: immediate ? completionId : undefined,
+          completedAt: immediate ? timestamp : undefined,
+        },
       });
       await transaction.agentRunEvent.create({
         data: {
           runId,
           type: immediate ? 'RUN_CANCELLED' : 'RUN_CANCEL_REQUESTED',
           message: immediate ? '任务已取消' : '已请求取消任务',
+          idempotencyKey: immediate ? completionId : undefined,
         },
       });
+      if (immediate) {
+        await transaction.agentRunOutbox.upsert({
+          where: { runId },
+          update: {},
+          create: {
+            runId,
+            idempotencyKey: completionId,
+            payload: {
+              runId,
+              spaceId: existing.spaceId,
+              completionId,
+              status: 'CANCELLED',
+              result: null,
+              error: null,
+            },
+          },
+        });
+      }
     });
+    if (immediate) {
+      const cleanup = await Promise.allSettled(existing.tasks.map((task) => discardWorkspaceAttempt({
+        projectRoot: process.cwd(),
+        userId,
+        spaceId: existing.spaceId,
+        taskId: task.id,
+        attempt: task.attempt,
+      })));
+      const failures = cleanup.filter((result) => result.status === 'rejected');
+      if (failures.length > 0) {
+        await prisma.agentRunEvent.create({
+          data: { runId, type: 'WORKSPACE_STAGING_CLEANUP_FAILED', message: `${failures.length} 个任务暂存区清理失败` },
+        });
+      }
+      await persistSpaceMemory(existing.spaceId, [{
+        type: 'task_run',
+        actor: '空间协调者',
+        summary: `${existing.input}；状态：CANCELLED`,
+        at: timestamp.toISOString(),
+        refId: runId,
+      }]);
+    }
     const run = await getAgentRunForUser(runId, userId);
     return NextResponse.json({ run });
   } catch (error: any) {

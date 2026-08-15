@@ -4,7 +4,7 @@ import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { ACTIVE_AGENT_RUN_STATUSES, agentRunInclude } from '@/app/api/_lib/agent-runs';
 import { getSpaceForUser } from '@/app/api/_lib/spaces';
-import { taskProposalCapabilities } from '@/lib/task-proposals';
+import { taskProposalCapabilities, taskProposalNeedsClarification } from '@/lib/task-proposals';
 
 type TaskProposalAttachment = {
   type: 'task_proposal';
@@ -45,6 +45,9 @@ function applyRevision(proposal: TaskProposalAttachment, revision: TaskProposalR
   const goal = typeof next.goal === 'string' ? next.goal.trim() : '';
   const steps = Array.isArray(next.steps) ? next.steps : [];
   const deliverables = Array.isArray(next.deliverables) ? next.deliverables : [];
+  if (taskProposalNeedsClarification(goal, steps)) {
+    throw new Error('任务仍依赖用户补充信息，请先回到聊天中确认关键输入。');
+  }
   return { ...next, capabilities: taskProposalCapabilities(goal, steps, deliverables) };
 }
 

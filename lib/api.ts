@@ -1,4 +1,4 @@
-import type { AgentRun } from '@/types';
+import type { AgentRun, SpaceDiscussion, SpaceFileShare } from '@/types';
 
 const API_BASE = '/api';
 
@@ -159,6 +159,21 @@ export const spaces = {
     const query = params.toString();
     return request<{ messages: any[]; hasMore?: boolean }>(`/spaces/${id}/messages${query ? `?${query}` : ''}`);
   },
+  discussions: (id: string) =>
+    request<{ discussions: SpaceDiscussion[] }>(`/spaces/${id}/discussions`),
+  createDiscussion: (id: string, data: { topic: string; participantIds: string[]; allowWeb: boolean }) =>
+    request<{ discussion: SpaceDiscussion }>(`/spaces/${id}/discussions`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  updateDiscussion: (
+    spaceId: string,
+    discussionId: string,
+    data: { action: 'cancel' | 'approve_research' | 'reject_research'; scope?: 'once' | 'discussion' }
+  ) => request<{ discussion: SpaceDiscussion }>(`/spaces/${spaceId}/discussions/${discussionId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  }),
   deleteMessage: (spaceId: string, messageId: string) =>
     request<{ success: boolean }>(`/spaces/${spaceId}/messages/${messageId}`, { method: 'DELETE' }),
   files: (id: string) => request<{ files: any[] }>(`/spaces/${id}/files`),
@@ -177,6 +192,14 @@ export const spaces = {
     request<{ content: string; updatedAt: string | null; readOnlyReason: string | null }>(
       `/spaces/${spaceId}/files/${fileId}?mode=edit`
     ),
+  createFilePreview: (spaceId: string, fileId: string) =>
+    request<{ url: string; rootUrl: string }>(`/spaces/${spaceId}/files/${fileId}/preview`, { method: 'POST' }),
+  getFileShare: (spaceId: string, fileId: string) =>
+    request<{ enabled: boolean; url: string | null }>(`/spaces/${spaceId}/files/${fileId}/share`),
+  enableFileShare: (spaceId: string, fileId: string) =>
+    request<{ enabled: boolean; url: string }>(`/spaces/${spaceId}/files/${fileId}/share`, { method: 'PUT' }),
+  disableFileShare: (spaceId: string, fileId: string) =>
+    request<{ enabled: false; url: null }>(`/spaces/${spaceId}/files/${fileId}/share`, { method: 'DELETE' }),
   updateFileText: (spaceId: string, fileId: string, content: string, updatedAt: string | null) =>
     request<{ file: any }>(`/spaces/${spaceId}/files/${fileId}`, {
       method: 'PUT',
@@ -239,6 +262,10 @@ export const spaces = {
     }>(`/spaces/${id}/compression-stats`),
 };
 
+export const spaceShares = {
+  list: () => request<{ shares: SpaceFileShare[] }>('/shares'),
+};
+
 export const agentRuns = {
   get: (id: string) => request<{ run: AgentRun }>(`/runs/${id}`),
   cancel: (id: string) =>
@@ -249,6 +276,11 @@ export const agentRuns = {
     request<{ run: AgentRun }>(`/runs/${runId}/tasks/${taskId}/review`, {
       method: 'POST',
       body: JSON.stringify({ action, feedback }),
+    }),
+  resume: (id: string, answer: string) =>
+    request<{ run: AgentRun }>(`/runs/${id}/resume`, {
+      method: 'POST',
+      body: JSON.stringify({ answer }),
     }),
   retry: (id: string) =>
     request<{ run: AgentRun }>(`/runs/${id}/retry`, { method: 'POST' }),
@@ -351,6 +383,7 @@ export async function streamSpaceMessage(data: {
   message: string;
   history: { role: string; content: string; speakerAgentId?: string | null }[];
   targetAgentId?: string;
+  interactionMode?: 'chat' | 'multi_reply';
   skipPersistUserMessage?: boolean;
   signal?: AbortSignal;
 }): Promise<{ stream: ReadableStream<Uint8Array>; speakerAgentId?: string; speakerAgentName?: string; workspaceFilesChanged: number }> {
@@ -366,6 +399,7 @@ export async function streamSpaceMessage(data: {
       message: data.message,
       history: data.history,
       targetAgentId: data.targetAgentId,
+      interactionMode: data.interactionMode,
       skipPersistUserMessage: data.skipPersistUserMessage,
     }),
     signal: data.signal,

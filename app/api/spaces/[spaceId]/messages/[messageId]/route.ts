@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { getSpaceForUser } from '@/app/api/_lib/spaces';
+import { rebuildSpaceMemory } from '@/app/api/_lib/space-memory';
 
 type TaskProposalAttachment = {
   type: 'task_proposal';
@@ -61,6 +62,7 @@ export async function DELETE(
     if (!space) return NextResponse.json({ error: 'Space not found' }, { status: 404 });
 
     await prisma.spaceMessage.deleteMany({ where: { id: messageId, spaceId } });
+    await rebuildSpaceMemory(spaceId);
     await prisma.space.update({ where: { id: spaceId }, data: { updatedAt: new Date() } });
     return NextResponse.json({ success: true });
   } catch (e: any) {

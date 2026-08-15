@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
 
 const MAX_TOOL_ITERATIONS = 12;
+const MAX_TOOL_CALLS = 24;
+const MAX_IDENTICAL_TOOL_CALLS = 2;
 const MAX_TOOL_RESULT_LENGTH = 16_000;
 const TRANSIENT_MODEL_STATUSES = new Set([408, 409, 429, 500, 502, 503, 504, 520, 522, 524]);
 
@@ -88,9 +90,33 @@ function normalizeToolArguments(value) {
   }
 }
 
-export async function runToolLoop({ messages, requestCompletion, tools, executeTool, isCancelled, onModelRequest }) {
+function toolLoopLimit(message, reason) {
+  const error = new Error(message);
+  error.code = 'TOOL_LOOP_LIMIT';
+  error.reason = reason;
+  return error;
+}
+
+export async function runToolLoop({
+  messages,
+  requestCompletion,
+  tools,
+  executeTool,
+  isCancelled,
+  onModelRequest,
+  onLimit = undefined,
+  deadlineAt = null,
+  maxIterations = MAX_TOOL_ITERATIONS,
+  maxToolCalls = MAX_TOOL_CALLS,
+}) {
   const conversation = [...messages];
-  for (let iteration = 1; iteration <= MAX_TOOL_ITERATIONS; iteration += 1) {
+  const signatureCounts = new Map();
+  let toolCallCount = 0;
+  const assertBudget = () => {
+    if (deadlineAt && Date.now() >= deadlineAt) throw toolLoopLimit('Agent 执行超过时间预算，任务已停止', 'deadline');
+  };
+  for (let iteration = 1; iteration <= maxIterations; iteration += 1) {
+    assertBudget();
     if (isCancelled?.()) throw new Error('任务已取消');
     onModelRequest?.({ iteration });
     const message = await requestCompletion(conversation, tools);
@@ -109,14 +135,29 @@ export async function runToolLoop({ messages, requestCompletion, tools, executeT
     }
 
     for (const toolCall of toolCalls) {
+      assertBudget();
       if (isCancelled?.()) throw new Error('任务已取消');
       const name = String(toolCall?.function?.name || '');
       let args = {};
       let result;
       try {
         args = normalizeToolArguments(toolCall?.function?.arguments);
+        toolCallCount += 1;
+        if (toolCallCount > maxToolCalls) {
+          throw toolLoopLimit(`Agent 工具调用超过 ${maxToolCalls} 次，任务已停止`, 'tool_calls');
+        }
+        const signature = `${name}:${JSON.stringify(args)}`;
+        const repeated = (signatureCounts.get(signature) || 0) + 1;
+        signatureCounts.set(signature, repeated);
+        if (repeated > MAX_IDENTICAL_TOOL_CALLS) {
+          throw toolLoopLimit(`Agent 重复执行相同工具且没有进展：${name}`, 'no_progress');
+        }
         result = await executeTool(name, args);
       } catch (error) {
+        if (error?.code === 'TOOL_LOOP_LIMIT') {
+          onLimit?.({ reason: error.reason, message: error.message, iteration, toolCallCount });
+          throw error;
+        }
         result = { ok: false, error: error instanceof Error ? error.message : String(error) };
       }
       conversation.push({
@@ -124,7 +165,12 @@ export async function runToolLoop({ messages, requestCompletion, tools, executeT
         tool_call_id: toolCall.id,
         content: JSON.stringify(result).slice(0, MAX_TOOL_RESULT_LENGTH),
       });
+      if (result?.pause === true) {
+        return { content: '', iterations: iteration, paused: true };
+      }
     }
   }
-  throw new Error(`Agent 工具调用超过 ${MAX_TOOL_ITERATIONS} 轮，任务已停止`);
+  const error = toolLoopLimit(`Agent 工具调用超过 ${maxIterations} 轮，任务已停止`, 'iterations');
+  onLimit?.({ reason: error.reason, message: error.message, iteration: maxIterations, toolCallCount });
+  throw error;
 }

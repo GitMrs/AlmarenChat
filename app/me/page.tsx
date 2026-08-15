@@ -6,11 +6,16 @@ import {
   ArrowRight,
   Bot,
   Clock3,
+  Copy,
   Edit3,
+  ExternalLink,
   FileText,
+  Globe2,
   Heart,
+  Link2Off,
   Loader2,
   MessageSquare,
+  PanelsTopLeft,
   Plus,
   Rocket,
   ShieldCheck,
@@ -22,8 +27,8 @@ import AppShell from '@/components/layout/AppShell';
 import LoginRequired from '@/components/auth/LoginRequired';
 import SettingsPanel from '@/components/settings/SettingsPanel';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
-import { agents as agentsApi, auth, conversations as conversationsApi, favorites as favoritesApi } from '@/lib/api';
-import type { Agent } from '@/types';
+import { agents as agentsApi, auth, conversations as conversationsApi, favorites as favoritesApi, spaceShares as spaceSharesApi, spaces as spacesApi } from '@/lib/api';
+import type { Agent, SpaceFileShare } from '@/types';
 import { cn } from '@/lib/utils';
 
 function formatDate(value: string) {
@@ -38,7 +43,8 @@ function formatDate(value: string) {
 function MeContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const activeTab = searchParams.get('tab') === 'settings' ? 'settings' : 'assets';
+  const requestedTab = searchParams.get('tab');
+  const activeTab = requestedTab === 'settings' || requestedTab === 'shares' ? requestedTab : 'assets';
   const [myAgents, setMyAgents] = useState<Agent[]>([]);
   const [favoriteAgents, setFavoriteAgents] = useState<any[]>([]);
   const [recentConversations, setRecentConversations] = useState<any[]>([]);
@@ -49,6 +55,12 @@ function MeContent() {
   const [uploadingKnowledgeId, setUploadingKnowledgeId] = useState<string | null>(null);
   const [knowledgeNotice, setKnowledgeNotice] = useState('');
   const [pendingDeleteAgent, setPendingDeleteAgent] = useState<Agent | null>(null);
+  const [sharedPages, setSharedPages] = useState<SpaceFileShare[]>([]);
+  const [sharesLoading, setSharesLoading] = useState(false);
+  const [shareActionId, setShareActionId] = useState<string | null>(null);
+  const [pendingDisableShare, setPendingDisableShare] = useState<SpaceFileShare | null>(null);
+  const [shareError, setShareError] = useState('');
+  const [shareNotice, setShareNotice] = useState('');
 
   useEffect(() => {
     if (!localStorage.getItem('token')) {
@@ -76,6 +88,26 @@ function MeContent() {
       })
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (activeTab !== 'shares' || !localStorage.getItem('token')) return;
+    let active = true;
+    setSharesLoading(true);
+    setShareError('');
+    spaceSharesApi.list()
+      .then((result) => {
+        if (active) setSharedPages(result.shares);
+      })
+      .catch((err: any) => {
+        if (active) setShareError(err.message || '加载网页共享失败');
+      })
+      .finally(() => {
+        if (active) setSharesLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [activeTab]);
 
   const togglePublish = async (agent: Agent) => {
     if (updatingId) return;
@@ -127,8 +159,35 @@ function MeContent() {
     }
   };
 
-  const switchTab = (tab: 'assets' | 'settings') => {
-    router.push(tab === 'settings' ? '/me?tab=settings' : '/me');
+  const disableShare = async () => {
+    if (!pendingDisableShare || shareActionId) return;
+    setShareActionId(pendingDisableShare.id);
+    setShareError('');
+    setShareNotice('');
+    try {
+      await spacesApi.disableFileShare(pendingDisableShare.spaceId, pendingDisableShare.id);
+      setSharedPages((items) => items.filter((item) => item.id !== pendingDisableShare.id));
+      setShareNotice(`已关闭「${pendingDisableShare.fileName}」的公开共享`);
+      setPendingDisableShare(null);
+    } catch (err: any) {
+      setShareError(err.message || '关闭网页共享失败');
+    } finally {
+      setShareActionId(null);
+    }
+  };
+
+  const copyShareLink = async (item: SpaceFileShare) => {
+    try {
+      await navigator.clipboard.writeText(new URL(item.url, window.location.origin).toString());
+      setShareError('');
+      setShareNotice(`已复制「${item.fileName}」的共享链接`);
+    } catch {
+      setShareError('复制共享链接失败');
+    }
+  };
+
+  const switchTab = (tab: 'assets' | 'shares' | 'settings') => {
+    router.push(tab === 'assets' ? '/me' : `/me?tab=${tab}`);
   };
 
   return (
@@ -142,26 +201,29 @@ function MeContent() {
                 个人中心
               </div>
               <h1 className="text-4xl font-black leading-tight text-slate-950 sm:text-5xl">
-                管理你的 Agent、模型和账号。
+                管理你的 Agent、网页共享和账号。
               </h1>
               <p className="mt-4 text-base leading-7 text-slate-500">
-                这里是用户自己的空间。创建后的 Agent 默认先在这里维护，账号和模型配置也统一放在这里。
+                在这里维护你创建的 Agent、公开网页和账号配置。
               </p>
             </div>
 
-            <button
-              onClick={() => router.push('/create-agent')}
-              className="inline-flex w-fit cursor-pointer items-center justify-center gap-2 rounded-full bg-slate-950 px-5 py-3 text-sm font-black text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg"
-            >
-              <Plus size={17} />
-              创建新 Agent
-            </button>
+            {activeTab === 'assets' && (
+              <button
+                onClick={() => router.push('/create-agent')}
+                className="inline-flex w-fit cursor-pointer items-center justify-center gap-2 rounded-full bg-slate-950 px-5 py-3 text-sm font-black text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg"
+              >
+                <Plus size={17} />
+                创建新 Agent
+              </button>
+            )}
           </div>
         </section>
 
         <section className="flex flex-wrap gap-2 rounded-[28px] border border-black/[0.06] bg-white p-2 shadow-sm">
           {[
             { id: 'assets', label: '我的资产', icon: Bot },
+            { id: 'shares', label: '网页共享', icon: Globe2 },
             { id: 'settings', label: '账号设置', icon: SlidersHorizontal },
           ].map((tab) => {
             const Icon = tab.icon;
@@ -169,7 +231,7 @@ function MeContent() {
             return (
               <button
                 key={tab.id}
-                onClick={() => switchTab(tab.id as 'assets' | 'settings')}
+                onClick={() => switchTab(tab.id as 'assets' | 'shares' | 'settings')}
                 className={cn(
                   'inline-flex cursor-pointer items-center gap-2 rounded-full px-4 py-2 text-sm font-black transition',
                   active ? 'bg-slate-950 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-950'
@@ -222,6 +284,75 @@ function MeContent() {
         )}
 
         {!needsLogin && activeTab === 'settings' && <SettingsPanel />}
+
+        {!needsLogin && activeTab === 'shares' && (
+          <section className="space-y-5">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <p className="text-sm font-bold text-slate-400">Shared Pages</p>
+                <h2 className="text-2xl font-black text-slate-950">网页共享</h2>
+                <p className="mt-2 text-sm text-slate-500">集中管理从不同空间公开的 HTML 网页。</p>
+              </div>
+              {!sharesLoading && sharedPages.length > 0 && (
+                <div className="text-sm font-bold text-slate-400">共 {sharedPages.length} 个</div>
+              )}
+            </div>
+
+            {shareError && <div className="rounded-lg bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-600">{shareError}</div>}
+            {shareNotice && <div className="rounded-lg bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">{shareNotice}</div>}
+
+            {sharesLoading ? (
+              <div className="flex items-center justify-center py-20 text-slate-400"><Loader2 className="animate-spin" size={24} /></div>
+            ) : shareError ? null : sharedPages.length > 0 ? (
+              <div className="grid gap-3">
+                {sharedPages.map((item) => {
+                  const busy = shareActionId === item.id;
+                  return (
+                    <article key={item.id} className="flex flex-col gap-4 rounded-lg border border-black/[0.07] bg-white p-4 shadow-sm sm:flex-row sm:items-center">
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700">
+                        <Globe2 size={19} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="truncate text-sm font-black text-slate-950">{item.fileName}</h3>
+                          <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-bold text-emerald-700">共享中</span>
+                        </div>
+                        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-semibold text-slate-400">
+                          <span className="inline-flex items-center gap-1"><PanelsTopLeft size={12} />{item.spaceName}</span>
+                          {item.sharedAt && <span>开启于 {formatDate(item.sharedAt)}</span>}
+                          {item.updatedAt && <span>更新于 {formatDate(item.updatedAt)}</span>}
+                        </div>
+                      </div>
+                      <div className="flex shrink-0 flex-wrap gap-2">
+                        <button type="button" onClick={() => copyShareLink(item)} className="inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-xs font-black text-slate-500 transition hover:bg-slate-100 hover:text-slate-950">
+                          <Copy size={14} />复制链接
+                        </button>
+                        <button type="button" onClick={() => window.open(item.url, '_blank', 'noopener,noreferrer')} className="inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-xs font-black text-slate-500 transition hover:bg-slate-100 hover:text-slate-950">
+                          <ExternalLink size={14} />打开网页
+                        </button>
+                        <button type="button" onClick={() => router.push(`/spaces/${item.spaceId}`)} className="inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-xs font-black text-slate-500 transition hover:bg-slate-100 hover:text-slate-950">
+                          <PanelsTopLeft size={14} />所属空间
+                        </button>
+                        <button type="button" onClick={() => setPendingDisableShare(item)} disabled={busy} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-rose-50 px-3 text-xs font-black text-rose-600 transition hover:bg-rose-100 disabled:text-rose-300">
+                          {busy ? <Loader2 className="animate-spin" size={14} /> : <Link2Off size={14} />}关闭共享
+                        </button>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="border-y border-black/[0.06] py-16 text-center">
+                <Globe2 className="mx-auto text-slate-300" size={28} />
+                <h3 className="mt-4 text-base font-black text-slate-950">还没有公开网页</h3>
+                <p className="mt-2 text-sm text-slate-500">在空间中打开 HTML 文件，通过“公开共享”开关发布网页。</p>
+                <button type="button" onClick={() => router.push('/spaces')} className="mt-5 inline-flex h-10 items-center gap-2 rounded-lg bg-slate-950 px-4 text-sm font-black text-white">
+                  <PanelsTopLeft size={15} />前往空间
+                </button>
+              </div>
+            )}
+          </section>
+        )}
 
         {!needsLogin && activeTab === 'assets' && <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
           <div className="space-y-5">
@@ -442,6 +573,18 @@ function MeContent() {
         loading={Boolean(pendingDeleteAgent && updatingId === pendingDeleteAgent.id)}
         onCancel={() => setPendingDeleteAgent(null)}
         onConfirm={deleteAgent}
+      />
+      <ConfirmDialog
+        open={Boolean(pendingDisableShare)}
+        title="关闭这个网页共享？"
+        description={`关闭后，「${pendingDisableShare?.fileName || ''}」的现有共享链接会立即失效。`}
+        icon={<Link2Off size={20} />}
+        cancelText="继续共享"
+        confirmText="关闭共享"
+        destructive
+        loading={Boolean(pendingDisableShare && shareActionId === pendingDisableShare.id)}
+        onCancel={() => setPendingDisableShare(null)}
+        onConfirm={disableShare}
       />
     </AppShell>
   );

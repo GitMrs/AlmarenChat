@@ -22,7 +22,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ spac
       where: { spaceId },
       orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }],
     });
-    return NextResponse.json({ files });
+    const visibleFiles = files.filter((file, index) => (
+      files.findIndex((candidate) => candidate.relativePath === file.relativePath) === index
+    ));
+    return NextResponse.json({ files: visibleFiles });
   } catch (e: any) {
     if (e.message === 'Unauthorized') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     return NextResponse.json({ error: e.message }, { status: 500 });

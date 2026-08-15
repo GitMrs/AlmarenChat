@@ -1,8 +1,9 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { lstat, mkdir, readFile, readdir, realpath, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { tavily } from '@tavily/core';
 import { SafeSearchType, SearchTimeType, search as duckDuckGoSearch, searchNews as duckDuckGoNews } from 'duck-duck-scrape';
+import { runSafeWorkspaceCheck } from './safe-command-runner.mjs';
 
 const MAX_SEARCH_QUERIES = 2;
 const MAX_OFFICIAL_DOMAINS = 8;
@@ -12,6 +13,7 @@ const MAX_SEARCH_CONTEXT_LENGTH = 24_000;
 const MAX_MARKDOWN_BYTES = 512 * 1024;
 const MAX_WORKSPACE_FILE_BYTES = 512 * 1024;
 const MAX_LIST_ENTRIES = 200;
+const MAX_WORKSPACE_SNAPSHOT_FILES = 1_000;
 const DEFAULT_READ_CHARS = 8_000;
 const MAX_READ_CHARS = 12_000;
 const SAFE_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
@@ -135,6 +137,23 @@ export const workspaceToolSchemas = [
   },
 ];
 
+export const safeCommandToolSchema = {
+  type: 'function',
+  function: {
+    name: 'run_check',
+    description: '在当前任务暂存区执行平台白名单内的代码语法检查。不能执行任意命令、脚本、构建或启动服务。',
+    parameters: {
+      type: 'object',
+      properties: {
+        check: { type: 'string', enum: ['javascript', 'typescript'] },
+        path: { type: 'string', description: '任务暂存区内需要检查的相对文件路径。' },
+      },
+      required: ['check', 'path'],
+      additionalProperties: false,
+    },
+  },
+};
+
 export function normalizeSearchQueries(value) {
   if (!Array.isArray(value)) return [];
   return [...new Set(value.map((item) => String(item || '').trim().slice(0, 200)).filter(Boolean))].slice(
@@ -222,7 +241,9 @@ export function assessResearchResult(result, sources, requirements = {}) {
 }
 
 export function wantsWebResearch(goal) {
-  return /(联网|搜索|检索|调研|研究|收集资料|查找资料|最新|来源|引用|市场|竞品|research)/i.test(String(goal || ''));
+  const text = String(goal || '');
+  return /(联网|搜索|检索|调研|研究|收集资料|查找资料|最新|市场|竞品|research)/i.test(text)
+    || /(?:引用|来源).{0,12}(?:官方|资料|文献|证据|链接|网址)|(?:官方|资料|文献|证据).{0,12}(?:引用|来源)|引用来源|(?:标注|提供|附上|列出|补充).{0,12}(?:引用|来源)/i.test(text);
 }
 
 export function wantsMarkdownArtifact(goal) {
@@ -233,6 +254,14 @@ export function wantsWorkspaceArtifact(goal) {
   return /(?:制作|创建|生成|开发|编写|搭建|做).{0,20}(?:网页|网站|html)|(?:网页|网站|html).{0,20}(?:制作|创建|生成|开发|编写|搭建)|\b(?:build|create|make|develop)\b.{0,40}\b(?:website|web\s?page|html)\b/i.test(
     String(goal || '')
   );
+}
+
+export function wantsWorkspaceWrite(goal) {
+  const text = String(goal || '');
+  if (/(?:不得|不要|禁止|无需).{0,12}(?:创建|生成|编写|修改|编辑|写入).{0,12}(?:文件|文档|报告|网页|网站|代码)/i.test(text)) {
+    return false;
+  }
+  return /(?:制作|创建|生成|编写|修改|编辑|写入|开发|搭建|产出).{0,20}(?:文件|文档|报告|网页|网站|代码|\.md\b|html)|(?:文件|文档|报告|网页|网站|代码|\.md\b|html).{0,20}(?:制作|创建|生成|编写|修改|编辑|写入|开发|搭建|产出)|\.(?:md|html|css|js|jsx|ts|tsx|json|csv)\b/i.test(text);
 }
 
 function assertSafeId(value, label) {
@@ -261,16 +290,24 @@ function assertTextExtension(relativePath) {
   }
 }
 
-async function workspaceContext({ projectRoot, userId, spaceId }) {
+async function workspaceContext({ projectRoot, userId, spaceId, taskId, attempt }) {
   const safeUserId = assertSafeId(userId, '用户 ID');
   const safeSpaceId = assertSafeId(spaceId, '空间 ID');
+  const safeTaskId = taskId ? assertSafeId(taskId, '任务 ID') : null;
+  const safeAttempt = Number(attempt);
+  if (safeTaskId && (!Number.isSafeInteger(safeAttempt) || safeAttempt < 1)) {
+    throw new Error('任务 attempt 格式不安全');
+  }
   const spacesRoot = path.resolve(projectRoot, 'data', 'spaces');
   await mkdir(spacesRoot, { recursive: true });
   const userRoot = path.join(spacesRoot, safeUserId);
   const spaceRoot = path.join(userRoot, safeSpaceId);
-  const root = path.resolve(spaceRoot, 'workspace');
+  const stagingRoot = safeTaskId ? path.join(spaceRoot, 'staging') : null;
+  const taskRoot = safeTaskId ? path.join(stagingRoot, safeTaskId) : null;
+  const attemptRoot = safeTaskId ? path.join(taskRoot, String(safeAttempt)) : null;
+  const root = path.resolve(attemptRoot || spaceRoot, 'workspace');
   if (!root.startsWith(spaceRoot + path.sep)) throw new Error('工作区目录超出空间范围');
-  for (const directory of [userRoot, spaceRoot, root]) {
+  for (const directory of [userRoot, spaceRoot, stagingRoot, taskRoot, attemptRoot, root].filter(Boolean)) {
     try {
       if ((await lstat(directory)).isSymbolicLink()) throw new Error('空间目录不允许使用符号链接');
     } catch (error) {
@@ -286,6 +323,67 @@ async function workspaceContext({ projectRoot, userId, spaceId }) {
   const [actualSpacesRoot, actualRoot] = await Promise.all([realpath(spacesRoot), realpath(root)]);
   if (!actualRoot.startsWith(actualSpacesRoot + path.sep)) throw new Error('工作区目录超出空间范围');
   return { root, actualRoot };
+}
+
+export async function snapshotWorkspace(options) {
+  const context = await workspaceContext(options);
+  const files = [];
+
+  const visit = async (directory, relativeDirectory = '') => {
+    const entries = await readdir(directory, { withFileTypes: true });
+    entries.sort((left, right) => left.name.localeCompare(right.name));
+    for (const entry of entries) {
+      const relativePath = [relativeDirectory, entry.name].filter(Boolean).join('/');
+      const target = path.join(directory, entry.name);
+      const info = await lstat(target);
+      if (info.isSymbolicLink()) throw new Error(`工作区快照不允许符号链接：${relativePath}`);
+      if (info.isDirectory()) {
+        await visit(target, relativePath);
+        continue;
+      }
+      if (!info.isFile()) continue;
+      if (files.length >= MAX_WORKSPACE_SNAPSHOT_FILES) {
+        throw new Error(`工作区文件超过 ${MAX_WORKSPACE_SNAPSHOT_FILES} 个，无法生成完整差异清单`);
+      }
+      const sha256 = info.size <= MAX_WORKSPACE_FILE_BYTES
+        ? createHash('sha256').update(await readFile(target)).digest('hex')
+        : null;
+      files.push({ path: relativePath, size: info.size, mtimeMs: info.mtimeMs, sha256 });
+    }
+  };
+
+  await visit(context.actualRoot);
+  return { scannedAt: new Date().toISOString(), files };
+}
+
+export function diffWorkspaceSnapshots(before, after) {
+  const beforeByPath = new Map((before?.files || []).map((file) => [file.path, file]));
+  const afterByPath = new Map((after?.files || []).map((file) => [file.path, file]));
+  const paths = [...new Set([...beforeByPath.keys(), ...afterByPath.keys()])].sort();
+  const entries = [];
+  for (const relativePath of paths) {
+    const previous = beforeByPath.get(relativePath);
+    const current = afterByPath.get(relativePath);
+    if (!previous) {
+      entries.push({ path: relativePath, change: 'CREATED', sizeAfter: current.size, mtimeAfter: current.mtimeMs });
+    } else if (!current) {
+      entries.push({ path: relativePath, change: 'DELETED', sizeBefore: previous.size, mtimeBefore: previous.mtimeMs });
+    } else if (
+      previous.sha256 && current.sha256
+        ? previous.sha256 !== current.sha256
+        : previous.size !== current.size || previous.mtimeMs !== current.mtimeMs
+    ) {
+      entries.push({
+        path: relativePath,
+        change: 'MODIFIED',
+        sizeBefore: previous.size,
+        sizeAfter: current.size,
+        mtimeBefore: previous.mtimeMs,
+        mtimeAfter: current.mtimeMs,
+      });
+    }
+  }
+  return entries;
 }
 
 async function resolveWorkspaceTarget(context, value, options) {
@@ -443,6 +541,9 @@ export async function executeWorkspaceTool(options, name, args = {}) {
     }
     case 'check_files':
       result = await checkWorkspaceFiles(context, args.paths);
+      break;
+    case 'run_check':
+      result = await runSafeWorkspaceCheck(options, args);
       break;
     default:
       throw new Error(`不支持的工作区工具：${name}`);

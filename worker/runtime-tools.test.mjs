@@ -6,14 +6,17 @@ import test from 'node:test';
 import {
   assessResearchResult,
   assessResearchSources,
+  diffWorkspaceSnapshots,
   executeWorkspaceTool,
   normalizeOfficialDomains,
   normalizeSearchQueries,
   researchRequirements,
   searchWeb,
+  snapshotWorkspace,
   wantsMarkdownArtifact,
   wantsWebResearch,
   wantsWorkspaceArtifact,
+  wantsWorkspaceWrite,
   writeMarkdownArtifact,
 } from './runtime-tools.mjs';
 
@@ -169,12 +172,19 @@ test('web research falls back to DuckDuckGo when Tavily is not configured', asyn
 
 test('task intent detection stays narrow', () => {
   assert.equal(wantsWebResearch('收集最新资料并标注来源'), true);
+  assert.equal(wantsWebResearch('引用官方资料并提供证据链接'), true);
+  assert.equal(wantsWebResearch('检查 HTML 本地资源引用与基础语法'), false);
+  assert.equal(wantsWebResearch('制作鹈鹕骑车单文件 HTML 页面，不使用外部资源'), false);
   assert.equal(wantsWebResearch('写一封普通邮件'), false);
   assert.equal(wantsMarkdownArtifact('生成一个 report.md 文档'), true);
   assert.equal(wantsMarkdownArtifact('只回答问题'), false);
   assert.equal(wantsWorkspaceArtifact('收集资料并制作一个网页'), true);
   assert.equal(wantsWorkspaceArtifact('分析一下网页行业的数据'), false);
   assert.equal(wantsWorkspaceArtifact('只写一份普通报告'), false);
+  assert.equal(wantsWorkspaceWrite('联网查询当前黄金价格并直接回答'), false);
+  assert.equal(wantsWorkspaceWrite('阅读报告，但不要修改任何文件'), false);
+  assert.equal(wantsWorkspaceWrite('在空间里创建一份黄金分析报告'), true);
+  assert.equal(wantsWorkspaceWrite('制作一个黄金对比网页'), true);
 });
 
 test('markdown artifacts stay inside the space output directory', async () => {
@@ -238,6 +248,33 @@ test('workspace tools write, read, patch and inspect webpage files', async () =>
     });
     assert.match(read.content, /Almaren/);
     assert.equal(check.valid, true);
+  } finally {
+    await rm(projectRoot, { recursive: true, force: true });
+  }
+});
+
+test('workspace snapshots report created, modified and deleted files', async () => {
+  const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'almaren-runtime-'));
+  const options = { projectRoot, userId: 'user-1', spaceId: 'space-1' };
+  try {
+    await executeWorkspaceTool(options, 'write_file', { path: 'keep.md', content: 'before' });
+    await executeWorkspaceTool(options, 'write_file', { path: 'remove.md', content: 'remove' });
+    const before = await snapshotWorkspace(options);
+
+    await executeWorkspaceTool(options, 'write_file', { path: 'keep.md', content: 'after' });
+    await executeWorkspaceTool(options, 'write_file', { path: 'created.md', content: 'created' });
+    await rm(path.join(projectRoot, 'data', 'spaces', 'user-1', 'space-1', 'workspace', 'remove.md'));
+
+    const entries = diffWorkspaceSnapshots(before, await snapshotWorkspace(options));
+    assert.deepEqual(entries.map(({ path: filePath, change }) => ({ path: filePath, change })), [
+      { path: 'created.md', change: 'CREATED' },
+      { path: 'keep.md', change: 'MODIFIED' },
+      { path: 'remove.md', change: 'DELETED' },
+    ]);
+    assert.deepEqual(diffWorkspaceSnapshots(before, {
+      ...before,
+      files: before.files.map((file) => ({ ...file, mtimeMs: file.mtimeMs + 1 })),
+    }), []);
   } finally {
     await rm(projectRoot, { recursive: true, force: true });
   }

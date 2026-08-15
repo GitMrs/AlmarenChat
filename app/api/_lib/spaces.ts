@@ -88,23 +88,42 @@ export async function resolveManyAgents(agentIds: string[], userId?: string) {
 }
 
 export function resolveMentionTarget(content: string, agents: ResolvedSpaceAgent[]) {
-  if (!content.includes('@')) return null;
+  return resolveMentionTargets(content, agents)[0] || null;
+}
 
+export function resolveMentionTargets(content: string, agents: ResolvedSpaceAgent[]) {
+  if (!content.includes('@')) return [];
+
+  const nameCounts = new Map<string, number>();
+  for (const agent of agents) {
+    const key = agent.name.toLocaleLowerCase();
+    nameCounts.set(key, (nameCounts.get(key) || 0) + 1);
+  }
   const candidates = agents
     .flatMap((agent) => [
-      { agent, alias: agent.name },
+      ...(nameCounts.get(agent.name.toLocaleLowerCase()) === 1 ? [{ agent, alias: agent.name }] : []),
       { agent, alias: agent.id },
     ])
     .filter((item) => item.alias)
     .sort((a, b) => b.alias.length - a.alias.length);
 
+  const matches: Array<{ agent: ResolvedSpaceAgent; index: number }> = [];
   for (const { agent, alias } of candidates) {
     const escaped = alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const pattern = new RegExp(`@${escaped}(?=$|\\s|[，。！？、,.;；:：])`, 'i');
-    if (pattern.test(content)) return agent;
+    const match = pattern.exec(content);
+    if (match) matches.push({ agent, index: match.index });
   }
 
-  return null;
+  const seen = new Set<string>();
+  return matches
+    .sort((left, right) => left.index - right.index)
+    .filter(({ agent }) => {
+      if (seen.has(agent.id)) return false;
+      seen.add(agent.id);
+      return true;
+    })
+    .map(({ agent }) => agent);
 }
 
 export function formatMembersContext(agents: ResolvedSpaceAgent[], targetAgent: ResolvedSpaceAgent) {

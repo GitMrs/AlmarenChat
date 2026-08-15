@@ -20,9 +20,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ run
       return NextResponse.json({ error: '空间中已有任务正在运行' }, { status: 409 });
     }
 
-    const firstIncompleteTask = existing.tasks.find((task) => task.status !== 'COMPLETED');
+    const validationRetry = existing.status === 'FAILED_VALIDATION';
+    const firstIncompleteTask = validationRetry
+      ? existing.tasks[0]
+      : existing.tasks.find((task) => task.status !== 'COMPLETED');
     const copiedTasks = existing.tasks.map((task) => {
-      const completed = task.status === 'COMPLETED';
+      const completed = task.status === 'COMPLETED' && !validationRetry;
       return {
         agentId: task.agentId,
         agentName: task.agentName,
