@@ -27,6 +27,7 @@ export async function POST(
     if (existing.status !== 'WAITING_APPROVAL' || task.status !== 'WAITING_APPROVAL') {
       return NextResponse.json({ error: '当前步骤不在待审核状态' }, { status: 409 });
     }
+    const usesWorkspace = task.mode !== 'advisor';
     const latestAuditEvent = [...existing.events].reverse().find((event) => {
       if (event.type !== 'RESEARCH_RESULT_AUDITED' || !event.payload || typeof event.payload !== 'object') return false;
       const payload = event.payload as Record<string, unknown>;
@@ -42,10 +43,10 @@ export async function POST(
       return NextResponse.json({ error: '来源验收未通过，不能作为正常结果继续。请补充要求后重做，或跳过此步骤。' }, { status: 409 });
     }
 
-    let manifest = await prisma.agentArtifactManifest.findUnique({
+    let manifest = usesWorkspace ? await prisma.agentArtifactManifest.findUnique({
       where: { taskId_attempt: { taskId, attempt: task.attempt } },
-    });
-    if (action === 'approve' && !manifest) {
+    }) : null;
+    if (action === 'approve' && usesWorkspace && !manifest) {
       return NextResponse.json({ error: '当前步骤缺少安全工作区基线，请选择重做后再确认' }, { status: 409 });
     }
     const baseline = (manifest?.baseline || { files: [] }) as { files?: Array<{ path: string; size: number; mtimeMs: number; sha256?: string | null }> };
@@ -59,18 +60,18 @@ export async function POST(
       taskId,
       attempt: task.attempt,
     };
-    if (manifest?.status === 'APPLYING') {
+    if (usesWorkspace && manifest?.status === 'APPLYING') {
       await recoverWorkspaceAttemptApplication(stagingOptions, baseline, entries);
       manifest = await prisma.agentArtifactManifest.update({
         where: { id: manifest.id },
         data: { status: 'VALIDATED' },
       });
     }
-    if (action === 'approve' && manifest?.status !== 'VALIDATED') {
+    if (action === 'approve' && usesWorkspace && manifest?.status !== 'VALIDATED') {
       return NextResponse.json({ error: '工作区产物尚未通过检查，不能确认' }, { status: 409 });
     }
     let application: Awaited<ReturnType<typeof applyWorkspaceAttempt>> | null = null;
-    if (action === 'approve') {
+    if (action === 'approve' && usesWorkspace) {
       await prisma.agentArtifactManifest.update({ where: { id: manifest!.id }, data: { status: 'APPLYING' } });
       try {
         application = await applyWorkspaceAttempt(stagingOptions, baseline, entries);
@@ -92,6 +93,7 @@ export async function POST(
               error: null,
               reviewFeedback: feedback,
               attempt: { increment: 1 },
+              modelRequestLimit: { increment: task.mode === 'advisor' ? 2 : 8 },
               startedAt: null,
               completedAt: null,
               reviewedAt: null,
@@ -110,7 +112,7 @@ export async function POST(
         });
       }
 
-      if (action === 'approve') {
+      if (action === 'approve' && usesWorkspace) {
         const changedPaths = entries
           .filter((entry) => entry.change !== 'DELETED')
           .map((entry) => `workspace/${entry.path}`);
@@ -144,7 +146,11 @@ export async function POST(
       }
       await transaction.agentRun.update({
         where: { id: runId },
-        data: { status: 'QUEUED', updatedAt: timestamp },
+        data: {
+          status: 'QUEUED',
+          updatedAt: timestamp,
+          ...(action === 'retry' ? { modelRequestLimit: { increment: task.mode === 'advisor' ? 2 : 8 } } : {}),
+        },
       });
       await transaction.agentRunEvent.create({
         data: {
@@ -172,7 +178,7 @@ export async function POST(
       throw error;
     }
     try {
-      await discardWorkspaceAttempt(stagingOptions);
+      if (usesWorkspace) await discardWorkspaceAttempt(stagingOptions);
     } catch (error) {
       await prisma.agentRunEvent.create({
         data: {

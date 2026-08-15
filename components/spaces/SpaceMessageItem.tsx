@@ -63,7 +63,7 @@ function TaskProposal({
       {pending ? (
         <>
           <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-semibold text-slate-400">
-            <span>{proposal.steps.length} 个步骤</span>
+            <span>{proposal.executionPlan?.length || proposal.steps.length} 个步骤</span>
             <span>{proposal.deliverables.length} 项产出</span>
           </div>
           <div className="mt-3 flex flex-wrap gap-2">
@@ -89,10 +89,17 @@ function TaskProposal({
                 <p className="mt-1 whitespace-pre-wrap text-xs font-semibold leading-5 text-slate-600">{proposal.goal}</p>
               </div>
               <ol className="space-y-2">
-                {proposal.steps.map((step, index) => (
-                  <li key={`${index}-${step}`} className="flex gap-2.5 text-xs font-semibold leading-5 text-slate-600">
+                {(proposal.executionPlan || proposal.steps.map((step) => ({ title: step, instruction: step, mode: 'executor' as const, agentId: '', dependsOn: [], deliverables: [] }))).map((step, index) => (
+                  <li key={`${index}-${step.title}`} className="flex gap-2.5 text-xs font-semibold leading-5 text-slate-600">
                     <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[10px] font-black text-slate-500">{index + 1}</span>
-                    <span>{step}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="font-black text-slate-700">{step.title}</span>
+                      {'mode' in step && (
+                        <span className="ml-2 text-[10px] font-black text-slate-400">
+                          {step.agentName || step.agentId ? `${step.agentName || step.agentId} · ` : ''}{step.mode === 'advisor' ? '顾问' : '执行'}
+                        </span>
+                      )}
+                    </span>
                   </li>
                 ))}
               </ol>

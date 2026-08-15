@@ -89,6 +89,8 @@ try {
         "workerId" TEXT,
         "heartbeatAt" DATETIME,
         "completionId" TEXT,
+        "modelRequestCount" INTEGER NOT NULL DEFAULT 0,
+        "modelRequestLimit" INTEGER NOT NULL DEFAULT 12,
         "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         "updatedAt" DATETIME NOT NULL,
         "startedAt" DATETIME,
@@ -103,6 +105,10 @@ try {
         "agentName" TEXT NOT NULL,
         "title" TEXT NOT NULL,
         "instruction" TEXT NOT NULL,
+        "mode" TEXT NOT NULL DEFAULT 'executor',
+        "dependsOn" JSONB,
+        "modelRequestCount" INTEGER NOT NULL DEFAULT 0,
+        "modelRequestLimit" INTEGER NOT NULL DEFAULT 8,
         "status" TEXT NOT NULL DEFAULT 'PENDING',
         "result" TEXT,
         "error" TEXT,
@@ -234,9 +240,15 @@ try {
     if (!hasColumn('AgentTask', 'waitingAt')) db.exec('ALTER TABLE "AgentTask" ADD COLUMN "waitingAt" DATETIME');
     if (!hasColumn('AgentTask', 'attempt')) db.exec('ALTER TABLE "AgentTask" ADD COLUMN "attempt" INTEGER NOT NULL DEFAULT 1');
     if (!hasColumn('AgentTask', 'reviewedAt')) db.exec('ALTER TABLE "AgentTask" ADD COLUMN "reviewedAt" DATETIME');
+    if (!hasColumn('AgentTask', 'mode')) db.exec(`ALTER TABLE "AgentTask" ADD COLUMN "mode" TEXT NOT NULL DEFAULT 'executor'`);
+    if (!hasColumn('AgentTask', 'dependsOn')) db.exec('ALTER TABLE "AgentTask" ADD COLUMN "dependsOn" JSONB');
+    if (!hasColumn('AgentTask', 'modelRequestCount')) db.exec('ALTER TABLE "AgentTask" ADD COLUMN "modelRequestCount" INTEGER NOT NULL DEFAULT 0');
+    if (!hasColumn('AgentTask', 'modelRequestLimit')) db.exec('ALTER TABLE "AgentTask" ADD COLUMN "modelRequestLimit" INTEGER NOT NULL DEFAULT 8');
     if (!hasColumn('AgentRun', 'workerId')) db.exec('ALTER TABLE "AgentRun" ADD COLUMN "workerId" TEXT');
     if (!hasColumn('AgentRun', 'heartbeatAt')) db.exec('ALTER TABLE "AgentRun" ADD COLUMN "heartbeatAt" DATETIME');
     if (!hasColumn('AgentRun', 'completionId')) db.exec('ALTER TABLE "AgentRun" ADD COLUMN "completionId" TEXT');
+    if (!hasColumn('AgentRun', 'modelRequestCount')) db.exec('ALTER TABLE "AgentRun" ADD COLUMN "modelRequestCount" INTEGER NOT NULL DEFAULT 0');
+    if (!hasColumn('AgentRun', 'modelRequestLimit')) db.exec('ALTER TABLE "AgentRun" ADD COLUMN "modelRequestLimit" INTEGER NOT NULL DEFAULT 12');
     if (!hasColumn('AgentRunEvent', 'idempotencyKey')) db.exec('ALTER TABLE "AgentRunEvent" ADD COLUMN "idempotencyKey" TEXT');
     if (!hasColumn('SpaceMessage', 'sourceKey')) db.exec('ALTER TABLE "SpaceMessage" ADD COLUMN "sourceKey" TEXT');
     db.exec(`

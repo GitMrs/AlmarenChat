@@ -31,6 +31,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ run
         agentName: task.agentName,
         title: task.title,
         instruction: task.instruction,
+        mode: task.mode,
+        dependsOn: task.dependsOn ?? undefined,
+        modelRequestLimit: task.modelRequestLimit,
         status: completed ? 'COMPLETED' : 'PENDING',
         result: completed ? task.result : null,
         error: null,
@@ -50,6 +53,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ run
         input: existing.input,
         retryOfId: existing.id,
         attempt: existing.attempt + 1,
+        modelRequestLimit: existing.modelRequestLimit,
         ...(copiedTasks.length > 0 ? { tasks: { create: copiedTasks } } : {}),
         events: {
           create: {

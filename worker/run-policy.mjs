@@ -47,6 +47,7 @@ export function evaluateCoordinatorAcceptance({
       issues.push(`${task.agentName || '成员'}的步骤“${task.title}”没有结果`);
     }
     if (task.status !== 'COMPLETED') continue;
+    if (task.mode === 'advisor') continue;
     const manifest = manifestByTaskAttempt.get(`${task.id}:${task.attempt}`);
     if (!manifest) {
       issues.push(`步骤“${task.title}”缺少 ArtifactManifest`);
@@ -115,6 +116,18 @@ export function completionOutcome(tasks, researchAudit, researchResultAudits, ac
   return { status: 'COMPLETED', eventType: 'RUN_COMPLETED', message: '任务已完成' };
 }
 
+export function directRunSummary(tasks, acceptance) {
+  const adoptedTasks = tasks.filter((task) => task.status === 'COMPLETED' && String(task.result || '').trim());
+  const lastTask = adoptedTasks.at(-1);
+  const canUseDirectly = adoptedTasks.length === 1
+    || (lastTask?.mode === 'executor' && adoptedTasks.slice(0, -1).every((task) => task.mode === 'advisor'));
+  if (!canUseDirectly || !lastTask?.result) return null;
+  const acceptanceIssues = acceptance?.accepted === false
+    ? `\n\n平台自动验收未通过：${(acceptance.issues || []).join('；') || '产物未满足验收要求'}`
+    : '';
+  return `${lastTask.result}${acceptanceIssues}`;
+}
+
 const BLOCKING_ERROR_MESSAGES = [
   '未配置可用的模型 API Key',
   '空间中没有可执行任务的 Agent',
@@ -122,6 +135,7 @@ const BLOCKING_ERROR_MESSAGES = [
 ];
 
 export function executionFailureStatus(error) {
+  if (error?.code === 'MODEL_REQUEST_BUDGET') return 'BLOCKED';
   const message = error instanceof Error ? error.message : String(error);
   return BLOCKING_ERROR_MESSAGES.some((candidate) => message.includes(candidate)) ? 'BLOCKED' : 'FAILED';
 }

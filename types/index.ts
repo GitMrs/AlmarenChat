@@ -113,6 +113,16 @@ export interface SpaceFileShare {
 
 export type SpaceTaskCapability = 'workspace_read' | 'workspace_write' | 'web_research';
 
+export interface SpaceTaskExecutionStep {
+  agentId: string;
+  agentName?: string;
+  mode: 'advisor' | 'executor';
+  title: string;
+  instruction: string;
+  dependsOn: number[];
+  deliverables: string[];
+}
+
 export interface SpaceTaskProposal {
   type: 'task_proposal';
   title: string;
@@ -120,6 +130,8 @@ export interface SpaceTaskProposal {
   summary: string;
   steps: string[];
   deliverables: string[];
+  artifacts?: string[];
+  executionPlan?: SpaceTaskExecutionStep[];
   capabilities?: SpaceTaskCapability[];
   status: 'pending' | 'approved' | 'rejected';
   runId?: string;
@@ -182,6 +194,8 @@ export interface AgentRun {
     workerId?: string | null;
     heartbeatAt?: string | null;
     completionId?: string | null;
+    modelRequestCount: number;
+    modelRequestLimit: number;
     createdAt: string;
   updatedAt: string;
   startedAt?: string | null;
@@ -197,6 +211,10 @@ export interface AgentTask {
   agentName: string;
   title: string;
   instruction: string;
+  mode: 'advisor' | 'executor';
+  dependsOn?: number[] | null;
+  modelRequestCount: number;
+  modelRequestLimit: number;
   status: string;
   result?: string | null;
     error?: string | null;

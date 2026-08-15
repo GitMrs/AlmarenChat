@@ -261,6 +261,8 @@ model AgentRun {
   workerId    String?
   heartbeatAt DateTime?
   completionId String?   @unique
+  modelRequestCount Int  @default(0)
+  modelRequestLimit Int  @default(12)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   startedAt   DateTime?
@@ -285,6 +287,10 @@ model AgentTask {
   agentName   String
   title       String
   instruction String
+  mode        String     @default("executor")
+  dependsOn   Json?
+  modelRequestCount Int  @default(0)
+  modelRequestLimit Int  @default(8)
   status      String    @default("PENDING")
   result      String?
   error       String?

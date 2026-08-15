@@ -69,6 +69,8 @@ const FILE_STATUS_LABELS: Record<string, string> = {
 
 type RunEventPayload = {
   taskId?: string;
+  iteration?: number;
+  maxIterations?: number;
   tool?: string;
   path?: string;
   paths?: string[];
@@ -107,6 +109,13 @@ function eventPayload(event: AgentRunEvent) {
 
 function formatActivityEvent(event: AgentRunEvent) {
   const payload = eventPayload(event);
+  if (event.type === 'MODEL_WORKING' && payload.iteration) {
+    return {
+      title: event.message,
+      detail: `模型请求 ${payload.iteration}/${payload.maxIterations || 12}`,
+      checked: false,
+    };
+  }
   if (event.type === 'TOOL_COMPLETED') {
     const paths = payload.path ? [payload.path] : payload.paths || [];
     return {
@@ -1262,6 +1271,7 @@ export default function SpaceDetailPage() {
                           </span>
                           <span>{formatRunDate(currentRun.createdAt)}</span>
                           {currentRun.attempt > 1 && <span>第 {currentRun.attempt} 次执行</span>}
+                          <span>模型调用 {currentRun.modelRequestCount || 0}/{currentRun.modelRequestLimit || 12}</span>
                           {currentRun.id === activeRun?.id ? (
                             <button
                               type="button"
@@ -1511,7 +1521,9 @@ export default function SpaceDetailPage() {
                                   <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-black text-slate-600">{index + 1}</div>
                                   <div className="min-w-0 flex-1">
                                     <div className="font-black text-slate-900">{task.title}</div>
-                                    <div className="mt-1 text-xs font-semibold text-slate-400">{task.agentName}</div>
+                                    <div className="mt-1 text-xs font-semibold text-slate-400">
+                                      {task.agentName} · {task.mode === 'advisor' ? '顾问' : '执行'} · 模型调用 {task.modelRequestCount || 0}/{task.modelRequestLimit || (task.mode === 'advisor' ? 2 : 8)}
+                                    </div>
                                   </div>
                                   <span className={task.status === 'FAILED' ? 'text-xs font-black text-rose-500' : task.status === 'BLOCKED' ? 'text-xs font-black text-amber-600' : 'text-xs font-black text-slate-400'}>
                                     {TASK_STATUS_LABELS[task.status] || task.status}

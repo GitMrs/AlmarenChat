@@ -3,14 +3,16 @@ import { Prisma } from '@/src/generated/prisma/client';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { ACTIVE_AGENT_RUN_STATUSES, agentRunInclude } from '@/app/api/_lib/agent-runs';
-import { getSpaceForUser } from '@/app/api/_lib/spaces';
+import { getSpaceForUser, resolveManyAgents, SPACE_COORDINATOR } from '@/app/api/_lib/spaces';
 import { taskProposalCapabilities, taskProposalNeedsClarification } from '@/lib/task-proposals';
+import { defaultModelRequestLimit, normalizeExecutionPlan } from '@/lib/task-execution-plan.mjs';
 
 type TaskProposalAttachment = {
   type: 'task_proposal';
   goal?: string;
   steps?: string[];
   deliverables?: string[];
+  executionPlan?: unknown[];
   capabilities?: string[];
   status?: string;
   runId?: string;
@@ -41,7 +43,17 @@ function parseRevision(value: unknown): TaskProposalRevision | null {
 }
 
 function applyRevision(proposal: TaskProposalAttachment, revision: TaskProposalRevision | null) {
-  const next = revision ? { ...proposal, ...revision } : proposal;
+  const revisedExecutionPlan = revision && Array.isArray(proposal.executionPlan) && proposal.executionPlan.length === revision.steps.length
+    ? proposal.executionPlan.map((value, index) => value && typeof value === 'object'
+        ? {
+            ...value,
+            title: revision.steps[index],
+            instruction: `${revision.goal}\n\n当前步骤：${revision.steps[index]}`,
+            ...(index === revision.steps.length - 1 ? { deliverables: revision.deliverables } : {}),
+          }
+        : value)
+    : revision ? undefined : proposal.executionPlan;
+  const next = revision ? { ...proposal, ...revision, executionPlan: revisedExecutionPlan } : proposal;
   const goal = typeof next.goal === 'string' ? next.goal.trim() : '';
   const steps = Array.isArray(next.steps) ? next.steps : [];
   const deliverables = Array.isArray(next.deliverables) ? next.deliverables : [];
@@ -103,6 +115,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
     if (space.members.length === 0) {
       return NextResponse.json({ error: '请先向空间添加至少一个 Agent' }, { status: 400 });
     }
+    const memberAgents = await resolveManyAgents(space.members.map((member) => member.agentId), userId);
+    if (memberAgents.length === 0) return NextResponse.json({ error: '空间成员不可用' }, { status: 400 });
     let proposalMessage = null;
     let proposal: TaskProposalAttachment | null = null;
     if (typeof proposalMessageId === 'string' && proposalMessageId) {
@@ -147,12 +161,56 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
         runInput = taskInput(currentProposal, goal);
       }
 
+      const currentMemberIds = new Set((await tx.spaceMember.findMany({
+        where: { spaceId },
+        select: { agentId: true },
+      })).map((member) => member.agentId));
+      const currentMemberAgents = memberAgents.filter((agent) => currentMemberIds.has(agent.id));
+      if (currentMemberAgents.length === 0) throw new Error('空间成员不可用');
+      const executionAgents = [{ ...SPACE_COORDINATOR, advisorOnly: true, fallbackResearchAdvisor: true }, ...currentMemberAgents];
+      const fallbackAgentId = currentMemberAgents[0].id;
+      const executionTasks = currentProposal
+        ? normalizeExecutionPlan(currentProposal, executionAgents, fallbackAgentId)
+        : [];
+      const modelRequestLimit = executionTasks.length > 0 ? defaultModelRequestLimit(executionTasks) : 16;
+
       const created = await tx.agentRun.create({
         data: {
           spaceId,
           userId,
           input: runInput,
-          events: { create: { type: 'RUN_QUEUED', message: '任务已进入执行队列' } },
+          modelRequestLimit,
+          ...(executionTasks.length > 0 ? { tasks: {
+            create: executionTasks.map((task, sortOrder) => ({
+              agentId: task.agentId,
+              agentName: task.agentName,
+              title: task.title,
+              instruction: task.deliverables.length > 0
+                ? `${task.instruction}\n\n独立验收产物：${task.deliverables.join('、')}`
+                : task.instruction,
+              mode: task.mode,
+              dependsOn: task.dependsOn,
+              modelRequestLimit: task.modelRequestLimit,
+              sortOrder,
+            })),
+          } } : {}),
+          events: {
+            create: {
+              type: 'RUN_QUEUED',
+              message: '已按确认方案进入执行队列',
+              payload: {
+                taskCount: executionTasks.length,
+                modelRequestLimit,
+                executionPlan: executionTasks.map((task) => ({
+                  agentId: task.agentId,
+                  agentName: task.agentName,
+                  mode: task.mode,
+                  title: task.title,
+                  dependsOn: task.dependsOn,
+                })),
+              },
+            },
+          },
         },
         include: agentRunInclude,
       });

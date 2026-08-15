@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-const MAX_TOOL_ITERATIONS = 12;
+export const MAX_TOOL_ITERATIONS = 12;
 const MAX_TOOL_CALLS = 24;
 const MAX_IDENTICAL_TOOL_CALLS = 2;
 const MAX_TOOL_RESULT_LENGTH = 16_000;
