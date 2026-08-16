@@ -87,7 +87,7 @@ export default function SpacesPage() {
   };
 
   return (
-    <AppShell>
+    <AppShell hideBottomNav={createDialogOpen}>
       <div className="space-y-8 py-8">
         <section className="rounded-[32px] border border-black/[0.06] bg-white/82 p-6 shadow-sm backdrop-blur sm:p-8">
           <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">

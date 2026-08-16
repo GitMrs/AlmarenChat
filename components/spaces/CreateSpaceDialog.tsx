@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronRight, Loader2, Search, Trash2, UsersRound, X } from 'lucide-react';
 import Avatar from '@/components/shared/Avatar';
 import type { Agent } from '@/types';
@@ -35,6 +35,36 @@ export default function CreateSpaceDialog({
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState('全部');
   const [selectionError, setSelectionError] = useState('');
+  const [viewport, setViewport] = useState<{ height: number; offsetTop: number } | null>(null);
+
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    const updateViewport = () => {
+      const visualViewport = window.visualViewport;
+      setViewport({
+        height: Math.floor(visualViewport?.height || window.innerHeight),
+        offsetTop: Math.floor(visualViewport?.offsetTop || 0),
+      });
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !busy) onClose();
+    };
+
+    updateViewport();
+    document.body.style.overflow = 'hidden';
+    window.visualViewport?.addEventListener('resize', updateViewport);
+    window.visualViewport?.addEventListener('scroll', updateViewport);
+    window.addEventListener('resize', updateViewport);
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.visualViewport?.removeEventListener('resize', updateViewport);
+      window.visualViewport?.removeEventListener('scroll', updateViewport);
+      window.removeEventListener('resize', updateViewport);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [busy, onClose]);
 
   const agentById = useMemo(() => new Map(agents.map((agent) => [agent.id, agent])), [agents]);
   const selectedAgents = selectedIds.map((id) => agentById.get(id)).filter(Boolean) as Agent[];
@@ -96,12 +126,21 @@ export default function CreateSpaceDialog({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/30 p-0 sm:items-center sm:p-6">
+    <div
+      className="fixed inset-x-0 z-[60] flex items-end justify-center bg-slate-950/30 p-0 sm:items-center sm:p-6"
+      style={{
+        height: viewport ? `${viewport.height}px` : '100dvh',
+        top: viewport?.offsetTop || 0,
+      }}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="create-space-dialog-title"
+    >
       <button type="button" aria-label="关闭" className="absolute inset-0" onClick={() => !busy && onClose()} />
-      <section className="relative z-10 flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-t-lg bg-white shadow-2xl sm:max-w-2xl sm:rounded-lg">
+      <section className="relative z-10 flex h-full w-full flex-col overflow-hidden bg-white shadow-2xl sm:h-auto sm:max-h-[92dvh] sm:max-w-2xl sm:rounded-lg">
         <header className="flex h-16 shrink-0 items-center justify-between border-b border-black/[0.06] px-5 sm:px-6">
           <div>
-            <h2 className="text-base font-black text-slate-950">新建空间</h2>
+            <h2 id="create-space-dialog-title" className="text-base font-black text-slate-950">新建空间</h2>
             <div className="mt-1 flex items-center gap-2 text-[11px] font-black">
               <span className={step === 1 ? 'text-slate-900' : 'text-slate-400'}>1 基本信息</span>
               <ChevronRight size={12} className="text-slate-300" />
@@ -113,7 +152,7 @@ export default function CreateSpaceDialog({
           </button>
         </header>
 
-        <div className="min-h-0 flex-1 overflow-y-auto p-5 sm:p-6">
+        <div className="min-h-0 flex-1 overscroll-contain overflow-y-auto p-5 pb-8 sm:p-6">
           {step === 1 ? (
             <div className="space-y-5">
               <label className="block">
@@ -121,7 +160,6 @@ export default function CreateSpaceDialog({
                 <input
                   value={name}
                   onChange={(event) => setName(event.target.value)}
-                  autoFocus
                   maxLength={80}
                   placeholder="例如：产品体验优化"
                   className="h-11 w-full rounded-lg border border-black/[0.08] bg-[#fbfaf7] px-3 text-sm font-bold text-slate-800 outline-none focus:border-slate-300"
@@ -208,7 +246,7 @@ export default function CreateSpaceDialog({
                 </select>
               </div>
 
-              <div className="max-h-64 divide-y divide-black/[0.05] overflow-y-auto border-y border-black/[0.06]">
+              <div className="divide-y divide-black/[0.05] border-y border-black/[0.06] sm:max-h-64 sm:overflow-y-auto sm:overscroll-contain">
                 {filteredAgents.length === 0 && <div className="py-8 text-center text-sm font-semibold text-slate-400">没有匹配成员</div>}
                 {filteredAgents.map((agent) => {
                   const selected = selectedIds.includes(agent.id);
@@ -233,7 +271,7 @@ export default function CreateSpaceDialog({
           {error && <div className="mt-4 rounded-lg bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-600">{error}</div>}
         </div>
 
-        <footer className="flex shrink-0 items-center justify-between border-t border-black/[0.06] px-5 py-4 sm:px-6">
+        <footer className="flex shrink-0 items-center justify-between border-t border-black/[0.06] bg-white px-5 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-4 sm:px-6 sm:pb-4">
           {step === 1 ? (
             <button type="button" onClick={onClose} disabled={busy} className="h-10 rounded-lg px-3 text-xs font-black text-slate-500 hover:bg-slate-100">取消</button>
           ) : (
