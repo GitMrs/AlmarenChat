@@ -19,6 +19,10 @@ function hasColumn(table, column) {
   return db.prepare(`PRAGMA table_info("${table}")`).all().some((item) => item.name === column);
 }
 
+function hasIndex(name) {
+  return Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = ?").get(name));
+}
+
 try {
   if (!hasTable('User') || !hasTable('Agent')) {
     throw new Error('未找到基础表；全新数据库请先执行 prisma migrate deploy');
@@ -347,7 +351,17 @@ try {
     if (!hasColumn('AgentRunEvent', 'agentId')) db.exec('ALTER TABLE "AgentRunEvent" ADD COLUMN "agentId" TEXT');
     if (!hasColumn('AgentRunEvent', 'attempt')) db.exec('ALTER TABLE "AgentRunEvent" ADD COLUMN "attempt" INTEGER');
     if (!hasColumn('AgentRunEvent', 'actor')) db.exec('ALTER TABLE "AgentRunEvent" ADD COLUMN "actor" TEXT');
-    if (eventSequenceAdded) {
+    const eventSequenceNeedsRepair = eventSequenceAdded || Boolean(db.prepare(`
+      SELECT 1
+      FROM "AgentRunEvent"
+      GROUP BY "runId", "sequence"
+      HAVING COUNT(*) > 1 OR "sequence" < 1
+      LIMIT 1
+    `).get());
+    if (eventSequenceNeedsRepair) {
+      if (hasIndex('AgentRunEvent_runId_sequence_key')) {
+        db.exec('DROP INDEX "AgentRunEvent_runId_sequence_key"');
+      }
       db.exec(`
         WITH ranked AS (
           SELECT "id", ROW_NUMBER() OVER (PARTITION BY "runId" ORDER BY "createdAt", "id") AS "nextSequence"
@@ -355,12 +369,14 @@ try {
         )
         UPDATE "AgentRunEvent"
         SET "sequence" = (SELECT "nextSequence" FROM ranked WHERE ranked."id" = "AgentRunEvent"."id");
-        UPDATE "AgentRun"
-        SET "eventSequence" = COALESCE((
-          SELECT MAX("sequence") FROM "AgentRunEvent" WHERE "AgentRunEvent"."runId" = "AgentRun"."id"
-        ), 0);
       `);
     }
+    db.exec(`
+      UPDATE "AgentRun"
+      SET "eventSequence" = COALESCE((
+        SELECT MAX("sequence") FROM "AgentRunEvent" WHERE "AgentRunEvent"."runId" = "AgentRun"."id"
+      ), 0);
+    `);
     if (!hasColumn('SpaceMessage', 'sourceKey')) db.exec('ALTER TABLE "SpaceMessage" ADD COLUMN "sourceKey" TEXT');
     db.exec(`
       CREATE INDEX IF NOT EXISTS "SpaceFile_runId_idx" ON "SpaceFile"("runId");

@@ -32,6 +32,7 @@ if [ -z "$DATABASE_URL" ] || [[ "$DATABASE_URL" == file:/app/* ]]; then
 fi
 
 yarn prisma generate
+yarn db:upgrade-agent-runtime
 yarn prisma db push
 
 echo "Building app..."
