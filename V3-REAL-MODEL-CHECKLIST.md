@@ -271,3 +271,15 @@ yarn v3:report --days 7
 - 不存在长期停留在 `PLANNING`、`RUNNING`、`REVIEWING` 或 `SUMMARIZING` 的 Run。
 
 发现不符合预期的场景时，不要立刻重复执行。先保留空间，记录空间 ID 和开始时间，用于查询对应 Run、任务和事件数据。
+
+## 离线回归基线
+
+01–07 全部通过后，成功 Run 会以脱敏 JSON 保存在 `test-fixtures/v3/`。日常代码修改无需重新手工输入七个场景，运行：
+
+```bash
+yarn v3:check
+```
+
+该命令使用临时 SQLite 重放已验收流程，并运行项目自动化测试、TypeScript、Worker 语法和 Diff 格式检查，不读取或修改当前业务数据库，也不调用真实模型。
+
+只有完成一轮新的真实模型验收并确认结果正确后，才使用 `yarn v3:fixtures` 更新夹具。

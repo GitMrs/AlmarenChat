@@ -8,6 +8,8 @@
     "build": "next build",
     "start": "NODE_ENV=production node server.mjs",
     "db:upgrade-agent-runtime": "node scripts/upgrade-agent-runtime.mjs",
+    "v3:fixtures": "node scripts/export-v3-replay-fixtures.mjs",
+    "v3:check": "node scripts/v3-check.mjs",
     "v3:report": "node scripts/v3-runtime-report.mjs",
     "worker": "node worker/agent-runtime.mjs",
     "lint": "next lint",
