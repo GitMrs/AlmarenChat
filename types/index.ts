@@ -53,6 +53,7 @@ export interface Space {
   name: string;
   description?: string | null;
   instructions?: string | null;
+  executionMode: 'AUTO' | 'REVIEW_DISPATCH';
   hostAgentId?: string | null;
   hostAgent?: Agent | null;
   createdAt: string;
@@ -196,6 +197,9 @@ export interface AgentRun {
     completionId?: string | null;
     modelRequestCount: number;
     modelRequestLimit: number;
+    runtimeVersion: number;
+    eventSequence: number;
+    coordinatorState?: unknown;
     createdAt: string;
   updatedAt: string;
   startedAt?: string | null;
@@ -211,6 +215,9 @@ export interface AgentTask {
   agentName: string;
   title: string;
   instruction: string;
+  acceptanceCriteria?: string | null;
+  origin?: string;
+  parentTaskId?: string | null;
   mode: 'advisor' | 'executor';
   dependsOn?: number[] | null;
   modelRequestCount: number;
@@ -223,6 +230,11 @@ export interface AgentTask {
     waitReason?: string | null;
     waitAnswer?: string | null;
     waitingAt?: string | null;
+    proposedAt?: string | null;
+    approvedAt?: string | null;
+    submittedAt?: string | null;
+    reviewDecision?: string | null;
+    reviewSummary?: string | null;
     attempt: number;
   sortOrder: number;
   createdAt: string;
@@ -239,6 +251,11 @@ export interface AgentRunEvent {
   message: string;
   payload?: unknown;
   idempotencyKey?: string | null;
+  sequence: number;
+  taskId?: string | null;
+  agentId?: string | null;
+  attempt?: number | null;
+  actor?: string | null;
   createdAt: string;
 }
 

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { getAgentRunForUser, isAgentRunActive } from '@/app/api/_lib/agent-runs';
+import { appendAgentRunEvent } from '@/app/api/_lib/agent-run-events';
 
 export async function POST(
   request: Request,
@@ -29,13 +30,14 @@ export async function POST(
         },
       });
       if (changed.count === 0) return;
-      await transaction.agentRunEvent.create({
-        data: {
-          runId,
+      await appendAgentRunEvent(transaction, runId, {
           type: pending ? 'TASK_CANCELLED' : 'TASK_CANCEL_REQUESTED',
           message: pending ? `${task.agentName}的步骤已取消` : `已请求停止${task.agentName}的当前步骤`,
-          payload: { taskId, agentId: task.agentId },
-        },
+          payload: { taskId, agentId: task.agentId, attempt: task.attempt },
+          taskId,
+          agentId: task.agentId,
+          attempt: task.attempt,
+          actor: 'user',
       });
     });
 

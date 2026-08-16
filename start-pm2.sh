@@ -18,6 +18,9 @@ if [ -z "$DATABASE_URL" ] || [[ "$DATABASE_URL" == file:/app/* ]]; then
   export DATABASE_URL="file:./data/dev.db"
 fi
 
+echo "Upgrading Agent Runtime schema..."
+yarn db:upgrade-agent-runtime
+
 export PORT
 pm2 startOrReload ecosystem.config.cjs --env production --update-env
 

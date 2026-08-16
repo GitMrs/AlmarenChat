@@ -32,6 +32,7 @@ try {
         "name" TEXT NOT NULL,
         "description" TEXT,
         "instructions" TEXT,
+        "executionMode" TEXT NOT NULL DEFAULT 'REVIEW_DISPATCH',
         "hostAgentId" TEXT,
         "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         "updatedAt" DATETIME NOT NULL,
@@ -40,6 +41,7 @@ try {
     `);
     if (!hasColumn('Space', 'hostAgentId')) db.exec('ALTER TABLE "Space" ADD COLUMN "hostAgentId" TEXT');
     if (!hasColumn('Space', 'instructions')) db.exec('ALTER TABLE "Space" ADD COLUMN "instructions" TEXT');
+    if (!hasColumn('Space', 'executionMode')) db.exec(`ALTER TABLE "Space" ADD COLUMN "executionMode" TEXT NOT NULL DEFAULT 'REVIEW_DISPATCH'`);
 
     db.exec(`
       CREATE TABLE IF NOT EXISTS "SpaceMember" (
@@ -167,6 +169,70 @@ try {
         CONSTRAINT "AgentArtifactManifest_runId_fkey" FOREIGN KEY ("runId") REFERENCES "AgentRun" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
         CONSTRAINT "AgentArtifactManifest_taskId_fkey" FOREIGN KEY ("taskId") REFERENCES "AgentTask" ("id") ON DELETE CASCADE ON UPDATE CASCADE
       );
+      CREATE TABLE IF NOT EXISTS "AgentSession" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "spaceId" TEXT NOT NULL,
+        "agentId" TEXT NOT NULL,
+        "status" TEXT NOT NULL DEFAULT 'IDLE',
+        "currentTaskId" TEXT,
+        "worklog" TEXT,
+        "summary" TEXT,
+        "lastActiveAt" DATETIME,
+        "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" DATETIME NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS "AgentCoordinatorTurn" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "runId" TEXT NOT NULL,
+        "triggerEventId" TEXT NOT NULL,
+        "status" TEXT NOT NULL DEFAULT 'QUEUED',
+        "inputSnapshot" JSONB,
+        "action" JSONB,
+        "error" TEXT,
+        "modelRequestCount" INTEGER NOT NULL DEFAULT 0,
+        "claimedBy" TEXT,
+        "claimedAt" DATETIME,
+        "startedAt" DATETIME,
+        "completedAt" DATETIME,
+        "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" DATETIME NOT NULL,
+        CONSTRAINT "AgentCoordinatorTurn_runId_fkey" FOREIGN KEY ("runId") REFERENCES "AgentRun" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+      );
+      CREATE TABLE IF NOT EXISTS "AgentTaskCompletion" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "runId" TEXT NOT NULL,
+        "taskId" TEXT NOT NULL,
+        "attempt" INTEGER NOT NULL,
+        "workerId" TEXT NOT NULL,
+        "status" TEXT NOT NULL,
+        "report" TEXT NOT NULL,
+        "evidence" JSONB,
+        "artifacts" JSONB,
+        "validation" JSONB,
+        "idempotencyKey" TEXT NOT NULL,
+        "active" BOOLEAN NOT NULL DEFAULT true,
+        "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "AgentTaskCompletion_runId_fkey" FOREIGN KEY ("runId") REFERENCES "AgentRun" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+        CONSTRAINT "AgentTaskCompletion_taskId_fkey" FOREIGN KEY ("taskId") REFERENCES "AgentTask" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+      );
+      CREATE TABLE IF NOT EXISTS "AgentRuntimeOutbox" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "runId" TEXT NOT NULL,
+        "kind" TEXT NOT NULL,
+        "aggregateId" TEXT NOT NULL,
+        "idempotencyKey" TEXT NOT NULL,
+        "payload" JSONB NOT NULL,
+        "status" TEXT NOT NULL DEFAULT 'PENDING',
+        "attempts" INTEGER NOT NULL DEFAULT 0,
+        "lastError" TEXT,
+        "availableAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "claimedBy" TEXT,
+        "claimedAt" DATETIME,
+        "deliveredAt" DATETIME,
+        "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" DATETIME NOT NULL,
+        CONSTRAINT "AgentRuntimeOutbox_runId_fkey" FOREIGN KEY ("runId") REFERENCES "AgentRun" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+      );
       CREATE TABLE IF NOT EXISTS "SpaceDiscussion" (
         "id" TEXT NOT NULL PRIMARY KEY,
         "spaceId" TEXT NOT NULL,
@@ -221,6 +287,20 @@ try {
       CREATE INDEX IF NOT EXISTS "AgentRunOutbox_claimedBy_claimedAt_idx" ON "AgentRunOutbox"("claimedBy", "claimedAt");
       CREATE UNIQUE INDEX IF NOT EXISTS "AgentArtifactManifest_taskId_attempt_key" ON "AgentArtifactManifest"("taskId", "attempt");
       CREATE INDEX IF NOT EXISTS "AgentArtifactManifest_runId_createdAt_idx" ON "AgentArtifactManifest"("runId", "createdAt");
+      CREATE UNIQUE INDEX IF NOT EXISTS "AgentSession_spaceId_agentId_key" ON "AgentSession"("spaceId", "agentId");
+      CREATE INDEX IF NOT EXISTS "AgentSession_spaceId_status_idx" ON "AgentSession"("spaceId", "status");
+      CREATE INDEX IF NOT EXISTS "AgentSession_currentTaskId_idx" ON "AgentSession"("currentTaskId");
+      CREATE UNIQUE INDEX IF NOT EXISTS "AgentCoordinatorTurn_runId_triggerEventId_key" ON "AgentCoordinatorTurn"("runId", "triggerEventId");
+      CREATE INDEX IF NOT EXISTS "AgentCoordinatorTurn_status_createdAt_idx" ON "AgentCoordinatorTurn"("status", "createdAt");
+      CREATE INDEX IF NOT EXISTS "AgentCoordinatorTurn_claimedBy_claimedAt_idx" ON "AgentCoordinatorTurn"("claimedBy", "claimedAt");
+      CREATE UNIQUE INDEX IF NOT EXISTS "AgentTaskCompletion_taskId_attempt_key" ON "AgentTaskCompletion"("taskId", "attempt");
+      CREATE UNIQUE INDEX IF NOT EXISTS "AgentTaskCompletion_idempotencyKey_key" ON "AgentTaskCompletion"("idempotencyKey");
+      CREATE INDEX IF NOT EXISTS "AgentTaskCompletion_runId_createdAt_idx" ON "AgentTaskCompletion"("runId", "createdAt");
+      CREATE INDEX IF NOT EXISTS "AgentTaskCompletion_taskId_active_idx" ON "AgentTaskCompletion"("taskId", "active");
+      CREATE UNIQUE INDEX IF NOT EXISTS "AgentRuntimeOutbox_idempotencyKey_key" ON "AgentRuntimeOutbox"("idempotencyKey");
+      CREATE INDEX IF NOT EXISTS "AgentRuntimeOutbox_status_availableAt_idx" ON "AgentRuntimeOutbox"("status", "availableAt");
+      CREATE INDEX IF NOT EXISTS "AgentRuntimeOutbox_runId_kind_createdAt_idx" ON "AgentRuntimeOutbox"("runId", "kind", "createdAt");
+      CREATE INDEX IF NOT EXISTS "AgentRuntimeOutbox_claimedBy_claimedAt_idx" ON "AgentRuntimeOutbox"("claimedBy", "claimedAt");
       CREATE INDEX IF NOT EXISTS "SpaceDiscussion_spaceId_createdAt_idx" ON "SpaceDiscussion"("spaceId", "createdAt");
       CREATE INDEX IF NOT EXISTS "SpaceDiscussion_userId_createdAt_idx" ON "SpaceDiscussion"("userId", "createdAt");
       CREATE INDEX IF NOT EXISTS "SpaceDiscussion_status_createdAt_idx" ON "SpaceDiscussion"("status", "createdAt");
@@ -249,7 +329,38 @@ try {
     if (!hasColumn('AgentRun', 'completionId')) db.exec('ALTER TABLE "AgentRun" ADD COLUMN "completionId" TEXT');
     if (!hasColumn('AgentRun', 'modelRequestCount')) db.exec('ALTER TABLE "AgentRun" ADD COLUMN "modelRequestCount" INTEGER NOT NULL DEFAULT 0');
     if (!hasColumn('AgentRun', 'modelRequestLimit')) db.exec('ALTER TABLE "AgentRun" ADD COLUMN "modelRequestLimit" INTEGER NOT NULL DEFAULT 12');
+    if (!hasColumn('AgentRun', 'runtimeVersion')) db.exec('ALTER TABLE "AgentRun" ADD COLUMN "runtimeVersion" INTEGER NOT NULL DEFAULT 1');
+    if (!hasColumn('AgentRun', 'eventSequence')) db.exec('ALTER TABLE "AgentRun" ADD COLUMN "eventSequence" INTEGER NOT NULL DEFAULT 0');
+    if (!hasColumn('AgentRun', 'coordinatorState')) db.exec('ALTER TABLE "AgentRun" ADD COLUMN "coordinatorState" JSONB');
+    if (!hasColumn('AgentTask', 'acceptanceCriteria')) db.exec('ALTER TABLE "AgentTask" ADD COLUMN "acceptanceCriteria" TEXT');
+    if (!hasColumn('AgentTask', 'origin')) db.exec(`ALTER TABLE "AgentTask" ADD COLUMN "origin" TEXT NOT NULL DEFAULT 'legacy_plan'`);
+    if (!hasColumn('AgentTask', 'parentTaskId')) db.exec('ALTER TABLE "AgentTask" ADD COLUMN "parentTaskId" TEXT');
+    if (!hasColumn('AgentTask', 'proposedAt')) db.exec('ALTER TABLE "AgentTask" ADD COLUMN "proposedAt" DATETIME');
+    if (!hasColumn('AgentTask', 'approvedAt')) db.exec('ALTER TABLE "AgentTask" ADD COLUMN "approvedAt" DATETIME');
+    if (!hasColumn('AgentTask', 'submittedAt')) db.exec('ALTER TABLE "AgentTask" ADD COLUMN "submittedAt" DATETIME');
+    if (!hasColumn('AgentTask', 'reviewDecision')) db.exec('ALTER TABLE "AgentTask" ADD COLUMN "reviewDecision" TEXT');
+    if (!hasColumn('AgentTask', 'reviewSummary')) db.exec('ALTER TABLE "AgentTask" ADD COLUMN "reviewSummary" TEXT');
     if (!hasColumn('AgentRunEvent', 'idempotencyKey')) db.exec('ALTER TABLE "AgentRunEvent" ADD COLUMN "idempotencyKey" TEXT');
+    const eventSequenceAdded = !hasColumn('AgentRunEvent', 'sequence');
+    if (eventSequenceAdded) db.exec('ALTER TABLE "AgentRunEvent" ADD COLUMN "sequence" INTEGER NOT NULL DEFAULT 0');
+    if (!hasColumn('AgentRunEvent', 'taskId')) db.exec('ALTER TABLE "AgentRunEvent" ADD COLUMN "taskId" TEXT');
+    if (!hasColumn('AgentRunEvent', 'agentId')) db.exec('ALTER TABLE "AgentRunEvent" ADD COLUMN "agentId" TEXT');
+    if (!hasColumn('AgentRunEvent', 'attempt')) db.exec('ALTER TABLE "AgentRunEvent" ADD COLUMN "attempt" INTEGER');
+    if (!hasColumn('AgentRunEvent', 'actor')) db.exec('ALTER TABLE "AgentRunEvent" ADD COLUMN "actor" TEXT');
+    if (eventSequenceAdded) {
+      db.exec(`
+        WITH ranked AS (
+          SELECT "id", ROW_NUMBER() OVER (PARTITION BY "runId" ORDER BY "createdAt", "id") AS "nextSequence"
+          FROM "AgentRunEvent"
+        )
+        UPDATE "AgentRunEvent"
+        SET "sequence" = (SELECT "nextSequence" FROM ranked WHERE ranked."id" = "AgentRunEvent"."id");
+        UPDATE "AgentRun"
+        SET "eventSequence" = COALESCE((
+          SELECT MAX("sequence") FROM "AgentRunEvent" WHERE "AgentRunEvent"."runId" = "AgentRun"."id"
+        ), 0);
+      `);
+    }
     if (!hasColumn('SpaceMessage', 'sourceKey')) db.exec('ALTER TABLE "SpaceMessage" ADD COLUMN "sourceKey" TEXT');
     db.exec(`
       CREATE INDEX IF NOT EXISTS "SpaceFile_runId_idx" ON "SpaceFile"("runId");
@@ -258,6 +369,8 @@ try {
       CREATE INDEX IF NOT EXISTS "AgentRun_workerId_heartbeatAt_idx" ON "AgentRun"("workerId", "heartbeatAt");
       CREATE UNIQUE INDEX IF NOT EXISTS "AgentRun_completionId_key" ON "AgentRun"("completionId");
       CREATE UNIQUE INDEX IF NOT EXISTS "AgentRunEvent_idempotencyKey_key" ON "AgentRunEvent"("idempotencyKey");
+      CREATE UNIQUE INDEX IF NOT EXISTS "AgentRunEvent_runId_sequence_key" ON "AgentRunEvent"("runId", "sequence");
+      CREATE INDEX IF NOT EXISTS "AgentRunEvent_runId_taskId_sequence_idx" ON "AgentRunEvent"("runId", "taskId", "sequence");
       CREATE UNIQUE INDEX IF NOT EXISTS "SpaceMessage_sourceKey_key" ON "SpaceMessage"("sourceKey");
     `);
   })();

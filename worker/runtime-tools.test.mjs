@@ -175,6 +175,8 @@ test('task intent detection stays narrow', () => {
   assert.equal(wantsWebResearch('引用官方资料并提供证据链接'), true);
   assert.equal(wantsWebResearch('检查 HTML 本地资源引用与基础语法'), false);
   assert.equal(wantsWebResearch('制作鹈鹕骑车单文件 HTML 页面，不使用外部资源'), false);
+  assert.equal(wantsWebResearch('制作一个无需联网资源、可以本地运行的互动网页'), false);
+  assert.equal(wantsWebResearch('无需联网运行，但仍需搜索最新资料'), true);
   assert.equal(wantsWebResearch('写一封普通邮件'), false);
   assert.equal(wantsMarkdownArtifact('生成一个 report.md 文档'), true);
   assert.equal(wantsMarkdownArtifact('只回答问题'), false);

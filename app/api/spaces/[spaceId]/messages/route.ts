@@ -18,7 +18,6 @@ import { compressConversationContext, estimateMessagesTokens } from '@/lib/conte
 import { spaceMemoryContext } from '@/lib/space-memory-policy.mjs';
 import { persistSpaceMemory, rebuildSpaceMemory } from '@/app/api/_lib/space-memory';
 import { formatWorkspaceInventory } from '@/lib/workspace-inventory-policy.mjs';
-import { normalizeExecutionPlan } from '@/lib/task-execution-plan.mjs';
 
 const MESSAGE_PAGE_SIZE = 40;
 const READ_ONLY_WORKSPACE_TOOLS = new Set(['list_files', 'read_file', 'check_files']);
@@ -30,7 +29,7 @@ const TASK_PROPOSAL_TOOL = {
     parameters: {
       type: 'object',
       additionalProperties: false,
-      required: ['title', 'goal', 'summary', 'steps', 'deliverables', 'artifacts', 'executionPlan'],
+      required: ['title', 'goal', 'summary', 'steps', 'deliverables', 'artifacts'],
       properties: {
         title: { type: 'string', description: '简短任务标题' },
         goal: { type: 'string', description: '完整、可独立执行的目标，包含范围、约束和验收标准' },
@@ -38,25 +37,6 @@ const TASK_PROPOSAL_TOOL = {
         steps: { type: 'array', minItems: 1, maxItems: 8, items: { type: 'string' }, description: '可独立执行和验收的步骤，不要按同一产物的功能点、样式、逻辑和检查阶段拆分' },
         deliverables: { type: 'array', maxItems: 8, items: { type: 'string' }, description: '面向用户的产出说明，可以描述产物包含的功能' },
         artifacts: { type: 'array', minItems: 1, maxItems: 8, items: { type: 'string' }, description: '实际可独立验收的文件路径或结果标识；同一文件只列一次' },
-        executionPlan: {
-          type: 'array',
-          minItems: 1,
-          maxItems: 8,
-          description: '确认后直接执行的成员任务链。只选择完成目标所必需的成员，不要为了使用所有成员而增加步骤。',
-          items: {
-            type: 'object',
-            additionalProperties: false,
-            required: ['agentId', 'mode', 'title', 'instruction', 'dependsOn', 'deliverables'],
-            properties: {
-              agentId: { type: 'string', description: '任务方案可用角色中的准确 ID' },
-              mode: { type: 'string', enum: ['advisor', 'executor'], description: 'advisor 只输出专业建议；executor 才能操作工作区' },
-              title: { type: 'string' },
-              instruction: { type: 'string', description: '该成员可独立执行的完整说明' },
-              dependsOn: { type: 'array', maxItems: 7, items: { type: 'integer', minimum: 0, maximum: 7 }, description: '依赖的前置任务序号，从 0 开始，只能引用当前项之前的任务' },
-              deliverables: { type: 'array', maxItems: 8, items: { type: 'string' } },
-            },
-          },
-        },
       },
     },
   },
@@ -100,24 +80,7 @@ function taskProposalFromArgs(args: Record<string, unknown>): TaskProposal {
   const summary = text(args.summary);
   const artifacts = list(args.artifacts);
   const steps = normalizeTaskProposalSteps(list(args.steps), artifacts);
-  const executionPlan = Array.isArray(args.executionPlan)
-    ? args.executionPlan.slice(0, 8).map((value) => {
-        const item = value && typeof value === 'object' ? value as Record<string, unknown> : {};
-        return {
-          agentId: text(item.agentId),
-          mode: item.mode === 'advisor' ? 'advisor' as const : item.mode === 'executor' ? 'executor' as const : '' as never,
-          title: text(item.title),
-          instruction: text(item.instruction).slice(0, 8_000),
-          dependsOn: Array.isArray(item.dependsOn)
-            ? item.dependsOn.filter((dependency): dependency is number => Number.isInteger(dependency)).slice(0, 7)
-            : [],
-          deliverables: list(item.deliverables),
-        };
-      })
-    : [];
   if (!title || !goal || !summary || steps.length === 0) throw new Error('任务方案缺少必要信息');
-  if (executionPlan.length === 0) throw new Error('任务方案缺少成员执行链');
-  if (executionPlan.some((task) => !task.mode)) throw new Error('任务方案包含无效的成员模式');
   if (taskProposalNeedsClarification(goal, steps)) {
     throw new Error('任务依赖尚未获得的用户信息。请先在普通对话中向用户追问，本轮不要生成任务方案。');
   }
@@ -129,7 +92,6 @@ function taskProposalFromArgs(args: Record<string, unknown>): TaskProposal {
     steps,
     deliverables: list(args.deliverables),
     artifacts,
-    executionPlan,
     capabilities: taskProposalCapabilities(goal, steps, list(args.deliverables)),
     status: 'pending',
   };
@@ -194,7 +156,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
 
     const memberAgents = await resolveManyAgents(space.members.map((member) => member.agentId), userId);
     const allAgents = [SPACE_COORDINATOR, ...memberAgents];
-    const executionAgents = [{ ...SPACE_COORDINATOR, advisorOnly: true, fallbackResearchAdvisor: true }, ...memberAgents];
 
     const explicitTarget = targetAgentId ? await resolveAgent(String(targetAgentId), userId) : null;
     const mentionedTarget = resolveMentionTarget(textMessage, memberAgents);
@@ -283,9 +244,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
       space.instructions ? `当前空间规则：\n${space.instructions}` : '',
       projectMemory,
       workspaceInventoryContext,
-      !isMultiReply
-        ? `任务方案可用角色 ID（executionPlan.agentId 只能从这里选择）：\n${executionAgents.map((agent) => `- ${agent.id} | ${agent.name}${'advisorOnly' in agent && agent.advisorOnly ? ' | 仅限 advisor，不能执行文件工作' : ` | ${agent.category || '普通成员'}`}`).join('\n')}`
-        : '',
       currentPendingProposal
         ? [
             '当前已有一份待用户确认的任务方案：',
@@ -303,9 +261,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
         '你是空间助手。普通问答、讨论方案和少量只读查看直接回答；需要项目事实时可使用只读文件工具核实。',
         isMultiReply
           ? '当前是多人分别回答，不是任务执行。只代表自己给出观点，不得创建任务方案，不得写文件、联网或声称已经开始执行。'
-          : '你没有写入、联网、终端和浏览器权限。用户要求修改文件、编写代码、制作网页或文档、联网收集资料，或者目标需要多个步骤持续执行时，必须调用 propose_task 生成一份完整方案，等待用户整体确认。',
-        !isMultiReply ? '任务方案必须覆盖完整目标、主要步骤、预期产物、验收要求和 executionPlan。executionPlan 是用户确认后直接执行的任务链，不会再由协调者二次拆分。advisor 只产出专业判断且不操作文件，executor 才执行文件工作。只选择完成目标必需的成员：简单单产物通常只需一个 executor；只有专业决策确实会影响后续实现时才增加 advisor，通常最多一个。按可独立验收的产物拆分步骤，不要按同一产物的页面结构、样式、功能点、校验或检查阶段拆分；单个文件默认只有一个端到端执行步骤。不要把同一个目标拆成多张审批卡，也不要声称任务已经开始。' : '',
-        !isMultiReply ? '调研路由规则：如果用户已经给出清晰定义、功能范围和验收要求，直接交给 executor，不得再增加联网调研或产品评审。如果一个陌生或歧义概念会实质改变实现方向，才增加一个调研 advisor，并让 executor 依赖该步骤；空间有产品成员时优先由产品担任调研 advisor，没有产品成员时才使用 space-coordinator。space-coordinator 只能担任调研 advisor，绝不能作为 executor。普通常识、用户已明确说明的定义，或不影响实现方向的细节都不得触发调研。调研结论会先交用户审批，批准后执行者必须直接采用，不得自行重新调研；只有用户明确要求刷新或重新搜索时才重新调研。' : '',
+          : '你没有写入、联网、终端和浏览器权限。用户要求修改文件、编写代码、制作网页或文档、联网收集资料，或者目标需要多个步骤持续执行时，必须调用 propose_task 生成一份目标授权方案，等待用户整体确认。',
+        !isMultiReply ? '任务方案必须覆盖完整目标、范围、主要里程碑、预期产物和总体验收要求，但不要提前选择成员或生成固定执行链。用户确认的是目标与能力边界；运行时 Coordinator 会读取空间中的实时成员、工作状态和每轮成果，动态决定下一件任务交给谁。按可独立验收的产物描述里程碑，不要按页面结构、样式、功能点或检查阶段机械拆分。不要声称任务已经开始。' : '',
+        !isMultiReply ? '调研是否必要、应由产品还是其他成员承担，由运行时 Coordinator 根据实时团队和目标动态判断。方案阶段只准确标记是否需要联网、工作区读取或写入，不要为了使用空间成员而扩展任务。' : '',
         !isMultiReply ? '如果品种、单位、范围、输入文件、输出要求等关键信息不足，先在普通对话中追问；获得用户回答前不得调用 propose_task，也不得把“询问用户、确认用户信息、等待用户补充”写成后台执行步骤。' : '',
         !isMultiReply ? '需要实时或外部资料时，应准确说明需要用户授权联网查询，不要声称平台不能联网。仅在用户明确要求创建、修改文件、网页、代码或文档时，才把写入工作区列入任务。' : '',
         !isMultiReply ? '如果目标只是联网核实少量事实并直接回答，任务方案通常只需要一个执行步骤；不要擅自扩展成长报告、多成员分析或文件产出。' : '',
@@ -364,16 +322,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
               if (name === 'propose_task') {
                 if (taskProposal) return { ok: false, error: '本轮已经生成任务方案' };
                 taskProposal = taskProposalFromArgs(args);
-                const executionPlan = normalizeExecutionPlan(taskProposal, executionAgents, targetAgent.id);
-                taskProposal.executionPlan = executionPlan.map((task) => ({
-                  agentId: task.agentId,
-                  agentName: task.agentName,
-                  mode: task.mode,
-                  title: task.title,
-                  instruction: task.instruction,
-                  dependsOn: task.dependsOn,
-                  deliverables: task.deliverables,
-                }));
                 return { ok: true, pause: true, message: '任务方案已生成，等待用户确认' };
               }
               if (!READ_ONLY_WORKSPACE_TOOLS.has(name)) throw new Error('空间助手只能读取和检查文件');
@@ -411,7 +359,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
             }
 
             const assistantContent = loopResult.content?.trim()
-              || (taskProposal ? '已根据你的要求生成任务方案，确认后会按下方成员链直接执行。' : '');
+              || (taskProposal ? '已根据你的要求生成目标授权方案，确认后由协调者根据实时团队和成果动态推进。' : '');
             const assistantMessage = await tx.spaceMessage.create({
               data: {
                 spaceId,

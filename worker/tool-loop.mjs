@@ -9,9 +9,13 @@ const TRANSIENT_MODEL_STATUSES = new Set([408, 409, 429, 500, 502, 503, 504, 520
 export function isTransientModelError(error) {
   const status = Number(error?.status || error?.statusCode || 0);
   const message = String(error?.message || '');
+  const name = String(error?.name || '');
+  const causeCode = String(error?.cause?.code || error?.code || '');
+  if (name === 'APIUserAbortError' || /(?:user|request).*(?:abort|cancel)/i.test(message)) return false;
   return TRANSIENT_MODEL_STATUSES.has(status)
     || /\b(?:408|409|429|500|502|503|504|520|522|524)\b/.test(message)
-    || /(?:timed?\s*out|timeout)/i.test(message);
+    || /(?:timed?\s*out|timeout|terminated|fetch failed|socket hang up|premature close|connection (?:closed|reset)|other side closed)/i.test(message)
+    || /^(?:ECONNRESET|ECONNREFUSED|EPIPE|UND_ERR_SOCKET|UND_ERR_CONNECT_TIMEOUT|UND_ERR_HEADERS_TIMEOUT|UND_ERR_BODY_TIMEOUT)$/.test(causeCode);
 }
 
 export async function withTransientModelRetry(operation, { onRetry, delayMs = 1_500 } = {}) {

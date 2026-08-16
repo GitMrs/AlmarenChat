@@ -117,6 +117,25 @@ test('transient model failures retry once', async () => {
   assert.equal(isTransientModelError(new Error('invalid request')), false);
 });
 
+test('terminated provider streams are retried but user cancellation is not', async () => {
+  assert.equal(isTransientModelError(new TypeError('terminated')), true);
+  assert.equal(isTransientModelError(Object.assign(new Error('fetch failed'), {
+    cause: { code: 'UND_ERR_SOCKET' },
+  })), true);
+  assert.equal(isTransientModelError(Object.assign(new Error('Request was aborted.'), {
+    name: 'APIUserAbortError',
+  })), false);
+
+  let attempts = 0;
+  const result = await withTransientModelRetry(async () => {
+    attempts += 1;
+    if (attempts === 1) throw new TypeError('terminated');
+    return 'recovered';
+  }, { delayMs: 0 });
+  assert.equal(result, 'recovered');
+  assert.equal(attempts, 2);
+});
+
 test('stream collector assembles content and fragmented tool calls', async () => {
   let started = 0;
   let streamed = '';

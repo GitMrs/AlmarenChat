@@ -59,6 +59,7 @@ model Space {
   name        String
   description String?
   instructions String?
+  executionMode String @default("REVIEW_DISPATCH")
   hostAgentId String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -85,6 +86,23 @@ model SpaceMember {
   @@unique([spaceId, agentId])
   @@index([spaceId, sortOrder])
   @@index([agentId])
+}
+
+model AgentSession {
+  id            String   @id @default(uuid())
+  spaceId       String
+  agentId       String
+  status        String   @default("IDLE")
+  currentTaskId String?
+  worklog       String?
+  summary       String?
+  lastActiveAt  DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([spaceId, agentId])
+  @@index([spaceId, status])
+  @@index([currentTaskId])
 }
 
 model SpaceMessage {
@@ -263,6 +281,9 @@ model AgentRun {
   completionId String?   @unique
   modelRequestCount Int  @default(0)
   modelRequestLimit Int  @default(12)
+  runtimeVersion Int      @default(1)
+  eventSequence  Int      @default(0)
+  coordinatorState Json?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   startedAt   DateTime?
@@ -272,6 +293,9 @@ model AgentRun {
   events AgentRunEvent[]
   outbox AgentRunOutbox?
   artifactManifests AgentArtifactManifest[]
+  coordinatorTurns AgentCoordinatorTurn[]
+  taskCompletions AgentTaskCompletion[]
+  runtimeOutbox AgentRuntimeOutbox[]
 
   @@index([spaceId, createdAt])
   @@index([userId, createdAt])
@@ -287,6 +311,9 @@ model AgentTask {
   agentName   String
   title       String
   instruction String
+  acceptanceCriteria String?
+  origin      String    @default("legacy_plan")
+  parentTaskId String?
   mode        String     @default("executor")
   dependsOn   Json?
   modelRequestCount Int  @default(0)
@@ -299,6 +326,11 @@ model AgentTask {
   waitReason   String?
   waitAnswer   String?
   waitingAt    DateTime?
+  proposedAt   DateTime?
+  approvedAt   DateTime?
+  submittedAt  DateTime?
+  reviewDecision String?
+  reviewSummary  String?
   attempt     Int       @default(1)
   sortOrder   Int
   createdAt   DateTime  @default(now())
@@ -308,9 +340,54 @@ model AgentTask {
   reviewedAt  DateTime?
 
   artifactManifests AgentArtifactManifest[]
+  completions AgentTaskCompletion[]
 
   @@index([runId, sortOrder])
   @@index([status])
+}
+
+model AgentCoordinatorTurn {
+  id             String   @id @default(uuid())
+  runId          String
+  run            AgentRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  triggerEventId String
+  status         String   @default("QUEUED")
+  inputSnapshot  Json?
+  action         Json?
+  error          String?
+  modelRequestCount Int   @default(0)
+  claimedBy      String?
+  claimedAt      DateTime?
+  startedAt      DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([runId, triggerEventId])
+  @@index([status, createdAt])
+  @@index([claimedBy, claimedAt])
+}
+
+model AgentTaskCompletion {
+  id             String    @id @default(uuid())
+  runId          String
+  run            AgentRun  @relation(fields: [runId], references: [id], onDelete: Cascade)
+  taskId         String
+  task           AgentTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  attempt        Int
+  workerId       String
+  status         String
+  report         String
+  evidence       Json?
+  artifacts      Json?
+  validation     Json?
+  idempotencyKey String    @unique
+  active         Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+
+  @@unique([taskId, attempt])
+  @@index([runId, createdAt])
+  @@index([taskId, active])
 }
 
 model AgentArtifactManifest {
@@ -340,9 +417,16 @@ model AgentRunEvent {
   message   String
   payload   Json?
   idempotencyKey String? @unique
+  sequence  Int      @default(0)
+  taskId    String?
+  agentId   String?
+  attempt   Int?
+  actor     String?
   createdAt DateTime @default(now())
 
+  @@unique([runId, sequence])
   @@index([runId, createdAt])
+  @@index([runId, taskId, sequence])
 }
 
 model AgentRunOutbox {
@@ -362,5 +446,28 @@ model AgentRunOutbox {
   updatedAt      DateTime @updatedAt
 
   @@index([status, availableAt])
+  @@index([claimedBy, claimedAt])
+}
+
+model AgentRuntimeOutbox {
+  id             String   @id @default(uuid())
+  runId          String
+  run            AgentRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  kind           String
+  aggregateId    String
+  idempotencyKey String   @unique
+  payload        Json
+  status         String   @default("PENDING")
+  attempts       Int      @default(0)
+  lastError      String?
+  availableAt    DateTime @default(now())
+  claimedBy      String?
+  claimedAt      DateTime?
+  deliveredAt    DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([status, availableAt])
+  @@index([runId, kind, createdAt])
   @@index([claimedBy, claimedAt])
 }

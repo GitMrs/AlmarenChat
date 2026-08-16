@@ -3,9 +3,9 @@ import { Prisma } from '@/src/generated/prisma/client';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { ACTIVE_AGENT_RUN_STATUSES, agentRunInclude } from '@/app/api/_lib/agent-runs';
-import { getSpaceForUser, resolveManyAgents, SPACE_COORDINATOR } from '@/app/api/_lib/spaces';
+import { getSpaceForUser, resolveManyAgents } from '@/app/api/_lib/spaces';
 import { taskProposalCapabilities, taskProposalNeedsClarification } from '@/lib/task-proposals';
-import { defaultModelRequestLimit, normalizeExecutionPlan } from '@/lib/task-execution-plan.mjs';
+import { coordinatorAuthorization } from '@/lib/agent-runtime-v3-policy.mjs';
 
 type TaskProposalAttachment = {
   type: 'task_proposal';
@@ -53,7 +53,13 @@ function applyRevision(proposal: TaskProposalAttachment, revision: TaskProposalR
           }
         : value)
     : revision ? undefined : proposal.executionPlan;
-  const next = revision ? { ...proposal, ...revision, executionPlan: revisedExecutionPlan } : proposal;
+  let next = proposal;
+  if (revision && revisedExecutionPlan) {
+    next = { ...proposal, ...revision, executionPlan: revisedExecutionPlan };
+  } else if (revision) {
+    const { executionPlan: _legacyExecutionPlan, ...authorizationProposal } = proposal;
+    next = { ...authorizationProposal, ...revision };
+  }
   const goal = typeof next.goal === 'string' ? next.goal.trim() : '';
   const steps = Array.isArray(next.steps) ? next.steps : [];
   const deliverables = Array.isArray(next.deliverables) ? next.deliverables : [];
@@ -78,7 +84,7 @@ function taskInput(proposal: TaskProposalAttachment, fallback: string) {
     : [];
   return [
     goal,
-    steps.length > 0 ? `\n已确认执行方案：\n${steps.map((step, index) => `${index + 1}. ${step}`).join('\n')}` : '',
+    steps.length > 0 ? `\n已授权里程碑：\n${steps.map((step, index) => `${index + 1}. ${step}`).join('\n')}` : '',
     deliverables.length > 0 ? `\n预期产出：\n${deliverables.map((item) => `- ${item}`).join('\n')}` : '',
   ].filter(Boolean).join('\n');
 }
@@ -167,47 +173,41 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
       })).map((member) => member.agentId));
       const currentMemberAgents = memberAgents.filter((agent) => currentMemberIds.has(agent.id));
       if (currentMemberAgents.length === 0) throw new Error('空间成员不可用');
-      const executionAgents = [{ ...SPACE_COORDINATOR, advisorOnly: true, fallbackResearchAdvisor: true }, ...currentMemberAgents];
-      const fallbackAgentId = currentMemberAgents[0].id;
-      const executionTasks = currentProposal
-        ? normalizeExecutionPlan(currentProposal, executionAgents, fallbackAgentId)
-        : [];
-      const modelRequestLimit = executionTasks.length > 0 ? defaultModelRequestLimit(executionTasks) : 16;
+      const authorization = coordinatorAuthorization(currentProposal || {
+        goal: runInput,
+        steps: [runInput],
+        deliverables: [],
+        artifacts: [],
+        capabilities: taskProposalCapabilities(runInput, [runInput], []),
+      });
+      const modelRequestLimit = 48;
 
       const created = await tx.agentRun.create({
         data: {
           spaceId,
           userId,
           input: runInput,
+          runtimeVersion: 3,
+          eventSequence: 1,
+          coordinatorState: {
+            phase: 'coordinating',
+            authorizedAt: new Date().toISOString(),
+            iteration: 0,
+            taskCount: 0,
+            currentTaskIds: [],
+            authorization,
+          },
           modelRequestLimit,
-          ...(executionTasks.length > 0 ? { tasks: {
-            create: executionTasks.map((task, sortOrder) => ({
-              agentId: task.agentId,
-              agentName: task.agentName,
-              title: task.title,
-              instruction: task.deliverables.length > 0
-                ? `${task.instruction}\n\n独立验收产物：${task.deliverables.join('、')}`
-                : task.instruction,
-              mode: task.mode,
-              dependsOn: task.dependsOn,
-              modelRequestLimit: task.modelRequestLimit,
-              sortOrder,
-            })),
-          } } : {}),
           events: {
             create: {
               type: 'RUN_QUEUED',
-              message: '已按确认方案进入执行队列',
+              message: '目标授权已确认，等待协调者安排工作',
+              sequence: 1,
+              actor: 'user',
               payload: {
-                taskCount: executionTasks.length,
+                taskCount: 0,
                 modelRequestLimit,
-                executionPlan: executionTasks.map((task) => ({
-                  agentId: task.agentId,
-                  agentName: task.agentName,
-                  mode: task.mode,
-                  title: task.title,
-                  dependsOn: task.dependsOn,
-                })),
+                authorization,
               },
             },
           },

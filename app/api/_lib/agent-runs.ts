@@ -4,7 +4,7 @@ export const ACTIVE_AGENT_RUN_STATUSES = ['QUEUED', 'PLANNING', 'RUNNING', 'WAIT
 
 export const agentRunInclude = {
   tasks: { orderBy: { sortOrder: 'asc' as const } },
-  events: { orderBy: { createdAt: 'asc' as const } },
+  events: { orderBy: { sequence: 'asc' as const } },
 };
 
 export function getAgentRunForUser(runId: string, userId: string) {

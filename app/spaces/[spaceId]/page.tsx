@@ -12,6 +12,7 @@ import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import ComposerShell from '@/components/chat/ComposerShell';
 import SpaceMessageItem from '@/components/spaces/SpaceMessageItem';
 import TaskProposalDialog, { type TaskProposalRevision } from '@/components/spaces/TaskProposalDialog';
+import TaskDispatchDialog, { type TaskDispatchRevision } from '@/components/spaces/TaskDispatchDialog';
 import TaskReviewDialog from '@/components/spaces/TaskReviewDialog';
 import SpaceFileEditorDialog from '@/components/spaces/SpaceFileEditorDialog';
 import SpaceDiscussionDialog from '@/components/spaces/SpaceDiscussionDialog';
@@ -50,10 +51,16 @@ const RUN_STATUS_LABELS: Record<string, string> = {
   CANCELLED: '已取消',
 };
 const TASK_STATUS_LABELS: Record<string, string> = {
+  PROPOSED: '待确认',
   PENDING: '等待中',
+  QUEUED: '已派发',
   RUNNING: '执行中',
   WAITING: '等待补充信息',
+  WAITING_USER: '等待补充信息',
   WAITING_APPROVAL: '待审核',
+  SUBMITTED: '已提交',
+  REVIEWING: '协调者验收中',
+  REVISION_REQUIRED: '需要返工',
   CANCEL_REQUESTED: '正在停止',
   COMPLETED: '已完成',
   BLOCKED: '缺少必要条件',
@@ -93,6 +100,8 @@ type RunEventPayload = {
     validatedFiles?: number;
     commandChecks?: number;
   };
+  reason?: string;
+  mode?: string;
 };
 
 const TOOL_LABELS: Record<string, string> = {
@@ -124,7 +133,30 @@ function formatActivityEvent(event: AgentRunEvent) {
       checked: payload.tool === 'check_files' && payload.valid,
     };
   }
-  return { title: event.message, detail: '', checked: event.type === 'TASK_COMPLETED' };
+  if (event.type === 'COORDINATOR_TASK_DISPATCHED') {
+    return {
+      title: event.message,
+      detail: payload.reason || '协调者已根据实时团队与当前成果完成选人',
+      checked: true,
+    };
+  }
+  if (event.type === 'COORDINATOR_TASK_PROPOSED') {
+    return {
+      title: event.message,
+      detail: payload.reason || '等待用户确认成员与任务边界',
+      checked: false,
+    };
+  }
+  if (event.type === 'TASK_DISPATCH_APPROVED') {
+    return { title: event.message, detail: '用户已授权该成员开始执行', checked: true };
+  }
+  if (event.type === 'COORDINATOR_DECISION_STARTED') {
+    return { title: event.message, detail: '正在读取成员状态、已有成果和剩余授权', checked: false };
+  }
+  if (event.type === 'COORDINATOR_GOAL_SATISFIED') {
+    return { title: event.message, detail: '协调者判断已验收成果覆盖了授权目标', checked: true };
+  }
+  return { title: event.message, detail: '', checked: ['TASK_COMPLETED', 'TASK_ACCEPTED'].includes(event.type) };
 }
 
 function formatEventTime(value: string) {
@@ -225,6 +257,7 @@ export default function SpaceDetailPage() {
   const [uploadingFile, setUploadingFile] = useState(false);
   const [downloadingFileId, setDownloadingFileId] = useState('');
   const [instructionsDraft, setInstructionsDraft] = useState('');
+  const [executionModeDraft, setExecutionModeDraft] = useState<'AUTO' | 'REVIEW_DISPATCH'>('REVIEW_DISPATCH');
   const [savingInstructions, setSavingInstructions] = useState(false);
   const [runActionLoading, setRunActionLoading] = useState(false);
   const [proposalActionMessageId, setProposalActionMessageId] = useState<string | null>(null);
@@ -237,6 +270,10 @@ export default function SpaceDetailPage() {
   const [pendingCancelTask, setPendingCancelTask] = useState<AgentTask | null>(null);
   const [cancellingTaskId, setCancellingTaskId] = useState<string | null>(null);
   const [reviewAction, setReviewAction] = useState<'approve' | 'retry' | 'skip' | null>(null);
+  const [dispatchAction, setDispatchAction] = useState<'approve' | 'reject' | null>(null);
+  const [editingDispatchTask, setEditingDispatchTask] = useState<AgentTask | null>(null);
+  const [pendingRejectDispatch, setPendingRejectDispatch] = useState<AgentTask | null>(null);
+  const [dispatchError, setDispatchError] = useState('');
   const [revisionTask, setRevisionTask] = useState<AgentTask | null>(null);
   const [reviewError, setReviewError] = useState('');
   const [resumeAnswer, setResumeAnswer] = useState('');
@@ -309,14 +346,18 @@ export default function SpaceDetailPage() {
   const latestAssistantMessageId = [...messages].reverse().find((message) => message.role === 'assistant')?.id;
   const isRunActive = Boolean(activeRun);
   const completedTaskCount = currentRun?.tasks.filter((task) => task.status === 'COMPLETED').length || 0;
-  const activeTask = currentRun?.tasks.find((task) => ['RUNNING', 'WAITING', 'WAITING_APPROVAL', 'CANCEL_REQUESTED'].includes(task.status)) || null;
+  const activeTask = currentRun?.tasks.find((task) => ['PROPOSED', 'RUNNING', 'SUBMITTED', 'REVIEWING', 'WAITING', 'WAITING_USER', 'WAITING_APPROVAL', 'CANCEL_REQUESTED'].includes(task.status)) || null;
+  const proposedTask = currentRun?.tasks.find((task) => task.status === 'PROPOSED') || null;
   const waitingTask = currentRun?.tasks.find((task) => task.status === 'WAITING') || null;
   const reviewTask = currentRun?.tasks.find((task) => task.status === 'WAITING_APPROVAL') || null;
   const reviewAudit = reviewTask
     ? [...(currentRun?.events || [])].reverse().map((event) => ({ event, payload: eventPayload(event) }))
       .find(({ event, payload }) => event.type === 'RESEARCH_RESULT_AUDITED' && payload.taskId === reviewTask.id)?.payload.audit || null
     : null;
-  const taskProgress = currentRun?.tasks.length ? Math.round((completedTaskCount / currentRun.tasks.length) * 100) : 0;
+  const proposedTaskReason = proposedTask
+    ? [...(currentRun?.events || [])].reverse().map((event) => ({ event, payload: eventPayload(event) }))
+      .find(({ event, payload }) => event.type === 'COORDINATOR_TASK_PROPOSED' && payload.taskId === proposedTask.id)?.payload.reason || ''
+    : '';
   const discussionSequenceIds = activeDiscussion
     ? activeDiscussion.currentRound === 2
       ? [...activeDiscussion.participantIds].reverse()
@@ -329,14 +370,19 @@ export default function SpaceDetailPage() {
     const agentTasks = activeRun?.tasks.filter((item) => item.agentId === agentId) || [];
     const task = agentTasks.find((item) => item.status === 'CANCEL_REQUESTED')
       || agentTasks.find((item) => item.status === 'RUNNING')
+      || agentTasks.find((item) => item.status === 'REVIEWING')
+      || agentTasks.find((item) => item.status === 'SUBMITTED')
       || agentTasks.find((item) => item.status === 'WAITING')
       || agentTasks.find((item) => item.status === 'WAITING_APPROVAL')
+      || agentTasks.find((item) => item.status === 'PROPOSED')
       || agentTasks.find((item) => item.status === 'PENDING')
       || null;
     if (task?.status === 'CANCEL_REQUESTED') return { label: '正在停止', color: 'bg-rose-400', text: 'text-rose-500', task };
     if (task?.status === 'RUNNING') return { label: '工作中', color: 'bg-emerald-500', text: 'text-emerald-600', task };
+    if (['SUBMITTED', 'REVIEWING'].includes(task?.status || '')) return { label: '验收中', color: 'bg-sky-400', text: 'text-sky-600', task };
     if (task?.status === 'WAITING') return { label: '等待补充', color: 'bg-amber-400', text: 'text-amber-600', task };
     if (task?.status === 'WAITING_APPROVAL') return { label: '待审核', color: 'bg-sky-400', text: 'text-sky-600', task };
+    if (task?.status === 'PROPOSED') return { label: '待确认', color: 'bg-amber-400', text: 'text-amber-600', task };
     if (task?.status === 'PENDING') return { label: '等待中', color: 'bg-amber-400', text: 'text-amber-600', task };
     if (activeDiscussion?.participantIds.includes(agentId)) {
       if (agentId === currentDiscussionAgentId && activeDiscussion.status === 'CANCEL_REQUESTED') {
@@ -358,7 +404,7 @@ export default function SpaceDetailPage() {
     }
     return { label: '空闲', color: 'bg-slate-300', text: 'text-slate-400', task: null };
   };
-  const coordinatorStatus = activeRun && ['PLANNING', 'SUMMARIZING'].includes(activeRun.status)
+  const coordinatorStatus = activeRun && (['PLANNING', 'SUMMARIZING'].includes(activeRun.status) || ['SUBMITTED', 'REVIEWING'].includes(activeTask?.status || ''))
     ? { label: '协调中', color: 'bg-emerald-500', text: 'text-emerald-600' }
     : activeDiscussion && activeDiscussion.currentRound > activeDiscussion.maxRounds
       ? { label: '汇总中', color: 'bg-emerald-500', text: 'text-emerald-600' }
@@ -408,6 +454,7 @@ export default function SpaceDetailPage() {
       setAgents([...customResult.agents, ...builtIn]);
       setSpace(spaceResult.space);
       setInstructionsDraft(spaceResult.space.instructions || '');
+      setExecutionModeDraft(spaceResult.space.executionMode === 'AUTO' ? 'AUTO' : 'REVIEW_DISPATCH');
       setMessages(messageResult.messages);
       setFiles(fileResult.files);
       setRuns(runResult.runs);
@@ -451,17 +498,22 @@ export default function SpaceDetailPage() {
     const timer = window.setInterval(async () => {
       try {
         const [result, fileResult] = await Promise.all([
-          agentRunsApi.get(activeRun.id),
+          agentRunsApi.get(activeRun.id, activeRun.eventSequence || 0),
           spacesApi.files(spaceId),
         ]);
-        setRuns((items) => items.map((item) => (item.id === result.run.id ? result.run : item)));
+        setRuns((items) => items.map((item) => {
+          if (item.id !== result.run.id) return item;
+          const events = new Map(item.events.map((event) => [event.id, event]));
+          for (const event of result.run.events) events.set(event.id, event);
+          return { ...result.run, events: [...events.values()].sort((a, b) => a.sequence - b.sequence) };
+        }));
         setFiles(fileResult.files);
       } catch {
         // Keep the last persisted state visible; the next poll can recover from a transient failure.
       }
     }, 1200);
     return () => window.clearInterval(timer);
-  }, [activeRun?.id, activeRun?.status, spaceId]);
+  }, [activeRun?.id, activeRun?.status, activeRun?.eventSequence, spaceId]);
 
   useEffect(() => {
     if (!latestRun || ACTIVE_RUN_STATUSES.has(latestRun.status)) return;
@@ -745,9 +797,13 @@ export default function SpaceDetailPage() {
     setSavingInstructions(true);
     setError('');
     try {
-      const result = await spacesApi.update(spaceId, { instructions: instructionsDraft.trim() || null });
+      const result = await spacesApi.update(spaceId, {
+        instructions: instructionsDraft.trim() || null,
+        executionMode: executionModeDraft,
+      });
       setSpace((current: any) => ({ ...current, ...result.space }));
       setInstructionsDraft(result.space.instructions || '');
+      setExecutionModeDraft(result.space.executionMode === 'AUTO' ? 'AUTO' : 'REVIEW_DISPATCH');
     } catch (err: any) {
       setError(err.message || '保存空间规则失败');
     } finally {
@@ -955,6 +1011,28 @@ export default function SpaceDetailPage() {
     }
   };
 
+  const reviewDispatch = async (
+    action: 'approve' | 'reject',
+    task = proposedTask,
+    revision?: TaskDispatchRevision
+  ) => {
+    if (!currentRun || !task || dispatchAction) return;
+    setDispatchAction(action);
+    setDispatchError('');
+    try {
+      const result = await agentRunsApi.reviewDispatch(currentRun.id, task.id, action, revision);
+      setRuns((items) => items.map((item) => (item.id === result.run.id ? result.run : item)));
+      setEditingDispatchTask(null);
+      setPendingRejectDispatch(null);
+    } catch (err: any) {
+      const message = err.message || '处理派发提案失败';
+      setError(message);
+      setDispatchError(message);
+    } finally {
+      setDispatchAction(null);
+    }
+  };
+
   if (loading) {
     return (
       <AppShell hideHeader hideBottomNav>
@@ -1140,6 +1218,7 @@ export default function SpaceDetailPage() {
                     type="button"
                     onClick={() => {
                       setInstructionsDraft(space.instructions || '');
+                      setExecutionModeDraft(space.executionMode === 'AUTO' ? 'AUTO' : 'REVIEW_DISPATCH');
                       setSidePanel('settings');
                     }}
                     className="text-xs font-black text-slate-400 transition hover:text-slate-950"
@@ -1209,6 +1288,7 @@ export default function SpaceDetailPage() {
                 type="button"
                 onClick={() => {
                   setInstructionsDraft(space.instructions || '');
+                  setExecutionModeDraft(space.executionMode === 'AUTO' ? 'AUTO' : 'REVIEW_DISPATCH');
                   setSidePanel('settings');
                 }}
                 aria-expanded={sidePanel === 'settings'}
@@ -1303,15 +1383,18 @@ export default function SpaceDetailPage() {
                             <div className="min-w-0 flex-1">
                               <div className="flex flex-wrap items-center justify-between gap-2">
                                 <div className="text-sm font-black text-slate-900">
-                                  {activeTask?.title || (currentRun.status === 'QUEUED' ? '等待 Worker 接收任务' : currentRun.status === 'SUMMARIZING' ? '协调者正在整理最终结果' : '协调者正在拆分任务')}
+                                  {activeTask?.status === 'REVIEWING' || activeTask?.status === 'SUBMITTED'
+                                    ? `协调者正在验收：${activeTask.title}`
+                                    : activeTask?.title || (currentRun.status === 'QUEUED' ? '等待 Worker 接收任务' : currentRun.status === 'SUMMARIZING' ? '协调者正在整理最终结果' : '协调者正在安排下一项工作')}
                                 </div>
                                 <span className="text-xs font-black text-slate-400">
-                                  {completedTaskCount}/{currentRun.tasks.length || '—'}
+                                  已验收 {completedTaskCount} 项
                                 </span>
                               </div>
                               {activeTask && <div className="mt-1 text-xs font-semibold text-slate-400">{activeTask.agentName}</div>}
-                              <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-100">
-                                <div className="h-full rounded-full bg-slate-950 transition-all" style={{ width: `${Math.max(4, taskProgress)}%` }} />
+                              <div className="mt-3 flex items-center gap-2 text-xs font-semibold text-slate-500">
+                                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                                {currentRun.events.at(-1)?.message || '任务已进入执行队列'}
                               </div>
                               {latestResearchEvent && (
                                 <div className={`mt-3 flex items-center gap-2 text-xs font-bold ${latestResearchEvent.type === 'WEB_SEARCH_COMPLETED' ? 'text-emerald-600' : latestResearchEvent.type === 'WEB_SEARCH_STARTED' ? 'text-slate-500' : 'text-amber-600'}`}>
@@ -1353,6 +1436,55 @@ export default function SpaceDetailPage() {
                             {resumeLoading ? <Loader2 className="animate-spin" size={15} /> : <Send size={15} />}
                             提交并继续
                           </button>
+                        </section>
+                      )}
+
+                      {currentRun.status === 'WAITING_APPROVAL' && proposedTask && (
+                        <section className="border-y border-black/[0.08] py-5">
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="text-xs font-black text-amber-600">Coordinator 派发提案</div>
+                              <h3 className="mt-1 text-base font-black text-slate-950">{proposedTask.title}</h3>
+                            </div>
+                            <span className="rounded bg-amber-50 px-2 py-1 text-xs font-black text-amber-700">开工前待确认</span>
+                          </div>
+
+                          <div className="mt-5 grid gap-4 border-y border-black/[0.06] py-4 sm:grid-cols-2">
+                            <div>
+                              <div className="text-[11px] font-black text-slate-400">建议成员</div>
+                              <div className="mt-1 text-sm font-black text-slate-800">{proposedTask.agentName} · {proposedTask.mode === 'advisor' ? '顾问' : '执行'}</div>
+                            </div>
+                            <div>
+                              <div className="text-[11px] font-black text-slate-400">选择理由</div>
+                              <div className="mt-1 text-sm font-semibold leading-6 text-slate-600">{proposedTaskReason || '协调者根据成员能力与当前工作状态作出选择。'}</div>
+                            </div>
+                          </div>
+
+                          <div className="mt-4">
+                            <div className="text-[11px] font-black text-slate-400">准备做什么</div>
+                            <p className="mt-1 whitespace-pre-wrap break-words text-sm font-semibold leading-6 text-slate-700">{proposedTask.instruction}</p>
+                          </div>
+                          {proposedTask.acceptanceCriteria && (
+                            <div className="mt-4">
+                              <div className="text-[11px] font-black text-slate-400">验收标准</div>
+                              <p className="mt-1 whitespace-pre-wrap break-words text-sm font-semibold leading-6 text-slate-700">{proposedTask.acceptanceCriteria}</p>
+                            </div>
+                          )}
+                          {dispatchError && <div className="mt-4 rounded-lg bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-600">{dispatchError}</div>}
+
+                          <div className="mt-5 flex flex-col gap-2 border-t border-black/[0.06] pt-4 sm:flex-row sm:flex-wrap">
+                            <button type="button" onClick={() => reviewDispatch('approve')} disabled={Boolean(dispatchAction)} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-slate-950 px-4 text-xs font-black text-white transition hover:bg-slate-800 disabled:bg-slate-200 disabled:text-slate-400">
+                              {dispatchAction === 'approve' ? <Loader2 className="animate-spin" size={15} /> : <Check size={15} />}
+                              确认并开始
+                            </button>
+                            <button type="button" onClick={() => { setDispatchError(''); setEditingDispatchTask(proposedTask); }} disabled={Boolean(dispatchAction)} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-black/[0.08] bg-white px-4 text-xs font-black text-slate-600 transition hover:text-slate-950 disabled:text-slate-300">
+                              <Settings2 size={15} />
+                              调整派发
+                            </button>
+                            <button type="button" onClick={() => setPendingRejectDispatch(proposedTask)} disabled={Boolean(dispatchAction)} className="inline-flex h-10 items-center justify-center rounded-lg px-4 text-xs font-black text-rose-500 transition hover:bg-rose-50 disabled:text-slate-300">
+                              拒绝
+                            </button>
+                          </div>
                         </section>
                       )}
 
@@ -1498,7 +1630,7 @@ export default function SpaceDetailPage() {
                             <ChevronRight className="transition-transform group-open:rotate-90" size={16} />
                             执行详情
                           </span>
-                          <span className="text-xs font-bold text-slate-400">{currentRun.tasks.length} 个步骤</span>
+                          <span className="text-xs font-bold text-slate-400">已创建 {currentRun.tasks.length} 项工作</span>
                         </summary>
                         <div className="pb-3">
                           {latestResearchEvent && (
@@ -2003,6 +2135,30 @@ export default function SpaceDetailPage() {
                   ) : (
                     <div className="space-y-4">
                       <div>
+                        <div className="mb-2 text-sm font-black text-slate-700">执行模式</div>
+                        <div className="grid grid-cols-2 overflow-hidden rounded-lg border border-black/[0.08] bg-[#fbfaf7] p-1">
+                          <button
+                            type="button"
+                            onClick={() => setExecutionModeDraft('REVIEW_DISPATCH')}
+                            aria-pressed={executionModeDraft === 'REVIEW_DISPATCH'}
+                            className={`min-h-11 rounded-md px-3 text-xs font-black transition ${executionModeDraft === 'REVIEW_DISPATCH' ? 'bg-slate-950 text-white shadow-sm' : 'text-slate-500 hover:text-slate-950'}`}
+                          >
+                            派发前确认
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setExecutionModeDraft('AUTO')}
+                            aria-pressed={executionModeDraft === 'AUTO'}
+                            className={`min-h-11 rounded-md px-3 text-xs font-black transition ${executionModeDraft === 'AUTO' ? 'bg-slate-950 text-white shadow-sm' : 'text-slate-500 hover:text-slate-950'}`}
+                          >
+                            自动执行
+                          </button>
+                        </div>
+                        <p className="mt-2 text-xs font-semibold leading-5 text-slate-400">
+                          {executionModeDraft === 'REVIEW_DISPATCH' ? 'Coordinator 提出成员和任务边界，确认后成员才开始。' : '目标确认后由 Coordinator 自主派发并立即执行。'}
+                        </p>
+                      </div>
+                      <div>
                         <label htmlFor="space-rules" className="mb-2 block text-sm font-black text-slate-700">
                           空间规则
                         </label>
@@ -2026,7 +2182,7 @@ export default function SpaceDetailPage() {
                         className="inline-flex h-10 items-center gap-2 rounded-lg bg-slate-950 px-4 text-xs font-black text-white disabled:bg-slate-200 disabled:text-slate-400"
                       >
                         {savingInstructions ? <Loader2 className="animate-spin" size={15} /> : <Save size={15} />}
-                        保存规则
+                        保存设置
                       </button>
                     </div>
                   )}
@@ -2064,6 +2220,17 @@ export default function SpaceDetailPage() {
           approveTaskProposal(editingProposal.message, editingProposal.proposal, revision);
         }}
       />
+      <TaskDispatchDialog
+        task={editingDispatchTask}
+        members={memberAgents}
+        loading={dispatchAction === 'approve'}
+        error={dispatchError}
+        onCancel={() => {
+          setDispatchError('');
+          setEditingDispatchTask(null);
+        }}
+        onConfirm={(revision) => reviewDispatch('approve', editingDispatchTask, revision)}
+      />
       <TaskReviewDialog
         task={revisionTask}
         loading={reviewAction === 'retry'}
@@ -2081,6 +2248,18 @@ export default function SpaceDetailPage() {
         onSaved={(updatedFile) => {
           setFiles((items) => [updatedFile, ...items.filter((item) => item.id !== updatedFile.id)]);
         }}
+      />
+      <ConfirmDialog
+        open={Boolean(pendingRejectDispatch)}
+        title="拒绝这次派发？"
+        description="成员不会开始执行，本次任务运行会结束。你可以调整目标后重新发起。"
+        icon={<X size={18} />}
+        cancelText="返回检查"
+        confirmText="拒绝派发"
+        destructive
+        loading={dispatchAction === 'reject'}
+        onCancel={() => setPendingRejectDispatch(null)}
+        onConfirm={() => reviewDispatch('reject', pendingRejectDispatch)}
       />
       <ConfirmDialog
         open={Boolean(pendingCancelTask)}

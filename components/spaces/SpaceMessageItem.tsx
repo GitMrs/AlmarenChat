@@ -1,6 +1,6 @@
 'use client';
 
-import { Check, ChevronRight, FileText, Globe2, ListTodo, Loader2, Pencil, X } from 'lucide-react';
+import { Activity, Check, CheckCircle2, ChevronRight, Clock3, FileText, Globe2, ListTodo, Loader2, RotateCcw, X, Pencil } from 'lucide-react';
 import MessageActions from '@/components/chat/MessageActions';
 import MessageBubbleFrame from '@/components/chat/MessageBubbleFrame';
 import MessageContent from '@/components/chat/MessageContent';
@@ -43,9 +43,24 @@ function TaskProposal({
   onOpenRun?: () => void;
 }) {
   const completed = run?.tasks.filter((task) => task.status === 'COMPLETED').length || 0;
-  const progress = run?.tasks.length ? Math.round((completed / run.tasks.length) * 100) : 0;
   const pending = proposal.status === 'pending';
   const capabilities = proposal.capabilities || taskProposalCapabilities(proposal.goal, proposal.steps, proposal.deliverables);
+  const activeTask = run?.tasks.find((task) => ['RUNNING', 'SUBMITTED', 'REVIEWING', 'WAITING', 'WAITING_APPROVAL', 'PENDING'].includes(task.status));
+  const recentEvents = (run?.events || [])
+    .filter((event) => !['MODEL_STREAMING', 'RUN_STARTED'].includes(event.type))
+    .slice(-4);
+  const isTerminal = Boolean(run && ['COMPLETED', 'PARTIAL', 'FAILED_VALIDATION', 'BLOCKED', 'FAILED', 'CANCELLED'].includes(run.status));
+  const stageLabel = activeTask?.status === 'REVIEWING' || activeTask?.status === 'SUBMITTED'
+    ? '协调者正在验收'
+    : activeTask?.status === 'WAITING'
+      ? '等待你补充信息'
+      : activeTask?.status === 'PENDING'
+        ? '准备下一项工作'
+        : activeTask?.status === 'RUNNING'
+          ? `${activeTask.agentName}正在工作`
+          : run?.status === 'SUMMARIZING'
+            ? '正在整理最终交付'
+            : RUN_STATUS_LABELS[run?.status || ''] || '任务已确认';
 
   return (
     <div className="mt-4 border-t border-black/[0.08] pt-4">
@@ -54,7 +69,7 @@ function TaskProposal({
           <ListTodo size={16} />
         </div>
         <div className="min-w-0 flex-1">
-          <div className="text-xs font-black text-slate-400">任务方案</div>
+          <div className="text-xs font-black text-slate-400">目标授权</div>
           <h3 className="mt-1 text-sm font-black text-slate-950">{proposal.title}</h3>
           <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">{proposal.summary}</p>
         </div>
@@ -63,13 +78,13 @@ function TaskProposal({
       {pending ? (
         <>
           <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-semibold text-slate-400">
-            <span>{proposal.executionPlan?.length || proposal.steps.length} 个步骤</span>
+            <span>{proposal.steps.length} 个里程碑</span>
             <span>{proposal.deliverables.length} 项产出</span>
           </div>
           <div className="mt-3 flex flex-wrap gap-2">
             <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-black text-slate-600">
               <FileText size={12} />
-              读写空间文件
+              {capabilities.includes('workspace_write') ? '读写空间文件' : '读取空间资料'}
             </span>
             {capabilities.includes('web_research') && (
               <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-black text-emerald-700">
@@ -80,7 +95,7 @@ function TaskProposal({
           </div>
           <details className="group mt-4 border-y border-black/[0.06]">
             <summary className="flex cursor-pointer list-none items-center justify-between py-3 text-xs font-black text-slate-600 marker:hidden">
-              <span>查看执行方案</span>
+              <span>查看授权范围</span>
               <ChevronRight className="text-slate-300 transition-transform group-open:rotate-90" size={15} />
             </summary>
             <div className="pb-4">
@@ -89,20 +104,16 @@ function TaskProposal({
                 <p className="mt-1 whitespace-pre-wrap text-xs font-semibold leading-5 text-slate-600">{proposal.goal}</p>
               </div>
               <ol className="space-y-2">
-                {(proposal.executionPlan || proposal.steps.map((step) => ({ title: step, instruction: step, mode: 'executor' as const, agentId: '', dependsOn: [], deliverables: [] }))).map((step, index) => (
-                  <li key={`${index}-${step.title}`} className="flex gap-2.5 text-xs font-semibold leading-5 text-slate-600">
+                {proposal.steps.map((step, index) => (
+                  <li key={`${index}-${step}`} className="flex gap-2.5 text-xs font-semibold leading-5 text-slate-600">
                     <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[10px] font-black text-slate-500">{index + 1}</span>
-                    <span className="min-w-0 flex-1">
-                      <span className="font-black text-slate-700">{step.title}</span>
-                      {'mode' in step && (
-                        <span className="ml-2 text-[10px] font-black text-slate-400">
-                          {step.agentName || step.agentId ? `${step.agentName || step.agentId} · ` : ''}{step.mode === 'advisor' ? '顾问' : '执行'}
-                        </span>
-                      )}
-                    </span>
+                    <span className="min-w-0 flex-1 font-black text-slate-700">{step}</span>
                   </li>
                 ))}
               </ol>
+              <p className="mt-4 text-[11px] font-semibold leading-5 text-slate-400">
+                确认后，协调者会根据空间成员、实时状态和每轮成果动态安排下一项工作。
+              </p>
               {proposal.deliverables.length > 0 && (
                 <div className="mt-4 text-xs font-semibold leading-5 text-slate-500">
                   <span className="font-black text-slate-700">预期产出：</span>{proposal.deliverables.join('、')}
@@ -144,22 +155,43 @@ function TaskProposal({
       ) : proposal.status === 'rejected' ? (
         <div className="mt-4 text-xs font-black text-slate-400">已取消这份方案</div>
       ) : (
-        <button type="button" onClick={onOpenRun} className="mt-4 flex w-full items-center gap-3 border-t border-black/[0.06] pt-3 text-left">
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center justify-between gap-3 text-xs font-black">
-              <span className={['FAILED', 'FAILED_VALIDATION'].includes(run?.status || '') ? 'text-rose-500' : run?.status === 'BLOCKED' ? 'text-amber-600' : run?.status === 'COMPLETED' ? 'text-emerald-600' : 'text-slate-700'}>
-                {run ? RUN_STATUS_LABELS[run.status] || run.status : '任务已确认'}
-              </span>
-              {run && <span className="text-slate-400">{completed}/{run.tasks.length || '—'}</span>}
+        <div className="mt-4 border-t border-black/[0.06] pt-4">
+          <button type="button" onClick={onOpenRun} className="flex w-full items-start gap-3 text-left">
+            <div className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${isTerminal ? 'bg-emerald-50 text-emerald-600' : 'bg-sky-50 text-sky-600'}`}>
+              {isTerminal ? <CheckCircle2 size={16} /> : <Activity size={16} />}
             </div>
-            {run && !['COMPLETED', 'PARTIAL', 'FAILED_VALIDATION', 'BLOCKED', 'FAILED', 'CANCELLED'].includes(run.status) && (
-              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100">
-                <div className="h-full rounded-full bg-slate-950 transition-all" style={{ width: `${Math.max(4, progress)}%` }} />
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-xs font-black text-slate-400">{isTerminal ? '任务交付' : '团队工作中'}</span>
+                {run && <span className="text-[11px] font-bold text-slate-400">已验收 {completed} 项</span>}
               </div>
-            )}
-          </div>
-          <ChevronRight className="shrink-0 text-slate-300" size={16} />
-        </button>
+              <div className="mt-1 flex items-center gap-2 text-sm font-black text-slate-800">
+                {!isTerminal && <Loader2 className="shrink-0 animate-spin text-sky-500" size={14} />}
+                <span className="min-w-0 break-words">{stageLabel}</span>
+              </div>
+              {activeTask && <p className="mt-1 line-clamp-2 text-xs font-semibold leading-5 text-slate-500">{activeTask.title}</p>}
+            </div>
+            <ChevronRight className="mt-2 shrink-0 text-slate-300" size={16} />
+          </button>
+          {recentEvents.length > 0 && !isTerminal && (
+            <div className="mt-3 space-y-2 border-l-2 border-slate-100 pl-3">
+              {recentEvents.map((event) => (
+                <div key={event.id} className="flex min-w-0 items-start gap-2 text-[11px] font-semibold leading-5 text-slate-500">
+                  {event.type === 'TASK_REVISION_REQUIRED'
+                    ? <RotateCcw className="mt-0.5 shrink-0 text-amber-500" size={12} />
+                    : event.type === 'TASK_ACCEPTED'
+                      ? <Check className="mt-0.5 shrink-0 text-emerald-500" size={12} />
+                      : <Clock3 className="mt-0.5 shrink-0 text-slate-300" size={12} />}
+                  <span className="min-w-0 break-words">{event.message}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {isTerminal && run?.result && <p className="mt-3 line-clamp-3 text-xs font-semibold leading-5 text-slate-500">{run.result}</p>}
+          <button type="button" onClick={onOpenRun} className="mt-3 inline-flex items-center gap-1 text-xs font-black text-slate-500 hover:text-slate-950">
+            查看完整流程 <ChevronRight size={13} />
+          </button>
+        </div>
       )}
     </div>
   );

@@ -3,6 +3,7 @@ import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { getAgentRunForUser } from '@/app/api/_lib/agent-runs';
 import { canResumeWaiting, validateWaitAnswer } from '@/lib/agent-wait-policy.mjs';
+import { appendAgentRunEvent } from '@/app/api/_lib/agent-run-events';
 
 export async function POST(request: Request, { params }: { params: Promise<{ runId: string }> }) {
   try {
@@ -46,13 +47,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ run
           updatedAt: timestamp,
         },
       });
-      await transaction.agentRunEvent.create({
-        data: {
-          runId,
+      await appendAgentRunEvent(transaction, runId, {
           type: 'TASK_INPUT_PROVIDED',
           message: `已补充${task.agentName}继续执行所需的信息`,
           payload: { taskId: task.id, agentId: task.agentId, attempt: task.attempt + 1 },
-        },
+          taskId: task.id,
+          agentId: task.agentId,
+          attempt: task.attempt + 1,
+          actor: 'user',
       });
     });
 

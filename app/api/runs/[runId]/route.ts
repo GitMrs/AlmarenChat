@@ -8,7 +8,12 @@ export async function GET(request: Request, { params }: { params: Promise<{ runI
     const { runId } = await params;
     const run = await getAgentRunForUser(runId, userId);
     if (!run) return NextResponse.json({ error: 'Run not found' }, { status: 404 });
-    return NextResponse.json({ run });
+    const afterSequence = Math.max(0, Number(new URL(request.url).searchParams.get('afterSequence') || 0));
+    return NextResponse.json({
+      run: afterSequence > 0
+        ? { ...run, events: run.events.filter((event) => event.sequence > afterSequence) }
+        : run,
+    });
   } catch (error: any) {
     if (error.message === 'Unauthorized') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     return NextResponse.json({ error: error.message }, { status: 500 });

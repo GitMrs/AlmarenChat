@@ -30,10 +30,14 @@ import { blocksUnapprovedFullOverwrite } from './workspace-write-policy.mjs';
 import { reserveModelRequest } from './model-budget.mjs';
 import { shouldRefreshResearch } from './research-policy.mjs';
 import { normalizeWaitRequest } from '../lib/agent-wait-policy.mjs';
+import { readyAuthorizedPlanIndexes } from '../lib/agent-runtime-v2-policy.mjs';
+import { dispatchRequiresApproval, normalizeCoordinatorAction } from '../lib/agent-runtime-v3-policy.mjs';
 import { completionIdFor } from '../lib/agent-completion-policy.mjs';
 import { appendSpaceMemory, spaceMemoryContext } from '../lib/space-memory-policy.mjs';
 import {
+  applyWorkspaceAttempt,
   discardWorkspaceAttemptSync,
+  discardWorkspaceAttempt,
   prepareWorkspaceAttempt,
   recoverWorkspaceAttemptApplication,
 } from '../lib/workspace-staging.mjs';
@@ -45,6 +49,10 @@ import {
   reconcileCompletionOutbox,
   recoverStaleOutbox,
 } from './completion-outbox.mjs';
+import { appendRunEvent } from './runtime/event-store.mjs';
+import { submitTaskCompletion } from './runtime/task-completion-store.mjs';
+import { beginCoordinatorTurn, completeCoordinatorTurn, failCoordinatorTurn, recoverCoordinatorTurns } from './runtime/coordinator-turn-store.mjs';
+import { recoverRuntimeIntents } from './runtime/runtime-outbox.mjs';
 
 const workerDir = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(workerDir, '..');
@@ -129,9 +137,18 @@ function now() {
 }
 
 function addEvent(runId, type, message, payload, idempotencyKey = null) {
-  db.prepare(
-    'INSERT OR IGNORE INTO "AgentRunEvent" ("id", "runId", "type", "message", "payload", "idempotencyKey", "createdAt") VALUES (?, ?, ?, ?, ?, ?, ?)'
-  ).run(randomUUID(), runId, type, message, payload === undefined ? null : JSON.stringify(payload), idempotencyKey, now());
+  const correlation = payload && typeof payload === 'object' ? payload : {};
+  return appendRunEvent(db, {
+    runId,
+    type,
+    message,
+    payload,
+    idempotencyKey,
+    taskId: correlation.taskId,
+    agentId: correlation.agentId,
+    attempt: Number.isInteger(correlation.attempt) ? correlation.attempt : undefined,
+    actor: correlation.actor,
+  }, now());
 }
 
 function persistSpaceMemory(spaceId, activities, timestamp = now()) {
@@ -214,6 +231,14 @@ function recoverStaleRuns() {
         `UPDATE "AgentTask"
          SET "status" = 'PENDING', "startedAt" = NULL, "completedAt" = NULL, "updatedAt" = ?
          WHERE "runId" = ? AND "status" = 'RUNNING'`
+      ).run(timestamp, run.id);
+      db.prepare(
+        `UPDATE "AgentTask" SET "status" = 'SUBMITTED', "updatedAt" = ?
+         WHERE "runId" = ? AND "status" = 'REVIEWING'`
+      ).run(timestamp, run.id);
+      db.prepare(
+        `UPDATE "AgentSession" SET "status" = 'IDLE', "currentTaskId" = NULL, "updatedAt" = ?
+         WHERE "currentTaskId" IN (SELECT "id" FROM "AgentTask" WHERE "runId" = ?)`
       ).run(timestamp, run.id);
       addEvent(run.id, 'RUN_RECOVERED', '检测到 Worker 心跳超时，任务已重新进入队列', {
         previousWorkerId: run.workerId || null,
@@ -399,7 +424,7 @@ function cancelTask(taskId, runId, agentName) {
   const timestamp = now();
   const result = db.transaction(() => {
     const changed = db.prepare(
-      `UPDATE "AgentTask" SET "status" = 'CANCELLED', "completedAt" = ?, "updatedAt" = ? WHERE "id" = ? AND "status" IN ('PENDING', 'RUNNING', 'WAITING', 'CANCEL_REQUESTED')`
+      `UPDATE "AgentTask" SET "status" = 'CANCELLED', "completedAt" = ?, "updatedAt" = ? WHERE "id" = ? AND "status" IN ('PROPOSED', 'PENDING', 'QUEUED', 'RUNNING', 'WAITING', 'WAITING_USER', 'WAITING_APPROVAL', 'SUBMITTED', 'REVIEWING', 'REVISION_REQUIRED', 'CANCEL_REQUESTED')`
     ).run(timestamp, timestamp, taskId);
     db.prepare(
       `DELETE FROM "SpaceFile" WHERE "taskId" = ? AND "status" IN ('GENERATING', 'WAITING_APPROVAL')`
@@ -419,7 +444,7 @@ function cancelRun(runId) {
   const completionId = completionIdFor(runId);
   db.transaction(() => {
     db.prepare(
-      `UPDATE "AgentTask" SET "status" = 'CANCELLED', "completedAt" = ?, "updatedAt" = ? WHERE "runId" = ? AND "status" IN ('PENDING', 'RUNNING', 'WAITING', 'CANCEL_REQUESTED')`
+      `UPDATE "AgentTask" SET "status" = 'CANCELLED', "completedAt" = ?, "updatedAt" = ? WHERE "runId" = ? AND "status" IN ('PROPOSED', 'PENDING', 'QUEUED', 'RUNNING', 'WAITING', 'WAITING_USER', 'WAITING_APPROVAL', 'SUBMITTED', 'REVIEWING', 'REVISION_REQUIRED', 'CANCEL_REQUESTED')`
     ).run(timestamp, timestamp, runId);
     db.prepare(
       `UPDATE "AgentRun" SET "status" = 'CANCELLED', "workerId" = NULL, "heartbeatAt" = NULL,
@@ -428,6 +453,9 @@ function cancelRun(runId) {
     db.prepare(
       `DELETE FROM "SpaceFile" WHERE "runId" = ? AND "status" IN ('GENERATING', 'WAITING_APPROVAL')`
     ).run(runId);
+    if (runRecord) {
+      db.prepare(`UPDATE "AgentSession" SET "status" = 'IDLE', "currentTaskId" = NULL, "updatedAt" = ? WHERE "spaceId" = ? AND "status" != 'IDLE'`).run(timestamp, runRecord.spaceId);
+    }
     stageCompletion(runId, completionId, 'CANCELLED', null, null, 'RUN_CANCELLED', '任务已取消', undefined, timestamp);
     if (runRecord) persistSpaceMemory(runRecord.spaceId, [{
       type: 'task_run',
@@ -593,7 +621,7 @@ function failRun(runId, error) {
   const completionId = completionIdFor(runId);
   db.transaction(() => {
     db.prepare(
-      `UPDATE "AgentTask" SET "status" = 'CANCELLED', "completedAt" = ?, "updatedAt" = ? WHERE "runId" = ? AND "status" = 'PENDING'`
+      `UPDATE "AgentTask" SET "status" = 'CANCELLED', "completedAt" = ?, "updatedAt" = ? WHERE "runId" = ? AND "status" IN ('PROPOSED', 'PENDING', 'QUEUED', 'RUNNING', 'WAITING', 'WAITING_USER', 'WAITING_APPROVAL', 'SUBMITTED', 'REVIEWING', 'REVISION_REQUIRED', 'CANCEL_REQUESTED')`
     ).run(timestamp, timestamp, runId);
     db.prepare(
       `UPDATE "AgentRun" SET "status" = ?, "workerId" = NULL, "heartbeatAt" = NULL,
@@ -602,6 +630,9 @@ function failRun(runId, error) {
     db.prepare(
       `DELETE FROM "SpaceFile" WHERE "runId" = ? AND "status" IN ('GENERATING', 'WAITING_APPROVAL')`
     ).run(runId);
+    if (runRecord) {
+      db.prepare(`UPDATE "AgentSession" SET "status" = 'IDLE', "currentTaskId" = NULL, "updatedAt" = ? WHERE "spaceId" = ? AND "status" != 'IDLE'`).run(timestamp, runRecord.spaceId);
+    }
     stageCompletion(
       runId,
       completionId,
@@ -872,14 +903,75 @@ function savePlan(runId, plan, agents) {
   db.transaction(() => {
     db.prepare('DELETE FROM "AgentTask" WHERE "runId" = ?').run(runId);
     const insert = db.prepare(
-      `INSERT INTO "AgentTask" ("id", "runId", "agentId", "agentName", "title", "instruction", "mode", "modelRequestLimit", "status", "sortOrder", "createdAt", "updatedAt") VALUES (?, ?, ?, ?, ?, ?, 'executor', 8, 'PENDING', ?, ?, ?)`
+      `INSERT INTO "AgentTask" ("id", "runId", "agentId", "agentName", "title", "instruction", "acceptanceCriteria", "origin", "mode", "modelRequestLimit", "status", "sortOrder", "proposedAt", "approvedAt", "createdAt", "updatedAt")
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'coordinator', 'executor', 8, 'PENDING', ?, ?, ?, ?, ?)`
     );
     plan.forEach((task, index) => {
       const agent = agentMap.get(task.agentId);
-      insert.run(randomUUID(), runId, task.agentId, agent?.name || 'Agent', task.title, task.instruction, index, timestamp, timestamp);
+      insert.run(randomUUID(), runId, task.agentId, agent?.name || 'Agent', task.title, task.instruction,
+        '提交内容必须完整满足当前步骤，并提供可核对的结果或证据。', index, timestamp, timestamp, timestamp, timestamp);
     });
     db.prepare(`UPDATE "AgentRun" SET "status" = 'RUNNING', "updatedAt" = ? WHERE "id" = ?`).run(timestamp, runId);
     addEvent(runId, 'PLAN_CREATED', `协调者已拆分为 ${plan.length} 个步骤`, { taskCount: plan.length });
+  })();
+}
+
+function dispatchNextAuthorizedTask(run) {
+  if (run.runtimeVersion < 2) return [];
+  return db.transaction(() => {
+    const waiting = db.prepare(
+      `SELECT 1 FROM "AgentTask" WHERE "runId" = ? AND "status" IN ('WAITING', 'WAITING_USER') LIMIT 1`
+    ).get(run.id);
+    if (waiting) return [];
+    const freshRun = db.prepare(`SELECT "coordinatorState" FROM "AgentRun" WHERE "id" = ?`).get(run.id);
+    const state = freshRun?.coordinatorState ? JSON.parse(freshRun.coordinatorState) : {};
+    const plan = Array.isArray(state.authorizedPlan) ? state.authorizedPlan : [];
+    const legacyCursor = Math.max(0, Number(state.cursor || 0));
+    const dispatched = new Set(Array.isArray(state.dispatched)
+      ? state.dispatched.filter(Number.isInteger)
+      : Array.from({ length: legacyCursor }, (_, index) => index));
+    for (const task of db.prepare(`SELECT "sortOrder" FROM "AgentTask" WHERE "runId" = ?`).all(run.id)) {
+      dispatched.add(task.sortOrder);
+    }
+    const completed = new Set(db.prepare(
+      `SELECT "sortOrder" FROM "AgentTask" WHERE "runId" = ? AND "status" = 'COMPLETED'`
+    ).all(run.id).map((task) => task.sortOrder));
+    const ready = readyAuthorizedPlanIndexes(plan, [...dispatched], [...completed])
+      .map((index) => ({ candidate: plan[index], index }));
+    if (ready.length === 0) return [];
+    const timestamp = now();
+    const insert = db.prepare(
+      `INSERT INTO "AgentTask"
+       ("id", "runId", "agentId", "agentName", "title", "instruction", "acceptanceCriteria",
+        "origin", "mode", "dependsOn", "modelRequestLimit", "status", "sortOrder",
+        "proposedAt", "approvedAt", "createdAt", "updatedAt")
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'coordinator', ?, ?, ?, 'PENDING', ?, ?, ?, ?, ?)`
+    );
+    const tasks = [];
+    for (const { candidate, index } of ready) {
+      const id = randomUUID();
+      insert.run(
+        id, run.id, candidate.agentId, candidate.agentName || candidate.agentId,
+        candidate.title, candidate.instruction, candidate.acceptanceCriteria || null,
+        candidate.mode || 'executor', JSON.stringify(candidate.dependsOn || []),
+        Math.max(1, Number(candidate.modelRequestLimit || (candidate.mode === 'advisor' ? 2 : 8))),
+        index, timestamp, timestamp, timestamp, timestamp
+      );
+      dispatched.add(index);
+      addEvent(run.id, 'COORDINATOR_TASK_DISPATCHED', `协调者已将“${candidate.title}”交给 ${candidate.agentName || candidate.agentId}`, {
+        taskId: id, agentId: candidate.agentId, attempt: 1, actor: 'coordinator', position: index + 1,
+      }, `task-dispatched:${run.id}:${index}`);
+      tasks.push(db.prepare(`SELECT * FROM "AgentTask" WHERE "id" = ?`).get(id));
+    }
+    const nextState = {
+      ...state,
+      phase: 'executing',
+      cursor: Math.max(legacyCursor, ...[...dispatched].map((index) => index + 1)),
+      dispatched: [...dispatched].sort((a, b) => a - b),
+      currentTaskId: tasks[0]?.id || state.currentTaskId || null,
+    };
+    db.prepare(`UPDATE "AgentRun" SET "coordinatorState" = ?, "status" = 'RUNNING', "updatedAt" = ? WHERE "id" = ?`).run(JSON.stringify(nextState), timestamp, run.id);
+    return tasks;
   })();
 }
 
@@ -1041,6 +1133,450 @@ async function recordTaskArtifactManifest(run, task, context, { validate = false
   return { entries, validation, status: manifestStatus };
 }
 
+function parseCoordinatorAction(content) {
+  const start = content.indexOf('{');
+  const end = content.lastIndexOf('}');
+  if (start < 0 || end <= start) throw new Error('协调者没有返回有效的验收决定');
+  const value = JSON.parse(content.slice(start, end + 1));
+  return {
+    decision: ['accept', 'revise', 'block'].includes(value.decision) ? value.decision : 'block',
+    summary: String(value.summary || '协调者已完成验收').trim().slice(0, 2000),
+    feedback: String(value.feedback || '').trim().slice(0, 4000),
+    publicNote: String(value.publicNote || value.summary || '').trim().slice(0, 1000),
+  };
+}
+
+function coordinatorState(runId) {
+  const raw = db.prepare(`SELECT "coordinatorState" FROM "AgentRun" WHERE "id" = ?`).get(runId)?.coordinatorState;
+  if (!raw) return {};
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return {};
+  }
+}
+
+function coordinatorTeamSnapshot(run, context) {
+  const sessions = new Map(db.prepare(
+    `SELECT "agentId", "status", "currentTaskId" FROM "AgentSession" WHERE "spaceId" = ?`
+  ).all(run.spaceId).map((session) => [session.agentId, session]));
+  return context.agents.map((agent) => {
+    const session = sessions.get(agent.id);
+    return {
+      id: agent.id,
+      name: agent.name,
+      category: agent.category || '普通成员',
+      description: agent.description || '',
+      status: session?.status || 'IDLE',
+      currentTaskId: session?.currentTaskId || null,
+    };
+  });
+}
+
+async function coordinateNextWork(run, context, triggerEventId) {
+  const existingTasks = db.prepare(
+    `SELECT * FROM "AgentTask" WHERE "runId" = ? ORDER BY "sortOrder" ASC`
+  ).all(run.id);
+  const active = existingTasks.filter((task) =>
+    ['PROPOSED', 'PENDING', 'RUNNING', 'WAITING', 'WAITING_USER', 'SUBMITTED', 'REVIEWING'].includes(task.status)
+  );
+  if (active.length > 0) return { type: 'active', tasks: active };
+
+  const state = coordinatorState(run.id);
+  const authorization = state.authorization || {
+    objective: run.input,
+    steps: [],
+    deliverables: [],
+    artifacts: [],
+    capabilities: [],
+    maxTasks: 8,
+  };
+  const maxTasks = Math.min(12, Math.max(1, Number(authorization.maxTasks || 8)));
+  const remainingTasks = Math.max(0, maxTasks - existingTasks.length);
+  const completed = existingTasks.filter((task) => task.status === 'COMPLETED');
+  const team = coordinatorTeamSnapshot(run, context);
+  let workspace = { files: [], unavailable: '' };
+  try {
+    const snapshot = await snapshotWorkspace({
+      projectRoot,
+      userId: run.userId,
+      spaceId: run.spaceId,
+    });
+    workspace = {
+      files: snapshot.files.slice(0, 200).map((file) => ({ path: file.path, size: file.size })),
+      unavailable: '',
+    };
+  } catch (error) {
+    workspace = {
+      files: [],
+      unavailable: error instanceof Error ? error.message.slice(0, 500) : String(error).slice(0, 500),
+    };
+  }
+  const started = beginCoordinatorTurn(db, {
+    runId: run.id,
+    triggerEventId,
+    workerId,
+    snapshot: {
+      authorization,
+      team,
+      workspace,
+      completedTaskIds: completed.map((task) => task.id),
+      remainingTasks,
+    },
+  }, now());
+  if (!started.claimed && started.turn.status === 'COMPLETED') {
+    return JSON.parse(started.turn.action || '{}');
+  }
+  if (!started.claimed) return { type: 'active', tasks: [] };
+  const turn = started.turn;
+  const recoveredTasks = db.prepare(
+    `SELECT * FROM "AgentTask" WHERE "runId" = ? AND "parentTaskId" = ? ORDER BY "sortOrder" ASC`
+  ).all(run.id, turn.id);
+  if (recoveredTasks.length > 0) {
+    const awaitingApproval = recoveredTasks.some((task) => task.status === 'PROPOSED');
+    const recoveredAction = {
+      type: 'dispatch',
+      summary: state.lastDecision || '已恢复协调者此前提交的派发动作。',
+      taskIds: recoveredTasks.map((task) => task.id),
+      awaitingApproval,
+      recovered: true,
+    };
+    completeCoordinatorTurn(db, turn.id, recoveredAction, now());
+    return recoveredAction;
+  }
+  if (state.phase === 'finishing' && completed.length > 0) {
+    const recoveredAction = {
+      type: 'finish',
+      summary: state.lastDecision || '已恢复协调者此前提交的完成判断。',
+      recovered: true,
+    };
+    completeCoordinatorTurn(db, turn.id, recoveredAction, now());
+    return recoveredAction;
+  }
+  addEvent(run.id, 'COORDINATOR_DECISION_STARTED', completed.length > 0
+    ? '协调者正在根据最新成果决定下一步'
+    : '协调者正在读取团队并安排第一项工作', {
+    actor: 'coordinator', turnId: turn.id, triggerEventId,
+  }, `coordinator-decision-started:${turn.id}`);
+
+  try {
+    if (!fakeMode) {
+      db.prepare(`UPDATE "AgentCoordinatorTurn" SET "modelRequestCount" = "modelRequestCount" + 1, "updatedAt" = ? WHERE "id" = ?`).run(now(), turn.id);
+    }
+    const rawAction = fakeMode
+      ? (completed.length > 0
+          ? { type: 'finish', summary: '已完成并验收授权目标。' }
+          : {
+              type: 'dispatch', summary: '安排第一项工作。', tasks: [{
+                agentId: team[0].id,
+                mode: 'executor',
+                title: '完成授权目标',
+                instruction: run.input,
+                acceptanceCriteria: '完整满足授权目标，并提供可核对的结果或文件证据。',
+                reason: '该成员是当前可用的执行成员。',
+                expectedArtifacts: authorization.artifacts || [],
+              }],
+            })
+      : await complete(context.model, [
+          {
+            role: 'system',
+            content:
+              '你是 AI 团队的运行时 Coordinator。用户已经批准目标与能力边界，但没有批准固定成员链。' +
+              '你必须根据当前团队、成员专业描述、忙闲状态和已验收成果，只决定此刻的下一步。' +
+              '不要为了使用所有成员而派活。需求已经明确、工作主要是页面或代码实现时直接选择相应执行成员；' +
+              '只有产品定义、用户故事或验收标准仍有实质歧义且会改变实现方向时，才先派产品 advisor。' +
+              '默认一次只派一项；只有两项成果真正独立且成员不同才可并行派两项。' +
+              '不得重复已有任务，不得给 WORKING 成员派活，不得扩大已授权能力。' +
+              '只输出 JSON。继续工作：{"type":"dispatch","summary":"决策摘要","tasks":[{"agentId":"成员ID","mode":"advisor|executor","title":"标题","instruction":"完整指令","acceptanceCriteria":"可核对标准","reason":"选人理由","expectedArtifacts":["相对路径或结果"]}]}；' +
+              '目标已由已验收成果完全满足：{"type":"finish","summary":"完成依据"}；' +
+              '授权范围内确实无法继续：{"type":"block","reason":"具体原因","summary":"给用户的说明"}。',
+          },
+          {
+            role: 'user',
+            content: JSON.stringify({
+              authorization,
+              team,
+              completed: completed.map((task) => ({
+                id: task.id,
+                agentId: task.agentId,
+                agentName: task.agentName,
+                title: task.title,
+                result: task.result,
+                reviewSummary: task.reviewSummary,
+              })),
+              existingTasks: existingTasks.map((task) => ({
+                id: task.id, agentId: task.agentId, title: task.title,
+                instruction: task.instruction, status: task.status,
+              })),
+              remainingTasks,
+              workspace,
+              projectMemory: context.projectMemory,
+            }),
+          },
+        ], { runId: run.id, maxTokens: 2_000 });
+    const action = normalizeCoordinatorAction(rawAction, {
+      members: team.filter((member) => member.status !== 'WORKING'),
+      remainingTasks,
+      existingTasks,
+      allowFinish: completed.length > 0,
+    });
+
+    const timestamp = now();
+    if (action.type === 'dispatch') {
+      const awaitingApproval = dispatchRequiresApproval(context.space.executionMode);
+      const initialStatus = awaitingApproval ? 'PROPOSED' : 'PENDING';
+      const alreadyCreated = db.prepare(
+        `SELECT * FROM "AgentTask" WHERE "runId" = ? AND "parentTaskId" = ? ORDER BY "sortOrder" ASC`
+      ).all(run.id, turn.id);
+      const createdTasks = alreadyCreated.length > 0 ? alreadyCreated : db.transaction(() => {
+        const maxSortOrder = db.prepare(
+          `SELECT COALESCE(MAX("sortOrder"), -1) AS value FROM "AgentTask" WHERE "runId" = ?`
+        ).get(run.id).value;
+        const insert = db.prepare(
+          `INSERT INTO "AgentTask"
+           ("id", "runId", "agentId", "agentName", "title", "instruction", "acceptanceCriteria",
+            "origin", "parentTaskId", "mode", "dependsOn", "modelRequestLimit", "status", "sortOrder",
+            "proposedAt", "approvedAt", "createdAt", "updatedAt")
+           VALUES (?, ?, ?, ?, ?, ?, ?, 'dynamic_coordinator', ?, ?, '[]', ?, ?, ?, ?, ?, ?, ?)`
+        );
+        const rows = action.tasks.map((task, index) => {
+          const id = randomUUID();
+          const artifactNote = task.expectedArtifacts.length > 0
+            ? `\n\n预期可验收产物：${task.expectedArtifacts.join('、')}`
+            : '';
+          insert.run(
+            id, run.id, task.agentId, task.agentName, task.title,
+            `${task.instruction}${artifactNote}`, task.acceptanceCriteria, turn.id, task.mode,
+            task.mode === 'advisor' ? 3 : 8, initialStatus, maxSortOrder + index + 1,
+            timestamp, awaitingApproval ? null : timestamp, timestamp, timestamp
+          );
+          addEvent(run.id, awaitingApproval ? 'COORDINATOR_TASK_PROPOSED' : 'COORDINATOR_TASK_DISPATCHED', awaitingApproval
+            ? `协调者提议将“${task.title}”交给 ${task.agentName}`
+            : `协调者将“${task.title}”交给 ${task.agentName}`, {
+            taskId: id, agentId: task.agentId, attempt: 1, actor: 'coordinator',
+            reason: task.reason, mode: task.mode, turnId: turn.id,
+          }, `dynamic-task-${awaitingApproval ? 'proposed' : 'dispatched'}:${turn.id}:${index}`);
+          return db.prepare(`SELECT * FROM "AgentTask" WHERE "id" = ?`).get(id);
+        });
+        const nextState = {
+          ...state,
+          phase: awaitingApproval ? 'awaiting_dispatch_approval' : 'executing',
+          iteration: Math.max(0, Number(state.iteration || 0)) + 1,
+          taskCount: existingTasks.length + rows.length,
+          currentTaskIds: rows.map((task) => task.id),
+          lastDecision: action.summary,
+        };
+        db.prepare(`UPDATE "AgentRun" SET "coordinatorState" = ?, "status" = ?, "workerId" = NULL, "heartbeatAt" = NULL, "updatedAt" = ? WHERE "id" = ?`).run(
+          JSON.stringify(nextState), awaitingApproval ? 'WAITING_APPROVAL' : 'QUEUED', timestamp, run.id
+        );
+        return rows;
+      })();
+      action.taskIds = createdTasks.map((task) => task.id);
+      action.awaitingApproval = createdTasks.some((task) => task.status === 'PROPOSED');
+    } else if (action.type === 'finish') {
+      const nextState = {
+        ...state,
+        phase: 'finishing',
+        iteration: Math.max(0, Number(state.iteration || 0)) + 1,
+        currentTaskIds: [],
+        lastDecision: action.summary,
+      };
+      db.prepare(`UPDATE "AgentRun" SET "coordinatorState" = ?, "updatedAt" = ? WHERE "id" = ?`).run(JSON.stringify(nextState), timestamp, run.id);
+      addEvent(run.id, 'COORDINATOR_GOAL_SATISFIED', action.summary, {
+        actor: 'coordinator', turnId: turn.id,
+      }, `coordinator-goal-satisfied:${turn.id}`);
+    } else {
+      const nextState = { ...state, phase: 'blocked', currentTaskIds: [], lastDecision: action.summary };
+      db.prepare(`UPDATE "AgentRun" SET "coordinatorState" = ?, "updatedAt" = ? WHERE "id" = ?`).run(JSON.stringify(nextState), timestamp, run.id);
+      addEvent(run.id, 'COORDINATOR_BLOCKED', action.summary, {
+        actor: 'coordinator', turnId: turn.id, reason: action.reason,
+      }, `coordinator-blocked:${turn.id}`);
+    }
+    completeCoordinatorTurn(db, turn.id, action, timestamp);
+    if (action.type === 'block') throw Object.assign(new Error(action.reason), { code: 'TASK_BLOCKED' });
+    return action;
+  } catch (error) {
+    failCoordinatorTurn(db, turn.id, error, now());
+    throw error;
+  }
+}
+
+async function applyAcceptedTaskWorkspace(run, task, manifest) {
+  if (task.mode === 'advisor') return;
+  if (manifest?.status === 'APPLIED') {
+    await discardWorkspaceAttempt(taskWorkspaceOptions(run, task));
+    return;
+  }
+  if (!manifest || manifest.status !== 'VALIDATED') throw new Error('协调者无法验收：工作区产物尚未通过检查');
+  const baseline = JSON.parse(manifest.baseline || '{"files":[]}');
+  const entries = JSON.parse(manifest.entries || '[]');
+  const options = taskWorkspaceOptions(run, task);
+  db.prepare(`UPDATE "AgentArtifactManifest" SET "status" = 'APPLYING', "updatedAt" = ? WHERE "id" = ?`).run(now(), manifest.id);
+  let application;
+  try {
+    application = await applyWorkspaceAttempt(options, baseline, entries);
+  } catch (error) {
+    db.prepare(`UPDATE "AgentArtifactManifest" SET "status" = 'VALIDATED', "updatedAt" = ? WHERE "id" = ?`).run(now(), manifest.id);
+    throw error;
+  }
+  try {
+    const timestamp = now();
+    db.transaction(() => {
+      const staged = db.prepare(`SELECT "id" FROM "SpaceFile" WHERE "spaceId" = ? AND "runId" = ? AND "taskId" = ?`).all(run.spaceId, run.id, task.id);
+      const stagedIds = new Set(staged.map((file) => file.id));
+      for (const entry of entries) {
+        const relativePath = `workspace/${entry.path}`;
+        if (entry.change === 'DELETED') {
+          db.prepare(`DELETE FROM "SpaceFile" WHERE "spaceId" = ? AND "relativePath" = ?`).run(run.spaceId, relativePath);
+        } else {
+          for (const duplicate of db.prepare(`SELECT "id" FROM "SpaceFile" WHERE "spaceId" = ? AND "relativePath" = ?`).all(run.spaceId, relativePath)) {
+            if (!stagedIds.has(duplicate.id)) db.prepare(`DELETE FROM "SpaceFile" WHERE "id" = ?`).run(duplicate.id);
+          }
+        }
+      }
+      db.prepare(`UPDATE "SpaceFile" SET "status" = 'READY', "updatedAt" = ? WHERE "spaceId" = ? AND "runId" = ? AND "taskId" = ?`).run(timestamp, run.spaceId, run.id, task.id);
+      db.prepare(`UPDATE "AgentArtifactManifest" SET "status" = 'APPLIED', "completedAt" = ?, "updatedAt" = ? WHERE "id" = ?`).run(timestamp, timestamp, manifest.id);
+    })();
+  } catch (error) {
+    await application.rollback();
+    db.prepare(`UPDATE "AgentArtifactManifest" SET "status" = 'VALIDATED', "updatedAt" = ? WHERE "id" = ?`).run(now(), manifest.id);
+    throw error;
+  }
+  await discardWorkspaceAttempt(options);
+  const webpagePaths = entries
+    .filter((entry) => entry.change !== 'DELETED' && /\.html?$/i.test(entry.path))
+    .map((entry) => entry.path);
+  if (webpagePaths.length > 0) {
+    addEvent(run.id, 'WEBPAGE_PREVIEW_READY', `页面文件已通过静态检查，可打开预览`, {
+      taskId: task.id,
+      agentId: task.agentId,
+      attempt: task.attempt,
+      actor: 'system',
+      paths: webpagePaths,
+    }, `webpage-preview-ready:${task.id}:${task.attempt}`);
+  }
+}
+
+async function reviewSubmittedTask(run, task, context, completion) {
+  const wakeup = db.prepare(`SELECT * FROM "AgentRuntimeOutbox" WHERE "kind" = 'COORDINATOR_WAKEUP' AND "aggregateId" = ?`).get(completion.id);
+  const wakeupPayload = wakeup ? JSON.parse(wakeup.payload || '{}') : {};
+  const triggerEventId = wakeupPayload.triggerEventId || `completion:${completion.id}`;
+  const started = beginCoordinatorTurn(db, {
+    runId: run.id,
+    triggerEventId,
+    workerId,
+    snapshot: { goal: run.input, taskId: task.id, completionId: completion.id },
+  }, now());
+  if (!started.claimed && started.turn.status === 'COMPLETED') return JSON.parse(started.turn.action || '{}');
+  const turn = started.turn;
+  db.prepare(`UPDATE "AgentTask" SET "status" = 'REVIEWING', "updatedAt" = ? WHERE "id" = ? AND "status" = 'SUBMITTED'`).run(now(), task.id);
+  addEvent(run.id, 'COORDINATOR_REVIEW_STARTED', `协调者正在验收：${task.title}`, {
+    taskId: task.id, agentId: task.agentId, attempt: task.attempt, actor: 'coordinator', turnId: turn.id,
+  }, `coordinator-review-started:${completion.id}`);
+  try {
+    const manifest = task.mode === 'advisor' ? null : db.prepare(`SELECT * FROM "AgentArtifactManifest" WHERE "taskId" = ? AND "attempt" = ?`).get(task.id, task.attempt);
+    const material = {
+      report: completion.report,
+      evidence: JSON.parse(completion.evidence || '[]'),
+      validation: JSON.parse(completion.validation || '{}'),
+      manifest: manifest ? { status: manifest.status, entries: JSON.parse(manifest.entries || '[]'), validation: JSON.parse(manifest.validation || '{}') } : null,
+    };
+    if (!fakeMode) {
+      db.prepare(`UPDATE "AgentCoordinatorTurn" SET "modelRequestCount" = "modelRequestCount" + 1, "updatedAt" = ? WHERE "id" = ?`).run(now(), turn.id);
+    }
+    const action = fakeMode
+      ? { decision: 'accept', summary: `已验收 ${task.title}`, feedback: '', publicNote: '产物与任务要求一致，验收通过。' }
+      : parseCoordinatorAction(await complete(context.model, [
+          {
+            role: 'system',
+            content: '你是 AI 团队的 Coordinator。依据真实提交报告、文件差异和校验结果做语义验收。只输出 JSON：{"decision":"accept|revise|block","summary":"验收结论","feedback":"返工要求","publicNote":"给用户看的简短进度"}。符合目标且证据充分时 accept；有可修复缺口时 revise；缺少必要条件或多次返工无效时 block。不要要求无关润色。',
+          },
+          { role: 'user', content: `总目标：${run.input}\n\n任务：${task.title}\n${task.instruction}\n\n提交材料：${JSON.stringify(material)}` },
+        ], { runId: run.id, maxTokens: 1200 }));
+    if (action.decision === 'revise' && task.attempt >= 3) {
+      action.decision = 'block';
+      action.summary = `连续返工后仍未通过：${action.summary}`;
+    }
+    if (isCancelRequested(run.id) || isTaskCancelRequested(task.id)) throw new Error('步骤已取消');
+    if (action.decision === 'accept') {
+      await applyAcceptedTaskWorkspace(run, task, manifest);
+      const acceptedAt = now();
+      db.transaction(() => {
+        db.prepare(`UPDATE "AgentTask" SET "status" = 'COMPLETED', "reviewDecision" = 'accept', "reviewSummary" = ?, "reviewFeedback" = NULL, "reviewedAt" = ?, "completedAt" = ?, "updatedAt" = ? WHERE "id" = ? AND "status" = 'REVIEWING'`).run(action.summary, acceptedAt, acceptedAt, acceptedAt, task.id);
+        db.prepare(`UPDATE "AgentTaskCompletion" SET "status" = 'ACCEPTED' WHERE "id" = ?`).run(completion.id);
+        db.prepare(`UPDATE "AgentSession" SET "status" = 'IDLE', "currentTaskId" = NULL, "summary" = ?, "updatedAt" = ? WHERE "spaceId" = ? AND "agentId" = ?`).run(action.summary, acceptedAt, run.spaceId, task.agentId);
+      })();
+      addEvent(run.id, 'TASK_ACCEPTED', action.publicNote || `${task.agentName}的提交已通过验收`, { taskId: task.id, agentId: task.agentId, attempt: task.attempt, actor: 'coordinator', summary: action.summary }, `task-accepted:${completion.id}`);
+      const nextDecision = run.runtimeVersion >= 3
+        ? await coordinateNextWork(run, context, `task-accepted:${completion.id}`)
+        : { type: 'dispatch', tasks: dispatchNextAuthorizedTask(run) };
+      const nextTaskIds = run.runtimeVersion >= 3
+        ? (nextDecision.taskIds || [])
+        : nextDecision.tasks.map((nextTask) => nextTask.id);
+      if (nextTaskIds.length > 0) {
+        action.nextTaskIds = nextTaskIds;
+        const otherActive = db.prepare(
+          `SELECT 1 FROM "AgentTask" WHERE "runId" = ? AND "id" != ?
+           AND "status" IN ('RUNNING', 'SUBMITTED', 'REVIEWING') LIMIT 1`
+        ).get(run.id, task.id);
+        if (!otherActive && !nextDecision.awaitingApproval) {
+          db.prepare(`UPDATE "AgentRun" SET "status" = 'QUEUED', "workerId" = NULL, "heartbeatAt" = NULL, "updatedAt" = ? WHERE "id" = ?`).run(now(), run.id);
+        }
+      }
+    } else if (action.decision === 'revise') {
+      if (task.mode !== 'advisor') await discardWorkspaceAttempt(taskWorkspaceOptions(run, task));
+      const revisedAt = now();
+      db.transaction(() => {
+        db.prepare(`UPDATE "AgentTask" SET "status" = 'PENDING', "attempt" = "attempt" + 1, "modelRequestLimit" = "modelRequestLimit" + ?, "result" = NULL, "error" = NULL, "reviewDecision" = 'revise', "reviewSummary" = ?, "reviewFeedback" = ?, "startedAt" = NULL, "submittedAt" = NULL, "completedAt" = NULL, "reviewedAt" = ?, "updatedAt" = ? WHERE "id" = ? AND "status" = 'REVIEWING'`).run(task.mode === 'advisor' ? 2 : 8, action.summary, action.feedback || action.summary, revisedAt, revisedAt, task.id);
+        db.prepare(`UPDATE "AgentTaskCompletion" SET "status" = 'REVISION_REQUIRED', "active" = 0 WHERE "id" = ?`).run(completion.id);
+        db.prepare(`DELETE FROM "SpaceFile" WHERE "taskId" = ? AND "status" IN ('GENERATING', 'WAITING_APPROVAL')`).run(task.id);
+        if (manifest) db.prepare(`UPDATE "AgentArtifactManifest" SET "status" = 'DISCARDED', "updatedAt" = ? WHERE "id" = ?`).run(revisedAt, manifest.id);
+        db.prepare(`UPDATE "AgentRun" SET "status" = 'QUEUED', "modelRequestLimit" = "modelRequestLimit" + ?, "updatedAt" = ? WHERE "id" = ?`).run(task.mode === 'advisor' ? 3 : 9, revisedAt, run.id);
+      })();
+      addEvent(run.id, 'TASK_REVISION_REQUIRED', action.publicNote || `协调者要求 ${task.agentName} 修正后重新提交`, { taskId: task.id, agentId: task.agentId, attempt: task.attempt + 1, actor: 'coordinator', feedback: action.feedback }, `task-revision:${completion.id}`);
+    } else {
+      const blockedAt = now();
+      db.prepare(`UPDATE "AgentTask" SET "status" = 'BLOCKED', "reviewDecision" = 'block', "reviewSummary" = ?, "error" = ?, "reviewedAt" = ?, "completedAt" = ?, "updatedAt" = ? WHERE "id" = ? AND "status" = 'REVIEWING'`).run(action.summary, action.feedback || action.summary, blockedAt, blockedAt, blockedAt, task.id);
+      db.prepare(`UPDATE "AgentTaskCompletion" SET "status" = 'BLOCKED' WHERE "id" = ?`).run(completion.id);
+      addEvent(run.id, 'TASK_BLOCKED_BY_COORDINATOR', action.publicNote || action.summary, { taskId: task.id, agentId: task.agentId, attempt: task.attempt, actor: 'coordinator', summary: action.summary }, `task-blocked:${completion.id}`);
+      throw Object.assign(new Error(action.summary), { code: 'TASK_BLOCKED' });
+    }
+    completeCoordinatorTurn(db, turn.id, action, now());
+    if (wakeup) db.prepare(`UPDATE "AgentRuntimeOutbox" SET "status" = 'DELIVERED', "deliveredAt" = ?, "updatedAt" = ? WHERE "id" = ?`).run(now(), now(), wakeup.id);
+    return action;
+  } catch (error) {
+    failCoordinatorTurn(db, turn.id, error, now());
+    if (wakeup) {
+      const timestamp = now();
+      db.prepare(`UPDATE "AgentRuntimeOutbox" SET "status" = 'DELIVERED', "lastError" = ?, "deliveredAt" = ?, "updatedAt" = ? WHERE "id" = ?`).run(
+        (error instanceof Error ? error.message : String(error)).slice(0, 2000), timestamp, timestamp, wakeup.id
+      );
+    }
+    throw error;
+  }
+}
+
+function submitV2Task(run, task, result, manifest) {
+  return submitTaskCompletion(db, {
+    runId: run.id, spaceId: run.spaceId, taskId: task.id, attempt: task.attempt, workerId,
+    agentId: task.agentId, agentName: task.agentName, report: result,
+    evidence: manifest?.entries || [], artifacts: manifest?.entries || [], validation: manifest?.validation || {}, worklog: [],
+  }, now());
+}
+
+function markAgentWorking(run, task) {
+  if (run.runtimeVersion < 2) return;
+  const timestamp = now();
+  db.prepare(
+    `INSERT INTO "AgentSession"
+     ("id", "spaceId", "agentId", "status", "currentTaskId", "worklog", "lastActiveAt", "createdAt", "updatedAt")
+     VALUES (?, ?, ?, 'WORKING', ?, '[]', ?, ?, ?)
+     ON CONFLICT("spaceId", "agentId") DO UPDATE SET
+       "status" = 'WORKING', "currentTaskId" = excluded."currentTaskId",
+       "lastActiveAt" = excluded."lastActiveAt", "updatedAt" = excluded."updatedAt"`
+  ).run(randomUUID(), run.spaceId, task.agentId, task.id, timestamp, timestamp, timestamp);
+}
+
 async function executeTask(run, task, context, previousResults) {
   const agent = context.agents.find((item) => item.id === task.agentId);
   if (!agent) throw new Error(`找不到任务成员：${task.agentId}`);
@@ -1053,6 +1589,7 @@ async function executeTask(run, task, context, previousResults) {
     `UPDATE "AgentTask" SET "status" = 'RUNNING', "startedAt" = ?, "updatedAt" = ? WHERE "id" = ? AND "status" = 'PENDING'`
   ).run(timestamp, timestamp, task.id);
   if (claimed.changes !== 1 || isTaskCancelRequested(task.id)) throw new Error('步骤已取消');
+  markAgentWorking(run, task);
   addEvent(run.id, 'TASK_STARTED', `${agent.name}开始：${task.title}`, {
     taskId: task.id,
     agentId: agent.id,
@@ -1292,6 +1829,12 @@ async function executeTask(run, task, context, previousResults) {
     throw new Error(`工作区产物检查未通过：${manifest.validation.issues.join('；') || '存在无效文件'}`);
   }
 
+  if (run.runtimeVersion >= 2) {
+    const completion = submitV2Task(run, task, result, manifest);
+    await reviewSubmittedTask(run, task, context, completion);
+    return result;
+  }
+
   const completedAt = now();
   const completed = db.transaction(() => {
     const changed = db.prepare(
@@ -1319,6 +1862,7 @@ async function executeAdvisorTask(run, task, context, previousResults, agent) {
     `UPDATE "AgentTask" SET "status" = 'RUNNING', "startedAt" = ?, "updatedAt" = ? WHERE "id" = ? AND "status" = 'PENDING'`
   ).run(timestamp, timestamp, task.id);
   if (claimed.changes !== 1 || isTaskCancelRequested(task.id)) throw new Error('步骤已取消');
+  markAgentWorking(run, task);
   addEvent(run.id, 'TASK_STARTED', `${agent.name}开始：${task.title}`, {
     taskId: task.id,
     agentId: agent.id,
@@ -1359,6 +1903,11 @@ async function executeAdvisorTask(run, task, context, previousResults, agent) {
   }
   if (isCancelRequested(run.id) || isTaskCancelRequested(task.id)) throw new Error('步骤已取消');
   if (!result) throw new Error(`${agent.name}没有返回顾问结果`);
+  if (run.runtimeVersion >= 2) {
+    const completion = submitV2Task(run, task, result, null);
+    await reviewSubmittedTask(run, task, context, completion);
+    return result;
+  }
   const completedAt = now();
   const changed = db.prepare(
     `UPDATE "AgentTask" SET "status" = 'WAITING_APPROVAL', "result" = ?, "completedAt" = ?, "updatedAt" = ? WHERE "id" = ? AND "status" = 'RUNNING'`
@@ -1668,7 +2217,9 @@ async function processRun(run) {
     addEvent(
       run.id,
       'RUN_STARTED',
-      tasks.length > 0 ? `已开始执行确认的 ${tasks.length} 步成员链` : '协调者开始分析旧任务'
+      run.runtimeVersion >= 2
+        ? (tasks.length > 0 ? `协调者继续推进 ${tasks.length} 项已创建工作` : '协调者开始安排工作')
+        : (tasks.length > 0 ? `已开始执行确认的 ${tasks.length} 步成员链` : '协调者开始分析旧任务')
     );
     const existingResearchContext = restoreResearchContext(run.id);
     const refreshTask = tasks.find(
@@ -1690,21 +2241,82 @@ async function processRun(run) {
       : existingResearchContext || (
           tasks.length === 0 || pendingResearchTask ? await buildResearchContext(run, context) : ''
         );
-    if (tasks.length === 0) {
+    if (tasks.length === 0 && run.runtimeVersion >= 3) {
+      await coordinateNextWork(run, context, `run-authorized:${run.id}`);
+      tasks = db.prepare('SELECT * FROM "AgentTask" WHERE "runId" = ? ORDER BY "sortOrder" ASC').all(run.id);
+    } else if (tasks.length === 0 && run.runtimeVersion >= 2) {
+      dispatchNextAuthorizedTask(run);
+      tasks = db.prepare('SELECT * FROM "AgentTask" WHERE "runId" = ? ORDER BY "sortOrder" ASC').all(run.id);
+    }
+    if (tasks.length === 0 && run.runtimeVersion < 3) {
       const plan = await createPlan(run, context);
       if (isCancelRequested(run.id)) return cancelRun(run.id);
       savePlan(run.id, plan, context.agents);
       tasks = db.prepare('SELECT * FROM "AgentTask" WHERE "runId" = ? ORDER BY "sortOrder" ASC').all(run.id);
-    } else {
+    }
+    const proposedTasks = tasks.filter((task) => task.status === 'PROPOSED');
+    if (proposedTasks.length > 0 && !tasks.some((task) => task.status === 'PENDING')) {
+      db.prepare(`UPDATE "AgentRun" SET "status" = 'WAITING_APPROVAL', "workerId" = NULL, "heartbeatAt" = NULL, "updatedAt" = ? WHERE "id" = ?`).run(now(), run.id);
+      addEvent(run.id, 'RUN_WAITING_DISPATCH_APPROVAL', '协调者已提出派活建议，等待用户确认', {
+        actor: 'coordinator', taskIds: proposedTasks.map((task) => task.id),
+      }, `run-waiting-dispatch-approval:${proposedTasks.map((task) => task.id).sort().join(':')}`);
+      return;
+    } else if (tasks.length > 0) {
       db.prepare(`UPDATE "AgentRun" SET "status" = 'RUNNING', "updatedAt" = ? WHERE "id" = ?`).run(now(), run.id);
     }
 
     const previousResults = tasks
       .filter((task) => task.status === 'COMPLETED' && task.result)
       .map((task) => ({ title: task.title, result: task.result }));
+    if (run.runtimeVersion >= 2) {
+      const parallelTasks = tasks.filter((task) => task.status === 'PENDING');
+      if (parallelTasks.length > 1) {
+        addEvent(run.id, 'PARALLEL_WORK_STARTED', `${parallelTasks.length} 项无前置依赖的工作已并行开始`, {
+          actor: 'coordinator',
+          taskIds: parallelTasks.map((task) => task.id),
+        }, `parallel-work:${run.id}:${parallelTasks.map((task) => task.id).sort().join(':')}`);
+        const settled = await Promise.allSettled(parallelTasks.map(async (task) => {
+          try {
+            return await executeTask(run, task, context, previousResults);
+          } catch (error) {
+            if (task.mode !== 'advisor') {
+              try {
+                const manifest = db.prepare(
+                  `SELECT "status" FROM "AgentArtifactManifest" WHERE "taskId" = ? AND "attempt" = ?`
+                ).get(task.id, task.attempt);
+                if (manifest?.status !== 'INCOMPLETE') {
+                  await recordTaskArtifactManifest(run, task, context, { status: 'INCOMPLETE' });
+                }
+              } catch (manifestError) {
+                addEvent(run.id, 'ARTIFACT_MANIFEST_FAILED', `无法记录 ${task.agentName} 的工作区差异`, {
+                  taskId: task.id,
+                  error: manifestError instanceof Error ? manifestError.message : String(manifestError),
+                });
+              }
+            }
+            throw error;
+          }
+        }));
+        const rejected = settled.find((result) => result.status === 'rejected');
+        if (rejected) throw rejected.reason;
+        const runStatus = db.prepare('SELECT "status" FROM "AgentRun" WHERE "id" = ?').get(run.id)?.status;
+        if (['QUEUED', 'WAITING', 'CANCEL_REQUESTED', 'CANCELLED'].includes(runStatus)) return;
+        const pendingDispatch = db.prepare(
+          `SELECT 1 FROM "AgentTask" WHERE "runId" = ? AND "status" = 'PENDING' LIMIT 1`
+        ).get(run.id);
+        if (pendingDispatch) {
+          db.prepare(`UPDATE "AgentRun" SET "status" = 'QUEUED', "workerId" = NULL, "heartbeatAt" = NULL, "updatedAt" = ? WHERE "id" = ?`).run(now(), run.id);
+          return;
+        }
+      }
+    }
     for (const plannedTask of tasks) {
       const task = db.prepare('SELECT * FROM "AgentTask" WHERE "id" = ?').get(plannedTask.id);
       if (!task || ['COMPLETED', 'SKIPPED', 'CANCELLED'].includes(task.status)) continue;
+      if (task.status === 'PROPOSED') {
+        db.prepare(`UPDATE "AgentRun" SET "status" = 'WAITING_APPROVAL', "workerId" = NULL, "heartbeatAt" = NULL, "updatedAt" = ? WHERE "id" = ?`).run(now(), run.id);
+        return;
+      }
       if (task.status === 'WAITING_APPROVAL') {
         db.prepare(`UPDATE "AgentRun" SET "status" = 'WAITING_APPROVAL', "updatedAt" = ? WHERE "id" = ?`).run(now(), run.id);
         return;
@@ -1713,11 +2325,36 @@ async function processRun(run) {
         cancelTask(task.id, run.id, task.agentName);
         continue;
       }
+      if (run.runtimeVersion >= 2 && ['SUBMITTED', 'REVIEWING'].includes(task.status)) {
+        const completion = db.prepare(
+          `SELECT * FROM "AgentTaskCompletion" WHERE "taskId" = ? AND "attempt" = ? AND "active" = 1`
+        ).get(task.id, task.attempt);
+        if (!completion) throw new Error(`找不到 ${task.title} 的持久化提交记录`);
+        await reviewSubmittedTask(run, task, context, completion);
+        const reviewedTask = db.prepare('SELECT "status", "title", "result" FROM "AgentTask" WHERE "id" = ?').get(task.id);
+        if (reviewedTask?.status === 'COMPLETED') {
+          if (reviewedTask.result) previousResults.push({ title: reviewedTask.title, result: reviewedTask.result });
+          if (db.prepare('SELECT "status" FROM "AgentRun" WHERE "id" = ?').get(run.id)?.status === 'QUEUED') return;
+          continue;
+        }
+        if (reviewedTask?.status === 'PENDING') return;
+        throw new Error(`协调者恢复验收后任务状态异常：${reviewedTask?.status || 'UNKNOWN'}`);
+      }
       if (isCancelRequested(run.id)) return cancelRun(run.id);
       try {
         await executeTask(run, task, context, previousResults);
         const executedTask = db.prepare('SELECT "status" FROM "AgentTask" WHERE "id" = ?').get(task.id);
         if (executedTask?.status === 'WAITING') return;
+        if (run.runtimeVersion >= 2) {
+          if (executedTask?.status === 'COMPLETED') {
+            const acceptedTask = db.prepare('SELECT "title", "result" FROM "AgentTask" WHERE "id" = ?').get(task.id);
+            if (acceptedTask?.result) previousResults.push(acceptedTask);
+            if (db.prepare('SELECT "status" FROM "AgentRun" WHERE "id" = ?').get(run.id)?.status === 'QUEUED') return;
+            continue;
+          }
+          if (executedTask?.status === 'PENDING') return;
+          throw new Error(`协调者验收后任务状态异常：${executedTask?.status || 'UNKNOWN'}`);
+        }
         const waitingAt = now();
         db.prepare(`UPDATE "AgentRun" SET "status" = 'WAITING_APPROVAL', "updatedAt" = ? WHERE "id" = ?`).run(waitingAt, run.id);
         addEvent(run.id, 'RUN_WAITING_APPROVAL', `等待审核：${task.title}`, {
@@ -1826,6 +2463,15 @@ async function processRun(run) {
     }
 
     const timestamp = now();
+    const storedCoordinatorState = db.prepare(`SELECT "coordinatorState" FROM "AgentRun" WHERE "id" = ?`).get(run.id)?.coordinatorState;
+    const finalCoordinatorState = run.runtimeVersion >= 2
+      ? JSON.stringify({
+          ...(storedCoordinatorState ? JSON.parse(storedCoordinatorState) : {}),
+          phase: 'completed',
+          currentTaskId: null,
+          completedAt: timestamp,
+        })
+      : storedCoordinatorState || null;
     db.transaction(() => {
         for (const workspaceArtifact of workspaceArtifacts) {
           const existing = db.prepare(
@@ -1865,8 +2511,9 @@ async function processRun(run) {
         const completionId = completionIdFor(run.id);
         db.prepare(
           `UPDATE "AgentRun" SET "status" = ?, "workerId" = NULL, "heartbeatAt" = NULL,
-           "completionId" = COALESCE("completionId", ?), "result" = ?, "completedAt" = ?, "updatedAt" = ? WHERE "id" = ?`
-        ).run(outcome.status, completionId, result, timestamp, timestamp, run.id);
+           "completionId" = COALESCE("completionId", ?), "result" = ?, "coordinatorState" = ?,
+           "completedAt" = ?, "updatedAt" = ? WHERE "id" = ?`
+        ).run(outcome.status, completionId, result, finalCoordinatorState, timestamp, timestamp, run.id);
         stageCompletion(
           run.id,
           completionId,
@@ -1902,11 +2549,14 @@ async function main() {
   recoverStaleRuns();
   recoverInterruptedDiscussions();
   recoverStaleOutbox(db, leaseCutoffIso(Date.now(), leaseTimeoutMs));
+  recoverRuntimeIntents(db, leaseCutoffIso(Date.now(), leaseTimeoutMs));
+  recoverCoordinatorTurns(db, leaseCutoffIso(Date.now(), leaseTimeoutMs));
   reconcileCompletionOutbox(db);
   console.log(`[agent-worker] ready (${fakeMode ? 'fake' : 'model'} mode)`);
   while (!stopping) {
     recoverStaleRuns();
     recoverStaleOutbox(db, leaseCutoffIso(Date.now(), leaseTimeoutMs));
+    recoverRuntimeIntents(db, leaseCutoffIso(Date.now(), leaseTimeoutMs));
     const completion = claimNextCompletion(db, workerId);
     if (completion) {
       try {

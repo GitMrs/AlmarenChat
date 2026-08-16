@@ -5,6 +5,7 @@ import { getAgentRunForUser, isAgentRunActive } from '@/app/api/_lib/agent-runs'
 import { completionIdFor } from '@/lib/agent-completion-policy.mjs';
 import { discardWorkspaceAttempt } from '@/lib/workspace-staging.mjs';
 import { persistSpaceMemory } from '@/app/api/_lib/space-memory';
+import { appendAgentRunEvent } from '@/app/api/_lib/agent-run-events';
 
 export async function POST(request: Request, { params }: { params: Promise<{ runId: string }> }) {
   try {
@@ -20,7 +21,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ run
     await prisma.$transaction(async (transaction) => {
       if (immediate) {
         await transaction.agentTask.updateMany({
-          where: { runId, status: { in: ['PENDING', 'RUNNING', 'WAITING', 'WAITING_APPROVAL', 'CANCEL_REQUESTED'] } },
+          where: { runId, status: { in: ['PROPOSED', 'PENDING', 'QUEUED', 'RUNNING', 'WAITING', 'WAITING_USER', 'WAITING_APPROVAL', 'SUBMITTED', 'REVIEWING', 'REVISION_REQUIRED', 'CANCEL_REQUESTED'] } },
           data: { status: 'CANCELLED', completedAt: timestamp },
         });
         await transaction.spaceFile.deleteMany({
@@ -35,13 +36,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ run
           completedAt: immediate ? timestamp : undefined,
         },
       });
-      await transaction.agentRunEvent.create({
-        data: {
-          runId,
+      await appendAgentRunEvent(transaction, runId, {
           type: immediate ? 'RUN_CANCELLED' : 'RUN_CANCEL_REQUESTED',
           message: immediate ? '任务已取消' : '已请求取消任务',
           idempotencyKey: immediate ? completionId : undefined,
-        },
+          actor: 'user',
       });
       if (immediate) {
         await transaction.agentRunOutbox.upsert({
@@ -72,9 +71,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ run
       })));
       const failures = cleanup.filter((result) => result.status === 'rejected');
       if (failures.length > 0) {
-        await prisma.agentRunEvent.create({
-          data: { runId, type: 'WORKSPACE_STAGING_CLEANUP_FAILED', message: `${failures.length} 个任务暂存区清理失败` },
-        });
+        await prisma.$transaction((transaction) => appendAgentRunEvent(transaction, runId, {
+          type: 'WORKSPACE_STAGING_CLEANUP_FAILED',
+          message: `${failures.length} 个任务暂存区清理失败`,
+          actor: 'system',
+        }));
       }
       await persistSpaceMemory(existing.spaceId, [{
         type: 'task_run',

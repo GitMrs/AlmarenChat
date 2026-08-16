@@ -4,6 +4,7 @@ import path from 'node:path';
 import { tavily } from '@tavily/core';
 import { SafeSearchType, SearchTimeType, search as duckDuckGoSearch, searchNews as duckDuckGoNews } from 'duck-duck-scrape';
 import { runSafeWorkspaceCheck } from './safe-command-runner.mjs';
+import { needsWebResearch } from '../lib/web-research-intent.mjs';
 
 const MAX_SEARCH_QUERIES = 2;
 const MAX_OFFICIAL_DOMAINS = 8;
@@ -241,9 +242,7 @@ export function assessResearchResult(result, sources, requirements = {}) {
 }
 
 export function wantsWebResearch(goal) {
-  const text = String(goal || '');
-  return /(联网|搜索|检索|调研|研究|收集资料|查找资料|最新|市场|竞品|research)/i.test(text)
-    || /(?:引用|来源).{0,12}(?:官方|资料|文献|证据|链接|网址)|(?:官方|资料|文献|证据).{0,12}(?:引用|来源)|引用来源|(?:标注|提供|附上|列出|补充).{0,12}(?:引用|来源)/i.test(text);
+  return needsWebResearch(goal);
 }
 
 export function wantsMarkdownArtifact(goal) {

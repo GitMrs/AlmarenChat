@@ -35,7 +35,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const userId = requireAuth(request);
-    const { name, description, instructions, agentIds } = await request.json();
+    const { name, description, instructions, executionMode, agentIds } = await request.json();
     const title = typeof name === 'string' ? name.trim() : '';
     if (!title) {
       return NextResponse.json({ error: '空间名称不能为空' }, { status: 400 });
@@ -44,6 +44,7 @@ export async function POST(request: Request) {
     if (spaceInstructions.length > 12_000) {
       return NextResponse.json({ error: '空间规则不能超过 12000 字' }, { status: 400 });
     }
+    const normalizedExecutionMode = executionMode === 'AUTO' ? 'AUTO' : 'REVIEW_DISPATCH';
 
     const resolvedAgents = await resolveManyAgents(Array.isArray(agentIds) ? agentIds : [], userId);
     const space = await prisma.space.create({
@@ -52,6 +53,7 @@ export async function POST(request: Request) {
         name: title,
         description: typeof description === 'string' ? description.trim() || null : null,
         instructions: spaceInstructions || null,
+        executionMode: normalizedExecutionMode,
         hostAgentId: SPACE_COORDINATOR_ID,
         members: {
           create: resolvedAgents

@@ -3,6 +3,7 @@ import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { getAgentRunForUser } from '@/app/api/_lib/agent-runs';
 import { applyWorkspaceAttempt, discardWorkspaceAttempt, recoverWorkspaceAttemptApplication } from '@/lib/workspace-staging.mjs';
+import { appendAgentRunEvent } from '@/app/api/_lib/agent-run-events';
 
 const REVIEW_ACTIONS = new Set(['approve', 'retry', 'skip']);
 
@@ -152,9 +153,7 @@ export async function POST(
           ...(action === 'retry' ? { modelRequestLimit: { increment: task.mode === 'advisor' ? 2 : 8 } } : {}),
         },
       });
-      await transaction.agentRunEvent.create({
-        data: {
-          runId,
+      await appendAgentRunEvent(transaction, runId, {
           type: action === 'approve' ? 'TASK_APPROVED' : action === 'retry' ? 'TASK_REVISION_REQUESTED' : 'TASK_SKIPPED',
           message: action === 'approve'
             ? `已确认${task.agentName}的阶段结果`
@@ -167,7 +166,10 @@ export async function POST(
             attempt: action === 'retry' ? task.attempt + 1 : task.attempt,
             ...(action === 'retry' ? { feedback, previousResult: task.result } : {}),
           },
-        },
+          taskId,
+          agentId: task.agentId,
+          attempt: action === 'retry' ? task.attempt + 1 : task.attempt,
+          actor: 'user',
       });
       });
     } catch (error) {
@@ -180,14 +182,15 @@ export async function POST(
     try {
       if (usesWorkspace) await discardWorkspaceAttempt(stagingOptions);
     } catch (error) {
-      await prisma.agentRunEvent.create({
-        data: {
-          runId,
+      await prisma.$transaction((transaction) => appendAgentRunEvent(transaction, runId, {
           type: 'WORKSPACE_STAGING_CLEANUP_FAILED',
           message: '任务暂存区清理失败',
           payload: { taskId, error: error instanceof Error ? error.message : String(error) },
-        },
-      });
+          taskId,
+          agentId: task.agentId,
+          attempt: task.attempt,
+          actor: 'system',
+      }));
     }
 
     const run = await getAgentRunForUser(runId, userId);

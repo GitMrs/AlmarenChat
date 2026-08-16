@@ -127,13 +127,13 @@ export const conversations = {
 // Spaces
 export const spaces = {
   list: () => request<{ spaces: any[] }>('/spaces'),
-  create: (data: { name: string; description?: string; instructions?: string; agentIds?: string[] }) =>
+  create: (data: { name: string; description?: string; instructions?: string; executionMode?: 'AUTO' | 'REVIEW_DISPATCH'; agentIds?: string[] }) =>
     request<{ space: any }>('/spaces', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
   get: (id: string) => request<{ space: any }>(`/spaces/${id}`),
-  update: (id: string, data: { name?: string; description?: string | null; instructions?: string | null; hostAgentId?: string | null }) =>
+  update: (id: string, data: { name?: string; description?: string | null; instructions?: string | null; executionMode?: 'AUTO' | 'REVIEW_DISPATCH'; hostAgentId?: string | null }) =>
     request<{ space: any }>(`/spaces/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
@@ -267,11 +267,22 @@ export const spaceShares = {
 };
 
 export const agentRuns = {
-  get: (id: string) => request<{ run: AgentRun }>(`/runs/${id}`),
+  get: (id: string, afterSequence = 0) => request<{ run: AgentRun }>(
+    `/runs/${id}${afterSequence > 0 ? `?afterSequence=${afterSequence}` : ''}`
+  ),
   cancel: (id: string) =>
     request<{ run: AgentRun }>(`/runs/${id}/cancel`, { method: 'POST' }),
   cancelTask: (runId: string, taskId: string) =>
     request<{ run: AgentRun }>(`/runs/${runId}/tasks/${taskId}/cancel`, { method: 'POST' }),
+  reviewDispatch: (
+    runId: string,
+    taskId: string,
+    action: 'approve' | 'reject',
+    revision?: { agentId: string; title: string; instruction: string; acceptanceCriteria: string }
+  ) => request<{ run: AgentRun }>(`/runs/${runId}/tasks/${taskId}/dispatch`, {
+    method: 'POST',
+    body: JSON.stringify({ action, revision }),
+  }),
   reviewTask: (runId: string, taskId: string, action: 'approve' | 'retry' | 'skip', feedback?: string) =>
     request<{ run: AgentRun }>(`/runs/${runId}/tasks/${taskId}/review`, {
       method: 'POST',
