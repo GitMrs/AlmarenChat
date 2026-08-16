@@ -6,6 +6,7 @@ import { ACTIVE_AGENT_RUN_STATUSES, agentRunInclude } from '@/app/api/_lib/agent
 import { getSpaceForUser, resolveManyAgents } from '@/app/api/_lib/spaces';
 import { taskProposalCapabilities, taskProposalNeedsClarification } from '@/lib/task-proposals';
 import { coordinatorAuthorization } from '@/lib/agent-runtime-v3-policy.mjs';
+import { taskProposalWithServerCapabilities } from '@/lib/task-proposal-policy.mjs';
 
 type TaskProposalAttachment = {
   type: 'task_proposal';
@@ -60,13 +61,13 @@ function applyRevision(proposal: TaskProposalAttachment, revision: TaskProposalR
     const { executionPlan: _legacyExecutionPlan, ...authorizationProposal } = proposal;
     next = { ...authorizationProposal, ...revision };
   }
-  const goal = typeof next.goal === 'string' ? next.goal.trim() : '';
-  const steps = Array.isArray(next.steps) ? next.steps : [];
-  const deliverables = Array.isArray(next.deliverables) ? next.deliverables : [];
+  const securedProposal = taskProposalWithServerCapabilities(next) as TaskProposalAttachment;
+  const goal = typeof securedProposal.goal === 'string' ? securedProposal.goal.trim() : '';
+  const steps = Array.isArray(securedProposal.steps) ? securedProposal.steps : [];
   if (taskProposalNeedsClarification(goal, steps)) {
     throw new Error('任务仍依赖用户补充信息，请先回到聊天中确认关键输入。');
   }
-  return { ...next, capabilities: taskProposalCapabilities(goal, steps, deliverables) };
+  return securedProposal;
 }
 
 function taskProposalFromAttachments(attachments: unknown) {

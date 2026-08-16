@@ -142,6 +142,11 @@ export const spaces = {
     request<{ success: boolean }>(`/spaces/${id}`, {
       method: 'DELETE',
     }),
+  clearContents: (id: string) =>
+    request<{
+      success: boolean;
+      deleted: { messages: number; files: number; memories: number; sessions: number; discussions: number; runs: number };
+    }>(`/spaces/${id}/contents`, { method: 'DELETE' }),
   members: (id: string) => request<{ members: any[] }>(`/spaces/${id}/members`),
   addMember: (id: string, data: { agentId: string; roleName?: string }) =>
     request<{ member: any }>(`/spaces/${id}/members`, {
@@ -278,10 +283,11 @@ export const agentRuns = {
     runId: string,
     taskId: string,
     action: 'approve' | 'reject',
-    revision?: { agentId: string; title: string; instruction: string; acceptanceCriteria: string }
+    revision?: { agentId: string; title: string; instruction: string; acceptanceCriteria: string },
+    feedback?: string
   ) => request<{ run: AgentRun }>(`/runs/${runId}/tasks/${taskId}/dispatch`, {
     method: 'POST',
-    body: JSON.stringify({ action, revision }),
+    body: JSON.stringify({ action, revision, feedback }),
   }),
   reviewTask: (runId: string, taskId: string, action: 'approve' | 'retry' | 'skip', feedback?: string) =>
     request<{ run: AgentRun }>(`/runs/${runId}/tasks/${taskId}/review`, {

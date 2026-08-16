@@ -39,6 +39,43 @@ test('tool loop executes a tool and returns the final response', async () => {
   assert.equal(requests[1].at(-1).role, 'tool');
 });
 
+test('tool loop retries one empty model response with corrective guidance', async () => {
+  let requests = 0;
+  let retryEvent = null;
+  const result = await runToolLoop({
+    messages: [{ role: 'user', content: '创建页面' }],
+    tools: [],
+    requestCompletion: async (messages, _tools, requestState) => {
+      requests += 1;
+      if (requests === 1) return { content: null };
+      assert.equal(requestState.emptyResponseCount, 1);
+      assert.match(messages.at(-1).content, /上一次响应为空/);
+      return { content: '页面已完成' };
+    },
+    executeTool: async () => ({}),
+    isCancelled: () => false,
+    onEmptyResponse: (event) => { retryEvent = event; },
+  });
+  assert.equal(result.content, '页面已完成');
+  assert.equal(requests, 2);
+  assert.equal(retryEvent.retry, 1);
+});
+
+test('tool loop fails after consecutive empty model responses', async () => {
+  let requests = 0;
+  await assert.rejects(() => runToolLoop({
+    messages: [{ role: 'user', content: '创建页面' }],
+    tools: [],
+    requestCompletion: async () => {
+      requests += 1;
+      return { content: '' };
+    },
+    executeTool: async () => ({}),
+    isCancelled: () => false,
+  }), /没有返回任务结果/);
+  assert.equal(requests, 2);
+});
+
 test('tool errors are returned to the model for correction', async () => {
   const responses = [
     {
@@ -161,6 +198,22 @@ test('stream collector assembles content and fragmented tool calls', async () =>
     path: 'index.html',
     content: 'ok',
   });
+  assert.equal(message.diagnostics.chunkCount, 3);
+  assert.deepEqual(message.diagnostics.deltaFields.sort(), ['content', 'tool_calls']);
+  assert.equal(message.diagnostics.toolCallFragments, 2);
+});
+
+test('stream collector reports reasoning-only responses without exposing reasoning text', async () => {
+  async function* chunks() {
+    yield { model: 'deepseek-test', choices: [{ delta: { reasoning_content: '内部推理内容' } }] };
+    yield { model: 'deepseek-test', choices: [{ delta: {}, finish_reason: 'stop' }] };
+  }
+  const message = await collectChatCompletionStream(chunks());
+  assert.equal(message.content, null);
+  assert.deepEqual(message.diagnostics.responseModels, ['deepseek-test']);
+  assert.deepEqual(message.diagnostics.finishReasons, ['stop']);
+  assert.equal(message.diagnostics.reasoningContentChars, 6);
+  assert.equal(JSON.stringify(message.diagnostics).includes('内部推理内容'), false);
 });
 
 test('tool loop stops repeated no-progress calls and reports the limit', async () => {

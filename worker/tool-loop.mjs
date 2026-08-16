@@ -33,6 +33,14 @@ export async function collectChatCompletionStream(stream, { onStreamStart, onCon
   let content = '';
   let started = false;
   const toolCalls = new Map();
+  const deltaFields = new Set();
+  const finishReasons = new Set();
+  const responseModels = new Set();
+  let chunkCount = 0;
+  let choiceCount = 0;
+  let reasoningContentChars = 0;
+  let refusalChars = 0;
+  let toolCallFragments = 0;
 
   const getToolCall = (index) => {
     if (!toolCalls.has(index)) {
@@ -46,18 +54,28 @@ export async function collectChatCompletionStream(stream, { onStreamStart, onCon
   };
 
   for await (const chunk of stream) {
+    chunkCount += 1;
+    if (chunk?.model) responseModels.add(String(chunk.model).slice(0, 200));
     if (!started) {
       started = true;
       onStreamStart?.();
     }
-    const delta = chunk?.choices?.[0]?.delta;
+    const choices = Array.isArray(chunk?.choices) ? chunk.choices : [];
+    choiceCount += choices.length;
+    const choice = choices[0];
+    if (choice?.finish_reason) finishReasons.add(String(choice.finish_reason).slice(0, 100));
+    const delta = choice?.delta;
     if (!delta) continue;
+    for (const field of Object.keys(delta)) deltaFields.add(field.slice(0, 100));
     if (typeof delta.content === 'string') {
       content += delta.content;
       onContentDelta?.(delta.content);
     }
+    if (typeof delta.reasoning_content === 'string') reasoningContentChars += delta.reasoning_content.length;
+    if (typeof delta.refusal === 'string') refusalChars += delta.refusal.length;
 
     for (const fragment of delta.tool_calls || []) {
+      toolCallFragments += 1;
       const index = Number.isInteger(fragment.index) ? fragment.index : 0;
       const toolCall = getToolCall(index);
       if (fragment.id) {
@@ -82,6 +100,18 @@ export async function collectChatCompletionStream(stream, { onStreamStart, onCon
     role: 'assistant',
     content: content || null,
     ...(completedToolCalls.length > 0 ? { tool_calls: completedToolCalls } : {}),
+    diagnostics: {
+      chunkCount,
+      choiceCount,
+      deltaFields: [...deltaFields].slice(0, 20),
+      finishReasons: [...finishReasons].slice(0, 10),
+      responseModels: [...responseModels].slice(0, 5),
+      contentChars: content.length,
+      reasoningContentChars,
+      refusalChars,
+      toolCallFragments,
+      completedToolCalls: completedToolCalls.length,
+    },
   };
 }
 
@@ -108,14 +138,18 @@ export async function runToolLoop({
   executeTool,
   isCancelled,
   onModelRequest,
+  onEmptyResponse = undefined,
   onLimit = undefined,
   deadlineAt = null,
   maxIterations = MAX_TOOL_ITERATIONS,
   maxToolCalls = MAX_TOOL_CALLS,
+  maxEmptyResponseRetries = 1,
 }) {
   const conversation = [...messages];
   const signatureCounts = new Map();
   let toolCallCount = 0;
+  let emptyResponseCount = 0;
+  let previousEmptyDiagnostics = null;
   const assertBudget = () => {
     if (deadlineAt && Date.now() >= deadlineAt) throw toolLoopLimit('Agent 执行超过时间预算，任务已停止', 'deadline');
   };
@@ -123,20 +157,41 @@ export async function runToolLoop({
     assertBudget();
     if (isCancelled?.()) throw new Error('任务已取消');
     onModelRequest?.({ iteration });
-    const message = await requestCompletion(conversation, tools);
+    const message = await requestCompletion(conversation, tools, {
+      iteration,
+      emptyResponseCount,
+      previousEmptyDiagnostics,
+    });
     if (isCancelled?.()) throw new Error('任务已取消');
     const toolCalls = Array.isArray(message?.tool_calls) ? message.tool_calls : [];
     const content = typeof message?.content === 'string' ? message.content.trim() : '';
+    if (toolCalls.length === 0 && !content) {
+      emptyResponseCount += 1;
+      if (emptyResponseCount > maxEmptyResponseRetries) throw new Error('Agent 没有返回任务结果');
+      onEmptyResponse?.({
+        iteration,
+        retry: emptyResponseCount,
+        maxRetries: maxEmptyResponseRetries,
+        diagnostics: message?.diagnostics || null,
+      });
+      previousEmptyDiagnostics = message?.diagnostics || null;
+      const reasoningBudgetExhausted = previousEmptyDiagnostics?.reasoningContentChars > 0
+        && previousEmptyDiagnostics?.finishReasons?.includes('length');
+      conversation.push({
+        role: 'system',
+        content: reasoningBudgetExhausted
+          ? '上一次响应的输出预算全部耗尽在内部推理，没有产生可执行动作。立即停止扩展分析：需要操作工作区时，下一个输出必须直接调用合适工具；已完成时直接返回简短最终结果。不得再次只输出推理内容。'
+          : '上一次响应为空。请继续当前任务：需要操作工作区时立即调用合适工具；任务已完成时直接返回简短、可核对的最终结果。不得再次返回空内容。',
+      });
+      continue;
+    }
     conversation.push({
       role: 'assistant',
       content: message?.content || null,
       ...(toolCalls.length > 0 ? { tool_calls: toolCalls } : {}),
     });
 
-    if (toolCalls.length === 0) {
-      if (!content) throw new Error('Agent 没有返回任务结果');
-      return { content, iterations: iteration };
-    }
+    if (toolCalls.length === 0) return { content, iterations: iteration };
 
     for (const toolCall of toolCalls) {
       assertBudget();

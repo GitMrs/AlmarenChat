@@ -37,6 +37,9 @@ function testDatabase() {
 test('completion outbox stages and delivers one chat message idempotently', () => {
   const db = testDatabase();
   const payload = { runId: 'run-1', spaceId: 'space-1', status: 'COMPLETED', result: '交付完成' };
+  db.prepare(
+    `INSERT INTO "AgentRun" ("id", "spaceId", "status", "result", "completionId") VALUES (?, ?, ?, ?, ?)`
+  ).run('run-1', 'space-1', 'COMPLETED', '交付完成', completionIdFor('run-1'));
   enqueueCompletion(db, payload, '2026-08-15T10:00:00.000Z');
   enqueueCompletion(db, payload, '2026-08-15T10:00:00.000Z');
   assert.equal(db.prepare('SELECT COUNT(*) AS count FROM "AgentRunOutbox"').get().count, 1);
@@ -49,6 +52,22 @@ test('completion outbox stages and delivers one chat message idempotently', () =
   assert.equal(db.prepare('SELECT COUNT(*) AS count FROM "SpaceMessage"').get().count, 1);
   assert.equal(db.prepare('SELECT "sourceKey" FROM "SpaceMessage"').get().sourceKey, completionIdFor('run-1'));
   assert.equal(db.prepare('SELECT "status" FROM "AgentRunOutbox"').get().status, 'DELIVERED');
+  db.close();
+});
+
+test('a claimed completion cannot recreate chat after its run was cleared', () => {
+  const db = testDatabase();
+  const payload = { runId: 'run-cleared', spaceId: 'space-1', status: 'COMPLETED', result: '旧结果' };
+  db.prepare(
+    `INSERT INTO "AgentRun" ("id", "spaceId", "status", "result", "completionId") VALUES (?, ?, ?, ?, ?)`
+  ).run('run-cleared', 'space-1', 'COMPLETED', '旧结果', completionIdFor('run-cleared'));
+  enqueueCompletion(db, payload, '2026-08-15T10:00:00.000Z');
+  const entry = claimNextCompletion(db, 'worker-1', '2026-08-15T10:00:01.000Z');
+  db.prepare(`DELETE FROM "AgentRun" WHERE "id" = ?`).run('run-cleared');
+
+  deliverCompletion(db, entry, '2026-08-15T10:00:02.000Z');
+
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM "SpaceMessage"').get().count, 0);
   db.close();
 });
 

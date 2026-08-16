@@ -4,6 +4,7 @@ import { requireAuth } from '@/app/api/_lib/auth';
 import { getAgentRunForUser } from '@/app/api/_lib/agent-runs';
 import { applyWorkspaceAttempt, discardWorkspaceAttempt, recoverWorkspaceAttemptApplication } from '@/lib/workspace-staging.mjs';
 import { appendAgentRunEvent } from '@/app/api/_lib/agent-run-events';
+import { taskModelRequestLimit } from '@/lib/task-execution-plan.mjs';
 
 const REVIEW_ACTIONS = new Set(['approve', 'retry', 'skip']);
 
@@ -28,7 +29,6 @@ export async function POST(
     if (existing.status !== 'WAITING_APPROVAL' || task.status !== 'WAITING_APPROVAL') {
       return NextResponse.json({ error: '当前步骤不在待审核状态' }, { status: 409 });
     }
-    const usesWorkspace = task.mode !== 'advisor';
     const latestAuditEvent = [...existing.events].reverse().find((event) => {
       if (event.type !== 'RESEARCH_RESULT_AUDITED' || !event.payload || typeof event.payload !== 'object') return false;
       const payload = event.payload as Record<string, unknown>;
@@ -44,9 +44,10 @@ export async function POST(
       return NextResponse.json({ error: '来源验收未通过，不能作为正常结果继续。请补充要求后重做，或跳过此步骤。' }, { status: 409 });
     }
 
-    let manifest = usesWorkspace ? await prisma.agentArtifactManifest.findUnique({
+    let manifest = await prisma.agentArtifactManifest.findUnique({
       where: { taskId_attempt: { taskId, attempt: task.attempt } },
-    }) : null;
+    });
+    const usesWorkspace = task.mode !== 'advisor' || Boolean(manifest);
     if (action === 'approve' && usesWorkspace && !manifest) {
       return NextResponse.json({ error: '当前步骤缺少安全工作区基线，请选择重做后再确认' }, { status: 409 });
     }
@@ -94,7 +95,7 @@ export async function POST(
               error: null,
               reviewFeedback: feedback,
               attempt: { increment: 1 },
-              modelRequestLimit: { increment: task.mode === 'advisor' ? 2 : 8 },
+              modelRequestLimit: { increment: taskModelRequestLimit(task.mode) },
               startedAt: null,
               completedAt: null,
               reviewedAt: null,
@@ -150,7 +151,7 @@ export async function POST(
         data: {
           status: 'QUEUED',
           updatedAt: timestamp,
-          ...(action === 'retry' ? { modelRequestLimit: { increment: task.mode === 'advisor' ? 2 : 8 } } : {}),
+          ...(action === 'retry' ? { modelRequestLimit: { increment: taskModelRequestLimit(task.mode) } } : {}),
         },
       });
       await appendAgentRunEvent(transaction, runId, {

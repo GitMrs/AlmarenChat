@@ -4,15 +4,12 @@ import { createExecutionConvergence } from './execution-convergence.mjs';
 
 const tools = ['read_file', 'patch_file', 'check_files'].map((name) => ({ type: 'function', function: { name } }));
 
-test('requires a check after repeated mutations and closes tools after validation', () => {
+test('forces finalization after repeated mutations because the platform validates on submit', () => {
   const convergence = createExecutionConvergence(2);
   convergence.recordTool('patch_file', { path: 'index.html' }, { ok: true });
   assert.equal(convergence.availableTools(tools).length, 3);
 
   convergence.recordTool('patch_file', { path: 'index.html' }, { ok: true });
-  assert.deepEqual(convergence.availableTools(tools).map((tool) => tool.function.name), ['check_files']);
-
-  convergence.recordTool('check_files', { paths: ['index.html'] }, { valid: true });
   assert.deepEqual(convergence.availableTools(tools), []);
 });
 

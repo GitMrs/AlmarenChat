@@ -55,6 +55,10 @@ export function deliverCompletion(db, entry, timestamp = new Date().toISOString(
   const payload = typeof entry.payload === 'string' ? JSON.parse(entry.payload) : entry.payload;
   const content = completionMessage(payload);
   db.transaction(() => {
+    const runStillExists = db.prepare(
+      `SELECT 1 FROM "AgentRun" WHERE "id" = ? AND "spaceId" = ?`
+    ).get(payload.runId, payload.spaceId);
+    if (!runStillExists) return;
     db.prepare(
       `INSERT OR IGNORE INTO "SpaceMessage"
         ("id", "spaceId", "role", "speakerAgentId", "content", "attachments", "sourceKey", "createdAt")

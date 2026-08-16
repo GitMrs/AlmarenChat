@@ -3,6 +3,8 @@ import { Prisma } from '@/src/generated/prisma/client';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { ACTIVE_AGENT_RUN_STATUSES, agentRunInclude, getAgentRunForUser, isAgentRunActive } from '@/app/api/_lib/agent-runs';
+import { coordinatorAuthorization } from '@/lib/agent-runtime-v3-policy.mjs';
+import { taskProposalWithServerCapabilities } from '@/lib/task-proposal-policy.mjs';
 
 export async function POST(request: Request, { params }: { params: Promise<{ runId: string }> }) {
   try {
@@ -48,6 +50,21 @@ export async function POST(request: Request, { params }: { params: Promise<{ run
       : firstIncompleteTask
       ? `第 ${existing.attempt + 1} 次尝试已进入队列，将从“${firstIncompleteTask.title}”继续`
       : `第 ${existing.attempt + 1} 次尝试已进入队列，将重新汇总已有结果`;
+    const previousCoordinatorState = existing.coordinatorState && typeof existing.coordinatorState === 'object'
+      ? existing.coordinatorState as Record<string, Prisma.JsonValue>
+      : null;
+    const previousAuthorization = previousCoordinatorState?.authorization && typeof previousCoordinatorState.authorization === 'object'
+      ? previousCoordinatorState.authorization as Record<string, Prisma.JsonValue>
+      : {};
+    const refreshedAuthorization = existing.runtimeVersion >= 3
+      ? coordinatorAuthorization(taskProposalWithServerCapabilities({
+          goal: typeof previousAuthorization.objective === 'string' ? previousAuthorization.objective : existing.input,
+          steps: previousAuthorization.steps,
+          deliverables: previousAuthorization.deliverables,
+          artifacts: previousAuthorization.artifacts,
+          capabilities: previousAuthorization.capabilities,
+        }))
+      : null;
 
     const run = await prisma.agentRun.create({
       data: {
@@ -58,17 +75,17 @@ export async function POST(request: Request, { params }: { params: Promise<{ run
         attempt: existing.attempt + 1,
         runtimeVersion: existing.runtimeVersion,
         eventSequence: 1,
-        coordinatorState: existing.runtimeVersion >= 2 && existing.coordinatorState && typeof existing.coordinatorState === 'object'
+        coordinatorState: existing.runtimeVersion >= 2 && previousCoordinatorState
           ? existing.runtimeVersion >= 3
             ? {
-                authorization: ((existing.coordinatorState as Record<string, Prisma.JsonValue>).authorization || {}) as Prisma.InputJsonValue,
+                authorization: refreshedAuthorization as Prisma.InputJsonValue,
                 phase: 'coordinating',
                 authorizedAt: new Date().toISOString(),
                 iteration: 0,
                 taskCount: 0,
                 currentTaskIds: [],
               }
-            : { ...(existing.coordinatorState as Record<string, unknown>), phase: 'authorized', cursor: 0, currentTaskId: null }
+            : { ...previousCoordinatorState, phase: 'authorized', cursor: 0, currentTaskId: null }
           : undefined,
         modelRequestLimit: existing.modelRequestLimit,
         ...(copiedTasks.length > 0 ? { tasks: { create: copiedTasks } } : {}),

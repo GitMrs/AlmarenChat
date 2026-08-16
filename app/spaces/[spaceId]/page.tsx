@@ -21,6 +21,7 @@ import { CompressionStatusPanel } from '@/components/spaces/CompressionStatusPan
 import { agentRuns as agentRunsApi, agents as agentsApi, spaces as spacesApi, streamSpaceMessage } from '@/lib/api';
 import { getBuiltInAgents } from '@/lib/agents-data';
 import { taskProposalCapabilities } from '@/lib/task-proposals';
+import { latestRunInRetryChain } from '@/lib/agent-run-retry-chain.mjs';
 import { isEditableSpaceFile } from '@/lib/space-files';
 import type { Agent, AgentRun, AgentRunEvent, AgentTask, SpaceDiscussion, SpaceFile, SpaceMessage, SpaceTaskProposal } from '@/types';
 
@@ -99,6 +100,8 @@ type RunEventPayload = {
     workspaceChanges?: number;
     validatedFiles?: number;
     commandChecks?: number;
+    coveredRequirements?: number;
+    requirementCount?: number;
   };
   reason?: string;
   mode?: string;
@@ -259,6 +262,8 @@ export default function SpaceDetailPage() {
   const [instructionsDraft, setInstructionsDraft] = useState('');
   const [executionModeDraft, setExecutionModeDraft] = useState<'AUTO' | 'REVIEW_DISPATCH'>('REVIEW_DISPATCH');
   const [savingInstructions, setSavingInstructions] = useState(false);
+  const [clearSpaceOpen, setClearSpaceOpen] = useState(false);
+  const [clearingSpace, setClearingSpace] = useState(false);
   const [runActionLoading, setRunActionLoading] = useState(false);
   const [proposalActionMessageId, setProposalActionMessageId] = useState<string | null>(null);
   const [editingProposal, setEditingProposal] = useState<{ message: SpaceMessage; proposal: SpaceTaskProposal } | null>(null);
@@ -484,8 +489,9 @@ export default function SpaceDetailPage() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: isStreaming ? 'auto' : 'smooth' });
   }, [messages.length, streamingContent, isStreaming]);
 
-  const openTaskRun = (runId: string) => {
-    setSelectedRunId(runId);
+  const openTaskRun = (runId: string, followRetries = false) => {
+    const target = followRetries ? latestRunInRetryChain(runs, runId) : null;
+    setSelectedRunId(target?.id || runId);
     setMode('task');
   };
 
@@ -811,6 +817,29 @@ export default function SpaceDetailPage() {
     }
   };
 
+  const clearSpaceContents = async () => {
+    if (clearingSpace || isStreaming || activeRun || activeDiscussion) return;
+    setClearingSpace(true);
+    setError('');
+    try {
+      await spacesApi.clearContents(spaceId);
+      setMessages([]);
+      setFiles([]);
+      setRuns([]);
+      setDiscussions([]);
+      setSelectedRunId(null);
+      setMode('chat');
+      setInput('');
+      setDismissedDiscussionIds([]);
+      localStorage.removeItem(`space:${spaceId}:dismissed-discussions`);
+      setClearSpaceOpen(false);
+    } catch (err: any) {
+      setError(err.message || '清空空间失败');
+    } finally {
+      setClearingSpace(false);
+    }
+  };
+
   const send = () => {
     setMentionMenuOpen(false);
     return sendMessage(input.trim());
@@ -1014,13 +1043,14 @@ export default function SpaceDetailPage() {
   const reviewDispatch = async (
     action: 'approve' | 'reject',
     task = proposedTask,
-    revision?: TaskDispatchRevision
+    revision?: TaskDispatchRevision,
+    feedback?: string
   ) => {
     if (!currentRun || !task || dispatchAction) return;
     setDispatchAction(action);
     setDispatchError('');
     try {
-      const result = await agentRunsApi.reviewDispatch(currentRun.id, task.id, action, revision);
+      const result = await agentRunsApi.reviewDispatch(currentRun.id, task.id, action, revision, feedback);
       setRuns((items) => items.map((item) => (item.id === result.run.id ? result.run : item)));
       setEditingDispatchTask(null);
       setPendingRejectDispatch(null);
@@ -1609,6 +1639,9 @@ export default function SpaceDetailPage() {
                               <span>文件变化 {acceptanceAudit.evidence.workspaceChanges || 0}</span>
                               <span>文件检查 {acceptanceAudit.evidence.validatedFiles || 0}</span>
                               <span>代码检查 {acceptanceAudit.evidence.commandChecks || 0}</span>
+                              {acceptanceAudit.evidence.requirementCount > 0 && (
+                                <span>目标覆盖 {acceptanceAudit.evidence.coveredRequirements || 0}/{acceptanceAudit.evidence.requirementCount}</span>
+                              )}
                             </div>
                           )}
                           {Boolean(acceptanceAudit.issues?.length) && (
@@ -1654,7 +1687,7 @@ export default function SpaceDetailPage() {
                                   <div className="min-w-0 flex-1">
                                     <div className="font-black text-slate-900">{task.title}</div>
                                     <div className="mt-1 text-xs font-semibold text-slate-400">
-                                      {task.agentName} · {task.mode === 'advisor' ? '顾问' : '执行'} · 模型调用 {task.modelRequestCount || 0}/{task.modelRequestLimit || (task.mode === 'advisor' ? 2 : 8)}
+                                      {task.agentName} · {task.mode === 'advisor' ? '顾问' : '执行'} · 模型调用 {task.modelRequestCount || 0}/{task.modelRequestLimit || (task.mode === 'advisor' ? 8 : 12)}
                                     </div>
                                   </div>
                                   <span className={task.status === 'FAILED' ? 'text-xs font-black text-rose-500' : task.status === 'BLOCKED' ? 'text-xs font-black text-amber-600' : 'text-xs font-black text-slate-400'}>
@@ -1753,7 +1786,7 @@ export default function SpaceDetailPage() {
                     onRegenerate={regenerateMessage}
                     onDelete={() => setPendingDeleteMessage(message)}
                     run={messageRunId(message)
-                      ? runs.find((run) => run.id === messageRunId(message))
+                      ? latestRunInRetryChain(runs, messageRunId(message))
                       : null}
                     proposalBusy={proposalActionMessageId === message.id}
                     proposalDisabled={isRunActive}
@@ -1766,7 +1799,7 @@ export default function SpaceDetailPage() {
                     onOpenRun={() => {
                       const runId = messageRunId(message);
                       if (!runId) return;
-                      openTaskRun(runId);
+                      openTaskRun(runId, true);
                     }}
                   />
                 ))}
@@ -2184,6 +2217,24 @@ export default function SpaceDetailPage() {
                         {savingInstructions ? <Loader2 className="animate-spin" size={15} /> : <Save size={15} />}
                         保存设置
                       </button>
+                      <div className="border-t border-black/[0.06] pt-5">
+                        <div className="text-sm font-black text-slate-700">清空空间内容</div>
+                        <p className="mt-1 text-xs font-semibold leading-5 text-slate-400">
+                          删除全部聊天记录、历史任务、空间记忆和文件，保留空间成员与设置。
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => setClearSpaceOpen(true)}
+                          disabled={clearingSpace || isStreaming || Boolean(activeRun) || Boolean(activeDiscussion)}
+                          className="mt-3 inline-flex h-10 items-center gap-2 rounded-lg border border-rose-200 px-4 text-xs font-black text-rose-600 transition hover:bg-rose-50 disabled:border-slate-200 disabled:text-slate-300"
+                        >
+                          <Trash2 size={15} />
+                          清空聊天和文件
+                        </button>
+                        {(isStreaming || activeRun || activeDiscussion) && (
+                          <p className="mt-2 text-xs font-semibold text-amber-600">请先停止正在进行的回答、任务或讨论。</p>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -2241,6 +2292,21 @@ export default function SpaceDetailPage() {
         }}
         onConfirm={(feedback) => reviewCurrentTask('retry', feedback)}
       />
+      <TaskReviewDialog
+        task={pendingRejectDispatch}
+        loading={dispatchAction === 'reject'}
+        error={dispatchError}
+        eyebrow="退回派发提案"
+        label="需要协调者如何调整"
+        placeholder="例如：先交给产品确认范围；改由另一位成员执行；缩小本次任务边界..."
+        confirmText="退回并重新规划"
+        validationMessage="请说明需要调整的成员或任务边界"
+        onCancel={() => {
+          setDispatchError('');
+          setPendingRejectDispatch(null);
+        }}
+        onConfirm={(feedback) => reviewDispatch('reject', pendingRejectDispatch, undefined, feedback)}
+      />
       <SpaceFileEditorDialog
         spaceId={spaceId}
         file={editingFile}
@@ -2250,16 +2316,16 @@ export default function SpaceDetailPage() {
         }}
       />
       <ConfirmDialog
-        open={Boolean(pendingRejectDispatch)}
-        title="拒绝这次派发？"
-        description="成员不会开始执行，本次任务运行会结束。你可以调整目标后重新发起。"
-        icon={<X size={18} />}
-        cancelText="返回检查"
-        confirmText="拒绝派发"
+        open={clearSpaceOpen}
+        title="清空当前空间？"
+        description="聊天记录、历史任务、空间记忆、上传资料和工作区文件都会永久删除。空间本身、成员和执行模式设置会保留。"
+        icon={<Trash2 size={20} />}
+        cancelText="先保留"
+        confirmText="确认清空"
         destructive
-        loading={dispatchAction === 'reject'}
-        onCancel={() => setPendingRejectDispatch(null)}
-        onConfirm={() => reviewDispatch('reject', pendingRejectDispatch)}
+        loading={clearingSpace}
+        onCancel={() => setClearSpaceOpen(false)}
+        onConfirm={clearSpaceContents}
       />
       <ConfirmDialog
         open={Boolean(pendingCancelTask)}

@@ -1,3 +1,5 @@
+import { auditGoalCoverage } from '../lib/agent-runtime-v3-policy.mjs';
+
 function jsonValue(value, fallback) {
   if (value === null || value === undefined) return fallback;
   if (typeof value !== 'string') return value;
@@ -28,6 +30,8 @@ export function evaluateCoordinatorAcceptance({
   researchAudit,
   researchResultAudits = [],
   platformIssues = [],
+  authorization = null,
+  goalCoverage = [],
 }) {
   const issues = [...platformIssues];
   const warnings = [];
@@ -37,7 +41,11 @@ export function evaluateCoordinatorAcceptance({
   let workspaceChanges = 0;
   let validatedFiles = 0;
   let commandChecks = 0;
+  const goalCoverageAudit = authorization
+    ? auditGoalCoverage(authorization, goalCoverage, tasks)
+    : null;
 
+  if (goalCoverageAudit?.accepted === false) issues.push(...goalCoverageAudit.issues);
   if (researchAudit?.accepted === false) issues.push(...(researchAudit.issues || ['联网来源验收未通过']));
   for (const audit of researchResultAudits) {
     if (audit?.accepted === false) issues.push(...(audit.issues || ['研究结果引用验收未通过']));
@@ -47,8 +55,8 @@ export function evaluateCoordinatorAcceptance({
       issues.push(`${task.agentName || '成员'}的步骤“${task.title}”没有结果`);
     }
     if (task.status !== 'COMPLETED') continue;
-    if (task.mode === 'advisor') continue;
     const manifest = manifestByTaskAttempt.get(`${task.id}:${task.attempt}`);
+    if (task.mode === 'advisor' && !manifest) continue;
     if (!manifest) {
       issues.push(`步骤“${task.title}”缺少 ArtifactManifest`);
       continue;
@@ -71,7 +79,8 @@ export function evaluateCoordinatorAcceptance({
       issues.push(event.message || '工作区审计失败');
     }
   }
-  const partial = tasks.some((task) => ['SKIPPED', 'CANCELLED'].includes(task.status));
+  const partial = tasks.some((task) => task.status === 'SKIPPED'
+    || (task.status === 'CANCELLED' && Boolean(task.approvedAt || task.startedAt)));
   if (partial) warnings.push('存在已跳过或取消的步骤');
   const uniqueIssues = [...new Set(issues.filter(Boolean))];
   return {
@@ -87,6 +96,8 @@ export function evaluateCoordinatorAcceptance({
       validatedFiles,
       commandChecks,
       toolEventCount: events.filter((event) => event.type === 'TOOL_COMPLETED').length,
+      coveredRequirements: goalCoverageAudit?.coveredCount || 0,
+      requirementCount: goalCoverageAudit?.requirementCount || 0,
     },
   };
 }
@@ -142,4 +153,17 @@ export function executionFailureStatus(error) {
 
 export function leaseCutoffIso(currentTimeMs, leaseTimeoutMs) {
   return new Date(currentTimeMs - leaseTimeoutMs).toISOString();
+}
+
+const PAUSED_RUN_STATUSES = new Set([
+  'QUEUED',
+  'WAITING',
+  'WAITING_APPROVAL',
+  'BLOCKED',
+  'CANCEL_REQUESTED',
+  'CANCELLED',
+]);
+
+export function shouldPauseRunProcessing(status) {
+  return PAUSED_RUN_STATUSES.has(status);
 }

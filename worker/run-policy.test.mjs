@@ -1,6 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { completionOutcome, directRunSummary, evaluateCoordinatorAcceptance, executionFailureStatus, leaseCutoffIso, matchApprovedWorkspacePaths } from './run-policy.mjs';
+import {
+  completionOutcome,
+  directRunSummary,
+  evaluateCoordinatorAcceptance,
+  executionFailureStatus,
+  leaseCutoffIso,
+  matchApprovedWorkspacePaths,
+  shouldPauseRunProcessing,
+} from './run-policy.mjs';
 
 test('run completion distinguishes success, partial output and validation failure', () => {
   assert.equal(completionOutcome([{ status: 'COMPLETED' }], null, []).status, 'COMPLETED');
@@ -39,6 +47,14 @@ test('execution failures distinguish missing dependencies from runtime failures'
 test('worker lease cutoff uses the configured timeout', () => {
   const now = Date.parse('2026-08-15T10:00:30.000Z');
   assert.equal(leaseCutoffIso(now, 30_000), '2026-08-15T10:00:00.000Z');
+});
+
+test('worker pauses when accepted work produces a proposal awaiting dispatch approval', () => {
+  assert.equal(shouldPauseRunProcessing('WAITING_APPROVAL'), true);
+  assert.equal(shouldPauseRunProcessing('QUEUED'), true);
+  assert.equal(shouldPauseRunProcessing('WAITING'), true);
+  assert.equal(shouldPauseRunProcessing('BLOCKED'), true);
+  assert.equal(shouldPauseRunProcessing('RUNNING'), false);
 });
 
 test('approved workspace paths match logical tool paths and stored workspace paths', () => {
@@ -88,4 +104,51 @@ test('coordinator acceptance does not require a workspace manifest for advisor t
     events: [],
   });
   assert.equal(accepted.status, 'COMPLETED');
+});
+
+test('coordinator acceptance validates workspace manifests produced by advisor tasks', () => {
+  const accepted = evaluateCoordinatorAcceptance({
+    goal: '创建产品规则文档',
+    tasks: [{ id: 'advisor-1', attempt: 1, mode: 'advisor', status: 'COMPLETED', title: '梳理规则', agentName: '产品', result: '规则已整理' }],
+    manifests: [{
+      taskId: 'advisor-1',
+      attempt: 1,
+      status: 'APPLIED',
+      entries: JSON.stringify([{ path: 'docs/spec.md', change: 'CREATED' }]),
+      validation: JSON.stringify({ valid: true, files: [{ path: 'docs/spec.md', valid: true }], checks: [] }),
+    }],
+    events: [],
+    expectsWorkspaceWrite: true,
+  });
+  assert.equal(accepted.status, 'COMPLETED');
+  assert.equal(accepted.evidence.workspaceChanges, 1);
+});
+
+test('coordinator acceptance fails when final coverage omits an authorized deliverable', () => {
+  const acceptance = evaluateCoordinatorAcceptance({
+    goal: '实现并交付页面',
+    tasks: [{ id: 'task-1', agentName: '前端', title: '实现页面', status: 'COMPLETED', mode: 'advisor', attempt: 1, result: '完成' }],
+    manifests: [],
+    events: [],
+    authorization: { steps: ['实现页面'], deliverables: ['交付 index.html'] },
+    goalCoverage: [{ requirement: '实现页面', taskIds: ['task-1'], evidence: '页面已完成' }],
+  });
+  assert.equal(acceptance.accepted, false);
+  assert.match(acceptance.issues.join('\n'), /交付 index\.html/);
+  assert.equal(acceptance.evidence.coveredRequirements, 1);
+  assert.equal(acceptance.evidence.requirementCount, 2);
+});
+
+test('a rejected proposal does not make a successfully replanned run partial', () => {
+  const acceptance = evaluateCoordinatorAcceptance({
+    goal: '完成页面',
+    tasks: [
+      { id: 'rejected', status: 'CANCELLED', approvedAt: null, startedAt: null, title: '错误派发' },
+      { id: 'completed', status: 'COMPLETED', mode: 'advisor', result: '完成', title: '正确任务' },
+    ],
+    manifests: [],
+    events: [],
+  });
+  assert.equal(acceptance.status, 'COMPLETED');
+  assert.deepEqual(acceptance.warnings, []);
 });

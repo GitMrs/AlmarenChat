@@ -4,6 +4,7 @@ import { requireAuth } from '@/app/api/_lib/auth';
 import { appendAgentRunEvent } from '@/app/api/_lib/agent-run-events';
 import { getAgentRunForUser } from '@/app/api/_lib/agent-runs';
 import { resolveAgent } from '@/app/api/_lib/spaces';
+import { coordinatorStateAfterDispatchRejection } from '@/lib/agent-runtime-v3-policy.mjs';
 
 const ACTIONS = new Set(['approve', 'reject']);
 
@@ -34,33 +35,37 @@ export async function POST(
 
     const timestamp = new Date();
     if (action === 'reject') {
+      const feedback = cleanText(body.feedback, 2_000);
+      if (!feedback) return NextResponse.json({ error: '请说明拒绝这次派发的原因' }, { status: 400 });
+      const nextCoordinatorState = coordinatorStateAfterDispatchRejection(existing.coordinatorState, {
+        feedback,
+        task,
+        timestamp: timestamp.toISOString(),
+      });
       await prisma.$transaction(async (transaction) => {
         const changed = await transaction.agentTask.updateMany({
-          where: { runId, status: 'PROPOSED' },
+          where: {
+            runId,
+            status: 'PROPOSED',
+            ...(task.parentTaskId ? { parentTaskId: task.parentTaskId } : {}),
+          },
           data: { status: 'CANCELLED', completedAt: timestamp },
         });
         if (changed.count === 0) throw new Error('当前派发提案已经处理');
         await transaction.agentRun.update({
           where: { id: runId },
           data: {
-            status: 'CANCELLED',
-            completedAt: timestamp,
+            status: 'QUEUED',
+            completedAt: null,
             workerId: null,
             heartbeatAt: null,
-            coordinatorState: {
-              ...((existing.coordinatorState && typeof existing.coordinatorState === 'object')
-                ? existing.coordinatorState as Record<string, unknown>
-                : {}),
-              phase: 'dispatch_rejected',
-              currentTaskIds: [],
-              lastDecision: '用户拒绝了协调者的派发提案。',
-            },
+            coordinatorState: nextCoordinatorState,
           },
         });
         await appendAgentRunEvent(transaction, runId, {
           type: 'TASK_DISPATCH_REJECTED',
-          message: `已拒绝将“${task.title}”交给 ${task.agentName}`,
-          payload: { taskId, agentId: task.agentId, attempt: task.attempt },
+          message: `已退回将“${task.title}”交给 ${task.agentName} 的提案，协调者将重新规划`,
+          payload: { taskId, agentId: task.agentId, attempt: task.attempt, feedback },
           taskId,
           agentId: task.agentId,
           attempt: task.attempt,

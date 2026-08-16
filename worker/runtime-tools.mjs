@@ -5,6 +5,7 @@ import { tavily } from '@tavily/core';
 import { SafeSearchType, SearchTimeType, search as duckDuckGoSearch, searchNews as duckDuckGoNews } from 'duck-duck-scrape';
 import { runSafeWorkspaceCheck } from './safe-command-runner.mjs';
 import { needsWebResearch } from '../lib/web-research-intent.mjs';
+import { needsWorkspaceWrite } from '../lib/workspace-write-intent.mjs';
 
 const MAX_SEARCH_QUERIES = 2;
 const MAX_OFFICIAL_DOMAINS = 8;
@@ -256,11 +257,7 @@ export function wantsWorkspaceArtifact(goal) {
 }
 
 export function wantsWorkspaceWrite(goal) {
-  const text = String(goal || '');
-  if (/(?:不得|不要|禁止|无需).{0,12}(?:创建|生成|编写|修改|编辑|写入).{0,12}(?:文件|文档|报告|网页|网站|代码)/i.test(text)) {
-    return false;
-  }
-  return /(?:制作|创建|生成|编写|修改|编辑|写入|开发|搭建|产出).{0,20}(?:文件|文档|报告|网页|网站|代码|\.md\b|html)|(?:文件|文档|报告|网页|网站|代码|\.md\b|html).{0,20}(?:制作|创建|生成|编写|修改|编辑|写入|开发|搭建|产出)|\.(?:md|html|css|js|jsx|ts|tsx|json|csv)\b/i.test(text);
+  return needsWorkspaceWrite(goal);
 }
 
 function assertSafeId(value, label) {

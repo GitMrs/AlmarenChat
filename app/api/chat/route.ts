@@ -203,7 +203,6 @@ export async function POST(request: Request) {
             },
             { role: 'user', content: `问题: ${textMessage}\n\n片段:\n${checkChunks}` },
           ],
-          max_tokens: 4,
           stream: false,
         });
         const verdict = check.choices[0]?.message?.content || '';

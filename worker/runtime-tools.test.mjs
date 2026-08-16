@@ -184,6 +184,7 @@ test('task intent detection stays narrow', () => {
   assert.equal(wantsWorkspaceArtifact('分析一下网页行业的数据'), false);
   assert.equal(wantsWorkspaceArtifact('只写一份普通报告'), false);
   assert.equal(wantsWorkspaceWrite('联网查询当前黄金价格并直接回答'), false);
+  assert.equal(wantsWorkspaceWrite('本次只需要分析，不创建或修改文件'), false);
   assert.equal(wantsWorkspaceWrite('阅读报告，但不要修改任何文件'), false);
   assert.equal(wantsWorkspaceWrite('在空间里创建一份黄金分析报告'), true);
   assert.equal(wantsWorkspaceWrite('制作一个黄金对比网页'), true);

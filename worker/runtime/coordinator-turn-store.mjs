@@ -45,6 +45,33 @@ export function failCoordinatorTurn(db, turnId, error, timestamp = new Date().to
   ).run(message.slice(0, 2000), timestamp, turnId);
 }
 
+export function deferCoordinatorDecision(db, runId, error, timestamp = new Date().toISOString()) {
+  const message = error instanceof Error ? error.message : String(error);
+  const row = db.prepare('SELECT "coordinatorState" FROM "AgentRun" WHERE "id" = ?').get(runId);
+  let state = {};
+  try {
+    state = row?.coordinatorState ? JSON.parse(row.coordinatorState) : {};
+  } catch {
+    state = {};
+  }
+  const nextState = {
+    ...state,
+    phase: 'coordinating',
+    currentTaskIds: [],
+  };
+  return db.prepare(
+    `UPDATE "AgentRun"
+     SET "status" = 'BLOCKED', "error" = ?, "coordinatorState" = ?,
+         "workerId" = NULL, "heartbeatAt" = NULL, "updatedAt" = ?
+     WHERE "id" = ?`
+  ).run(
+    `已验收当前成果，但协调者暂时无法生成下一步安排：${message}`.slice(0, 4000),
+    JSON.stringify(nextState),
+    timestamp,
+    runId
+  ).changes === 1;
+}
+
 export function recoverCoordinatorTurns(db, staleBefore, timestamp = new Date().toISOString()) {
   return db.prepare(
     `UPDATE "AgentCoordinatorTurn"

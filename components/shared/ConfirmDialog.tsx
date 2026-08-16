@@ -2,6 +2,7 @@
 
 import { Loader2 } from 'lucide-react';
 import type { ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 
 interface ConfirmDialogProps {
   open: boolean;
@@ -28,22 +29,28 @@ export default function ConfirmDialog({
   onCancel,
   onConfirm,
 }: ConfirmDialogProps) {
-  if (!open) return null;
+  if (!open || typeof document === 'undefined') return null;
 
   const accentClass = destructive ? 'bg-rose-50 text-rose-500' : 'bg-slate-100 text-slate-700';
   const confirmClass = destructive
     ? 'bg-rose-500 text-white hover:bg-rose-600 disabled:bg-slate-200 disabled:text-slate-400'
     : 'bg-slate-950 text-white hover:bg-slate-800 disabled:bg-slate-200 disabled:text-slate-400';
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/30 px-4 backdrop-blur-sm">
+  return createPortal(
+    <div
+      className="fixed inset-0 flex items-center justify-center bg-slate-950/30 px-4 backdrop-blur-sm"
+      style={{ zIndex: 2147483647 }}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="confirm-dialog-title"
+    >
       <div className="w-full max-w-md rounded-[28px] border border-black/[0.08] bg-white p-6 shadow-2xl">
         {icon && (
           <div className={`mb-5 flex h-12 w-12 items-center justify-center rounded-2xl ${accentClass}`}>
             {icon}
           </div>
         )}
-        <h2 className="text-xl font-black text-slate-950">{title}</h2>
+        <h2 id="confirm-dialog-title" className="text-xl font-black text-slate-950">{title}</h2>
         <div className="mt-3 text-sm leading-6 text-slate-500">{description}</div>
         <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
           <button
@@ -65,6 +72,7 @@ export default function ConfirmDialog({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

@@ -15,7 +15,6 @@ export async function POST(request: Request) {
     await client.chat.completions.create({
       model: modelName,
       messages: [{ role: 'user', content: 'ping' }],
-      max_tokens: 8,
       stream: false,
     });
 

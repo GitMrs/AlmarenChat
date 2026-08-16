@@ -1,6 +1,8 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronRight, Loader2, Search, Trash2, UsersRound, X } from 'lucide-react';
 import Avatar from '@/components/shared/Avatar';
 import type { Agent } from '@/types';
@@ -36,6 +38,8 @@ export default function CreateSpaceDialog({
   const [category, setCategory] = useState('全部');
   const [selectionError, setSelectionError] = useState('');
   const [viewport, setViewport] = useState<{ height: number; offsetTop: number } | null>(null);
+  const [memberColumnCount, setMemberColumnCount] = useState(1);
+  const memberListRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
@@ -66,6 +70,14 @@ export default function CreateSpaceDialog({
     };
   }, [busy, onClose]);
 
+  useEffect(() => {
+    const media = window.matchMedia('(min-width: 640px)');
+    const updateColumns = () => setMemberColumnCount(media.matches ? 2 : 1);
+    updateColumns();
+    media.addEventListener('change', updateColumns);
+    return () => media.removeEventListener('change', updateColumns);
+  }, []);
+
   const agentById = useMemo(() => new Map(agents.map((agent) => [agent.id, agent])), [agents]);
   const selectedAgents = selectedIds.map((id) => agentById.get(id)).filter(Boolean) as Agent[];
   const categories = useMemo(
@@ -83,6 +95,13 @@ export default function CreateSpaceDialog({
       );
     });
   }, [agents, category, query]);
+  const memberRowCount = Math.ceil(filteredAgents.length / memberColumnCount);
+  const memberRows = useVirtualizer({
+    count: memberRowCount,
+    getScrollElement: () => memberListRef.current,
+    estimateSize: () => memberColumnCount === 2 ? 56 : 52,
+    overscan: 4,
+  });
 
   const toggleAgent = (agentId: string) => {
     setSelectionError('');
@@ -125,19 +144,30 @@ export default function CreateSpaceDialog({
     });
   };
 
-  return (
+  if (typeof document === 'undefined') return null;
+
+  return createPortal(
     <div
-      className="fixed inset-x-0 z-[60] flex items-end justify-center bg-slate-950/30 p-0 sm:items-center sm:p-6"
+      className="fixed inset-x-0 flex items-end justify-center bg-slate-950/30 p-0 sm:items-center sm:p-6"
       style={{
         height: viewport ? `${viewport.height}px` : '100dvh',
         top: viewport?.offsetTop || 0,
+        zIndex: 1000,
       }}
       role="dialog"
       aria-modal="true"
       aria-labelledby="create-space-dialog-title"
     >
       <button type="button" aria-label="关闭" className="absolute inset-0" onClick={() => !busy && onClose()} />
-      <section className="relative z-10 flex h-full w-full flex-col overflow-hidden bg-white shadow-2xl sm:h-auto sm:max-h-[92dvh] sm:max-w-2xl sm:rounded-lg">
+      <section
+        className="relative z-10 flex w-full flex-col overflow-hidden bg-white shadow-2xl sm:max-w-2xl sm:rounded-lg"
+        style={{
+          height: memberColumnCount === 2 ? 'auto' : (viewport ? `${viewport.height}px` : '100dvh'),
+          maxHeight: memberColumnCount === 2
+            ? (viewport ? `${Math.max(viewport.height - 48, 320)}px` : 'calc(100dvh - 48px)')
+            : (viewport ? `${viewport.height}px` : '100dvh'),
+        }}
+      >
         <header className="flex h-16 shrink-0 items-center justify-between border-b border-black/[0.06] px-5 sm:px-6">
           <div>
             <h2 id="create-space-dialog-title" className="text-base font-black text-slate-950">新建空间</h2>
@@ -205,7 +235,7 @@ export default function CreateSpaceDialog({
               </details>
             </div>
           ) : (
-            <div className="space-y-5">
+            <div className="space-y-5 sm:space-y-4">
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2 text-sm font-black text-slate-800">
                   <UsersRound size={16} />
@@ -222,15 +252,15 @@ export default function CreateSpaceDialog({
               {selectedAgents.length === 0 ? (
                 <div className="border-y border-dashed border-slate-200 py-6 text-center text-sm font-semibold text-slate-400">暂未选择成员</div>
               ) : (
-                <div className="divide-y divide-black/[0.05] border-y border-black/[0.06]">
+                <div className="grid gap-2 border-y border-black/[0.06] py-2 sm:grid-cols-2 sm:border-y-0 sm:py-0">
                   {selectedAgents.map((agent, index) => (
-                    <div key={agent.id} className="flex h-12 items-center gap-3">
+                    <div key={agent.id} className="flex h-11 min-w-0 items-center gap-2 rounded-lg border border-black/[0.06] px-2">
                       <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[11px] font-black text-slate-500">{index + 1}</span>
                       <Avatar src={agent.avatar || '🤖'} alt={agent.name} size="sm" />
                       <div className="min-w-0 flex-1 truncate text-sm font-black text-slate-700">{agent.name}</div>
-                      <button type="button" onClick={() => moveSelected(index, -1)} disabled={index === 0} title="上移" className="flex h-8 w-8 items-center justify-center text-slate-400 disabled:text-slate-200"><ArrowUp size={14} /></button>
-                      <button type="button" onClick={() => moveSelected(index, 1)} disabled={index === selectedAgents.length - 1} title="下移" className="flex h-8 w-8 items-center justify-center text-slate-400 disabled:text-slate-200"><ArrowDown size={14} /></button>
-                      <button type="button" onClick={() => toggleAgent(agent.id)} title="移除" className="flex h-8 w-8 items-center justify-center text-slate-400 hover:text-rose-500"><Trash2 size={14} /></button>
+                      <button type="button" onClick={() => moveSelected(index, -1)} disabled={index === 0} title="上移" className="flex h-7 w-7 shrink-0 items-center justify-center text-slate-400 disabled:text-slate-200"><ArrowUp size={13} /></button>
+                      <button type="button" onClick={() => moveSelected(index, 1)} disabled={index === selectedAgents.length - 1} title="下移" className="flex h-7 w-7 shrink-0 items-center justify-center text-slate-400 disabled:text-slate-200"><ArrowDown size={13} /></button>
+                      <button type="button" onClick={() => toggleAgent(agent.id)} title="移除" className="flex h-7 w-7 shrink-0 items-center justify-center text-slate-400 hover:text-rose-500"><Trash2 size={13} /></button>
                     </div>
                   ))}
                 </div>
@@ -246,23 +276,49 @@ export default function CreateSpaceDialog({
                 </select>
               </div>
 
-              <div className="divide-y divide-black/[0.05] border-y border-black/[0.06] sm:max-h-64 sm:overflow-y-auto sm:overscroll-contain">
-                {filteredAgents.length === 0 && <div className="py-8 text-center text-sm font-semibold text-slate-400">没有匹配成员</div>}
-                {filteredAgents.map((agent) => {
-                  const selected = selectedIds.includes(agent.id);
-                  return (
-                    <button key={agent.id} type="button" onClick={() => toggleAgent(agent.id)} className="flex w-full items-center gap-3 px-2 py-2.5 text-left hover:bg-slate-50">
-                      <Avatar src={agent.avatar || '🤖'} alt={agent.name} size="sm" />
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-sm font-black text-slate-700">{agent.name}</div>
-                        <div className="truncate text-xs font-semibold text-slate-400">{agent.category || 'Agent'}</div>
-                      </div>
-                      <span className={`flex h-5 w-5 items-center justify-center rounded border ${selected ? 'border-slate-950 bg-slate-950 text-white' : 'border-slate-200 text-transparent'}`}>
-                        <Check size={12} />
-                      </span>
-                    </button>
-                  );
-                })}
+              <div
+                ref={memberListRef}
+                className="shrink-0 overflow-y-auto overscroll-contain border-y border-black/[0.06] sm:border-y-0 sm:pr-1"
+                style={{
+                  height: memberColumnCount === 2 ? 160 : 256,
+                  minHeight: memberColumnCount === 2 ? 160 : 256,
+                  maxHeight: memberColumnCount === 2 ? 160 : 256,
+                  flexBasis: memberColumnCount === 2 ? 160 : 256,
+                }}
+              >
+                {filteredAgents.length === 0 ? (
+                  <div className="flex h-full items-center justify-center text-sm font-semibold text-slate-400">没有匹配成员</div>
+                ) : (
+                  <div className="relative w-full" style={{ height: `${memberRows.getTotalSize()}px` }}>
+                    {memberRows.getVirtualItems().map((virtualRow) => {
+                      const start = virtualRow.index * memberColumnCount;
+                      const rowAgents = filteredAgents.slice(start, start + memberColumnCount);
+                      return (
+                        <div
+                          key={virtualRow.key}
+                          className="absolute left-0 top-0 grid w-full grid-cols-1 gap-1 sm:grid-cols-2 sm:gap-2"
+                          style={{ height: `${virtualRow.size}px`, transform: `translateY(${virtualRow.start}px)` }}
+                        >
+                          {rowAgents.map((agent) => {
+                            const selected = selectedIds.includes(agent.id);
+                            return (
+                              <button key={agent.id} type="button" onClick={() => toggleAgent(agent.id)} className="flex h-12 min-w-0 w-full items-center gap-2 rounded-lg border border-transparent px-2 text-left hover:bg-slate-50 sm:border-black/[0.06] sm:px-3">
+                                <Avatar src={agent.avatar || '🤖'} alt={agent.name} size="sm" />
+                                <div className="min-w-0 flex-1">
+                                  <div className="truncate text-sm font-black text-slate-700">{agent.name}</div>
+                                  <div className="truncate text-xs font-semibold text-slate-400">{agent.category || 'Agent'}</div>
+                                </div>
+                                <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border ${selected ? 'border-slate-950 bg-slate-950 text-white' : 'border-slate-200 text-transparent'}`}>
+                                  <Check size={12} />
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
               {selectionError && <div className="text-xs font-semibold text-rose-600">{selectionError}</div>}
             </div>
@@ -291,6 +347,7 @@ export default function CreateSpaceDialog({
           )}
         </footer>
       </section>
-    </div>
+    </div>,
+    document.body
   );
 }
