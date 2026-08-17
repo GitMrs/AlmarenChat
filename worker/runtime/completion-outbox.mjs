@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import { completionIdFor, completionMessage, TERMINAL_RUN_STATUSES } from '../lib/agent-completion-policy.mjs';
+import { completionIdFor, completionMessage, TERMINAL_RUN_STATUSES } from '../../lib/agent-completion-policy.mjs';
 
-export { completionIdFor } from '../lib/agent-completion-policy.mjs';
+export { completionIdFor } from '../../lib/agent-completion-policy.mjs';
 
 export function enqueueCompletion(db, payload, timestamp = new Date().toISOString()) {
   if (!TERMINAL_RUN_STATUSES.has(payload.status)) throw new Error(`不能投递非终态任务：${payload.status}`);

@@ -11,8 +11,8 @@ import {
   resolveManyAgents,
   resolveMentionTarget,
 } from '@/app/api/_lib/spaces';
-import { executeWorkspaceTool, snapshotWorkspace, wantsWorkspaceWrite, workspaceToolSchemas } from '../../../../../worker/runtime-tools.mjs';
-import { collectChatCompletionStream, runToolLoop } from '../../../../../worker/tool-loop.mjs';
+import { executeWorkspaceTool, snapshotWorkspace, wantsWorkspaceWrite, workspaceToolSchemas } from '@/lib/agent-runtime/runtime-tools.mjs';
+import { collectChatCompletionStream, runToolLoop } from '@/lib/agent-runtime/tool-loop.mjs';
 import { normalizeTaskProposalSteps, taskProposalCapabilities, taskProposalNeedsClarification } from '@/lib/task-proposals';
 import { professionalDeliverableNeedsTask } from '@/lib/task-proposal-policy.mjs';
 import { compressConversationContext, estimateMessagesTokens } from '@/lib/context-compression';

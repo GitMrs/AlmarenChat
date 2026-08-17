@@ -17,10 +17,10 @@ import {
   wantsWebResearch,
   wantsWorkspaceWrite,
   workspaceToolSchemas,
-} from './runtime-tools.mjs';
-import { collectChatCompletionStream, runToolLoop, withTransientModelRetry } from './tool-loop.mjs';
-import { mergeOverlappingPlanTasks } from './plan-policy.mjs';
-import { discussionSequence, nextDiscussionPosition } from './discussion-policy.mjs';
+} from '../lib/agent-runtime/runtime-tools.mjs';
+import { collectChatCompletionStream, runToolLoop, withTransientModelRetry } from '../lib/agent-runtime/tool-loop.mjs';
+import { mergeOverlappingPlanTasks } from './policies/plan-policy.mjs';
+import { discussionSequence, nextDiscussionPosition } from './policies/discussion-policy.mjs';
 import {
   completionOutcome,
   directRunSummary,
@@ -29,9 +29,9 @@ import {
   leaseCutoffIso,
   matchApprovedWorkspacePaths,
   shouldPauseRunProcessing,
-} from './run-policy.mjs';
-import { reserveModelRequest } from './model-budget.mjs';
-import { shouldRefreshResearch } from './research-policy.mjs';
+} from './policies/run-policy.mjs';
+import { reserveModelRequest } from './runtime/model-budget.mjs';
+import { shouldRefreshResearch } from './policies/research-policy.mjs';
 import { normalizeWaitRequest } from '../lib/agent-wait-policy.mjs';
 import { readyAuthorizedPlanIndexes } from '../lib/agent-runtime-v2-policy.mjs';
 import { taskModelRequestLimit } from '../lib/task-execution-plan.mjs';
@@ -53,7 +53,7 @@ import {
   failCompletion,
   reconcileCompletionOutbox,
   recoverStaleOutbox,
-} from './completion-outbox.mjs';
+} from './runtime/completion-outbox.mjs';
 import { appendRunEvent } from './runtime/event-store.mjs';
 import { submitTaskCompletion } from './runtime/task-completion-store.mjs';
 import { beginCoordinatorTurn, completeCoordinatorTurn, deferCoordinatorDecision, failCoordinatorTurn, recoverCoordinatorTurns } from './runtime/coordinator-turn-store.mjs';

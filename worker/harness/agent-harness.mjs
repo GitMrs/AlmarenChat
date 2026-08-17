@@ -1,14 +1,14 @@
-import { createExecutionConvergence } from '../execution-convergence.mjs';
-import { contextManager } from '../context-manager.mjs';
-import { runToolLoop } from '../tool-loop.mjs';
+import { createExecutionConvergence } from './execution-convergence.mjs';
+import { contextManager } from './context-manager.mjs';
+import { runToolLoop } from '../../lib/agent-runtime/tool-loop.mjs';
 import {
   executeWorkspaceTool,
   safeCommandToolSchema,
   wantsWebResearch,
   wantsWorkspaceWrite,
   workspaceToolSchemas,
-} from '../runtime-tools.mjs';
-import { blocksUnapprovedFullOverwrite } from '../workspace-write-policy.mjs';
+} from '../../lib/agent-runtime/runtime-tools.mjs';
+import { blocksUnapprovedFullOverwrite } from '../policies/workspace-write-policy.mjs';
 import { authorizationAllowsCapability } from '../../lib/agent-runtime-v3-policy.mjs';
 
 const READ_TOOLS = new Set(['list_files', 'read_file', 'check_files']);

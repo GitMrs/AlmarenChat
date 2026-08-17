@@ -1,4 +1,4 @@
-import { auditGoalCoverage } from '../lib/agent-runtime-v3-policy.mjs';
+import { auditGoalCoverage } from '../../lib/agent-runtime-v3-policy.mjs';
 
 function jsonValue(value, fallback) {
   if (value === null || value === undefined) return fallback;

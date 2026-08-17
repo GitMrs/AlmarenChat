@@ -1,5 +1,5 @@
 import { completionIdFor, TERMINAL_RUN_STATUSES } from '../../lib/agent-completion-policy.mjs';
-import { enqueueCompletion } from '../completion-outbox.mjs';
+import { enqueueCompletion } from './completion-outbox.mjs';
 import { appendRunEvent } from './event-store.mjs';
 
 export function cancelRunRecord(db, runId, timestamp = new Date().toISOString()) {
