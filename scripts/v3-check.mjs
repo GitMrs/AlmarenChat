@@ -22,7 +22,7 @@ function run(label, command, args) {
   if (result.status !== 0) process.exit(result.status || 1);
 }
 
-const ownedTestFiles = ['lib', 'worker', 'scripts'].flatMap((directory) => testFiles(path.join(projectRoot, directory)));
+const ownedTestFiles = ['lib', 'worker', 'scripts', 'tests'].flatMap((directory) => testFiles(path.join(projectRoot, directory)));
 
 run('自动化测试', process.execPath, ['--test', ...ownedTestFiles]);
 run('TypeScript', path.join(projectRoot, 'node_modules', '.bin', 'tsc'), ['--noEmit']);

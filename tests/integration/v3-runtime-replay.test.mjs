@@ -6,8 +6,8 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import Database from 'better-sqlite3';
 
-const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const fixtureDir = path.join(projectRoot, 'test-fixtures', 'v3');
+const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+const fixtureDir = path.join(projectRoot, 'tests', 'fixtures', 'v3');
 const expectedScenarios = ['01', '02', '03', '04', '05', '06', '07'];
 
 async function loadFixtures() {

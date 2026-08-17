@@ -274,7 +274,7 @@ yarn v3:report --days 7
 
 ## 离线回归基线
 
-01–07 全部通过后，成功 Run 会以脱敏 JSON 保存在 `test-fixtures/v3/`。日常代码修改无需重新手工输入七个场景，运行：
+01–07 全部通过后，成功 Run 会以脱敏 JSON 保存在 `tests/fixtures/v3/`。日常代码修改无需重新手工输入七个场景，运行：
 
 ```bash
 yarn v3:check

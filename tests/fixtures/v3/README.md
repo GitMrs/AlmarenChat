@@ -1,6 +1,6 @@
 # V3 Runtime Replay Fixtures
 
-这里的七份 JSON 来自 `V3-REAL-MODEL-CHECKLIST.md` 中 01–07 场景的成功 Run。
+这里的七份 JSON 来自 `V3-REAL-MODEL-CHECKLIST.md` 中 01–07 场景的成功 Run，由 `tests/integration/v3-runtime-replay.test.mjs` 离线重放。
 
 - 数据已经移除数据库 UUID、时间戳和本机绝对路径。
 - 夹具保留用户输入、目标授权、任务、Coordinator 决策、关键事件、Manifest 和验收结果。

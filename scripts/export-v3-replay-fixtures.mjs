@@ -29,7 +29,7 @@ const EXPECTATIONS = {
 function parseArgs(argv) {
   const options = {
     database: null,
-    output: path.join(projectRoot, 'test-fixtures', 'v3'),
+    output: path.join(projectRoot, 'tests', 'fixtures', 'v3'),
   };
   for (let index = 0; index < argv.length; index += 1) {
     const value = argv[index];
