@@ -85,10 +85,10 @@ function TaskProposal({
               <FileText size={12} />
               {capabilities.includes('workspace_write') ? '读写空间文件' : '读取空间资料'}
             </span>
-            {capabilities.includes('web_research') && (
+            {(proposal.networkPolicy || (capabilities.includes('web_research') ? 'required' : 'forbidden')) !== 'forbidden' && (
               <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-black text-emerald-700">
                 <Globe2 size={12} />
-                受控联网
+                {proposal.networkPolicy === 'allowed' ? '按需联网' : '必须联网'}
               </span>
             )}
           </div>

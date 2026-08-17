@@ -24,6 +24,7 @@ type TaskProposalRevision = {
   goal: string;
   steps: string[];
   deliverables: string[];
+  networkPolicy: 'forbidden' | 'allowed' | 'required';
 };
 
 function parseRevision(value: unknown): TaskProposalRevision | null {
@@ -39,8 +40,12 @@ function parseRevision(value: unknown): TaskProposalRevision | null {
     return normalized;
   };
   const steps = list(input.steps, '执行步骤');
+  const networkPolicy = ['forbidden', 'allowed', 'required'].includes(String(input.networkPolicy || ''))
+    ? input.networkPolicy as TaskProposalRevision['networkPolicy']
+    : null;
   if (!goal || steps.length === 0) throw new Error('修改后的任务方案缺少目标或步骤');
-  return { goal, steps, deliverables: list(input.deliverables, '预期产出') };
+  if (!networkPolicy) throw new Error('请选择联网策略');
+  return { goal, steps, deliverables: list(input.deliverables, '预期产出'), networkPolicy };
 }
 
 function applyRevision(proposal: TaskProposalAttachment, revision: TaskProposalRevision | null) {
@@ -56,12 +61,16 @@ function applyRevision(proposal: TaskProposalAttachment, revision: TaskProposalR
     : revision ? undefined : proposal.executionPlan;
   let next = proposal;
   if (revision && revisedExecutionPlan) {
-    next = { ...proposal, ...revision, executionPlan: revisedExecutionPlan };
+    const { capabilities: _capabilities, ...proposalWithoutCapabilities } = proposal;
+    next = { ...proposalWithoutCapabilities, ...revision, executionPlan: revisedExecutionPlan };
   } else if (revision) {
-    const { executionPlan: _legacyExecutionPlan, ...authorizationProposal } = proposal;
+    const { executionPlan: _legacyExecutionPlan, capabilities: _capabilities, ...authorizationProposal } = proposal;
     next = { ...authorizationProposal, ...revision };
   }
-  const securedProposal = taskProposalWithServerCapabilities(next) as TaskProposalAttachment;
+  const securedProposal = taskProposalWithServerCapabilities(next, {
+    networkPolicyAuthoritative: Boolean(revision)
+      || ['forbidden', 'allowed', 'required'].includes(String(next.networkPolicy || '')),
+  }) as unknown as TaskProposalAttachment;
   const goal = typeof securedProposal.goal === 'string' ? securedProposal.goal.trim() : '';
   const steps = Array.isArray(securedProposal.steps) ? securedProposal.steps : [];
   if (taskProposalNeedsClarification(goal, steps)) {
@@ -225,9 +234,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
           data: { attachments: attachments as Prisma.InputJsonValue },
         });
       }
-      return created;
+      return { run: created, proposal: currentProposal || undefined };
     });
-    return NextResponse.json({ run }, { status: 201 });
+    return NextResponse.json(run, { status: 201 });
   } catch (error: any) {
     if (error.message === 'Unauthorized') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     return NextResponse.json({ error: error.message }, { status: 500 });

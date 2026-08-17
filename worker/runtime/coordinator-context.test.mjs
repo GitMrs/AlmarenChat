@@ -53,7 +53,7 @@ test('coordinator context recovers state and partitions tasks without changing o
   assert.deepEqual(context.activeTasks.map((task) => task.id), ['task-1']);
   assert.deepEqual(context.completedTasks.map((task) => task.id), ['task-2']);
   assert.equal(context.remainingTasks, 1);
-  assert.deepEqual(context.team, [
+  assert.deepEqual(context.team.map(({ availableSkills: _availableSkills, ...member }) => member), [
     {
       id: 'frontend', name: '前端', category: '开发', description: '实现页面',
       status: 'WORKING', currentTaskId: 'task-1',
@@ -62,6 +62,12 @@ test('coordinator context recovers state and partitions tasks without changing o
       id: 'product', name: '产品', category: '普通成员', description: '',
       status: 'IDLE', currentTaskId: null,
     },
+  ]);
+  assert.deepEqual(context.team[0].availableSkills.map((skill) => skill.id), [
+    'professional-analysis', 'document-writer', 'responsive-page-builder',
+  ]);
+  assert.deepEqual(context.team[1].availableSkills.map((skill) => skill.id), [
+    'professional-analysis', 'document-writer',
   ]);
   db.close();
 });

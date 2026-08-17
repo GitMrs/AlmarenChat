@@ -69,7 +69,36 @@ test('research execution respects V3 authorization and records successful source
   assert.deepEqual(current.events.map((event) => event[1]), ['WEB_SEARCH_STARTED', 'WEB_SEARCH_COMPLETED']);
 });
 
-test('research failures become explicit context instead of failing the run', async () => {
+test('V3 research requires the current task opt-in and respects a forbidden run policy', async () => {
+  const current = fixture();
+  const run = { id: 'run-1', input: '搜索最新官方资料', runtimeVersion: 3 };
+  const task = { title: '整理文档', instruction: '创建 report.md', webResearchRequired: 0 };
+  const context = {
+    authorization: { capabilities: ['web_research'], networkPolicy: 'allowed' },
+    model: {}, tavilyApiKey: 'key', researchAudit: null, researchSources: [],
+  };
+  assert.equal(await current.runtime.buildResearchContext(run, context, { task, researchInput: task.instruction }), '');
+  assert.equal(current.events.length, 0);
+
+  task.webResearchRequired = 1;
+  context.authorization.networkPolicy = 'forbidden';
+  assert.equal(await current.runtime.buildResearchContext(run, context, { task, researchInput: '联网核对官方资料' }), '');
+  assert.equal(current.events.length, 0);
+});
+
+test('V3 structured task opt-in can request research without keyword inference', async () => {
+  const current = fixture();
+  const task = { title: '核对依据', instruction: '补齐交付所需依据', webResearchRequired: 1 };
+  const context = {
+    authorization: { capabilities: ['web_research'], networkPolicy: 'allowed' },
+    model: {}, tavilyApiKey: 'key', researchAudit: null, researchSources: [],
+  };
+  assert.equal(await current.runtime.buildResearchContext(
+    { id: 'run-1', input: '交付任务', runtimeVersion: 3 }, context, { task, researchInput: task.instruction }
+  ), '[1] 官方资料');
+});
+
+test('research failures become explicit context and a failed source audit', async () => {
   const current = fixture({ search: async () => { throw new Error('provider unavailable'); } });
   const context = { authorization: null, model: {}, tavilyApiKey: null };
   const result = await current.runtime.buildResearchContext(
@@ -77,6 +106,9 @@ test('research failures become explicit context instead of failing the run', asy
     context
   );
   assert.match(result, /provider unavailable/);
+  assert.equal(context.researchAudit.accepted, false);
+  assert.match(context.researchAudit.issues[0], /provider unavailable/);
+  assert.deepEqual(context.researchSources, []);
   assert.equal(current.events.at(-1)[1], 'WEB_SEARCH_FAILED');
 });
 

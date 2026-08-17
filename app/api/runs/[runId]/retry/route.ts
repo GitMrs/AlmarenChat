@@ -35,6 +35,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ run
         title: task.title,
         instruction: task.instruction,
         mode: task.mode,
+        webResearchRequired: task.webResearchRequired,
         dependsOn: task.dependsOn ?? undefined,
         modelRequestLimit: task.modelRequestLimit,
         status: completed ? 'COMPLETED' : 'PENDING',
@@ -63,7 +64,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ run
           deliverables: previousAuthorization.deliverables,
           artifacts: previousAuthorization.artifacts,
           capabilities: previousAuthorization.capabilities,
-        }))
+          networkPolicy: previousAuthorization.networkPolicy,
+        }, { networkPolicyAuthoritative: true }))
       : null;
 
     const run = await prisma.agentRun.create({

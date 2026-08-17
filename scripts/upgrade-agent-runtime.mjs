@@ -113,6 +113,10 @@ try {
         "instruction" TEXT NOT NULL,
         "mode" TEXT NOT NULL DEFAULT 'executor',
         "dependsOn" JSONB,
+        "skillId" TEXT NOT NULL DEFAULT 'general-task',
+        "skillVersion" TEXT NOT NULL DEFAULT '1.0.0',
+        "skillSnapshot" JSONB,
+        "webResearchRequired" BOOLEAN NOT NULL DEFAULT false,
         "modelRequestCount" INTEGER NOT NULL DEFAULT 0,
         "modelRequestLimit" INTEGER NOT NULL DEFAULT 8,
         "status" TEXT NOT NULL DEFAULT 'PENDING',
@@ -326,6 +330,10 @@ try {
     if (!hasColumn('AgentTask', 'reviewedAt')) db.exec('ALTER TABLE "AgentTask" ADD COLUMN "reviewedAt" DATETIME');
     if (!hasColumn('AgentTask', 'mode')) db.exec(`ALTER TABLE "AgentTask" ADD COLUMN "mode" TEXT NOT NULL DEFAULT 'executor'`);
     if (!hasColumn('AgentTask', 'dependsOn')) db.exec('ALTER TABLE "AgentTask" ADD COLUMN "dependsOn" JSONB');
+    if (!hasColumn('AgentTask', 'skillId')) db.exec(`ALTER TABLE "AgentTask" ADD COLUMN "skillId" TEXT NOT NULL DEFAULT 'general-task'`);
+    if (!hasColumn('AgentTask', 'skillVersion')) db.exec(`ALTER TABLE "AgentTask" ADD COLUMN "skillVersion" TEXT NOT NULL DEFAULT '1.0.0'`);
+    if (!hasColumn('AgentTask', 'skillSnapshot')) db.exec('ALTER TABLE "AgentTask" ADD COLUMN "skillSnapshot" JSONB');
+    if (!hasColumn('AgentTask', 'webResearchRequired')) db.exec('ALTER TABLE "AgentTask" ADD COLUMN "webResearchRequired" BOOLEAN NOT NULL DEFAULT false');
     if (!hasColumn('AgentTask', 'modelRequestCount')) db.exec('ALTER TABLE "AgentTask" ADD COLUMN "modelRequestCount" INTEGER NOT NULL DEFAULT 0');
     if (!hasColumn('AgentTask', 'modelRequestLimit')) db.exec('ALTER TABLE "AgentTask" ADD COLUMN "modelRequestLimit" INTEGER NOT NULL DEFAULT 8');
     if (!hasColumn('AgentRun', 'workerId')) db.exec('ALTER TABLE "AgentRun" ADD COLUMN "workerId" TEXT');

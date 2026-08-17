@@ -2,9 +2,11 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { Check, FileText, Globe2, Loader2, X } from 'lucide-react';
-import type { SpaceTaskProposal } from '@/types';
+import type { SpaceNetworkPolicy, SpaceTaskProposal } from '@/types';
 
-export type TaskProposalRevision = Pick<SpaceTaskProposal, 'goal' | 'steps' | 'deliverables'>;
+export type TaskProposalRevision = Pick<SpaceTaskProposal, 'goal' | 'steps' | 'deliverables'> & {
+  networkPolicy: SpaceNetworkPolicy;
+};
 
 export default function TaskProposalDialog({
   proposal,
@@ -22,6 +24,7 @@ export default function TaskProposalDialog({
   const [goal, setGoal] = useState('');
   const [stepsText, setStepsText] = useState('');
   const [deliverablesText, setDeliverablesText] = useState('');
+  const [networkPolicy, setNetworkPolicy] = useState<SpaceNetworkPolicy>('forbidden');
   const [validationError, setValidationError] = useState('');
 
   useEffect(() => {
@@ -29,6 +32,7 @@ export default function TaskProposalDialog({
     setGoal(proposal.goal);
     setStepsText(proposal.steps.join('\n'));
     setDeliverablesText(proposal.deliverables.join('\n'));
+    setNetworkPolicy(proposal.networkPolicy || (proposal.capabilities?.includes('web_research') ? 'required' : 'forbidden'));
     setValidationError('');
   }, [proposal]);
 
@@ -63,7 +67,7 @@ export default function TaskProposalDialog({
     if (steps.length > 8) return setValidationError('执行步骤不能超过 8 项');
     if (deliverables.length > 8) return setValidationError('预期产出不能超过 8 项');
     setValidationError('');
-    onConfirm({ goal: trimmedGoal, steps, deliverables });
+    onConfirm({ goal: trimmedGoal, steps, deliverables, networkPolicy });
   };
 
   return (
@@ -125,6 +129,27 @@ export default function TaskProposalDialog({
 
           <section className="border-t border-black/[0.06] pt-5">
             <div className="text-sm font-black text-slate-700">执行权限</div>
+            <div className="mt-3 grid grid-cols-3 gap-1 rounded-lg bg-slate-100 p-1" role="group" aria-label="联网策略">
+              {([
+                ['forbidden', '禁止联网'],
+                ['allowed', 'AI 按需'],
+                ['required', '必须联网'],
+              ] as const).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setNetworkPolicy(value)}
+                  aria-pressed={networkPolicy === value}
+                  className={`min-h-9 rounded-md px-2 text-xs font-black transition ${
+                    networkPolicy === value
+                      ? 'bg-white text-slate-950 shadow-sm'
+                      : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
             <div className="mt-3 flex flex-wrap gap-2">
               <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-black text-slate-600">
                 <FileText size={13} />
@@ -136,14 +161,14 @@ export default function TaskProposalDialog({
                   修改空间文件
                 </span>
               )}
-              {capabilities.includes('web_research') && (
+              {networkPolicy !== 'forbidden' && (
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-black text-emerald-700">
                   <Globe2 size={13} />
-                  受控联网检索
+                  {networkPolicy === 'required' ? '必须联网检索' : '允许按需联网'}
                 </span>
               )}
             </div>
-            <p className="mt-3 text-xs font-semibold leading-5 text-slate-400">不包含终端命令、安装依赖和浏览器操作权限。</p>
+            <p className="mt-3 text-xs font-semibold leading-5 text-slate-400">联网策略会写入本次目标授权；禁止联网时，AI 和 Worker 都不能发起检索。</p>
           </section>
 
           {(validationError || error) && (

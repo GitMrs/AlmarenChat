@@ -1,3 +1,5 @@
+import { skillsForAgent } from '../../lib/agent-runtime/skill-registry.mjs';
+
 const ACTIVE_TASK_STATUSES = new Set([
   'PROPOSED',
   'PENDING',
@@ -31,6 +33,7 @@ export function loadCoordinatorDecisionContext(db, run, agents) {
     deliverables: [],
     artifacts: [],
     capabilities: [],
+    networkPolicy: 'forbidden',
     maxTasks: 8,
   };
   const maxTasks = Math.min(12, Math.max(1, Number(authorization.maxTasks || 8)));
@@ -52,6 +55,7 @@ export function loadCoordinatorDecisionContext(db, run, agents) {
         name: agent.name,
         category: agent.category || '普通成员',
         description: agent.description || '',
+        availableSkills: skillsForAgent(agent),
         status: session?.status || 'IDLE',
         currentTaskId: session?.currentTaskId || null,
       };

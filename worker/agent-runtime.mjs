@@ -26,6 +26,7 @@ import { COORDINATOR_ACTION_TOOL, COORDINATOR_ACTION_TOOL_NAME, COORDINATOR_REVI
 import { completionIdFor } from '../lib/agent-completion-policy.mjs';
 import { appendSpaceMemory, spaceMemoryContext } from '../lib/space-memory-policy.mjs';
 import { prepareWorkspaceAttempt } from '../lib/workspace-staging.mjs';
+import { taskSkill, validateSkillArtifacts } from '../lib/agent-runtime/skill-registry.mjs';
 import {
   claimNextCompletion,
   deliverCompletion,
@@ -437,6 +438,8 @@ async function coordinateNextWork(run, context, triggerEventId) {
                 instruction: run.input,
                 acceptanceCriteria: '完整满足授权目标，并提供可核对的结果或文件证据。',
                 reason: '该成员是当前可用的执行成员。',
+                webResearchRequired: false,
+                skillId: 'general-task',
                 expectedArtifacts: authorization.artifacts || [],
               }],
             })
@@ -454,7 +457,9 @@ async function coordinateNextWork(run, context, triggerEventId) {
               '当 requiredNextMember 非空时，本轮 tasks 的第一项必须派给该成员；若用户要求其先明确、梳理或分析规则，mode 应为 advisor。' +
               '默认一次只派一项；只有两项成果真正独立且成员不同才可并行派两项。' +
               '不得重复已有任务，不得给 WORKING 成员派活，不得扩大已授权能力。' +
-              `必须调用 ${COORDINATOR_ACTION_TOOL_NAME} 提交唯一动作。继续工作时提交：{"type":"dispatch","summary":"决策摘要","tasks":[{"agentId":"成员ID","mode":"advisor|executor","title":"标题","instruction":"完整指令","acceptanceCriteria":"可核对标准","reason":"选人理由","expectedArtifacts":["相对路径或结果"]}]}；` +
+              '每个成员的 availableSkills 是本轮可选工作方法。优先选择与任务产物匹配的专用 Skill；没有匹配项时才使用 general-task。Skill 不能扩大 authorization 的能力。' +
+              '每个子任务必须设置 webResearchRequired。只有该子任务确实依赖外部公开资料且 authorization.networkPolicy 不是 forbidden 时才能为 true；任务指令明确不联网时必须为 false。' +
+              `必须调用 ${COORDINATOR_ACTION_TOOL_NAME} 提交唯一动作。继续工作时提交：{"type":"dispatch","summary":"决策摘要","tasks":[{"agentId":"成员ID","skillId":"Skill ID","mode":"advisor|executor","title":"标题","instruction":"完整指令","acceptanceCriteria":"可核对标准","reason":"选人和 Skill 理由","webResearchRequired":false,"expectedArtifacts":["相对路径或结果"]}]}；` +
               '目标已由已验收成果完全满足时，必须逐项覆盖 authorization 中的 steps 和 deliverables，且只能引用 completed 中的任务 ID：' +
               '{"type":"finish","summary":"完成依据","coverage":[{"requirement":"授权步骤或交付物原文","taskIds":["已验收任务ID"],"evidence":"该任务如何满足此要求"}]}；' +
               '授权范围内确实无法继续：{"type":"block","reason":"具体原因","summary":"给用户的说明"}。',
@@ -517,6 +522,7 @@ async function coordinateNextWork(run, context, triggerEventId) {
       requiredAgentId: dispatchConstraint?.agentId || null,
       requiredAgentName: dispatchConstraint?.agentName || null,
       workspaceWriteAllowed: authorizationAllowsCapability(authorization, 'workspace_write'),
+      authorization,
     }, {
       maxAttempts: 3,
       onInvalid: ({ attempt, error, diagnostics }) => {
@@ -545,9 +551,9 @@ async function coordinateNextWork(run, context, triggerEventId) {
         const insert = db.prepare(
           `INSERT INTO "AgentTask"
            ("id", "runId", "agentId", "agentName", "title", "instruction", "acceptanceCriteria",
-            "origin", "parentTaskId", "mode", "dependsOn", "modelRequestLimit", "status", "sortOrder",
+            "origin", "parentTaskId", "mode", "dependsOn", "skillId", "skillVersion", "skillSnapshot", "webResearchRequired", "modelRequestLimit", "status", "sortOrder",
             "proposedAt", "approvedAt", "createdAt", "updatedAt")
-           VALUES (?, ?, ?, ?, ?, ?, ?, 'dynamic_coordinator', ?, ?, '[]', ?, ?, ?, ?, ?, ?, ?)`
+           VALUES (?, ?, ?, ?, ?, ?, ?, 'dynamic_coordinator', ?, ?, '[]', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         );
         const rows = action.tasks.map((task, index) => {
           const id = randomUUID();
@@ -557,6 +563,8 @@ async function coordinateNextWork(run, context, triggerEventId) {
           insert.run(
             id, run.id, task.agentId, task.agentName, task.title,
             `${task.instruction}${artifactNote}`, task.acceptanceCriteria, turn.id, task.mode,
+            task.skillId, task.skillVersion, JSON.stringify(task.skillSnapshot),
+            task.webResearchRequired ? 1 : 0,
             taskModelRequestLimit(task.mode), initialStatus, maxSortOrder + index + 1,
             timestamp, awaitingApproval ? null : timestamp, timestamp, timestamp
           );
@@ -565,7 +573,20 @@ async function coordinateNextWork(run, context, triggerEventId) {
             : `协调者将“${task.title}”交给 ${task.agentName}`, {
             taskId: id, agentId: task.agentId, attempt: 1, actor: 'coordinator',
             reason: task.reason, mode: task.mode, turnId: turn.id,
+            webResearchRequired: task.webResearchRequired,
+            skillId: task.skillId, skillName: task.skillSnapshot.name, skillVersion: task.skillVersion,
           }, `dynamic-task-${awaitingApproval ? 'proposed' : 'dispatched'}:${turn.id}:${index}`);
+          addEvent(run.id, 'SKILL_SELECTED', `为“${task.title}”采用 ${task.skillSnapshot.name}`, {
+            taskId: id,
+            agentId: task.agentId,
+            attempt: 1,
+            actor: 'coordinator',
+            skillId: task.skillId,
+            skillName: task.skillSnapshot.name,
+            skillVersion: task.skillVersion,
+            requiredCapabilities: task.skillSnapshot.requiredCapabilities,
+            allowedTools: task.skillSnapshot.allowedTools,
+          }, `skill-selected:${id}:1`);
           return db.prepare(`SELECT * FROM "AgentTask" WHERE "id" = ?`).get(id);
         });
         const nextState = {
@@ -886,7 +907,7 @@ async function executeTask(run, task, context, previousResults) {
   if (isTaskCancelRequested(task.id)) throw new Error('步骤已取消');
   if (!result) throw new Error(`${agent.name}没有返回任务结果`);
 
-  if (context.researchContext && taskNeedsResearchContext(task) && context.researchAudit) {
+  if (context.researchContext && taskNeedsResearchContext(task, run.runtimeVersion) && context.researchAudit) {
     const resultAudit = assessResearchResult(result, context.researchSources, {
       timeSensitive: context.researchAudit.timeSensitive,
     });
@@ -914,6 +935,8 @@ async function executeTask(run, task, context, previousResults) {
   if (!manifest.validation.valid) {
     throw new Error(`工作区产物检查未通过：${manifest.validation.issues.join('；') || '存在无效文件'}`);
   }
+  const skillValidation = validateSkillArtifacts(taskSkill(task), manifest.entries);
+  if (!skillValidation.valid) throw new Error(skillValidation.issues.join('；'));
 
   if (run.runtimeVersion >= 2) {
     const completion = submitV2Task(run, task, result, manifest);
@@ -1000,6 +1023,8 @@ async function executeAdvisorTask(run, task, context, previousResults, agent) {
   if (manifest && !manifest.validation.valid) {
     throw new Error(`工作区产物检查未通过：${manifest.validation.issues.join('；') || '存在无效文件'}`);
   }
+  const skillValidation = validateSkillArtifacts(taskSkill(task), manifest?.entries || []);
+  if (!skillValidation.valid) throw new Error(skillValidation.issues.join('；'));
   if (run.runtimeVersion >= 2) {
     const completion = submitV2Task(run, task, result, manifest);
     await reviewSubmittedTask(run, task, context, completion);
@@ -1087,10 +1112,10 @@ async function processRun(run) {
     }
     const existingResearchContext = restoreResearchContext(run.id);
     const refreshTask = tasks.find(
-      (task) => task.status === 'PENDING' && taskNeedsResearchContext(task) && shouldRefreshResearch(task.reviewFeedback)
+      (task) => task.status === 'PENDING' && taskNeedsResearchContext(task, run.runtimeVersion) && shouldRefreshResearch(task.reviewFeedback)
     );
     const pendingResearchTask = tasks.find(
-      (task) => task.status === 'PENDING' && taskNeedsResearchContext(task)
+      (task) => task.status === 'PENDING' && taskNeedsResearchContext(task, run.runtimeVersion)
     );
     if (existingResearchContext && !refreshTask) {
       context.researchAudit = restoreResearchAudit(run.id);
@@ -1099,12 +1124,16 @@ async function processRun(run) {
     }
     context.researchContext = refreshTask
       ? await buildResearchContext(run, context, {
-          researchInput: `${run.input}\n\n用户明确要求更新调研：${refreshTask.reviewFeedback}`,
+          task: refreshTask,
+          researchInput: `${refreshTask.title}\n${refreshTask.instruction}\n${refreshTask.acceptanceCriteria || ''}\n\n用户明确要求更新调研：${refreshTask.reviewFeedback}`,
           refreshed: true,
         })
       : existingResearchContext || (
           (run.runtimeVersion < 3 && tasks.length === 0) || pendingResearchTask
-            ? await buildResearchContext(run, context)
+            ? await buildResearchContext(run, context, pendingResearchTask ? {
+                task: pendingResearchTask,
+                researchInput: `${pendingResearchTask.title}\n${pendingResearchTask.instruction}\n${pendingResearchTask.acceptanceCriteria || ''}`,
+              } : {})
             : ''
         );
     if (context.researchAudit?.accepted === false && ((run.runtimeVersion < 3 && tasks.length === 0) || pendingResearchTask)) {
