@@ -3,7 +3,6 @@ import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import OpenAI from 'openai';
 import {
   assessResearchResult,
   describeWorkspaceArtifact,
@@ -18,7 +17,7 @@ import {
   wantsWorkspaceWrite,
   workspaceToolSchemas,
 } from '../lib/agent-runtime/runtime-tools.mjs';
-import { collectChatCompletionStream, runToolLoop, withTransientModelRetry } from '../lib/agent-runtime/tool-loop.mjs';
+import { runToolLoop } from '../lib/agent-runtime/tool-loop.mjs';
 import { mergeOverlappingPlanTasks } from './policies/plan-policy.mjs';
 import { discussionSequence, nextDiscussionPosition } from './policies/discussion-policy.mjs';
 import {
@@ -30,7 +29,6 @@ import {
   matchApprovedWorkspacePaths,
   shouldPauseRunProcessing,
 } from './policies/run-policy.mjs';
-import { reserveModelRequest } from './runtime/model-budget.mjs';
 import { shouldRefreshResearch } from './policies/research-policy.mjs';
 import { normalizeWaitRequest } from '../lib/agent-wait-policy.mjs';
 import { readyAuthorizedPlanIndexes } from '../lib/agent-runtime-v2-policy.mjs';
@@ -62,6 +60,7 @@ import { cancelRunRecord } from './runtime/run-cancellation-store.mjs';
 import { resolveWorkerDatabasePath, workerConfig } from './runtime/worker-config.mjs';
 import { openWorkerDatabase } from './runtime/worker-database.mjs';
 import { runWorkerLoop } from './runtime/worker-loop.mjs';
+import { createWorkerModelClient } from './runtime/model-client.mjs';
 import { claimNextDiscussion as claimDiscussionLease, claimNextRun as claimRunLease, heartbeatRunLease, releaseRunLease as releaseLease } from './runtime/lease-store.mjs';
 import { cancellationRequests, recoverInterruptedDiscussions as recoverDiscussionRecords, recoverStaleRunLeases } from './runtime/recovery-store.mjs';
 import { runAdvisorHarness, runExecutorHarness } from './harness/agent-harness.mjs';
@@ -116,6 +115,13 @@ const SPACE_COORDINATOR = {
 function now() {
   return new Date().toISOString();
 }
+
+const { completeMessage, complete } = createWorkerModelClient({
+  db,
+  fakeMode,
+  modelTimeoutMs,
+  now,
+});
 
 function addEvent(runId, type, message, payload, idempotencyKey = null) {
   const correlation = payload && typeof payload === 'object' ? payload : {};
@@ -606,48 +612,6 @@ function loadRunContext(run) {
     projectMemory: spaceMemoryContext(memory),
     touchedPaths: new Set(),
   };
-}
-
-async function completeMessage(model, messages, tools, options = {}) {
-  if (fakeMode) return { content: '' };
-  const client = new OpenAI({
-    apiKey: model.apiKey,
-    baseURL: model.baseURL,
-    timeout: modelTimeoutMs,
-    maxRetries: 0,
-  });
-  const message = await withTransientModelRetry(
-    async () => {
-      if (options.runId) {
-        reserveModelRequest(db, options.runId, options.reserveTaskBudget === false ? null : options.taskId, now());
-      }
-      const stream = await client.chat.completions.create(
-        {
-          model: model.name,
-          messages,
-          stream: true,
-          ...(tools?.length ? { tools, tool_choice: 'auto' } : {}),
-        },
-        options.signal ? { signal: options.signal } : undefined
-      );
-      return collectChatCompletionStream(stream, { onStreamStart: options.onStreamStart });
-    },
-    { onRetry: options.onRetry }
-  );
-  if (!message?.content && !message?.tool_calls?.length) {
-    console.warn('[agent-worker] empty model response', JSON.stringify({
-      runId: options.runId || null,
-      taskId: options.taskId || null,
-      requestedModel: model.name,
-      diagnostics: message?.diagnostics || null,
-    }));
-  }
-  return message;
-}
-
-async function complete(model, messages, options = {}) {
-  const message = await completeMessage(model, messages, [], options);
-  return message.content?.trim() || '';
 }
 
 function taskNeedsResearchContext(task) {
