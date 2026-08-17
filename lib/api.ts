@@ -401,6 +401,7 @@ export async function streamSpaceMessage(data: {
   history: { role: string; content: string; speakerAgentId?: string | null }[];
   targetAgentId?: string;
   interactionMode?: 'chat' | 'multi_reply';
+  webSearchEnabled?: boolean;
   skipPersistUserMessage?: boolean;
   signal?: AbortSignal;
 }): Promise<{ stream: ReadableStream<Uint8Array>; speakerAgentId?: string; speakerAgentName?: string; workspaceFilesChanged: number }> {
@@ -417,6 +418,7 @@ export async function streamSpaceMessage(data: {
       history: data.history,
       targetAgentId: data.targetAgentId,
       interactionMode: data.interactionMode,
+      webSearchEnabled: data.webSearchEnabled,
       skipPersistUserMessage: data.skipPersistUserMessage,
     }),
     signal: data.signal,

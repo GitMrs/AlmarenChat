@@ -42,6 +42,12 @@ test('execution failures distinguish missing dependencies from runtime failures'
   const budgetError = new Error('预算用尽');
   budgetError.code = 'MODEL_REQUEST_BUDGET';
   assert.equal(executionFailureStatus(budgetError), 'BLOCKED');
+  const taskBlockedError = new Error('联网资料未通过验收');
+  taskBlockedError.code = 'TASK_BLOCKED';
+  assert.equal(executionFailureStatus(taskBlockedError), 'BLOCKED');
+  const providerError = new Error('500 empty_stream: upstream stream closed before first payload');
+  providerError.code = 'MODEL_PROVIDER_TRANSIENT';
+  assert.equal(executionFailureStatus(providerError), 'BLOCKED');
 });
 
 test('worker lease cutoff uses the configured timeout', () => {

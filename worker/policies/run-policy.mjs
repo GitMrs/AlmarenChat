@@ -146,7 +146,7 @@ const BLOCKING_ERROR_MESSAGES = [
 ];
 
 export function executionFailureStatus(error) {
-  if (error?.code === 'MODEL_REQUEST_BUDGET') return 'BLOCKED';
+  if (['MODEL_REQUEST_BUDGET', 'MODEL_PROVIDER_TRANSIENT', 'TASK_BLOCKED'].includes(error?.code)) return 'BLOCKED';
   const message = error instanceof Error ? error.message : String(error);
   return BLOCKING_ERROR_MESSAGES.some((candidate) => message.includes(candidate)) ? 'BLOCKED' : 'FAILED';
 }

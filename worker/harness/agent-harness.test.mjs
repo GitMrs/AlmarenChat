@@ -7,7 +7,12 @@ import { ADVISOR_MAX_ATTEMPTS, ADVISOR_TOOL_ITERATIONS, EXECUTOR_MAX_ATTEMPTS, E
 import { ADVISOR_MODEL_REQUEST_LIMIT, EXECUTOR_MODEL_REQUEST_LIMIT } from '../../lib/task-execution-plan.mjs';
 
 const run = { id: 'run-1', input: '完成页面' };
-const task = { id: 'task-1', title: '实现页面', instruction: '创建 index.html' };
+const task = {
+  id: 'task-1',
+  title: '实现页面',
+  instruction: '创建 index.html',
+  acceptanceCriteria: 'index.html 可以直接打开，且页面包含明确的提交按钮。',
+};
 const agent = { id: 'frontend', name: '前端', systemPrompt: '你是前端工程师。' };
 const context = {
   model: {},
@@ -40,7 +45,11 @@ test('executor harness owns prompts and the model tool loop', async () => {
   const events = [];
   const result = await runExecutorHarness({
     run,
-    task,
+    task: {
+      ...task,
+      previousAttemptReport: '第一版已经创建页面，但缺少提交按钮。',
+      reviewFeedback: '保留现有布局，补充提交按钮并校验表单。',
+    },
     agent,
     context: { ...context, touchedPaths: new Set() },
     previousResults: [{ title: '产品规则', result: '按钮需要清晰' }],
@@ -59,6 +68,13 @@ test('executor harness owns prompts and the model tool loop', async () => {
   });
   assert.equal(result.result, '页面已经完成。');
   assert.match(request.messages[1].content, /产品规则/);
+  assert.match(request.messages[1].content, /本步骤验收标准（仅对当前步骤负责）/);
+  assert.match(request.messages[1].content, /index\.html 可以直接打开/);
+  assert.match(request.messages[1].content, /上一次提交摘要/);
+  assert.match(request.messages[1].content, /第一版已经创建页面，但缺少提交按钮/);
+  assert.match(request.messages[1].content, /本次返工要求（必须处理）/);
+  assert.match(request.messages[1].content, /保留现有布局，补充提交按钮并校验表单/);
+  assert.match(request.messages[0].content, /总目标只用于理解背景/);
   assert.ok(request.tools.some((tool) => tool.function.name === 'request_user_input'));
   assert.equal('maxTokens' in request.options, false);
   assert.equal('omitMaxTokens' in request.options, false);
@@ -107,6 +123,9 @@ test('read-only advisor can inspect the workspace but cannot mutate it', async (
     completeMessage: async (_model, messages, tools) => {
       toolNames = tools.map((tool) => tool.function.name);
       assert.match(messages[0].content, /只读工具/);
+      assert.match(messages[0].content, /提交前必须逐条自检/);
+      assert.match(messages[1].content, /本步骤验收标准（仅对当前步骤负责）/);
+      assert.match(messages[1].content, /index\.html 可以直接打开/);
       return { content: '建议先确认验收标准。' };
     },
     isCancelled: () => false,

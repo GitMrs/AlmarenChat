@@ -4,7 +4,6 @@ import { Activity, Check, CheckCircle2, ChevronRight, Clock3, FileText, Globe2, 
 import MessageActions from '@/components/chat/MessageActions';
 import MessageBubbleFrame from '@/components/chat/MessageBubbleFrame';
 import MessageContent from '@/components/chat/MessageContent';
-import { taskProposalCapabilities } from '@/lib/task-proposals';
 import type { Agent, AgentRun, SpaceMessage, SpaceRunResultAttachment, SpaceTaskProposal } from '@/types';
 
 const RUN_STATUS_LABELS: Record<string, string> = {
@@ -44,7 +43,7 @@ function TaskProposal({
 }) {
   const completed = run?.tasks.filter((task) => task.status === 'COMPLETED').length || 0;
   const pending = proposal.status === 'pending';
-  const capabilities = proposal.capabilities || taskProposalCapabilities(proposal.goal, proposal.steps, proposal.deliverables);
+  const capabilities = proposal.capabilities || ['workspace_read'];
   const activeTask = run?.tasks.find((task) => ['RUNNING', 'SUBMITTED', 'REVIEWING', 'WAITING', 'WAITING_APPROVAL', 'PENDING'].includes(task.status));
   const recentEvents = (run?.events || [])
     .filter((event) => !['MODEL_STREAMING', 'RUN_STARTED'].includes(event.type))

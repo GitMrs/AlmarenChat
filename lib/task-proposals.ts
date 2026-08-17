@@ -1,11 +1,11 @@
 import type { SpaceTaskCapability } from '@/types';
-import { taskProposalWithServerCapabilities } from './task-proposal-policy.mjs';
 export { normalizeTaskProposalSteps, taskProposalNeedsClarification } from './task-proposal-policy.mjs';
 
 export function taskProposalCapabilities(
-  goal: string,
-  steps: string[] = [],
-  deliverables: string[] = []
+  capabilities: unknown
 ): SpaceTaskCapability[] {
-  return taskProposalWithServerCapabilities({ goal, steps, deliverables }).capabilities as SpaceTaskCapability[];
+  if (!Array.isArray(capabilities)) return [];
+  return [...new Set(capabilities.filter((capability): capability is SpaceTaskCapability =>
+    capability === 'workspace_read' || capability === 'workspace_write' || capability === 'web_research'
+  ))];
 }

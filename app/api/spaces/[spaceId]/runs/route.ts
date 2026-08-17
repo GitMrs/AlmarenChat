@@ -4,7 +4,7 @@ import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { ACTIVE_AGENT_RUN_STATUSES, agentRunInclude } from '@/app/api/_lib/agent-runs';
 import { getSpaceForUser, resolveManyAgents } from '@/app/api/_lib/spaces';
-import { taskProposalCapabilities, taskProposalNeedsClarification } from '@/lib/task-proposals';
+import { taskProposalNeedsClarification } from '@/lib/task-proposals';
 import { coordinatorAuthorization } from '@/lib/agent-runtime-v3-policy.mjs';
 import { taskProposalWithServerCapabilities } from '@/lib/task-proposal-policy.mjs';
 
@@ -179,7 +179,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
         steps: [runInput],
         deliverables: [],
         artifacts: [],
-        capabilities: taskProposalCapabilities(runInput, [runInput], []),
       });
       const modelRequestLimit = 48;
 

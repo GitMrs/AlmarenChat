@@ -18,6 +18,7 @@ type SearchIntent = {
   timeRange: SearchTimeRange | null;
   topic: SearchTopic;
   newsSearch: boolean;
+  liveData: boolean;
 };
 
 const MAX_RESULT_CONTENT = 3_500;
@@ -32,6 +33,7 @@ const DDG_TIME_RANGE: Record<SearchTimeRange, SearchTimeType> = {
 
 export function detectWebSearchIntent(query: string): SearchIntent {
   const text = String(query || '');
+  const liveData = /(天气|气温|温度|空气质量|股价|股票价格|汇率|现价|实时价格|weather|temperature|air quality|stock price|exchange rate|live price)/i.test(text);
   const timeRange = /(今天|今日|实时|当天|today|real[ -]?time)/i.test(text)
     ? 'day'
     : /(本周|近一周|最近一周|this week|past week|last 7 days)/i.test(text)
@@ -48,7 +50,7 @@ export function detectWebSearchIntent(query: string): SearchIntent {
       ? 'news'
       : 'general';
 
-  return { timeSensitive: timeRange !== null, timeRange, topic, newsSearch };
+  return { timeSensitive: timeRange !== null, timeRange, topic, newsSearch, liveData };
 }
 
 function publishedAt(result: SearchResult) {
@@ -140,7 +142,9 @@ export async function buildWebSearchContext(query: string, apiKey?: string | nul
   const answer = answerText ? `Tavily synthesis（仅作线索，事实仍须由下方来源支持）：\n${answerText}\n\n` : '';
   const sources = results.map(formatResult).join('\n\n');
   const freshnessRule = intent.timeSensitive
-    ? '这是时效性问题。优先使用有明确日期且最新的来源；无日期或过旧资料不能单独支持“最新/当前”的结论。'
+    ? intent.liveData
+      ? '这是实时数据问题。优先使用权威页面正文中的实况时间、观测时间或更新时间；文章发布日期不是天气、股价、汇率等实时页面的必要条件。'
+      : '这是时效性问题。优先使用有明确日期且最新的来源；无日期或过旧资料不能单独支持“最新/当前”的结论。'
     : '不要仅凭发布日期判断相关性。';
 
   return `联网搜索已开启。搜索提供方：${provider}。当前绝对时间（UTC）：${retrievedAt}

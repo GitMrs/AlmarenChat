@@ -144,6 +144,18 @@ test('worker model client reserves budget for every transient provider attempt',
   assert.equal(current.reservations.length, 2);
 });
 
+test('worker model client marks exhausted transient failures as recoverable', async () => {
+  const current = fixture({
+    create: async () => {
+      throw Object.assign(new Error('500 empty_stream: upstream stream closed before first payload'), { status: 500 });
+    },
+  });
+  await assert.rejects(
+    current.client.completeMessage(model, [], [], { runId: 'run-1' }),
+    (error) => error.code === 'MODEL_PROVIDER_TRANSIENT' && error.status === 500
+  );
+});
+
 test('fake worker model client does not create a provider client or reserve budget', async () => {
   const current = fixture({ fakeMode: true });
   assert.deepEqual(await current.client.completeMessage(model, [], [], { runId: 'run-1' }), { content: '' });

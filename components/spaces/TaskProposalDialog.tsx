@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { Check, FileText, Globe2, Loader2, X } from 'lucide-react';
-import { taskProposalCapabilities } from '@/lib/task-proposals';
 import type { SpaceTaskProposal } from '@/types';
 
 export type TaskProposalRevision = Pick<SpaceTaskProposal, 'goal' | 'steps' | 'deliverables'>;
@@ -52,10 +51,7 @@ export default function TaskProposalDialog({
     () => deliverablesText.split('\n').map((item) => item.trim()).filter(Boolean),
     [deliverablesText]
   );
-  const capabilities = useMemo(
-    () => taskProposalCapabilities(goal, steps, deliverables),
-    [deliverables, goal, steps]
-  );
+  const capabilities = proposal?.capabilities || ['workspace_read'];
 
   if (!proposal) return null;
 
@@ -134,10 +130,12 @@ export default function TaskProposalDialog({
                 <FileText size={13} />
                 读取空间资料
               </span>
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-black text-slate-600">
-                <FileText size={13} />
-                修改空间文件
-              </span>
+              {capabilities.includes('workspace_write') && (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-black text-slate-600">
+                  <FileText size={13} />
+                  修改空间文件
+                </span>
+              )}
               {capabilities.includes('web_research') && (
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-black text-emerald-700">
                   <Globe2 size={13} />

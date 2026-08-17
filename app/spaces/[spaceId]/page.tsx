@@ -20,7 +20,6 @@ import SpaceDiscussionStatus from '@/components/spaces/SpaceDiscussionStatus';
 import { CompressionStatusPanel } from '@/components/spaces/CompressionStatusPanel';
 import { agentRuns as agentRunsApi, agents as agentsApi, spaces as spacesApi, streamSpaceMessage } from '@/lib/api';
 import { getBuiltInAgents } from '@/lib/agents-data';
-import { taskProposalCapabilities } from '@/lib/task-proposals';
 import { latestRunInRetryChain } from '@/lib/agent-run-retry-chain.mjs';
 import { isEditableSpaceFile } from '@/lib/space-files';
 import type { Agent, AgentRun, AgentRunEvent, AgentTask, SpaceDiscussion, SpaceFile, SpaceMessage, SpaceTaskProposal } from '@/types';
@@ -247,6 +246,8 @@ export default function SpaceDetailPage() {
   const [needsLogin, setNeedsLogin] = useState(false);
   const [error, setError] = useState('');
   const [input, setInput] = useState('');
+  const [webSearchEnabled, setWebSearchEnabled] = useState(false);
+  const [composerToolsOpen, setComposerToolsOpen] = useState(false);
   const [mentionMenuOpen, setMentionMenuOpen] = useState(false);
   const [mentionQuery, setMentionQuery] = useState('');
   const [mentionRange, setMentionRange] = useState<{ start: number; end: number } | null>(null);
@@ -296,6 +297,7 @@ export default function SpaceDetailPage() {
   const abortRef = useRef<AbortController | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const composerToolsRef = useRef<HTMLDivElement>(null);
 
   const agentById = useMemo(() => new Map(agents.map((agent) => [agent.id, agent])), [agents]);
   const memberAgents = useMemo(
@@ -556,8 +558,17 @@ export default function SpaceDetailPage() {
     if (sidePanel) {
       setMentionMenuOpen(false);
       setMentionRange(null);
+      setComposerToolsOpen(false);
     }
   }, [sidePanel]);
+
+  useEffect(() => {
+    const closeComposerTools = (event: PointerEvent) => {
+      if (!composerToolsRef.current?.contains(event.target as Node)) setComposerToolsOpen(false);
+    };
+    document.addEventListener('pointerdown', closeComposerTools);
+    return () => document.removeEventListener('pointerdown', closeComposerTools);
+  }, []);
 
   useEffect(() => {
     setActiveMentionIndex(0);
@@ -636,6 +647,7 @@ export default function SpaceDetailPage() {
     }
     setMentionRange({ start: token.start, end: token.end });
     setMentionQuery(token.query);
+    setComposerToolsOpen(false);
     setMentionMenuOpen(true);
   };
 
@@ -688,6 +700,7 @@ export default function SpaceDetailPage() {
           })),
           targetAgentId: replyTargets[index]?.id,
           interactionMode: targets.length > 1 ? 'multi_reply' : 'chat',
+          webSearchEnabled: targets.length <= 1 && webSearchEnabled,
           skipPersistUserMessage: Boolean(options?.reuseLastUserMessage || index > 0),
           signal: controller.signal,
         });
@@ -928,7 +941,6 @@ export default function SpaceDetailPage() {
           const updated = revision ? { ...attachment, ...revision } : attachment;
           return {
             ...updated,
-            capabilities: taskProposalCapabilities(updated.goal, updated.steps, updated.deliverables),
             status: 'approved' as const,
             runId: result.run.id,
           };
@@ -1844,16 +1856,48 @@ export default function SpaceDetailPage() {
             <footer className="border-t border-black/[0.06] bg-white p-3 sm:p-4 lg:bg-[#fbfaf7] lg:px-10 lg:pb-4 lg:pt-3">
               <div className="mx-auto max-w-4xl">
                 <ComposerShell>
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={uploadingFile}
-                  title="上传资料"
-                  className="mb-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-slate-500 transition hover:bg-white hover:text-slate-950 disabled:text-slate-300"
-                >
-                  {uploadingFile ? <Loader2 className="animate-spin" size={18} /> : <Paperclip size={18} />}
-                </button>
-                <div className="relative mb-0.5 shrink-0">
+                <div ref={composerToolsRef} className="relative mb-0.5 shrink-0">
+                  {composerToolsOpen && (
+                    <div className="absolute bottom-[calc(100%+10px)] left-0 z-30 w-56 overflow-hidden rounded-lg border border-black/[0.08] bg-white p-1.5 shadow-xl">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setComposerToolsOpen(false);
+                          window.requestAnimationFrame(() => fileInputRef.current?.click());
+                        }}
+                        disabled={uploadingFile}
+                        className="flex h-10 w-full items-center gap-3 rounded-md px-3 text-left text-xs font-black text-slate-600 transition hover:bg-slate-50 hover:text-slate-950 disabled:text-slate-300"
+                      >
+                        {uploadingFile ? <Loader2 className="animate-spin" size={16} /> : <Paperclip size={16} />}
+                        <span className="min-w-0 flex-1 whitespace-nowrap">上传资料</span>
+                      </button>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={webSearchEnabled}
+                        onClick={() => {
+                          setWebSearchEnabled((enabled) => !enabled);
+                          setComposerToolsOpen(false);
+                        }}
+                        className={`flex h-10 w-full items-center gap-3 rounded-md px-3 text-left text-xs font-black transition ${webSearchEnabled ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-950'}`}
+                      >
+                        <Globe2 size={16} />
+                        <span className="min-w-0 flex-1 whitespace-nowrap">联网搜索</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setComposerToolsOpen(false);
+                          openDiscussionDialog();
+                        }}
+                        disabled={Boolean(activeDiscussion) || memberAgents.length < 2}
+                        className="flex h-10 w-full items-center gap-3 rounded-md px-3 text-left text-xs font-black text-slate-600 transition hover:bg-slate-50 hover:text-slate-950 disabled:text-slate-300"
+                      >
+                        <MessagesSquare size={16} />
+                        <span className="min-w-0 flex-1 whitespace-nowrap">发起讨论</span>
+                      </button>
+                    </div>
+                  )}
                   {mentionMenuOpen && (
                     <div className="absolute bottom-[calc(100%+10px)] left-0 z-30 w-64 max-w-[calc(100vw-32px)] overflow-hidden rounded-lg border border-black/[0.08] bg-white py-1 shadow-xl">
                       <div className="truncate px-3 pb-1 pt-2 text-[11px] font-black text-slate-400">
@@ -1898,12 +1942,19 @@ export default function SpaceDetailPage() {
                   )}
                   <button
                     type="button"
-                    onClick={openDiscussionDialog}
-                    disabled={Boolean(activeDiscussion) || memberAgents.length < 2}
-                    title={activeDiscussion ? '当前讨论进行中' : '发起讨论'}
-                    className="flex h-11 w-11 items-center justify-center rounded-xl text-slate-500 transition hover:bg-white hover:text-slate-950 disabled:text-slate-300"
+                    onClick={() => {
+                      setMentionMenuOpen(false);
+                      setMentionRange(null);
+                      setComposerToolsOpen((open) => !open);
+                    }}
+                    disabled={isStreaming}
+                    aria-label={composerToolsOpen ? '关闭工具菜单' : '打开工具菜单'}
+                    aria-expanded={composerToolsOpen}
+                    title="工具"
+                    className={`relative flex h-11 w-11 items-center justify-center rounded-xl transition disabled:text-slate-300 ${composerToolsOpen ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-500 hover:bg-white hover:text-slate-950'}`}
                   >
-                    <MessagesSquare size={18} />
+                    <Plus size={19} className={`transition-transform ${composerToolsOpen ? 'rotate-45' : ''}`} />
+                    {webSearchEnabled && <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-emerald-500 ring-2 ring-white" />}
                   </button>
                 </div>
                 <textarea
