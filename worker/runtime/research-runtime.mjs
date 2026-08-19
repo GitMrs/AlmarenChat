@@ -6,6 +6,7 @@ import {
   wantsWebResearch,
 } from '../../lib/agent-runtime/runtime-tools.mjs';
 import { authorizationAllowsCapability } from '../../lib/agent-runtime-v3-policy.mjs';
+import { explicitlyForbidsWebResearch } from '../../lib/web-research-intent.mjs';
 
 function parseResearchPlan(content, fallbackQuery) {
   try {
@@ -41,7 +42,10 @@ export function createResearchRuntime({
   now = () => new Date().toISOString(),
   search = searchWeb,
 }) {
-  function taskNeedsResearchContext(task) {
+  function taskNeedsResearchContext(task, runtimeVersion = 3) {
+    if (runtimeVersion >= 3 && task && task.webResearchRequired !== undefined && task.webResearchRequired !== null) {
+      return task.webResearchRequired === true || task.webResearchRequired === 1;
+    }
     return wantsWebResearch(`${task.title}\n${task.instruction}`);
   }
 
@@ -156,7 +160,9 @@ export function createResearchRuntime({
   async function buildResearchContext(run, context, options = {}) {
     const researchInput = String(options.researchInput || run.input);
     if (run.runtimeVersion >= 3 && !authorizationAllowsCapability(context.authorization, 'web_research')) return '';
-    if (!wantsWebResearch(researchInput)) return '';
+    if (run.runtimeVersion >= 3 && options.task && !taskNeedsResearchContext(options.task, run.runtimeVersion)) return '';
+    if (explicitlyForbidsWebResearch(researchInput)) return '';
+    if (!(run.runtimeVersion >= 3 && options.task) && !wantsWebResearch(researchInput)) return '';
     const { queries, officialDomains } = await createResearchPlan(run, context, researchInput);
     if (queries.length === 0) return '';
     const provider = context.tavilyApiKey ? 'tavily' : 'duckduckgo';
@@ -209,8 +215,18 @@ export function createResearchRuntime({
       return result.context;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      addEvent(run.id, 'WEB_SEARCH_FAILED', '联网检索失败，任务将基于已有信息继续', {
+      context.researchAudit = {
+        accepted: false,
+        issues: [`联网检索失败：${message.slice(0, 500)}`],
+        authorityCount: 0,
+        primaryCount: 0,
+        datedCount: 0,
+        freshDatedCount: 0,
+      };
+      context.researchSources = [];
+      addEvent(run.id, 'WEB_SEARCH_FAILED', '联网检索失败，已记录为来源验收失败', {
         error: message.slice(0, 500),
+        audit: context.researchAudit,
       });
       return `联网检索失败：${message.slice(0, 500)}。不要虚构搜索结果或最新信息，明确说明此限制。`;
     }

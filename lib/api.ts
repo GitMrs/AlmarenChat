@@ -1,4 +1,4 @@
-import type { AgentRun, SpaceDiscussion, SpaceFileShare } from '@/types';
+import type { AgentRun, SpaceDiscussion, SpaceFileShare, SpaceTaskProposal } from '@/types';
 
 const API_BASE = '/api';
 
@@ -215,9 +215,9 @@ export const spaces = {
     id: string,
     input: string,
     proposalMessageId?: string,
-    revisedProposal?: { goal: string; steps: string[]; deliverables: string[] }
+    revisedProposal?: { goal: string; steps: string[]; deliverables: string[]; networkPolicy: 'forbidden' | 'allowed' | 'required' }
   ) =>
-    request<{ run: AgentRun }>(`/spaces/${id}/runs`, {
+    request<{ run: AgentRun; proposal?: SpaceTaskProposal }>(`/spaces/${id}/runs`, {
       method: 'POST',
       body: JSON.stringify({ input, proposalMessageId, revisedProposal }),
     }),

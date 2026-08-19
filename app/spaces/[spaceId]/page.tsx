@@ -938,7 +938,7 @@ export default function SpaceDetailPage() {
         ...item,
         attachments: item.attachments?.map((attachment) => {
           if (attachment.type !== 'task_proposal') return attachment;
-          const updated = revision ? { ...attachment, ...revision } : attachment;
+          const updated = result.proposal || (revision ? { ...attachment, ...revision } : attachment);
           return {
             ...updated,
             status: 'approved' as const,
@@ -1491,10 +1491,14 @@ export default function SpaceDetailPage() {
                             <span className="rounded bg-amber-50 px-2 py-1 text-xs font-black text-amber-700">开工前待确认</span>
                           </div>
 
-                          <div className="mt-5 grid gap-4 border-y border-black/[0.06] py-4 sm:grid-cols-2">
+                          <div className="mt-5 grid gap-4 border-y border-black/[0.06] py-4 sm:grid-cols-3">
                             <div>
                               <div className="text-[11px] font-black text-slate-400">建议成员</div>
                               <div className="mt-1 text-sm font-black text-slate-800">{proposedTask.agentName} · {proposedTask.mode === 'advisor' ? '顾问' : '执行'}</div>
+                            </div>
+                            <div>
+                              <div className="text-[11px] font-black text-slate-400">采用 Skill</div>
+                              <div className="mt-1 text-sm font-black text-slate-800">{proposedTask.skillSnapshot?.name || '通用任务执行'}</div>
                             </div>
                             <div>
                               <div className="text-[11px] font-black text-slate-400">选择理由</div>
@@ -1699,7 +1703,7 @@ export default function SpaceDetailPage() {
                                   <div className="min-w-0 flex-1">
                                     <div className="font-black text-slate-900">{task.title}</div>
                                     <div className="mt-1 text-xs font-semibold text-slate-400">
-                                      {task.agentName} · {task.mode === 'advisor' ? '顾问' : '执行'} · 模型调用 {task.modelRequestCount || 0}/{task.modelRequestLimit || (task.mode === 'advisor' ? 8 : 12)}
+                                      {task.agentName} · {task.mode === 'advisor' ? '顾问' : '执行'} · {task.skillSnapshot?.name || '通用任务执行'} · 模型调用 {task.modelRequestCount || 0}/{task.modelRequestLimit || (task.mode === 'advisor' ? 8 : 12)}
                                     </div>
                                   </div>
                                   <span className={task.status === 'FAILED' ? 'text-xs font-black text-rose-500' : task.status === 'BLOCKED' ? 'text-xs font-black text-amber-600' : 'text-xs font-black text-slate-400'}>

@@ -316,6 +316,10 @@ model AgentTask {
   parentTaskId String?
   mode        String     @default("executor")
   dependsOn   Json?
+  skillId     String     @default("general-task")
+  skillVersion String    @default("1.0.0")
+  skillSnapshot Json?
+  webResearchRequired Boolean @default(false)
   modelRequestCount Int  @default(0)
   modelRequestLimit Int  @default(8)
   status      String    @default("PENDING")

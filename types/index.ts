@@ -113,6 +113,7 @@ export interface SpaceFileShare {
 }
 
 export type SpaceTaskCapability = 'workspace_read' | 'workspace_write' | 'web_research';
+export type SpaceNetworkPolicy = 'forbidden' | 'allowed' | 'required';
 
 export interface SpaceTaskExecutionStep {
   agentId: string;
@@ -134,6 +135,7 @@ export interface SpaceTaskProposal {
   artifacts?: string[];
   executionPlan?: SpaceTaskExecutionStep[];
   capabilities?: SpaceTaskCapability[];
+  networkPolicy?: SpaceNetworkPolicy;
   status: 'pending' | 'approved' | 'rejected';
   runId?: string;
 }
@@ -220,6 +222,19 @@ export interface AgentTask {
   parentTaskId?: string | null;
   mode: 'advisor' | 'executor';
   dependsOn?: number[] | null;
+  skillId?: string;
+  skillVersion?: string;
+  skillSnapshot?: {
+    id: string;
+    name: string;
+    version: string;
+    description?: string;
+    requiredCapabilities?: SpaceTaskCapability[];
+    allowedTools?: string[];
+    artifactExtensions?: string[];
+    instructions?: string;
+  } | null;
+  webResearchRequired?: boolean;
   modelRequestCount: number;
   modelRequestLimit: number;
   status: string;

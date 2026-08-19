@@ -9,6 +9,7 @@ export type TaskDispatchRevision = {
   title: string;
   instruction: string;
   acceptanceCriteria: string;
+  webResearchRequired: boolean;
 };
 
 export default function TaskDispatchDialog({
@@ -30,6 +31,7 @@ export default function TaskDispatchDialog({
   const [title, setTitle] = useState('');
   const [instruction, setInstruction] = useState('');
   const [acceptanceCriteria, setAcceptanceCriteria] = useState('');
+  const [webResearchRequired, setWebResearchRequired] = useState(false);
   const [validationError, setValidationError] = useState('');
 
   useEffect(() => {
@@ -38,6 +40,7 @@ export default function TaskDispatchDialog({
     setTitle(task.title);
     setInstruction(task.instruction);
     setAcceptanceCriteria(task.acceptanceCriteria || '');
+    setWebResearchRequired(Boolean(task.webResearchRequired));
     setValidationError('');
   }, [task]);
 
@@ -49,6 +52,7 @@ export default function TaskDispatchDialog({
       title: title.trim(),
       instruction: instruction.trim(),
       acceptanceCriteria: acceptanceCriteria.trim(),
+      webResearchRequired,
     };
     if (!revision.agentId) return setValidationError('请选择执行成员');
     if (!revision.title) return setValidationError('请填写任务标题');
@@ -77,6 +81,9 @@ export default function TaskDispatchDialog({
             <select id="dispatch-agent" value={agentId} onChange={(event) => setAgentId(event.target.value)} className="h-11 w-full rounded-lg border border-black/[0.08] bg-[#fbfaf7] px-3 text-sm font-bold text-slate-800 outline-none focus:border-slate-300">
               {members.map((member) => <option key={member.id} value={member.id}>{member.name}{member.category ? ` · ${member.category}` : ''}</option>)}
             </select>
+            <div className="mt-2 text-xs font-semibold text-slate-400">
+              当前 Skill：{task.skillSnapshot?.name || '通用任务执行'}；修改成员或任务内容后平台会重新匹配。
+            </div>
           </div>
           <div>
             <label htmlFor="dispatch-title" className="mb-2 block text-sm font-black text-slate-700">任务标题</label>
@@ -90,6 +97,18 @@ export default function TaskDispatchDialog({
             <label htmlFor="dispatch-acceptance" className="mb-2 block text-sm font-black text-slate-700">验收标准</label>
             <textarea id="dispatch-acceptance" value={acceptanceCriteria} onChange={(event) => setAcceptanceCriteria(event.target.value)} rows={5} maxLength={4_000} className="w-full resize-y rounded-lg border border-black/[0.08] bg-[#fbfaf7] px-4 py-3 text-sm font-medium leading-6 text-slate-800 outline-none focus:border-slate-300" />
           </div>
+          <label className="flex min-h-11 cursor-pointer items-center justify-between gap-4 border-y border-black/[0.06] py-3">
+            <span>
+              <span className="block text-sm font-black text-slate-700">当前任务需要联网</span>
+              <span className="mt-1 block text-xs font-semibold text-slate-400">只有目标授权允许联网时才能开启。</span>
+            </span>
+            <input
+              type="checkbox"
+              checked={webResearchRequired}
+              onChange={(event) => setWebResearchRequired(event.target.checked)}
+              className="h-5 w-5 shrink-0 accent-slate-950"
+            />
+          </label>
           {(validationError || error) && <div className="rounded-lg bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-600">{validationError || error}</div>}
         </div>
 

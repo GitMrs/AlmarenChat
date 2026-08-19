@@ -1,5 +1,10 @@
 import type { SpaceTaskCapability } from '@/types';
-export { normalizeTaskProposalSteps, taskProposalNeedsClarification } from './task-proposal-policy.mjs';
+export {
+  normalizeTaskProposalSteps,
+  taskProposalNeedsClarification,
+  taskProposalWithServerCapabilities,
+  taskProposalWithTurnNetworkAuthorization,
+} from './task-proposal-policy.mjs';
 
 export function taskProposalCapabilities(
   capabilities: unknown
