@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import OpenAI from 'openai';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { isAdminEmail } from '@/app/api/_lib/admin';
 import { buildWebSearchContext } from '@/lib/web-search';
 import { formatKnowledgeContext, getKnowledgeHits } from '@/lib/knowledge';
+import { createModelClient, resolveModelName } from '@/lib/model-client';
 
 const DAILY_CHAT_LIMIT = 30;
 const TEXT_CHAT_COST = 1;
@@ -181,13 +181,8 @@ export async function POST(request: Request) {
         role: msg.role === 'user' ? ('user' as const) : ('assistant' as const),
         content: msg.content,
       }));
-    // Use custom config if provided, otherwise fall back to platform default (Gemini via OpenAI-compatible API)
-    const client = new OpenAI({
-      baseURL: apiBaseUrl || 'https://api-inference.modelscope.cn/v1',
-      apiKey: apiKey || process.env.apiKey,
-    });
-
-    const model = modelName || 'deepseek-ai/DeepSeek-V4-Flash-0731';
+    const client = createModelClient(apiBaseUrl, apiKey);
+    const model = resolveModelName(modelName);
 
     let finalContext = context;
     if (knowledgeEnabled && agentId && textMessage.trim()) {

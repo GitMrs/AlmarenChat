@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import OpenAI from 'openai';
 import { Prisma } from '@/src/generated/prisma/client';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
@@ -18,6 +17,7 @@ import { compressConversationContext, estimateMessagesTokens } from '@/lib/conte
 import { spaceMemoryContext } from '@/lib/space-memory-policy.mjs';
 import { persistSpaceMemory, rebuildSpaceMemory } from '@/app/api/_lib/space-memory';
 import { buildWebSearchContext } from '@/lib/web-search';
+import { createModelClient, resolveModelName } from '@/lib/model-client';
 
 const MESSAGE_PAGE_SIZE = 40;
 const READ_ONLY_WORKSPACE_TOOLS = new Set(['list_files', 'read_file', 'check_files']);
@@ -303,11 +303,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
       openaiMessages.push({ role: 'user', content: textMessage });
     }
 
-    const client = new OpenAI({
-      baseURL: settings.apiBaseUrl || 'https://api-inference.modelscope.cn/v1',
-      apiKey: settings.apiKey || process.env.apiKey,
-    });
-    const model = settings.modelName || 'deepseek-ai/DeepSeek-V4-Flash-0731';
+    const client = createModelClient(settings.apiBaseUrl, settings.apiKey);
+    const model = resolveModelName(settings.modelName);
 
     const encoder = new TextEncoder();
     const readable = new ReadableStream({

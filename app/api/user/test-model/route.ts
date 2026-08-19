@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import OpenAI from 'openai';
 import { requireAuth } from '@/app/api/_lib/auth';
+import { createModelClient } from '@/lib/model-client';
 
 export async function POST(request: Request) {
   try {
@@ -11,7 +11,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: '请填写 Base URL、API Key 和模型名称' }, { status: 400 });
     }
 
-    const client = new OpenAI({ baseURL: apiBaseUrl, apiKey });
+    const client = createModelClient(apiBaseUrl, apiKey);
     await client.chat.completions.create({
       model: modelName,
       messages: [{ role: 'user', content: 'ping' }],
