@@ -29,7 +29,7 @@ function previewPolicy(request: Request, token: string) {
   const origin = new URL(request.url).origin;
   const root = `${origin}/api/space-previews/${token}/`;
   return [
-    "sandbox allow-scripts allow-forms",
+    "sandbox allow-scripts allow-forms allow-modals",
     "default-src 'none'",
     `script-src 'unsafe-inline' ${root}`,
     `style-src 'unsafe-inline' ${root}`,

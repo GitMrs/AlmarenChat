@@ -2,6 +2,22 @@ import OpenAI from 'openai';
 import { collectChatCompletionStream, isTransientModelError, withTransientModelRetry } from '../../lib/agent-runtime/tool-loop.mjs';
 import { reserveModelRequest } from './model-budget.mjs';
 
+function estimateTokens(text) {
+  if (!text) return 0;
+  const value = String(text);
+  const chineseChars = (value.match(/[\u4e00-\u9fff]/g) || []).length;
+  const nonChineseChars = value.length - chineseChars;
+  return Math.ceil(chineseChars / 1.5 + nonChineseChars / 4);
+}
+
+function usageValue(usage, keys) {
+  for (const key of keys) {
+    const value = Number(usage?.[key]);
+    if (value > 0) return value;
+  }
+  return 0;
+}
+
 export function createWorkerModelClient({
   db,
   fakeMode = false,
@@ -77,6 +93,16 @@ export function createWorkerModelClient({
       options.signal?.removeEventListener('abort', abortFromCaller);
     }
     try {
+      const providerUsage = message?.diagnostics?.usage || null;
+      const providerInputTokens = usageValue(providerUsage, ['prompt_tokens', 'promptTokens', 'input_tokens', 'inputTokens']);
+      const providerOutputTokens = usageValue(providerUsage, ['completion_tokens', 'completionTokens', 'output_tokens', 'outputTokens']);
+      const estimatedInputTokens = providerInputTokens || estimateTokens(JSON.stringify({ messages, tools: tools || [] }));
+      const estimatedOutputTokens = providerOutputTokens || estimateTokens([
+        message?.content || '',
+        message?.diagnostics?.reasoningContentChars
+          ? 'x'.repeat(message.diagnostics.reasoningContentChars)
+          : '',
+      ].join(''));
       onRequestComplete?.({
         runId: options.runId || null,
         taskId: options.taskId || null,
@@ -86,12 +112,15 @@ export function createWorkerModelClient({
         iteration: Number(options.iteration) || null,
         durationMs: Date.now() - startedAt,
         requestChars,
+        estimatedInputTokens,
+        estimatedOutputTokens,
+        estimatedTotalTokens: estimatedInputTokens + estimatedOutputTokens,
         contentChars: message?.diagnostics?.contentChars || 0,
         reasoningContentChars: message?.diagnostics?.reasoningContentChars || 0,
         finishReasons: message?.diagnostics?.finishReasons || [],
         toolCallCount: message?.diagnostics?.completedToolCalls || 0,
         retryCount,
-        providerUsage: message?.diagnostics?.usage || null,
+        providerUsage,
       });
     } catch (error) {
       warn('[agent-worker] model request telemetry failed', error instanceof Error ? error.message : String(error));

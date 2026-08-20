@@ -81,6 +81,9 @@ type RunEventPayload = {
   maxIterations?: number;
   durationMs?: number;
   requestChars?: number;
+  estimatedInputTokens?: number;
+  estimatedOutputTokens?: number;
+  estimatedTotalTokens?: number;
   contentChars?: number;
   reasoningContentChars?: number;
   toolCallCount?: number;
@@ -144,10 +147,20 @@ function formatActivityEvent(event: AgentRunEvent) {
     };
   }
   if (event.type === 'MODEL_REQUEST_COMPLETED') {
-    const totalTokens = Number(payload.providerUsage?.total_tokens ?? payload.providerUsage?.totalTokens ?? 0);
+    const usage = modelUsageParts(payload);
     const details = [
       payload.durationMs ? formatDuration(payload.durationMs) : '',
-      totalTokens > 0 ? `${formatMetricCount(totalTokens)} Token` : payload.requestChars ? `输入 ${formatMetricCount(payload.requestChars)} 字符` : '',
+      usage.reportedTokens > 0
+        ? [
+            usage.estimated ? '估算' : '',
+            usage.inputTokens > 0 ? `输入 ${formatMetricCount(usage.inputTokens)} Token` : '',
+            usage.outputTokens > 0 ? `输出 ${formatMetricCount(usage.outputTokens)} Token` : '',
+            `合计 ${formatMetricCount(usage.reportedTokens)} Token`,
+          ].filter(Boolean).join(' / ')
+        : [
+            payload.requestChars ? `输入 ${formatMetricCount(payload.requestChars)} 字符` : '',
+            usage.outputChars > 0 ? `输出 ${formatMetricCount(usage.outputChars)} 字符` : '',
+          ].filter(Boolean).join(' / '),
       payload.toolCallCount ? `${payload.toolCallCount} 个工具调用` : '',
       payload.retryCount ? `重试 ${payload.retryCount} 次` : '',
     ].filter(Boolean);
@@ -218,14 +231,46 @@ function formatMetricCount(value: number) {
   return `${(value / 1_000_000).toFixed(1)}m`;
 }
 
+function providerUsageValue(usage: Record<string, number> | null | undefined, keys: string[]) {
+  for (const key of keys) {
+    const value = Number(usage?.[key]);
+    if (value > 0) return value;
+  }
+  return 0;
+}
+
+function modelUsageParts(payload: RunEventPayload) {
+  const usage = payload.providerUsage;
+  const inputTokens = providerUsageValue(usage, ['prompt_tokens', 'promptTokens', 'input_tokens', 'inputTokens']);
+  const outputTokens = providerUsageValue(usage, ['completion_tokens', 'completionTokens', 'output_tokens', 'outputTokens']);
+  const totalTokens = providerUsageValue(usage, ['total_tokens', 'totalTokens']);
+  const estimatedInputTokens = Number(payload.estimatedInputTokens) || 0;
+  const estimatedOutputTokens = Number(payload.estimatedOutputTokens) || 0;
+  const estimatedTotalTokens = Number(payload.estimatedTotalTokens) || estimatedInputTokens + estimatedOutputTokens;
+  const reportedTokens = totalTokens || inputTokens + outputTokens;
+  const outputChars = (Number(payload.contentChars) || 0) + (Number(payload.reasoningContentChars) || 0);
+  const hasProviderUsage = reportedTokens > 0;
+  return {
+    inputTokens: inputTokens || estimatedInputTokens,
+    outputTokens: outputTokens || estimatedOutputTokens,
+    reportedTokens: reportedTokens || estimatedTotalTokens,
+    outputChars,
+    estimated: !hasProviderUsage && estimatedTotalTokens > 0,
+  };
+}
+
 function aggregateModelRequests(events: AgentRunEvent[], taskOnly = false) {
   const metrics = {
     requests: 0,
     durationMs: 0,
     retries: 0,
     requestChars: 0,
+    outputChars: 0,
+    inputTokens: 0,
+    outputTokens: 0,
     providerTokens: 0,
     providerUsageCount: 0,
+    estimatedUsageCount: 0,
   };
   for (const event of events) {
     if (event.type !== 'MODEL_REQUEST_COMPLETED') continue;
@@ -235,10 +280,14 @@ function aggregateModelRequests(events: AgentRunEvent[], taskOnly = false) {
     metrics.durationMs += Number(payload.durationMs) || 0;
     metrics.retries += Number(payload.retryCount) || 0;
     metrics.requestChars += Number(payload.requestChars) || 0;
-    const totalTokens = Number(payload.providerUsage?.total_tokens ?? payload.providerUsage?.totalTokens ?? 0);
-    if (totalTokens > 0) {
-      metrics.providerTokens += totalTokens;
-      metrics.providerUsageCount += 1;
+    const usage = modelUsageParts(payload);
+    metrics.outputChars += usage.outputChars;
+    if (usage.reportedTokens > 0) {
+      metrics.inputTokens += usage.inputTokens;
+      metrics.outputTokens += usage.outputTokens;
+      metrics.providerTokens += usage.reportedTokens;
+      if (usage.estimated) metrics.estimatedUsageCount += 1;
+      else metrics.providerUsageCount += 1;
     }
   }
   return metrics;
@@ -1467,10 +1516,10 @@ export default function SpaceDetailPage() {
                           <span>模型调用 {currentRun.modelRequestCount || 0}/{currentRun.modelRequestLimit || 12}</span>
                           {runModelMetrics.requests > 0 && <span>模型耗时 {formatDuration(runModelMetrics.durationMs)}</span>}
                           {runModelMetrics.retries > 0 && <span className="text-amber-600">重试 {runModelMetrics.retries} 次</span>}
-                          {runModelMetrics.providerUsageCount > 0
-                            ? <span>{runModelMetrics.providerUsageCount === runModelMetrics.requests ? 'Token' : '已上报 Token'} {formatMetricCount(runModelMetrics.providerTokens)}</span>
+                          {runModelMetrics.providerUsageCount + runModelMetrics.estimatedUsageCount > 0
+                            ? <span>{runModelMetrics.estimatedUsageCount > 0 ? '估算 Token' : runModelMetrics.providerUsageCount === runModelMetrics.requests ? 'Token' : '已上报 Token'} 输入 {formatMetricCount(runModelMetrics.inputTokens)} / 输出 {formatMetricCount(runModelMetrics.outputTokens)} / 合计 {formatMetricCount(runModelMetrics.providerTokens)}</span>
                             : runModelMetrics.requestChars > 0
-                              ? <span>输入 {formatMetricCount(runModelMetrics.requestChars)} 字符</span>
+                              ? <span>输入 {formatMetricCount(runModelMetrics.requestChars)} 字符{runModelMetrics.outputChars > 0 ? ` / 输出 ${formatMetricCount(runModelMetrics.outputChars)} 字符` : ''}</span>
                               : null}
                           {currentRun.id === activeRun?.id ? (
                             <button
@@ -1797,10 +1846,10 @@ export default function SpaceDetailPage() {
                                       <span>已完成请求 {modelMetrics.requests} 次</span>
                                       <span>模型耗时 {formatDuration(modelMetrics.durationMs)}</span>
                                       {modelMetrics.retries > 0 && <span className="text-amber-600">重试 {modelMetrics.retries} 次</span>}
-                                      {modelMetrics.providerUsageCount > 0
-                                        ? <span>{modelMetrics.providerUsageCount === modelMetrics.requests ? 'Token' : '已上报 Token'} {formatMetricCount(modelMetrics.providerTokens)}</span>
+                                      {modelMetrics.providerUsageCount + modelMetrics.estimatedUsageCount > 0
+                                        ? <span>{modelMetrics.estimatedUsageCount > 0 ? '估算 Token' : modelMetrics.providerUsageCount === modelMetrics.requests ? 'Token' : '已上报 Token'} 输入 {formatMetricCount(modelMetrics.inputTokens)} / 输出 {formatMetricCount(modelMetrics.outputTokens)} / 合计 {formatMetricCount(modelMetrics.providerTokens)}</span>
                                         : modelMetrics.requestChars > 0
-                                          ? <span>输入 {formatMetricCount(modelMetrics.requestChars)} 字符</span>
+                                          ? <span>输入 {formatMetricCount(modelMetrics.requestChars)} 字符{modelMetrics.outputChars > 0 ? ` / 输出 ${formatMetricCount(modelMetrics.outputChars)} 字符` : ''}</span>
                                           : null}
                                     </div>
                                   )}

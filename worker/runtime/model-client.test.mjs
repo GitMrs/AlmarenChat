@@ -88,9 +88,38 @@ test('worker model client sends DeepSeek-compatible tool requests', async () => 
   assert.deepEqual(current.reservations, [[{ marker: 'db' }, 'run-1', 'task-1', 'now']]);
   assert.equal(current.completions.length, 1);
   assert.equal(current.completions[0].requestChars > 0, true);
+  assert.equal(current.completions[0].estimatedInputTokens > 0, true);
+  assert.equal(current.completions[0].estimatedOutputTokens, 2);
+  assert.equal(
+    current.completions[0].estimatedTotalTokens,
+    current.completions[0].estimatedInputTokens + current.completions[0].estimatedOutputTokens
+  );
   assert.equal(current.completions[0].contentChars, 2);
   assert.equal(current.completions[0].scope, 'task');
   assert.equal('messages' in current.completions[0], false);
+});
+
+test('worker model client prefers provider usage for estimated token telemetry', async () => {
+  async function* usageStream() {
+    yield {
+      model: model.name,
+      usage: { prompt_tokens: 12, completion_tokens: 3, total_tokens: 15 },
+      choices: [{ delta: { content: '完成' }, finish_reason: 'stop' }],
+    };
+  }
+  const current = fixture({ stream: usageStream() });
+  await current.client.completeMessage(model, [{ role: 'user', content: '安排任务' }], [], {
+    runId: 'run-1',
+  });
+
+  assert.deepEqual(current.completions[0].providerUsage, {
+    prompt_tokens: 12,
+    completion_tokens: 3,
+    total_tokens: 15,
+  });
+  assert.equal(current.completions[0].estimatedInputTokens, 12);
+  assert.equal(current.completions[0].estimatedOutputTokens, 3);
+  assert.equal(current.completions[0].estimatedTotalTokens, 15);
 });
 
 test('worker model client omits tool fields and can reserve only the run budget', async () => {
