@@ -76,8 +76,17 @@ const FILE_STATUS_LABELS: Record<string, string> = {
 
 type RunEventPayload = {
   taskId?: string;
+  scope?: 'task' | 'run';
   iteration?: number;
   maxIterations?: number;
+  durationMs?: number;
+  requestChars?: number;
+  contentChars?: number;
+  reasoningContentChars?: number;
+  toolCallCount?: number;
+  retryCount?: number;
+  finishReasons?: string[];
+  providerUsage?: Record<string, number> | null;
   tool?: string;
   path?: string;
   paths?: string[];
@@ -111,11 +120,18 @@ const TOOL_LABELS: Record<string, string> = {
   read_file: '读取文件',
   write_file: '写入文件',
   patch_file: '修改文件',
+  patch_files: '批量修改文件',
   check_files: '检查文件',
 };
 
 function eventPayload(event: AgentRunEvent) {
   return event.payload && typeof event.payload === 'object' ? (event.payload as RunEventPayload) : {};
+}
+
+function eventChangesWorkspaceFiles(event: AgentRunEvent) {
+  if (['WORKSPACE_FILE_UPDATED', 'WORKSPACE_ARTIFACTS_READY'].includes(event.type)) return true;
+  if (event.type !== 'TOOL_COMPLETED') return false;
+  return ['write_file', 'patch_file', 'patch_files'].includes(eventPayload(event).tool || '');
 }
 
 function formatActivityEvent(event: AgentRunEvent) {
@@ -126,6 +142,16 @@ function formatActivityEvent(event: AgentRunEvent) {
       detail: `模型请求 ${payload.iteration}/${payload.maxIterations || 12}`,
       checked: false,
     };
+  }
+  if (event.type === 'MODEL_REQUEST_COMPLETED') {
+    const totalTokens = Number(payload.providerUsage?.total_tokens ?? payload.providerUsage?.totalTokens ?? 0);
+    const details = [
+      payload.durationMs ? formatDuration(payload.durationMs) : '',
+      totalTokens > 0 ? `${formatMetricCount(totalTokens)} Token` : payload.requestChars ? `输入 ${formatMetricCount(payload.requestChars)} 字符` : '',
+      payload.toolCallCount ? `${payload.toolCallCount} 个工具调用` : '',
+      payload.retryCount ? `重试 ${payload.retryCount} 次` : '',
+    ].filter(Boolean);
+    return { title: event.message, detail: details.join(' · '), checked: true };
   }
   if (event.type === 'TOOL_COMPLETED') {
     const paths = payload.path ? [payload.path] : payload.paths || [];
@@ -175,6 +201,47 @@ function formatBytes(value?: number | null) {
   if (value < 1024) return `${value} B`;
   if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
   return `${(value / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function formatDuration(value: number) {
+  if (value < 1_000) return `${Math.round(value)}ms`;
+  const seconds = Math.round(value / 1_000);
+  if (seconds < 60) return `${seconds}秒`;
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  return remainingSeconds ? `${minutes}分${remainingSeconds}秒` : `${minutes}分钟`;
+}
+
+function formatMetricCount(value: number) {
+  if (value < 1_000) return String(Math.round(value));
+  if (value < 1_000_000) return `${(value / 1_000).toFixed(value < 10_000 ? 1 : 0)}k`;
+  return `${(value / 1_000_000).toFixed(1)}m`;
+}
+
+function aggregateModelRequests(events: AgentRunEvent[], taskOnly = false) {
+  const metrics = {
+    requests: 0,
+    durationMs: 0,
+    retries: 0,
+    requestChars: 0,
+    providerTokens: 0,
+    providerUsageCount: 0,
+  };
+  for (const event of events) {
+    if (event.type !== 'MODEL_REQUEST_COMPLETED') continue;
+    const payload = eventPayload(event);
+    if (taskOnly && payload.scope === 'run') continue;
+    metrics.requests += 1;
+    metrics.durationMs += Number(payload.durationMs) || 0;
+    metrics.retries += Number(payload.retryCount) || 0;
+    metrics.requestChars += Number(payload.requestChars) || 0;
+    const totalTokens = Number(payload.providerUsage?.total_tokens ?? payload.providerUsage?.totalTokens ?? 0);
+    if (totalTokens > 0) {
+      metrics.providerTokens += totalTokens;
+      metrics.providerUsageCount += 1;
+    }
+  }
+  return metrics;
 }
 
 function formatRunDate(value: string) {
@@ -341,6 +408,10 @@ export default function SpaceDetailPage() {
     ? latestDiscussion
     : null;
   const currentRun = (selectedRunId ? runs.find((run) => run.id === selectedRunId) : null) || activeRun || runs[0] || null;
+  const runModelMetrics = useMemo(
+    () => aggregateModelRequests(currentRun?.events || []),
+    [currentRun]
+  );
   const taskActivityById = useMemo(() => {
     const grouped = new Map<string, AgentRunEvent[]>();
     for (const event of currentRun?.events || []) {
@@ -505,17 +576,17 @@ export default function SpaceDetailPage() {
     if (!activeRun) return;
     const timer = window.setInterval(async () => {
       try {
-        const [result, fileResult] = await Promise.all([
-          agentRunsApi.get(activeRun.id, activeRun.eventSequence || 0),
-          spacesApi.files(spaceId),
-        ]);
+        const result = await agentRunsApi.get(activeRun.id, activeRun.eventSequence || 0);
+        const fileResult = result.run.events.some(eventChangesWorkspaceFiles)
+          ? await spacesApi.files(spaceId)
+          : null;
         setRuns((items) => items.map((item) => {
           if (item.id !== result.run.id) return item;
           const events = new Map(item.events.map((event) => [event.id, event]));
           for (const event of result.run.events) events.set(event.id, event);
           return { ...result.run, events: [...events.values()].sort((a, b) => a.sequence - b.sequence) };
         }));
-        setFiles(fileResult.files);
+        if (fileResult) setFiles(fileResult.files);
       } catch {
         // Keep the last persisted state visible; the next poll can recover from a transient failure.
       }
@@ -1394,6 +1465,13 @@ export default function SpaceDetailPage() {
                           <span>{formatRunDate(currentRun.createdAt)}</span>
                           {currentRun.attempt > 1 && <span>第 {currentRun.attempt} 次执行</span>}
                           <span>模型调用 {currentRun.modelRequestCount || 0}/{currentRun.modelRequestLimit || 12}</span>
+                          {runModelMetrics.requests > 0 && <span>模型耗时 {formatDuration(runModelMetrics.durationMs)}</span>}
+                          {runModelMetrics.retries > 0 && <span className="text-amber-600">重试 {runModelMetrics.retries} 次</span>}
+                          {runModelMetrics.providerUsageCount > 0
+                            ? <span>{runModelMetrics.providerUsageCount === runModelMetrics.requests ? 'Token' : '已上报 Token'} {formatMetricCount(runModelMetrics.providerTokens)}</span>
+                            : runModelMetrics.requestChars > 0
+                              ? <span>输入 {formatMetricCount(runModelMetrics.requestChars)} 字符</span>
+                              : null}
                           {currentRun.id === activeRun?.id ? (
                             <button
                               type="button"
@@ -1692,6 +1770,7 @@ export default function SpaceDetailPage() {
                             <div className="py-3 text-sm font-semibold text-slate-400">尚未生成执行步骤</div>
                           ) : currentRun.tasks.map((task, index) => {
                             const activity = taskActivityById.get(task.id) || [];
+                            const modelMetrics = aggregateModelRequests(activity, true);
                             const recentActivity = activity.slice(-10);
                             const latestActivity = recentActivity.at(-1);
                             const manifest = [...activity].reverse().find((event) => event.type === 'ARTIFACT_MANIFEST_RECORDED');
@@ -1713,6 +1792,18 @@ export default function SpaceDetailPage() {
                                 <div className="mb-4 ml-10 border-l-2 border-slate-200 pl-4">
                                   <div className="text-[11px] font-black text-slate-400">任务内容</div>
                                   <p className="mt-1 whitespace-pre-wrap break-words text-xs font-semibold leading-5 text-slate-600">{task.instruction}</p>
+                                  {modelMetrics.requests > 0 && (
+                                    <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 border-y border-black/[0.06] py-2 text-[11px] font-semibold text-slate-500">
+                                      <span>已完成请求 {modelMetrics.requests} 次</span>
+                                      <span>模型耗时 {formatDuration(modelMetrics.durationMs)}</span>
+                                      {modelMetrics.retries > 0 && <span className="text-amber-600">重试 {modelMetrics.retries} 次</span>}
+                                      {modelMetrics.providerUsageCount > 0
+                                        ? <span>{modelMetrics.providerUsageCount === modelMetrics.requests ? 'Token' : '已上报 Token'} {formatMetricCount(modelMetrics.providerTokens)}</span>
+                                        : modelMetrics.requestChars > 0
+                                          ? <span>输入 {formatMetricCount(modelMetrics.requestChars)} 字符</span>
+                                          : null}
+                                    </div>
+                                  )}
                                   {manifestPayload?.summary && (
                                     <details className="mt-3 rounded-md bg-slate-50 px-3 py-2">
                                       <summary className="cursor-pointer list-none text-xs font-bold text-slate-600 marker:hidden">

@@ -107,12 +107,14 @@ export function createWorkspaceArtifactRuntime({
         );
         validationFiles.push(...checked.files);
       }
-      const codePaths = changedPaths.filter((relativePath) => /\.(?:[cm]?js|tsx?)$/i.test(relativePath));
+      const codePaths = changedPaths.filter((relativePath) => /\.(?:[cm]?js|tsx?|html?)$/i.test(relativePath));
       if (codePaths.length > 20) {
-        commandChecks.push({ ok: false, error: '单个步骤需要语法检查的代码文件超过 20 个' });
+        commandChecks.push({ ok: false, error: '单个步骤需要语法检查的文件超过 20 个' });
       } else {
         for (const relativePath of codePaths) {
-          const check = /\.tsx?$/i.test(relativePath) ? 'typescript' : 'javascript';
+          const check = /\.tsx?$/i.test(relativePath)
+            ? 'typescript'
+            : /\.html?$/i.test(relativePath) ? 'html' : 'javascript';
           commandChecks.push(await executeWorkspaceTool(
             taskWorkspaceOptions(run, task),
             'run_check',

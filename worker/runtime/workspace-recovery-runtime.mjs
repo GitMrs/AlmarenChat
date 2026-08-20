@@ -110,6 +110,9 @@ export function createWorkspaceRecoveryRuntime({
       try {
         const payload = JSON.parse(event.payload || '{}');
         if (['write_file', 'patch_file'].includes(payload.tool) && payload.path) target.add(String(payload.path));
+        if (payload.tool === 'patch_files') {
+          for (const relativePath of payload.paths || []) target.add(String(relativePath));
+        }
         if (payload.tool === 'check_files' && payload.valid && Array.isArray(payload.paths)) {
           for (const filePath of payload.paths) target.add(String(filePath));
         }

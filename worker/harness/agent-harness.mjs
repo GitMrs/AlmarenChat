@@ -1,4 +1,3 @@
-import { createExecutionConvergence } from './execution-convergence.mjs';
 import { contextManager } from './context-manager.mjs';
 import { runToolLoop } from '../../lib/agent-runtime/tool-loop.mjs';
 import {
@@ -30,6 +29,28 @@ const REQUEST_USER_INPUT_TOOL = {
       properties: {
         question: { type: 'string', description: '用户可以直接回答的单个具体问题' },
         reason: { type: 'string', description: '缺少这项信息为什么无法继续' },
+      },
+    },
+  },
+};
+
+const SUBMIT_TASK_RESULT_TOOL = {
+  type: 'function',
+  function: {
+    name: 'submit_task_result',
+    description: '当前步骤已经完成并自检后，提交简短结果供平台校验。只有平台校验通过才会结束本步骤。',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['summary', 'remainingIssues'],
+      properties: {
+        summary: { type: 'string', description: '已完成工作与验收证据的简短摘要。' },
+        remainingIssues: {
+          type: 'array',
+          items: { type: 'string' },
+          maxItems: 10,
+          description: '仍未满足的问题；准备提交完成时必须为空数组。',
+        },
       },
     },
   },
@@ -102,6 +123,7 @@ export async function runExecutorHarness({
   isCancelled,
   pauseForInput,
   registerWorkspaceFile,
+  validateSubmission,
   workspaceOptions,
 }) {
   if (fakeMode) {
@@ -143,8 +165,8 @@ export async function runExecutorHarness({
         '交付网页、代码或文档时必须写入真实文件；平台会在提交后自动检查全部变更文件，不要为了例行检查额外调用 check_files。' +
         '把当前步骤作为一个端到端产物完成，不要把功能点拆成多轮零碎润色。优先一次完整写入或少量集中修改；现有文件已满足要求时不要只为增加注释或调整格式而修改。' +
         '总目标只用于理解背景，你只负责当前步骤及其验收标准，不要自行承担其他成员的工作。提交前必须逐条对照本步骤验收标准自检；最终回复简短说明每项标准的完成证据和仍未满足的项目，不得把未验证内容写成已完成。' +
-        '修改现有文件时优先读取相关部分后使用 patch_file 精确修改；除非用户明确要求重写，不得用 write_file 整体替换已有文件。' +
-        '每次调用工具后继续处理都会消耗一次模型请求。完成必要写入后必须立即返回简短交付结果，不得继续读取、润色或重复检查。' +
+        '修改现有文件时优先读取相关部分后使用 patch_file 精确修改；同一轮有多项相关替换时优先使用 patch_files 集中完成。除非用户明确要求重写，不得用 write_file 整体替换已有文件。' +
+        '每次调用工具后继续处理都会消耗一次模型请求。完成必要写入后必须立即调用 submit_task_result 提交简短交付结果，不得继续读取、润色或重复检查；普通文本不能结束本步骤。' +
         'JavaScript 或 TypeScript 文件需要语法检查时，只能调用 run_check；它只支持平台白名单检查，不能运行脚本、构建项目或启动服务。' +
         '读取较长文件时使用 offset 和 limit 分页，只读取当前步骤需要的部分；同一资料的 Markdown 和 JSON 版本不要重复读取。' +
         baselineGuidance +
@@ -161,7 +183,7 @@ export async function runExecutorHarness({
     { role: 'user', content: `总目标：${run.input}\n\n当前步骤：${task.title}\n${task.instruction}${acceptance}${previousAttempt}${reviewFeedback}${waitAnswer}${prior}${research}${projectMemory}` },
   ];
   const abortController = new AbortController();
-  const convergence = createExecutionConvergence();
+  let submittedManifest = null;
   const cancellationTimer = setInterval(() => {
     if (isCancelled()) abortController.abort();
   }, 250);
@@ -176,14 +198,18 @@ export async function runExecutorHarness({
           ? [safeCommandToolSchema]
           : []),
         REQUEST_USER_INPUT_TOOL,
+        SUBMIT_TASK_RESULT_TOOL,
       ],
-      requestCompletion: (conversation, tools) => completeMessage(
+      requestCompletion: (conversation, tools, requestState) => completeMessage(
         context.model,
         conversation,
-        convergence.availableTools(tools),
+        tools,
         {
           runId: run.id,
           taskId: task.id,
+          agentId: agent.id,
+          attempt: task.attempt,
+          iteration: requestState.iteration,
           signal: abortController.signal,
           onStreamStart: () => emit(run.id, 'MODEL_STREAMING', `${agent.name}的模型响应已开始传输`, {
             taskId: task.id,
@@ -198,6 +224,23 @@ export async function runExecutorHarness({
       ),
       executeTool: (name, args) => {
         if (name === 'request_user_input') return pauseForInput(args);
+        if (name === 'submit_task_result') {
+          const remainingIssues = Array.isArray(args.remainingIssues)
+            ? args.remainingIssues.map(String).map((issue) => issue.trim()).filter(Boolean)
+            : [];
+          const summary = String(args.summary || '').trim();
+          if (!summary) return { ok: false, error: '提交摘要不能为空，请完成自检后重新提交。' };
+          if (remainingIssues.length > 0) {
+            return { ok: false, error: `仍有未完成事项：${remainingIssues.join('；')}。请继续处理后再提交。` };
+          }
+          return validateSubmission(summary).then((validation) => {
+            if (!validation?.ok) {
+              return { ok: false, error: `平台校验未通过：${(validation?.issues || []).join('；') || '存在无效产物'}` };
+            }
+            submittedManifest = validation.manifest || null;
+            return { ok: true, stop: true, content: summary };
+          });
+        }
         if (name === 'write_file' && blocksUnapprovedFullOverwrite(
           args.path,
           baselinePaths,
@@ -213,7 +256,6 @@ export async function runExecutorHarness({
           isCancelled,
           onMutation: (relativePath) => context.touchedPaths.add(relativePath),
           onToolCall: async (toolName, toolArgs, toolResult) => {
-            convergence.recordTool(toolName, toolArgs, toolResult);
             const mutationPath = String(toolArgs.path || '');
             const target = mutationPath.slice(0, 300);
             const checkedPaths = toolName === 'check_files' && toolResult.valid
@@ -223,11 +265,15 @@ export async function runExecutorHarness({
             if (['write_file', 'patch_file'].includes(toolName) && mutationPath) {
               await registerWorkspaceFile(mutationPath);
             }
+            if (toolName === 'patch_files') {
+              for (const relativePath of toolResult.paths || []) await registerWorkspaceFile(String(relativePath));
+            }
             emit(run.id, 'TOOL_COMPLETED', `${agent.name}已执行 ${toolName}`, {
               taskId: task.id,
               agentId: agent.id,
               tool: toolName,
               ...(target ? { path: target } : {}),
+              ...(toolName === 'patch_files' ? { paths: (toolResult.paths || []).map(String).slice(0, 20) } : {}),
               ...(toolName === 'check_files' ? { valid: Boolean(toolResult.valid), paths: checkedPaths } : {}),
               ...(toolName === 'run_check' ? {
                 check: toolResult.check,
@@ -268,8 +314,9 @@ export async function runExecutorHarness({
       }),
       maxIterations: EXECUTOR_TOOL_ITERATIONS,
       maxEmptyResponseRetries: EXECUTOR_MAX_ATTEMPTS - 1,
+      requiredFinalTool: 'submit_task_result',
     });
-    return { result: loopResult.content, paused: Boolean(loopResult.paused) };
+    return { result: loopResult.content, paused: Boolean(loopResult.paused), manifest: submittedManifest };
   } finally {
     clearInterval(cancellationTimer);
   }
@@ -339,13 +386,16 @@ export async function runAdvisorHarness({
     const loopResult = await runToolLoop({
       messages,
       tools,
-      requestCompletion: (conversation, availableTools) => completeMessage(
+      requestCompletion: (conversation, availableTools, requestState) => completeMessage(
         context.model,
         conversation,
         availableTools,
         {
           runId: run.id,
           taskId: task.id,
+          agentId: agent.id,
+          attempt: task.attempt,
+          iteration: requestState.iteration,
           signal: abortController.signal,
           onStreamStart: () => emit?.(run.id, 'MODEL_STREAMING', `${agent.name}的模型响应已开始传输`, {
             taskId: task.id,

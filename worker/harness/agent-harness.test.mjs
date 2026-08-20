@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { ADVISOR_MAX_ATTEMPTS, ADVISOR_TOOL_ITERATIONS, EXECUTOR_MAX_ATTEMPTS, EXECUTOR_TOOL_ITERATIONS, runAdvisorHarness, runExecutorHarness } from './agent-harness.mjs';
 import { ADVISOR_MODEL_REQUEST_LIMIT, EXECUTOR_MODEL_REQUEST_LIMIT } from '../../lib/task-execution-plan.mjs';
+import { executeWorkspaceTool } from '../../lib/agent-runtime/runtime-tools.mjs';
 
 const run = { id: 'run-1', input: '完成页面' };
 const task = {
@@ -58,12 +59,24 @@ test('executor harness owns prompts and the model tool loop', async () => {
     taskTimeoutMs: 30_000,
     completeMessage: async (_model, messages, tools, options) => {
       request = { messages, tools, options };
-      return { role: 'assistant', content: '页面已经完成。' };
+      return {
+        role: 'assistant',
+        content: null,
+        tool_calls: [{
+          id: 'submit-1',
+          type: 'function',
+          function: {
+            name: 'submit_task_result',
+            arguments: JSON.stringify({ summary: '页面已经完成。', remainingIssues: [] }),
+          },
+        }],
+      };
     },
     emit: (...args) => events.push(args),
     isCancelled: () => false,
     pauseForInput: () => ({ pause: true }),
     registerWorkspaceFile: async () => {},
+    validateSubmission: async () => ({ ok: true, manifest: { validation: { valid: true } } }),
     workspaceOptions: {},
   });
   assert.equal(result.result, '页面已经完成。');
@@ -76,6 +89,7 @@ test('executor harness owns prompts and the model tool loop', async () => {
   assert.match(request.messages[1].content, /保留现有布局，补充提交按钮并校验表单/);
   assert.match(request.messages[0].content, /总目标只用于理解背景/);
   assert.ok(request.tools.some((tool) => tool.function.name === 'request_user_input'));
+  assert.ok(request.tools.some((tool) => tool.function.name === 'submit_task_result'));
   assert.equal('maxTokens' in request.options, false);
   assert.equal('omitMaxTokens' in request.options, false);
   assert.equal(events.some((event) => event[1] === 'MODEL_WORKING'), true);
@@ -98,17 +112,157 @@ test('executor retries two empty reasoning responses before accepting the third 
       if (requests < 3) {
         return { content: '', diagnostics: { reasoningContentChars: 4_000, finishReasons: ['length'] } };
       }
-      return { content: '第三次返回有效结果。' };
+      return {
+        content: null,
+        tool_calls: [{
+          id: 'submit-1',
+          type: 'function',
+          function: {
+            name: 'submit_task_result',
+            arguments: JSON.stringify({ summary: '第三次返回有效结果。', remainingIssues: [] }),
+          },
+        }],
+      };
     },
     emit: (...args) => events.push(args),
     isCancelled: () => false,
     pauseForInput: () => ({ pause: true }),
     registerWorkspaceFile: async () => {},
+    validateSubmission: async () => ({ ok: true, manifest: { validation: { valid: true } } }),
     workspaceOptions: {},
   });
   assert.equal(requests, 3);
   assert.equal(result.result, '第三次返回有效结果。');
   assert.equal(events.filter((event) => event[1] === 'MODEL_EMPTY_RESPONSE_RETRYING').length, 2);
+});
+
+test('executor keeps validation failures in the same tool loop', async () => {
+  let requests = 0;
+  let validations = 0;
+  const result = await runExecutorHarness({
+    run,
+    task,
+    agent,
+    context: { ...context, touchedPaths: new Set() },
+    previousResults: [],
+    baselinePaths: new Set(),
+    fakeMode: false,
+    taskTimeoutMs: 30_000,
+    completeMessage: async (_model, messages) => {
+      requests += 1;
+      if (requests === 2) assert.match(messages.at(-1).content, /平台校验未通过/);
+      return {
+        content: null,
+        tool_calls: [{
+          id: `submit-${requests}`,
+          type: 'function',
+          function: {
+            name: 'submit_task_result',
+            arguments: JSON.stringify({ summary: '页面已经完成。', remainingIssues: [] }),
+          },
+        }],
+      };
+    },
+    emit: () => {},
+    isCancelled: () => false,
+    pauseForInput: () => ({ pause: true }),
+    registerWorkspaceFile: async () => {},
+    validateSubmission: async () => {
+      validations += 1;
+      return validations === 1
+        ? { ok: false, issues: ['index.html 内联脚本语法无效'] }
+        : { ok: true, manifest: { validation: { valid: true } } };
+    },
+    workspaceOptions: {},
+  });
+  assert.equal(requests, 2);
+  assert.equal(validations, 2);
+  assert.equal(result.result, '页面已经完成。');
+});
+
+test('executor repairs a rejected workspace artifact in the same attempt', async () => {
+  const projectRoot = await mkdtemp(path.join(tmpdir(), 'executor-repair-'));
+  const workspaceOptions = {
+    projectRoot,
+    userId: 'user-1',
+    spaceId: 'space-1',
+    taskId: 'task-1',
+    attempt: 1,
+  };
+  let requests = 0;
+  let validations = 0;
+  try {
+    const result = await runExecutorHarness({
+      run,
+      task,
+      agent,
+      context: { ...context, touchedPaths: new Set() },
+      previousResults: [],
+      baselinePaths: new Set(),
+      fakeMode: false,
+      taskTimeoutMs: 30_000,
+      completeMessage: async (_model, messages) => {
+        requests += 1;
+        if (requests === 1) {
+          return {
+            content: null,
+            tool_calls: [{
+              id: 'write-invalid',
+              type: 'function',
+              function: {
+                name: 'write_file',
+                arguments: JSON.stringify({ path: 'result.json', content: '{"done": }' }),
+              },
+            }],
+          };
+        }
+        if (requests === 2 || requests === 4) {
+          return {
+            content: null,
+            tool_calls: [{
+              id: `submit-${requests}`,
+              type: 'function',
+              function: {
+                name: 'submit_task_result',
+                arguments: JSON.stringify({ summary: '产物已完成并通过检查。', remainingIssues: [] }),
+              },
+            }],
+          };
+        }
+        assert.match(messages.at(-1).content, /JSON 无效/);
+        return {
+          content: null,
+          tool_calls: [{
+            id: 'repair-json',
+            type: 'function',
+            function: {
+              name: 'patch_file',
+              arguments: JSON.stringify({ path: 'result.json', search: '"done": ', replacement: '"done": true' }),
+            },
+          }],
+        };
+      },
+      emit: () => {},
+      isCancelled: () => false,
+      pauseForInput: () => ({ pause: true }),
+      registerWorkspaceFile: async () => {},
+      validateSubmission: async () => {
+        validations += 1;
+        const check = await executeWorkspaceTool(workspaceOptions, 'check_files', { paths: ['result.json'] });
+        return check.valid
+          ? { ok: true, manifest: { validation: { valid: true } } }
+          : { ok: false, issues: check.files.flatMap((file) => file.issues) };
+      },
+      workspaceOptions,
+    });
+    assert.equal(requests, 4);
+    assert.equal(validations, 2);
+    assert.equal(result.result, '产物已完成并通过检查。');
+    const repaired = await executeWorkspaceTool(workspaceOptions, 'read_file', { path: 'result.json' });
+    assert.deepEqual(JSON.parse(repaired.content), { done: true });
+  } finally {
+    await rm(projectRoot, { recursive: true, force: true });
+  }
 });
 
 test('read-only advisor can inspect the workspace but cannot mutate it', async () => {

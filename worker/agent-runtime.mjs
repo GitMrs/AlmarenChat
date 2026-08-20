@@ -97,6 +97,24 @@ const { completeMessage, complete } = createWorkerModelClient({
   fakeMode,
   modelTimeoutMs,
   now,
+  onRequestComplete: (event) => {
+    if (!event.runId) return;
+    addEvent(event.runId, 'MODEL_REQUEST_COMPLETED', '模型请求已完成', {
+      taskId: event.taskId,
+      agentId: event.agentId,
+      attempt: event.attempt,
+      scope: event.scope,
+      iteration: event.iteration,
+      durationMs: event.durationMs,
+      requestChars: event.requestChars,
+      contentChars: event.contentChars,
+      reasoningContentChars: event.reasoningContentChars,
+      finishReasons: event.finishReasons,
+      toolCallCount: event.toolCallCount,
+      retryCount: event.retryCount,
+      providerUsage: event.providerUsage,
+    });
+  },
 });
 
 function addEvent(runId, type, message, payload, idempotencyKey = null) {
@@ -897,6 +915,15 @@ async function executeTask(run, task, context, previousResults) {
     isCancelled: () => isCancelRequested(run.id) || isTaskCancelRequested(task.id),
     pauseForInput: (args) => waitTaskForUserInput(run, task, args),
     registerWorkspaceFile: (relativePath) => registerWorkspaceFile(run, task, relativePath),
+    validateSubmission: async () => {
+      const manifest = await recordTaskArtifactManifest(run, task, context, { validate: true });
+      const skillValidation = validateSkillArtifacts(taskSkill(task), manifest.entries);
+      return {
+        ok: manifest.validation.valid && skillValidation.valid,
+        issues: [...manifest.validation.issues, ...skillValidation.issues],
+        manifest,
+      };
+    },
     workspaceOptions: taskWorkspaceOptions(run, task),
   });
   if (harnessResult.paused) {
@@ -931,7 +958,9 @@ async function executeTask(run, task, context, previousResults) {
     }
   }
 
-  const manifest = await recordTaskArtifactManifest(run, task, context, { validate: true });
+  const manifest = harnessResult.manifest
+    || (fakeMode ? await recordTaskArtifactManifest(run, task, context, { validate: true }) : null);
+  if (!manifest) throw new Error('Worker 未通过结构化完成协议提交结果');
   if (!manifest.validation.valid) {
     throw new Error(`工作区产物检查未通过：${manifest.validation.issues.join('；') || '存在无效文件'}`);
   }

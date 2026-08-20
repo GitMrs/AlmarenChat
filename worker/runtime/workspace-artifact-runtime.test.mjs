@@ -96,6 +96,28 @@ test('workspace artifact runtime validates, registers and applies a staged webpa
   }
 });
 
+test('workspace artifact runtime rejects invalid inline webpage scripts', async () => {
+  const current = await fixture();
+  try {
+    await writeFile(
+      workspaceAttemptFile(current.options, 'index.html').target,
+      '<!doctype html><script>const = ;</script>',
+      'utf8'
+    );
+    const recorded = await current.runtime.recordTaskArtifactManifest(
+      current.run,
+      current.task,
+      current.context,
+      { validate: true }
+    );
+    assert.equal(recorded.status, 'INCOMPLETE');
+    assert.equal(recorded.validation.valid, false);
+    assert.match(recorded.validation.issues.join('\n'), /内联脚本语法无效/);
+  } finally {
+    await current.cleanup();
+  }
+});
+
 test('workspace artifact runtime rolls files back when database application fails', async () => {
   const current = await fixture();
   try {

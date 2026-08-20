@@ -20,15 +20,17 @@ function fixture({
   fakeMode = false,
   create = null,
   retryTransient = (operation) => operation(),
+  modelTimeoutMs = 180_000,
 } = {}) {
   const clientOptions = [];
   const requests = [];
   const reservations = [];
   const warnings = [];
+  const completions = [];
   const client = createWorkerModelClient({
     db: { marker: 'db' },
     fakeMode,
-    modelTimeoutMs: 180_000,
+    modelTimeoutMs,
     now: () => 'now',
     createClient: (options) => {
       clientOptions.push(options);
@@ -46,8 +48,9 @@ function fixture({
     reserveRequest: (...args) => reservations.push(args),
     retryTransient,
     warn: (...args) => warnings.push(args),
+    onRequestComplete: (event) => completions.push(event),
   });
-  return { client, clientOptions, requests, reservations, warnings };
+  return { client, clientOptions, requests, reservations, warnings, completions };
 }
 
 test('worker model client sends DeepSeek-compatible tool requests', async () => {
@@ -80,8 +83,14 @@ test('worker model client sends DeepSeek-compatible tool requests', async () => 
   assert.equal(current.requests[0].payload.stream, true);
   assert.equal('max_tokens' in current.requests[0].payload, false);
   assert.equal('max_completion_tokens' in current.requests[0].payload, false);
-  assert.deepEqual(current.requests[0].requestOptions, { signal });
+  assert.equal(current.requests[0].requestOptions.signal instanceof AbortSignal, true);
+  assert.equal(current.requests[0].requestOptions.signal.aborted, false);
   assert.deepEqual(current.reservations, [[{ marker: 'db' }, 'run-1', 'task-1', 'now']]);
+  assert.equal(current.completions.length, 1);
+  assert.equal(current.completions[0].requestChars > 0, true);
+  assert.equal(current.completions[0].contentChars, 2);
+  assert.equal(current.completions[0].scope, 'task');
+  assert.equal('messages' in current.completions[0], false);
 });
 
 test('worker model client omits tool fields and can reserve only the run budget', async () => {
@@ -96,6 +105,7 @@ test('worker model client omits tool fields and can reserve only the run budget'
   assert.equal('tools' in current.requests[0].payload, false);
   assert.equal('tool_choice' in current.requests[0].payload, false);
   assert.deepEqual(current.reservations, [[{ marker: 'db' }, 'run-1', null, 'now']]);
+  assert.equal(current.completions[0].scope, 'run');
 });
 
 test('worker model client preserves reasoning-only diagnostics without exposing reasoning text', async () => {
@@ -154,6 +164,26 @@ test('worker model client marks exhausted transient failures as recoverable', as
     current.client.completeMessage(model, [], [], { runId: 'run-1' }),
     (error) => error.code === 'MODEL_PROVIDER_TRANSIENT' && error.status === 500
   );
+});
+
+test('worker model client timeout covers complete stream consumption', async () => {
+  let streamReturned = false;
+  const current = fixture({
+    modelTimeoutMs: 20,
+    create: async () => ({
+      async *[Symbol.asyncIterator]() {
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        streamReturned = true;
+        yield { choices: [{ delta: { content: 'late' } }] };
+      },
+    }),
+  });
+  await assert.rejects(
+    current.client.completeMessage(model, [], [], { runId: 'run-1' }),
+    (error) => error.code === 'MODEL_TIMEOUT'
+  );
+  assert.equal(streamReturned, false);
+  assert.equal(current.completions.length, 0);
 });
 
 test('fake worker model client does not create a provider client or reserve budget', async () => {
