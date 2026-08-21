@@ -3,6 +3,7 @@ import path from 'node:path';
 import { NextResponse } from 'next/server';
 import { ensureSpaceRoot, resolveSpacePath } from '@/app/api/_lib/spaces';
 import { verifySpacePreviewToken } from '@/lib/space-preview-token.mjs';
+import { STATIC_HTML_SANDBOX } from '@/lib/static-html-sandbox.mjs';
 import { workspaceAttemptFile } from '@/lib/workspace-staging.mjs';
 
 const MAX_PREVIEW_FILE_BYTES = 5 * 1024 * 1024;
@@ -29,7 +30,7 @@ function previewPolicy(request: Request, token: string) {
   const origin = new URL(request.url).origin;
   const root = `${origin}/api/space-previews/${token}/`;
   return [
-    "sandbox allow-scripts allow-forms allow-modals",
+    `sandbox ${STATIC_HTML_SANDBOX}`,
     "default-src 'none'",
     `script-src 'unsafe-inline' ${root}`,
     `style-src 'unsafe-inline' ${root}`,
