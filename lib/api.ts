@@ -92,7 +92,18 @@ export const agents = {
 export const conversations = {
   list: () => request<{ conversations: any[] }>('/conversations'),
   get: (id: string) => request<{ conversation: any }>(`/conversations/${id}`),
-  create: (data: { agentId: string; title?: string }) =>
+  create: (data: {
+    agentId: string;
+    title?: string;
+    agentSnapshot?: {
+      name?: string;
+      avatar?: string;
+      category?: string;
+      tone?: string;
+      description?: string;
+      systemPrompt?: string;
+    };
+  }) =>
     request<{ conversation: any }>('/conversations', {
       method: 'POST',
       body: JSON.stringify(data),
@@ -113,10 +124,17 @@ export const conversations = {
     const query = params.toString();
     return request<{ messages: any[]; hasMore?: boolean }>(`/conversations/${id}/messages${query ? `?${query}` : ''}`);
   },
-  sendMessage: (id: string, content: string) =>
+  sendMessage: (
+    id: string,
+    content: string,
+    options?: {
+      role?: 'user' | 'assistant';
+      attachments?: { type: 'image'; url: string; name?: string; mimeType?: string; size?: number }[];
+    }
+  ) =>
     request<{ message: any }>(`/conversations/${id}/messages`, {
       method: 'POST',
-      body: JSON.stringify({ content }),
+      body: JSON.stringify({ content, ...options }),
     }),
   deleteMessage: (conversationId: string, messageId: string) =>
     request<{ success: boolean }>(`/conversations/${conversationId}/messages/${messageId}`, {

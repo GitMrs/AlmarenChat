@@ -48,7 +48,11 @@ export async function POST(
   try {
     const userId = requireAuth(request);
     const { conversationId } = await params;
-    const { content, role = 'user' } = await request.json();
+    const { content, role = 'user', attachments } = await request.json();
+
+    if (typeof content !== 'string' || (role !== 'user' && role !== 'assistant')) {
+      return NextResponse.json({ error: 'Invalid message' }, { status: 400 });
+    }
 
     // Verify conversation belongs to user
     const conversation = await prisma.conversation.findFirst({
@@ -63,6 +67,7 @@ export async function POST(
         conversationId,
         role,
         content,
+        attachments: Array.isArray(attachments) && attachments.length > 0 ? attachments : undefined,
       },
     });
 

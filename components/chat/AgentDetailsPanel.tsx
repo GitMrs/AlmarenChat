@@ -1,10 +1,11 @@
 'use client';
 
-import { ArrowLeft, ChevronDown, ChevronUp, SlidersHorizontal, X } from 'lucide-react';
+import { ArrowLeft, ChevronDown, ChevronUp, Cloud, Cpu, Loader2, Save, SlidersHorizontal, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import Avatar from '@/components/shared/Avatar';
 import type { DisplayAgent } from '@/components/chat/ChatMessageItem';
+import type { BrowserModelConfig, BrowserModelScope } from '@/lib/browser-model';
 
 type AgentDetailsPanelProps = {
   displayAgent: DisplayAgent;
@@ -14,11 +15,20 @@ type AgentDetailsPanelProps = {
   isLoggedIn: boolean;
   contextMessageLimit: number;
   maxContextMessageLimit: number;
+  modelConfig: BrowserModelConfig;
+  modelScope: BrowserModelScope;
+  canScopeToConversation: boolean;
+  modelConfigSaving: boolean;
+  modelConfigSaved: boolean;
+  modelConfigError: string;
   onBack: () => void;
   onToggleDetails: () => void;
   onOpenMobileDetails: () => void;
   onCloseMobileDetails: () => void;
   onContextMessageLimitChange: (value: number) => void;
+  onModelConfigChange: (config: BrowserModelConfig) => void;
+  onModelScopeChange: (scope: BrowserModelScope) => void;
+  onSaveModelConfig: () => void;
 };
 
 function ContextLimitControl({
@@ -47,6 +57,130 @@ function ContextLimitControl({
         />
         <div className="whitespace-nowrap text-xs font-semibold text-slate-400">/ {max} 条</div>
       </div>
+    </div>
+  );
+}
+
+function ModelSettingsControl({
+  config,
+  scope,
+  canScopeToConversation,
+  saving,
+  saved,
+  error,
+  onConfigChange,
+  onScopeChange,
+  onSave,
+}: {
+  config: BrowserModelConfig;
+  scope: BrowserModelScope;
+  canScopeToConversation: boolean;
+  saving: boolean;
+  saved: boolean;
+  error: string;
+  onConfigChange: (config: BrowserModelConfig) => void;
+  onScopeChange: (scope: BrowserModelScope) => void;
+  onSave: () => void;
+}) {
+  const update = (patch: Partial<BrowserModelConfig>) => onConfigChange({ ...config, ...patch });
+
+  return (
+    <div className="mb-5 border-b border-black/[0.06] pb-5">
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="text-sm font-black text-slate-800">模型来源</h2>
+        {saved && <span className="text-xs font-bold text-emerald-600">已保存</span>}
+      </div>
+
+      <div className="grid grid-cols-2 gap-1 rounded-lg bg-[#fbfaf7] p-1">
+        <button
+          type="button"
+          disabled={!canScopeToConversation}
+          onClick={() => onScopeChange('CONVERSATION')}
+          className={`h-8 text-xs font-bold transition disabled:cursor-not-allowed disabled:opacity-40 ${
+            scope === 'CONVERSATION' ? 'rounded-md bg-white text-slate-950 shadow-sm' : 'text-slate-500'
+          }`}
+        >
+          当前对话
+        </button>
+        <button
+          type="button"
+          onClick={() => onScopeChange('GLOBAL')}
+          className={`h-8 text-xs font-bold transition ${
+            scope === 'GLOBAL' ? 'rounded-md bg-white text-slate-950 shadow-sm' : 'text-slate-500'
+          }`}
+        >
+          所有对话默认
+        </button>
+      </div>
+
+      <div className="mt-2 grid grid-cols-2 gap-1 rounded-lg bg-[#fbfaf7] p-1">
+        <button
+          type="button"
+          onClick={() => update({ source: 'ONLINE' })}
+          className={`flex h-9 items-center justify-center gap-2 text-xs font-bold transition ${
+            config.source === 'ONLINE' ? 'rounded-md bg-white text-slate-950 shadow-sm' : 'text-slate-500'
+          }`}
+        >
+          <Cloud size={14} />
+          线上模型
+        </button>
+        <button
+          type="button"
+          onClick={() => update({ source: 'OLLAMA' })}
+          className={`flex h-9 items-center justify-center gap-2 text-xs font-bold transition ${
+            config.source === 'OLLAMA' ? 'rounded-md bg-white text-slate-950 shadow-sm' : 'text-slate-500'
+          }`}
+        >
+          <Cpu size={14} />
+          Ollama
+        </button>
+      </div>
+
+      {config.source === 'OLLAMA' && (
+        <div className="mt-3 space-y-3">
+          <label className="block">
+            <span className="mb-1 block text-xs font-bold text-slate-500">Base URL</span>
+            <input
+              type="url"
+              value={config.baseUrl}
+              onChange={(event) => update({ baseUrl: event.target.value })}
+              placeholder="http://localhost:11434/v1"
+              className="h-9 w-full rounded-md border border-black/[0.08] bg-white px-3 text-xs text-slate-800 outline-none focus:border-slate-400"
+            />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-xs font-bold text-slate-500">模型名称</span>
+            <input
+              type="text"
+              value={config.model}
+              onChange={(event) => update({ model: event.target.value })}
+              placeholder="qwen3:8b"
+              className="h-9 w-full rounded-md border border-black/[0.08] bg-white px-3 text-xs text-slate-800 outline-none focus:border-slate-400"
+            />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-xs font-bold text-slate-500">API Key（可选）</span>
+            <input
+              type="password"
+              value={config.apiKey}
+              onChange={(event) => update({ apiKey: event.target.value })}
+              autoComplete="off"
+              className="h-9 w-full rounded-md border border-black/[0.08] bg-white px-3 text-xs text-slate-800 outline-none focus:border-slate-400"
+            />
+          </label>
+        </div>
+      )}
+
+      {error && <p className="mt-2 text-xs font-semibold leading-5 text-rose-600">{error}</p>}
+      <button
+        type="button"
+        onClick={onSave}
+        disabled={saving}
+        className="mt-3 flex h-9 w-full items-center justify-center gap-2 rounded-md bg-slate-950 text-xs font-black text-white transition hover:bg-slate-800 disabled:bg-slate-300"
+      >
+        {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+        {saving ? '保存中' : '保存模型设置'}
+      </button>
     </div>
   );
 }
@@ -80,15 +214,24 @@ export default function AgentDetailsPanel({
   isLoggedIn,
   contextMessageLimit,
   maxContextMessageLimit,
+  modelConfig,
+  modelScope,
+  canScopeToConversation,
+  modelConfigSaving,
+  modelConfigSaved,
+  modelConfigError,
   onBack,
   onToggleDetails,
   onOpenMobileDetails,
   onCloseMobileDetails,
   onContextMessageLimitChange,
+  onModelConfigChange,
+  onModelScopeChange,
+  onSaveModelConfig,
 }: AgentDetailsPanelProps) {
   return (
     <>
-      <aside className="hidden w-[340px] shrink-0 border-r border-black/[0.06] bg-white/80 p-5 backdrop-blur lg:flex lg:flex-col">
+      <aside className="hidden w-[340px] shrink-0 overflow-y-auto border-r border-black/[0.06] bg-white/80 p-5 backdrop-blur lg:flex lg:flex-col">
         <button
           onClick={onBack}
           className="mb-6 inline-flex w-fit items-center gap-2 rounded-full border border-black/[0.06] bg-white px-4 py-2 text-sm font-bold text-slate-600 shadow-sm hover:text-slate-950"
@@ -121,6 +264,19 @@ export default function AgentDetailsPanel({
         </div>
 
         <div className="mt-5 rounded-[28px] border border-black/[0.06] bg-white p-5 shadow-sm">
+          {isLoggedIn && (
+            <ModelSettingsControl
+              config={modelConfig}
+              scope={modelScope}
+              canScopeToConversation={canScopeToConversation}
+              saving={modelConfigSaving}
+              saved={modelConfigSaved}
+              error={modelConfigError}
+              onConfigChange={onModelConfigChange}
+              onScopeChange={onModelScopeChange}
+              onSave={onSaveModelConfig}
+            />
+          )}
           {isLoggedIn && (
             <ContextLimitControl
               value={contextMessageLimit}
@@ -183,6 +339,19 @@ export default function AgentDetailsPanel({
             </div>
 
             <div className="max-h-[calc(82dvh-73px)] space-y-4 overflow-y-auto p-5">
+              {isLoggedIn && (
+                <ModelSettingsControl
+                  config={modelConfig}
+                  scope={modelScope}
+                  canScopeToConversation={canScopeToConversation}
+                  saving={modelConfigSaving}
+                  saved={modelConfigSaved}
+                  error={modelConfigError}
+                  onConfigChange={onModelConfigChange}
+                  onScopeChange={onModelScopeChange}
+                  onSave={onSaveModelConfig}
+                />
+              )}
               {isLoggedIn && (
                 <ContextLimitControl
                   value={contextMessageLimit}

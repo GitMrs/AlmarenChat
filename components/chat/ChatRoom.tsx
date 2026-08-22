@@ -14,10 +14,18 @@ import ChatComposer from '@/components/chat/ChatComposer';
 import { MessageItem } from '@/components/chat/ChatMessageItem';
 import { getBuiltInAgents } from '@/lib/agents-data';
 import { streamChat, conversations as conversationsApi, agents as agentsApi, user as userApi, uploads } from '@/lib/api';
+import {
+  DEFAULT_BROWSER_MODEL_CONFIG,
+  readBrowserModelConfig,
+  readBrowserModelConfigForScope,
+  saveBrowserModelConfig,
+  streamBrowserModel,
+} from '@/lib/browser-model';
 import { cn } from '@/lib/utils';
 import { CATEGORY_COLORS } from '@/types';
 import type { Agent, MessageAttachment } from '@/types';
 import type { ChatMessage, DisplayAgent } from '@/components/chat/ChatMessageItem';
+import type { BrowserModelConfig, BrowserModelScope } from '@/lib/browser-model';
 
 const promptMap: Record<string, string[]> = {
   写作: ['帮我把这段话改得更有吸引力', '生成 5 个标题', '把内容改成小红书风格'],
@@ -42,6 +50,25 @@ function getLargeTextKind(text: string) {
   } catch {
     return 'text' as const;
   }
+}
+
+function imageUrlToDataUrl(url: string) {
+  if (url.startsWith('data:')) return Promise.resolve(url);
+
+  return fetch(url)
+    .then((response) => {
+      if (!response.ok) throw new Error('读取图片失败');
+      return response.blob();
+    })
+    .then(
+      (blob) =>
+        new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result));
+          reader.onerror = () => reject(new Error('读取图片失败'));
+          reader.readAsDataURL(blob);
+        })
+    );
 }
 
 interface ChatRoomProps {
@@ -79,6 +106,12 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
   const [uploadingImage, setUploadingImage] = useState(false);
   const [uploadError, setUploadError] = useState('');
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
+  const [browserModelConfig, setBrowserModelConfig] = useState<BrowserModelConfig>({ ...DEFAULT_BROWSER_MODEL_CONFIG });
+  const [browserModelDraft, setBrowserModelDraft] = useState<BrowserModelConfig>({ ...DEFAULT_BROWSER_MODEL_CONFIG });
+  const [browserModelScope, setBrowserModelScope] = useState<BrowserModelScope>('GLOBAL');
+  const [browserModelSaving, setBrowserModelSaving] = useState(false);
+  const [browserModelSaved, setBrowserModelSaved] = useState(false);
+  const [browserModelError, setBrowserModelError] = useState('');
   const [hasMoreMessages, setHasMoreMessages] = useState(false);
   const [loadingMoreMessages, setLoadingMoreMessages] = useState(false);
   const [shouldStickToBottom, setShouldStickToBottom] = useState(true);
@@ -99,6 +132,15 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
   useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
+
+  useEffect(() => {
+    const stored = readBrowserModelConfig(existingConversationId);
+    setBrowserModelConfig(stored.config);
+    setBrowserModelDraft(stored.config);
+    setBrowserModelScope(stored.scope);
+    setBrowserModelSaved(false);
+    setBrowserModelError('');
+  }, [existingConversationId]);
 
   useEffect(() => {
     const updateViewportHeight = () => {
@@ -440,30 +482,91 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
       const controller = new AbortController();
       abortRef.current = controller;
 
-      const result = await streamChat({
-        message: content,
-        history,
-        context: displayAgent?.systemPrompt,
-        conversationId: conversationId || undefined,
-        agentId: displayAgent?.id || agentId,
-        attachments: outgoingAttachments,
-        contextMessageLimit,
-        skipPersistUserMessage: options.reuseLastUserMessage,
-        webSearchEnabled,
-        knowledgeEnabled: true,
-        agentSnapshot: displayAgent
-          ? {
-              name: displayAgent.name,
-              avatar: displayAgent.avatar,
-              category: displayAgent.category,
-              tone: displayAgent.tone,
-              description: displayAgent.description,
-              systemPrompt: displayAgent.systemPrompt,
-            }
-          : undefined,
-        ...(userSettings || {}),
-        signal: controller.signal,
-      });
+      const agentSnapshot = displayAgent
+        ? {
+            name: displayAgent.name,
+            avatar: displayAgent.avatar,
+            category: displayAgent.category,
+            tone: displayAgent.tone,
+            description: displayAgent.description,
+            systemPrompt: displayAgent.systemPrompt,
+          }
+        : undefined;
+      const usesBrowserModel = browserModelConfig.source === 'OLLAMA';
+      let result: { stream: ReadableStream<Uint8Array>; conversationId?: string };
+
+      if (usesBrowserModel) {
+        if (webSearchEnabled) {
+          throw new Error('浏览器直连 Ollama 时不能使用服务端联网搜索');
+        }
+
+        let localConversationId = conversationId || undefined;
+        if (!localConversationId) {
+          const created = await conversationsApi.create({
+            agentId: displayAgent?.id || agentId,
+            title: content.slice(0, 50) || (outgoingAttachments.length > 0 ? '图片会话' : '新会话'),
+            agentSnapshot,
+          });
+          localConversationId = created.conversation.id;
+          setConversationId(localConversationId);
+        }
+
+        if (!options.reuseLastUserMessage) {
+          await conversationsApi.sendMessage(localConversationId, content, {
+            role: 'user',
+            attachments: outgoingAttachments,
+          });
+        }
+
+        const modelMessages: { role: 'system' | 'user' | 'assistant'; content: any }[] = historySource
+          .filter((message) => !message.id.startsWith('error-'))
+          .slice(-contextMessageLimit)
+          .map((message) => ({
+            role: message.role,
+            content: message.content,
+          }));
+
+        if (outgoingAttachments.length > 0 && modelMessages.length > 0) {
+          const imageContent = await Promise.all(
+            outgoingAttachments.map(async (attachment) => ({
+              type: 'image_url',
+              image_url: { url: await imageUrlToDataUrl(attachment.url) },
+            }))
+          );
+          modelMessages[modelMessages.length - 1].content = [
+            { type: 'text', text: content || '请分析这张图片。' },
+            ...imageContent,
+          ];
+        }
+        if (displayAgent?.systemPrompt) {
+          modelMessages.unshift({ role: 'system', content: displayAgent.systemPrompt });
+        }
+
+        result = {
+          stream: await streamBrowserModel({
+            config: browserModelConfig,
+            messages: modelMessages,
+            signal: controller.signal,
+          }),
+          conversationId: localConversationId,
+        };
+      } else {
+        result = await streamChat({
+          message: content,
+          history,
+          context: displayAgent?.systemPrompt,
+          conversationId: conversationId || undefined,
+          agentId: displayAgent?.id || agentId,
+          attachments: outgoingAttachments,
+          contextMessageLimit,
+          skipPersistUserMessage: options.reuseLastUserMessage,
+          webSearchEnabled,
+          knowledgeEnabled: true,
+          agentSnapshot,
+          ...(userSettings || {}),
+          signal: controller.signal,
+        });
+      }
 
       if (result.conversationId && !conversationId) {
         setConversationId(result.conversationId);
@@ -496,6 +599,9 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
       setStreamingContent('');
 
       if (result.conversationId) {
+        if (usesBrowserModel && fullContent) {
+          await conversationsApi.sendMessage(result.conversationId, fullContent, { role: 'assistant' });
+        }
         await syncConversationMessages(result.conversationId, messagesWithAssistant);
       }
     } catch (error: any) {
@@ -521,6 +627,9 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
     abortRef.current?.abort();
     setIsStreaming(false);
     if (streamingContent) {
+      if (browserModelConfig.source === 'OLLAMA' && conversationId) {
+        conversationsApi.sendMessage(conversationId, streamingContent, { role: 'assistant' }).catch(() => {});
+      }
       setMessages((prev) => [
         ...prev,
         {
@@ -585,6 +694,41 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
       await conversationsApi.update(conversationId, { contextMessageLimit: nextLimit });
     } catch (error) {
       console.error('Update context message limit failed:', error);
+    }
+  };
+
+  const updateBrowserModelDraft = (config: BrowserModelConfig) => {
+    setBrowserModelDraft(config);
+    setBrowserModelSaved(false);
+    setBrowserModelError('');
+  };
+
+  const updateBrowserModelScope = (scope: BrowserModelScope) => {
+    const currentConversationId = conversationId || existingConversationId;
+    setBrowserModelScope(scope);
+    setBrowserModelDraft(readBrowserModelConfigForScope(scope, currentConversationId));
+    setBrowserModelSaved(false);
+    setBrowserModelError('');
+  };
+
+  const persistBrowserModelConfig = () => {
+    setBrowserModelSaving(true);
+    setBrowserModelSaved(false);
+    setBrowserModelError('');
+
+    try {
+      const normalized = saveBrowserModelConfig(
+        browserModelDraft,
+        browserModelScope,
+        conversationId || existingConversationId
+      );
+      setBrowserModelConfig(normalized);
+      setBrowserModelDraft(normalized);
+      setBrowserModelSaved(true);
+    } catch (error: any) {
+      setBrowserModelError(error.message || '模型设置保存失败');
+    } finally {
+      setBrowserModelSaving(false);
     }
   };
 
@@ -685,11 +829,20 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
         isLoggedIn={isLoggedIn}
         contextMessageLimit={contextMessageLimit}
         maxContextMessageLimit={MAX_CONTEXT_MESSAGE_LIMIT}
+        modelConfig={browserModelDraft}
+        modelScope={browserModelScope}
+        canScopeToConversation={Boolean(conversationId || existingConversationId)}
+        modelConfigSaving={browserModelSaving}
+        modelConfigSaved={browserModelSaved}
+        modelConfigError={browserModelError}
         onBack={() => router.back()}
         onToggleDetails={() => setDetailsOpen((value) => !value)}
         onOpenMobileDetails={() => setMobileDetailsOpen(true)}
         onCloseMobileDetails={() => setMobileDetailsOpen(false)}
         onContextMessageLimitChange={updateContextMessageLimit}
+        onModelConfigChange={updateBrowserModelDraft}
+        onModelScopeChange={updateBrowserModelScope}
+        onSaveModelConfig={persistBrowserModelConfig}
       />
 
       <main className="flex min-h-0 min-w-0 flex-1 flex-col">

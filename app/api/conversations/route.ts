@@ -29,24 +29,25 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const userId = requireAuth(request);
-    const { agentId, title } = await request.json();
+    const { agentId, title, agentSnapshot } = await request.json();
 
     if (!agentId) {
       return NextResponse.json({ error: 'Missing agentId' }, { status: 400 });
     }
 
     const agent = await prisma.agent.findUnique({ where: { id: agentId } });
+    const snapshot = agent || agentSnapshot || {};
 
     const conversation = await prisma.conversation.create({
       data: {
         userId,
         agentId,
-        agentName: agent?.name || null,
-        agentAvatar: agent?.avatar || null,
-        agentCategory: agent?.category || null,
-        agentTone: agent?.tone || null,
-        agentDescription: agent?.description || null,
-        agentSystemPrompt: agent?.systemPrompt || null,
+        agentName: snapshot.name || null,
+        agentAvatar: snapshot.avatar || null,
+        agentCategory: snapshot.category || null,
+        agentTone: snapshot.tone || null,
+        agentDescription: snapshot.description || null,
+        agentSystemPrompt: snapshot.systemPrompt || null,
         title,
       },
     });
