@@ -57,8 +57,8 @@ const TASK_PROPOSAL_TOOL = {
           type: 'array',
           minItems: 1,
           uniqueItems: true,
-          items: { type: 'string', enum: ['workspace_read', 'workspace_write', 'web_research'] },
-          description: '任务实际需要的能力。始终包含 workspace_read；仅在需要创建或修改空间文件时加入 workspace_write；仅在需要外部公开资料时加入 web_research。',
+          items: { type: 'string', enum: ['workspace_read', 'workspace_write', 'web_research', 'code_execute'] },
+          description: '任务实际需要的能力。始终包含 workspace_read；创建或修改文件时加入 workspace_write；需要运行已注册 Skill 的 Python/Node 入口时加入 code_execute；需要外部公开资料时加入 web_research。',
         },
         networkPolicy: {
           type: 'string',
@@ -87,7 +87,7 @@ type TaskProposal = {
     dependsOn: number[];
     deliverables: string[];
   }>;
-  capabilities: Array<'workspace_read' | 'workspace_write' | 'web_research'>;
+  capabilities: Array<'workspace_read' | 'workspace_write' | 'web_research' | 'code_execute'>;
   networkPolicy: 'forbidden' | 'allowed' | 'required';
   status: 'pending';
 };
@@ -295,7 +295,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
         !isMultiReply ? '如果品种、单位、范围、输入文件、输出要求等关键信息不足，先在普通对话中追问；获得用户回答前不得调用 propose_task，也不得把“询问用户、确认用户信息、等待用户补充”写成后台执行步骤。' : '',
         !isMultiReply && allowWebSearch ? '本轮联网搜索已由用户开启。需要外部公开资料或实时事实时调用 web_search；查询当前空间目录和文件必须使用本地只读工具，不得调用 web_search。一次联网查询直接回答，不要生成任务方案。' : '',
         !isMultiReply && !allowWebSearch ? '本轮联网搜索未开启。需要外部公开资料或实时事实时，请简短提示用户开启输入框的联网开关；不得仅为获得联网能力而生成任务方案。' : '',
-        !isMultiReply ? '仅在用户明确要求创建或修改文件、网页、代码或文档时，才把写入工作区列入任务。' : '',
+        !isMultiReply ? '仅在用户明确要求创建或修改文件、网页、代码或文档时，才把写入工作区列入任务。只有任务确实需要运行已注册 Skill 的 Python/Node 入口时才申请 code_execute；普通文件编辑和静态检查不得申请。' : '',
         !isMultiReply ? '打招呼、事实问答、概念解释、讨论想法、没有明确交付约束的简单分析，以及几次只读或联网调用可以完成的查看，都直接在当前对话回答。用户明确要求专业分析、评估、审查、方案或清单，并同时给出数量、格式、标准或交付物约束时，应生成任务方案；用户明确要求直接回答或不要创建任务时除外。' : '',
         forceTaskProposal ? '系统已确认当前请求需要形成可验收的专业交付，本轮必须调用 propose_task 提交方案，不要直接用正文代替任务方案。' : '',
       ].join('\n'),

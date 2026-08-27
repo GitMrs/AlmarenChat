@@ -61,10 +61,9 @@ function applyRevision(proposal: TaskProposalAttachment, revision: TaskProposalR
     : revision ? undefined : proposal.executionPlan;
   let next = proposal;
   if (revision && revisedExecutionPlan) {
-    const { capabilities: _capabilities, ...proposalWithoutCapabilities } = proposal;
-    next = { ...proposalWithoutCapabilities, ...revision, executionPlan: revisedExecutionPlan };
+    next = { ...proposal, ...revision, executionPlan: revisedExecutionPlan };
   } else if (revision) {
-    const { executionPlan: _legacyExecutionPlan, capabilities: _capabilities, ...authorizationProposal } = proposal;
+    const { executionPlan: _legacyExecutionPlan, ...authorizationProposal } = proposal;
     next = { ...authorizationProposal, ...revision };
   }
   const securedProposal = taskProposalWithServerCapabilities(next, {

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Check, FileText, Globe2, Loader2, X } from 'lucide-react';
+import { Check, Code2, FileText, Globe2, Loader2, X } from 'lucide-react';
 import type { SpaceNetworkPolicy, SpaceTaskProposal } from '@/types';
 
 export type TaskProposalRevision = Pick<SpaceTaskProposal, 'goal' | 'steps' | 'deliverables'> & {
@@ -161,6 +161,12 @@ export default function TaskProposalDialog({
                   修改空间文件
                 </span>
               )}
+              {capabilities.includes('code_execute') && (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1.5 text-xs font-black text-amber-700">
+                  <Code2 size={13} />
+                  隔离运行代码
+                </span>
+              )}
               {networkPolicy !== 'forbidden' && (
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-black text-emerald-700">
                   <Globe2 size={13} />
@@ -168,7 +174,7 @@ export default function TaskProposalDialog({
                 </span>
               )}
             </div>
-            <p className="mt-3 text-xs font-semibold leading-5 text-slate-400">联网策略会写入本次目标授权；禁止联网时，AI 和 Worker 都不能发起检索。</p>
+            <p className="mt-3 text-xs font-semibold leading-5 text-slate-400">权限会写入本次目标授权；代码执行仅允许已注册 Skill 的固定入口，并在 OS 沙箱中运行。</p>
           </section>
 
           {(validationError || error) && (

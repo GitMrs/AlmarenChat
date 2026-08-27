@@ -112,7 +112,7 @@ export interface SpaceFileShare {
   updatedAt?: string | null;
 }
 
-export type SpaceTaskCapability = 'workspace_read' | 'workspace_write' | 'web_research';
+export type SpaceTaskCapability = 'workspace_read' | 'workspace_write' | 'web_research' | 'code_execute';
 export type SpaceNetworkPolicy = 'forbidden' | 'allowed' | 'required';
 
 export interface SpaceTaskExecutionStep {

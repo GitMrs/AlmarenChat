@@ -95,6 +95,71 @@ test('executor harness owns prompts and the model tool loop', async () => {
   assert.equal(events.some((event) => event[1] === 'MODEL_WORKING'), true);
 });
 
+test('executor exposes executable Skill tools only inside the approved capability boundary', async () => {
+  const executableTask = {
+    ...task,
+    skillId: 'csv-business-analysis',
+    skillSnapshot: {
+      id: 'csv-business-analysis',
+      name: 'CSV 业务数据分析',
+      version: '1.0.0',
+      allowedTools: ['list_files', 'read_file', 'check_files', 'run_skill'],
+      artifactExtensions: ['.md', '.html'],
+      requiredArtifactExtensions: ['.md', '.html'],
+      instructions: '调用固定入口生成报告。',
+      execution: {
+        entrypoint: 'analyze',
+        parameters: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['input', 'markdownOutput', 'htmlOutput'],
+          properties: {
+            input: { type: 'string' },
+            markdownOutput: { type: 'string' },
+            htmlOutput: { type: 'string' },
+          },
+        },
+      },
+    },
+  };
+  const observed = [];
+  const execute = (capabilities) => runExecutorHarness({
+    run: { ...run, runtimeVersion: 3 },
+    task: executableTask,
+    agent,
+    context: { ...context, authorization: { capabilities, networkPolicy: 'forbidden' }, touchedPaths: new Set() },
+    previousResults: [],
+    baselinePaths: new Set(),
+    fakeMode: false,
+    taskTimeoutMs: 30_000,
+    completeMessage: async (_model, _messages, tools) => {
+      observed.push(tools.map((tool) => tool.function.name));
+      return {
+        content: null,
+        tool_calls: [{
+          id: 'submit-capability-check',
+          type: 'function',
+          function: {
+            name: 'submit_task_result',
+            arguments: JSON.stringify({ summary: '权限边界已验证。', remainingIssues: [] }),
+          },
+        }],
+      };
+    },
+    emit: () => {},
+    isCancelled: () => false,
+    pauseForInput: () => ({ pause: true }),
+    registerWorkspaceFile: async () => {},
+    validateSubmission: async () => ({ ok: true, manifest: { validation: { valid: true } } }),
+    workspaceOptions: {},
+  });
+
+  await execute(['workspace_read', 'workspace_write']);
+  await execute(['workspace_read', 'workspace_write', 'code_execute']);
+  assert.equal(observed[0].includes('run_skill'), false);
+  assert.equal(observed[1].includes('run_skill'), true);
+});
+
 test('executor retries two empty reasoning responses before accepting the third response', async () => {
   let requests = 0;
   const events = [];

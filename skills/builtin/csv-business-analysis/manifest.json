@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "id": "csv-business-analysis",
+  "name": "CSV 业务数据分析",
+  "version": "1.0.0",
+  "description": "使用 Python 分析空间内的销售 CSV，并生成 Markdown 与静态 HTML 报告。",
+  "runtime": {
+    "kind": "python",
+    "command": "python3",
+    "network": "forbidden",
+    "timeoutMs": 30000,
+    "maxOutputBytes": 65536
+  },
+  "permissions": {
+    "workspace": "write",
+    "networkDomains": [],
+    "environment": []
+  },
+  "entrypoints": {
+    "analyze": {
+      "script": "scripts/analyze.py",
+      "arguments": [
+        "--input",
+        "{{input}}",
+        "--markdown-output",
+        "{{markdownOutput}}",
+        "--html-output",
+        "{{htmlOutput}}"
+      ]
+    }
+  },
+  "inputs": {
+    "input": {
+      "type": "workspace_file",
+      "extensions": [".csv"],
+      "required": true
+    }
+  },
+  "outputs": {
+    "markdownOutput": {
+      "type": "workspace_file",
+      "extensions": [".md"],
+      "required": true
+    },
+    "htmlOutput": {
+      "type": "workspace_file",
+      "extensions": [".html"],
+      "required": true
+    }
+  }
+}

@@ -1,6 +1,6 @@
 'use client';
 
-import { Activity, Check, CheckCircle2, ChevronRight, Clock3, FileText, Globe2, ListTodo, Loader2, RotateCcw, X, Pencil } from 'lucide-react';
+import { Activity, Check, CheckCircle2, ChevronRight, Clock3, Code2, FileText, Globe2, ListTodo, Loader2, RotateCcw, X, Pencil } from 'lucide-react';
 import MessageActions from '@/components/chat/MessageActions';
 import MessageBubbleFrame from '@/components/chat/MessageBubbleFrame';
 import MessageContent from '@/components/chat/MessageContent';
@@ -85,6 +85,12 @@ function TaskProposal({
               <FileText size={12} />
               {capabilities.includes('workspace_write') ? '读写空间文件' : '读取空间资料'}
             </span>
+            {capabilities.includes('code_execute') && (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-black text-amber-700">
+                <Code2 size={12} />
+                隔离运行代码
+              </span>
+            )}
             {(proposal.networkPolicy || (capabilities.includes('web_research') ? 'required' : 'forbidden')) !== 'forbidden' && (
               <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-black text-emerald-700">
                 <Globe2 size={12} />
