@@ -4,13 +4,14 @@ import { NextResponse } from 'next/server';
 import prisma from '@/app/api/_lib/db';
 import { resolveSpacePath, spaceRoot } from '@/app/api/_lib/spaces';
 import { isValidShareId, resolveSharedResource } from '@/lib/space-share-policy.mjs';
+import { STATIC_HTML_SANDBOX } from '@/lib/static-html-sandbox.mjs';
 
 const MAX_SHARED_FILE_BYTES = 5 * 1024 * 1024;
 
 function sharePolicy(request: Request, shareId: string) {
   const root = `${new URL(request.url).origin}/share/${shareId}/`;
   return [
-    'sandbox allow-scripts allow-forms',
+    `sandbox ${STATIC_HTML_SANDBOX}`,
     "default-src 'none'",
     `script-src 'unsafe-inline' ${root}`,
     `style-src 'unsafe-inline' ${root}`,
