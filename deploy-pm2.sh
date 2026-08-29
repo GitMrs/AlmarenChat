@@ -22,6 +22,13 @@ mkdir -p data public/uploads/images public/uploads/documents
 echo "Installing dependencies..."
 yarn install --frozen-lockfile
 
+echo "Verifying SQLite native bindings..."
+if ! yarn db:verify-native; then
+  echo "SQLite native bindings are missing. Rebuilding dependencies..."
+  yarn install --frozen-lockfile --force
+  yarn db:verify-native
+fi
+
 echo "Syncing database schema..."
 set -a
 . "$ENV_FILE"
