@@ -165,6 +165,13 @@ export const spaces = {
       success: boolean;
       deleted: { messages: number; files: number; memories: number; sessions: number; discussions: number; runs: number };
     }>(`/spaces/${id}/contents`, { method: 'DELETE' }),
+  learning: (id: string) =>
+    request<{ learning: import('@/types').SpaceLearning; readme: string }>(`/spaces/${id}/learning`),
+  updateLearning: (id: string, data: import('@/types').SpaceLearningCommand) =>
+    request<{ learning: import('@/types').SpaceLearning; readme: string }>(`/spaces/${id}/learning`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
   members: (id: string) => request<{ members: any[] }>(`/spaces/${id}/members`),
   addMember: (id: string, data: { agentId: string; roleName?: string }) =>
     request<{ member: any }>(`/spaces/${id}/members`, {

@@ -34,6 +34,9 @@ function fixture() {
       "payload" TEXT, "status" TEXT, "attempts" INTEGER,
       "availableAt" TEXT, "createdAt" TEXT, "updatedAt" TEXT
     );
+    CREATE TABLE "AgentArtifactManifest" (
+      "id" TEXT PRIMARY KEY, "runId" TEXT, "entries" TEXT, "validation" TEXT
+    );
   `);
   const discarded = [];
   const events = [];
@@ -110,6 +113,8 @@ test('task lifecycle fails the run, stages completion and cleans every task work
   assert.equal(run.error, 'provider unavailable');
   assert.equal(current.db.prepare('SELECT "status" FROM "AgentTask"').get().status, 'CANCELLED');
   assert.equal(current.completions.length, 1);
+  assert.match(current.completions[0][4], /暂存变更 0 项/);
+  assert.match(current.memories[0][1][0].summary, /原工作区文件/);
   assert.deepEqual(current.discarded, [['run-1', 'task-1']]);
   assert.equal(current.memories.length, 1);
   current.db.close();

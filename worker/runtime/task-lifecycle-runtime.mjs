@@ -3,6 +3,40 @@ import { normalizeWaitRequest } from '../../lib/agent-wait-policy.mjs';
 import { cancelRunRecord } from './run-cancellation-store.mjs';
 import { executionFailureStatus } from '../policies/run-policy.mjs';
 
+function failureEvidence(db, runId) {
+  const toolCounts = new Map();
+  for (const event of db.prepare(
+    `SELECT "payload" FROM "AgentRunEvent" WHERE "runId" = ? AND "type" = 'TOOL_COMPLETED' ORDER BY "sequence"`
+  ).all(runId)) {
+    try {
+      const tool = String(JSON.parse(event.payload || '{}').tool || '').trim();
+      if (tool) toolCounts.set(tool, (toolCounts.get(tool) || 0) + 1);
+    } catch {
+      // Ignore malformed legacy event payloads.
+    }
+  }
+  let stagedChanges = 0;
+  let validationChecks = 0;
+  try {
+    for (const manifest of db.prepare(
+      `SELECT "entries", "validation" FROM "AgentArtifactManifest" WHERE "runId" = ?`
+    ).all(runId)) {
+      try {
+        const entries = JSON.parse(manifest.entries || '[]');
+        if (Array.isArray(entries)) stagedChanges += entries.length;
+      } catch {}
+      try {
+        const validation = JSON.parse(manifest.validation || '{}');
+        if (Array.isArray(validation?.checks)) validationChecks += validation.checks.length;
+      } catch {}
+    }
+  } catch {
+    // Legacy databases may not have artifact manifests yet.
+  }
+  const tools = [...toolCounts.entries()].map(([tool, count]) => `${tool}×${count}`).join('、') || '无';
+  return `执行证据：工具记录 ${tools}；未应用到工作区的暂存变更 ${stagedChanges} 项；自动校验 ${validationChecks} 项。任务未完成，暂存内容不会覆盖原工作区文件。`;
+}
+
 export function createTaskLifecycleRuntime({
   db,
   addEvent,
@@ -86,6 +120,8 @@ export function createTaskLifecycleRuntime({
     const taskIds = db.prepare('SELECT "id" FROM "AgentTask" WHERE "runId" = ?').all(runId).map((task) => task.id);
     const message = error instanceof Error ? error.message : String(error);
     const status = executionFailureStatus(error);
+    const evidence = failureEvidence(db, runId);
+    const completionError = `${message.slice(0, 3000)}\n\n${evidence}`;
     const timestamp = now();
     const completionId = completionIdFor(runId);
     db.transaction(() => {
@@ -107,16 +143,16 @@ export function createTaskLifecycleRuntime({
         completionId,
         status,
         null,
-        message.slice(0, 4000),
+        completionError.slice(0, 4000),
         status === 'BLOCKED' ? 'RUN_BLOCKED' : 'RUN_FAILED',
         status === 'BLOCKED' ? '任务缺少必要条件，暂时无法继续' : '任务执行失败',
-        { error: message.slice(0, 1000) },
+        { error: message.slice(0, 1000), evidence },
         timestamp
       );
       if (runRecord) persistSpaceMemory(runRecord.spaceId, [{
         type: 'task_run',
         actor: '空间协调者',
-        summary: `${runRecord.input}；状态：${status}；${message.slice(0, 600)}`,
+        summary: `${runRecord.input}；状态：${status}；${message.slice(0, 400)}；${evidence}`,
         at: timestamp,
         refId: runId,
       }], timestamp);
