@@ -20,12 +20,18 @@ echo "Preparing directories..."
 mkdir -p data public/uploads/images public/uploads/documents
 
 echo "Installing dependencies..."
-yarn install --frozen-lockfile
+ONNXRUNTIME_NODE_INSTALL=skip yarn install --frozen-lockfile
 
 echo "Verifying SQLite native bindings..."
 if ! yarn db:verify-native; then
-  echo "SQLite native bindings are missing. Rebuilding dependencies..."
-  yarn install --frozen-lockfile --force
+  SQLITE_NATIVE_DIR="node_modules/@prisma/adapter-better-sqlite3/node_modules/better-sqlite3"
+  if [ ! -d "$SQLITE_NATIVE_DIR" ]; then
+    echo "Error: Prisma SQLite driver not found: $SQLITE_NATIVE_DIR"
+    exit 1
+  fi
+
+  echo "SQLite native bindings are missing. Rebuilding only Prisma's SQLite driver..."
+  npm run install --prefix "$SQLITE_NATIVE_DIR"
   yarn db:verify-native
 fi
 
