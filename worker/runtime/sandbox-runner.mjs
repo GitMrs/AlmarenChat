@@ -69,20 +69,23 @@ async function existingPaths(values) {
   return result;
 }
 
-function seatbeltProfile({ workspaceRoot, skillRoot, tempRoot, network }) {
+function seatbeltProfile({ workspaceRoot, skillRoot, tempRoot, network, workspaceAccess }) {
   const forms = [
     '(version 1)',
     '(allow default)',
     '(deny file-write*)',
-    `(allow file-write* (literal ${sbplString('/dev/null')}) (subpath ${sbplString(workspaceRoot)}) (subpath ${sbplString(tempRoot)}))`,
+    `(allow file-write* (literal ${sbplString('/dev/null')}) (subpath ${sbplString(tempRoot)}))`,
     `(deny file-read* (subpath ${sbplString(os.homedir())}))`,
     `(allow file-read* (subpath ${sbplString(workspaceRoot)}) (subpath ${sbplString(skillRoot)}) (subpath ${sbplString(tempRoot)}))`,
   ];
+  if (workspaceAccess === 'write') {
+    forms.push(`(allow file-write* (subpath ${sbplString(workspaceRoot)}))`);
+  }
   if (!network) forms.push('(deny network*)');
   return forms.join(' ');
 }
 
-async function sandboxInvocation({ platform, workspaceRoot, skillRoot, script, executable, args, tempRoot, network }) {
+async function sandboxInvocation({ platform, workspaceRoot, skillRoot, script, executable, args, tempRoot, network, workspaceAccess }) {
   if (platform === 'darwin') {
     try {
       await access('/usr/bin/sandbox-exec', fsConstants.X_OK);
@@ -92,7 +95,7 @@ async function sandboxInvocation({ platform, workspaceRoot, skillRoot, script, e
     return {
       backend: 'seatbelt',
       executable: '/usr/bin/sandbox-exec',
-      args: ['-p', seatbeltProfile({ workspaceRoot, skillRoot, tempRoot, network }), '--', executable, script.target, ...args],
+      args: ['-p', seatbeltProfile({ workspaceRoot, skillRoot, tempRoot, network, workspaceAccess }), '--', executable, script.target, ...args],
       cwd: workspaceRoot,
     };
   }
@@ -122,7 +125,7 @@ async function sandboxInvocation({ platform, workspaceRoot, skillRoot, script, e
       '--tmpfs', '/tmp',
       '--dir', '/tmp/home',
       '--ro-bind', skillRoot, '/skill',
-      '--bind', workspaceRoot, '/workspace',
+      workspaceAccess === 'write' ? '--bind' : '--ro-bind', workspaceRoot, '/workspace',
       '--chdir', '/workspace',
       '--setenv', 'HOME', '/tmp/home',
       '--setenv', 'TMPDIR', '/tmp',
@@ -247,6 +250,7 @@ export async function runSandboxedSkillProcess(options = {}) {
 
   const timeoutMs = boundedNumber(options.timeoutMs, DEFAULT_TIMEOUT_MS, 1_000, 120_000);
   const maxOutputBytes = boundedNumber(options.maxOutputBytes, DEFAULT_MAX_OUTPUT_BYTES, 1_024, 1024 * 1024);
+  const workspaceAccess = options.workspaceAccess === 'read' ? 'read' : 'write';
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'almaren-sandbox-'));
   await mkdir(path.join(tempRoot, 'home'));
   try {
@@ -259,6 +263,7 @@ export async function runSandboxedSkillProcess(options = {}) {
       args,
       tempRoot,
       network: false,
+      workspaceAccess,
     });
     return await execute(invocation, {
       timeoutMs,

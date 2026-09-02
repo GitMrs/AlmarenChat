@@ -85,6 +85,41 @@ export interface SpaceMessage {
   createdAt: string;
 }
 
+export interface SpaceSkill {
+  id: string;
+  name: string;
+  version: string;
+  description: string;
+  sourceUrl: string;
+  digest: string;
+  installedAt: string;
+  enabled: boolean;
+  fileCount: number;
+  warnings: string[];
+  scripts: string[];
+  approvedScripts: string[];
+  executionEnabled: boolean;
+}
+
+export interface SpaceSkillPreview {
+  id: string;
+  name: string;
+  version: string;
+  description: string;
+  sourceUrl: string;
+  digest: string;
+  files: string[];
+  warnings: string[];
+}
+
+export interface SpaceSkillInvocationAttachment {
+  type: 'skill_invocation';
+  skillId: string;
+  name: string;
+  version: string;
+  digest: string;
+}
+
 export interface SpaceFile {
   id: string;
   spaceId: string;
@@ -138,6 +173,14 @@ export interface SpaceTaskProposal {
   networkPolicy?: SpaceNetworkPolicy;
   status: 'pending' | 'approved' | 'rejected';
   runId?: string;
+  skillSnapshot?: {
+    id: string;
+    name: string;
+    version: string;
+    description?: string;
+    digest?: string;
+  };
+  skillAgentId?: string;
 }
 
 export interface SpaceDiscussionAttachment {
@@ -182,7 +225,7 @@ export interface SpaceDiscussion {
   completedAt?: string | null;
 }
 
-export type SpaceMessageAttachment = MessageAttachment | SpaceTaskProposal | SpaceDiscussionAttachment | SpaceRunResultAttachment;
+export type SpaceMessageAttachment = MessageAttachment | SpaceTaskProposal | SpaceDiscussionAttachment | SpaceRunResultAttachment | SpaceSkillInvocationAttachment;
 
 export interface AgentRun {
   id: string;

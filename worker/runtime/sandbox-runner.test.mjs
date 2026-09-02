@@ -5,9 +5,10 @@ import { cp, mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 import { runSandboxedSkillProcess } from './sandbox-runner.mjs';
 
-const projectRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../..');
+const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const csvSkillRoot = path.join(projectRoot, 'skills', 'builtin', 'csv-business-analysis');
 const csvFixture = path.join(projectRoot, 'tests', 'fixtures', 'skills', 'csv-business-analysis', 'fixtures', 'sales.csv');
 const tempRoots = [];
@@ -72,6 +73,32 @@ test('sandbox runner denies writes outside the workspace', { skip: !sandboxUsabl
   });
   assert.equal(result.ok, false);
   await assert.rejects(readFile(outside, 'utf8'), { code: 'ENOENT' });
+});
+
+test('sandbox runner can mount the workspace read-only for uploaded Skill analyzers', { skip: !sandboxUsable }, async () => {
+  const root = await tempRoot('almaren-sandbox-readonly-');
+  const workspaceRoot = path.join(root, 'workspace');
+  const skillRoot = path.join(root, 'skill');
+  await mkdir(workspaceRoot);
+  await mkdir(skillRoot);
+  await writeFile(path.join(workspaceRoot, 'chapter.md'), 'original', 'utf8');
+  await writeFile(path.join(skillRoot, 'mutate.py'), [
+    'from pathlib import Path',
+    'import sys',
+    "Path(sys.argv[1]).write_text('changed', encoding='utf-8')",
+  ].join('\n'), 'utf8');
+
+  const result = await runSandboxedSkillProcess({
+    workspaceRoot,
+    skillRoot,
+    command: 'python3',
+    script: 'mutate.py',
+    args: ['chapter.md'],
+    network: false,
+    workspaceAccess: 'read',
+  });
+  assert.equal(result.ok, false);
+  assert.equal(await readFile(path.join(workspaceRoot, 'chapter.md'), 'utf8'), 'original');
 });
 
 test('sandbox runner denies network access even to a local listening socket', { skip: !sandboxUsable }, async () => {

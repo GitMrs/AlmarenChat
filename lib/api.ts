@@ -1,4 +1,4 @@
-import type { AgentRun, SpaceDiscussion, SpaceFileShare, SpaceTaskProposal } from '@/types';
+import type { AgentRun, SpaceDiscussion, SpaceFileShare, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal } from '@/types';
 
 const API_BASE = '/api';
 
@@ -20,6 +20,20 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     throw new Error(error.error || `HTTP ${res.status}`);
   }
 
+  return res.json();
+}
+
+async function uploadRequest<T>(path: string, formData: FormData): Promise<T> {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: 'POST',
+    headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: formData,
+  });
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ error: 'Upload failed' }));
+    throw new Error(error.error || `HTTP ${res.status}`);
+  }
   return res.json();
 }
 
@@ -182,6 +196,37 @@ export const spaces = {
     const query = params.toString();
     return request<{ messages: any[]; hasMore?: boolean }>(`/spaces/${id}/messages${query ? `?${query}` : ''}`);
   },
+  skills: (id: string) => request<{ skills: SpaceSkill[] }>(`/spaces/${id}/skills`),
+  previewSkill: (id: string, sourceUrl: string) =>
+    request<{ preview: SpaceSkillPreview }>(`/spaces/${id}/skills`, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'preview', sourceUrl }),
+    }),
+  installSkill: (id: string, sourceUrl: string, expectedDigest: string) =>
+    request<{ skill: SpaceSkill }>(`/spaces/${id}/skills`, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'install', sourceUrl, expectedDigest }),
+    }),
+  previewUploadedSkill: (id: string, file: File) => {
+    const formData = new FormData();
+    formData.append('action', 'preview');
+    formData.append('file', file);
+    return uploadRequest<{ preview: SpaceSkillPreview }>(`/spaces/${id}/skills`, formData);
+  },
+  installUploadedSkill: (id: string, file: File, expectedDigest: string) => {
+    const formData = new FormData();
+    formData.append('action', 'install');
+    formData.append('expectedDigest', expectedDigest);
+    formData.append('file', file);
+    return uploadRequest<{ skill: SpaceSkill }>(`/spaces/${id}/skills`, formData);
+  },
+  updateSkillExecution: (id: string, skillId: string, approvedScripts: string[]) =>
+    request<{ skill: SpaceSkill }>(`/spaces/${id}/skills`, {
+      method: 'PATCH',
+      body: JSON.stringify({ skillId, approvedScripts }),
+    }),
+  removeSkill: (id: string, skillId: string) =>
+    request<{ success: boolean }>(`/spaces/${id}/skills?skillId=${encodeURIComponent(skillId)}`, { method: 'DELETE' }),
   discussions: (id: string) =>
     request<{ discussions: SpaceDiscussion[] }>(`/spaces/${id}/discussions`),
   createDiscussion: (id: string, data: { topic: string; participantIds: string[]; allowWeb: boolean }) =>
@@ -421,6 +466,7 @@ export async function streamSpaceMessage(data: {
   interactionMode?: 'chat' | 'multi_reply';
   webSearchEnabled?: boolean;
   skipPersistUserMessage?: boolean;
+  skillId?: string;
   signal?: AbortSignal;
 }): Promise<{ stream: ReadableStream<Uint8Array>; speakerAgentId?: string; speakerAgentName?: string; workspaceFilesChanged: number }> {
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
@@ -438,6 +484,7 @@ export async function streamSpaceMessage(data: {
       interactionMode: data.interactionMode,
       webSearchEnabled: data.webSearchEnabled,
       skipPersistUserMessage: data.skipPersistUserMessage,
+      skillId: data.skillId,
     }),
     signal: data.signal,
   });
@@ -475,6 +522,11 @@ export const user = {
     }),
   testModel: (data: { apiBaseUrl: string; apiKey: string; modelName: string }) =>
     request<{ ok: boolean; message: string }>('/user/test-model', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  models: (data: { apiBaseUrl: string; apiKey: string }) =>
+    request<{ models: string[] }>('/user/models', {
       method: 'POST',
       body: JSON.stringify(data),
     }),

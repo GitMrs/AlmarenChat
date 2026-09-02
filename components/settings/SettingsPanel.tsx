@@ -12,6 +12,7 @@ import {
   Moon,
   Palette,
   PlugZap,
+  RefreshCw,
   Search,
   ToggleLeft,
   ToggleRight,
@@ -64,6 +65,9 @@ export default function SettingsPanel() {
   const [modelSaved, setModelSaved] = useState(false);
   const [searchSaved, setSearchSaved] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [fetchingModels, setFetchingModels] = useState(false);
+  const [availableModels, setAvailableModels] = useState<string[]>([]);
+  const [modelListResult, setModelListResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [testResult, setTestResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [error, setError] = useState('');
   const [needsLogin, setNeedsLogin] = useState(false);
@@ -90,6 +94,7 @@ export default function SettingsPanel() {
   const currentSearch = useMemo(() => ({ tavilyApiKey: tavilyApiKey.trim() }), [tavilyApiKey]);
   const hasSearchChanges = initialSearch ? JSON.stringify(currentSearch) !== JSON.stringify(initialSearch) : false;
   const canTestModel = Boolean(apiBaseUrl.trim() && apiKey.trim() && modelName.trim());
+  const canFetchModels = Boolean(apiBaseUrl.trim() && apiKey.trim());
   const modelConfigIncomplete = customModelEnabled && !canTestModel;
 
   useEffect(() => {
@@ -220,6 +225,28 @@ export default function SettingsPanel() {
       setTestResult({ type: 'error', message: err.message || '连接失败，请检查配置' });
     } finally {
       setTesting(false);
+    }
+  };
+
+  const handleFetchModels = async () => {
+    if (!canFetchModels || fetchingModels) return;
+    setFetchingModels(true);
+    setModelListResult(null);
+    try {
+      const result = await userApi.models({
+        apiBaseUrl: apiBaseUrl.trim(),
+        apiKey: apiKey.trim(),
+      });
+      setAvailableModels(result.models);
+      setModelListResult({
+        type: 'success',
+        message: result.models.length > 0 ? `已获取 ${result.models.length} 个模型` : '服务返回的模型列表为空',
+      });
+    } catch (err: any) {
+      setAvailableModels([]);
+      setModelListResult({ type: 'error', message: err.message || '获取模型列表失败' });
+    } finally {
+      setFetchingModels(false);
     }
   };
 
@@ -381,7 +408,11 @@ export default function SettingsPanel() {
                   <span className="mb-2 block text-sm font-bold text-slate-700">API Base URL</span>
                   <input
                     value={apiBaseUrl}
-                    onChange={(e) => setApiBaseUrl(e.target.value)}
+                    onChange={(e) => {
+                      setApiBaseUrl(e.target.value);
+                      setAvailableModels([]);
+                      setModelListResult(null);
+                    }}
                     placeholder="https://api.example.com/v1"
                     className="h-12 w-full rounded-2xl border border-black/[0.08] bg-[#fbfaf7] px-4 text-sm font-medium text-slate-800 outline-none focus:border-slate-300 focus:ring-4 focus:ring-slate-200/70"
                   />
@@ -390,7 +421,11 @@ export default function SettingsPanel() {
                   <span className="mb-2 block text-sm font-bold text-slate-700">API Key</span>
                   <input
                     value={apiKey}
-                    onChange={(e) => setApiKey(e.target.value)}
+                    onChange={(e) => {
+                      setApiKey(e.target.value);
+                      setAvailableModels([]);
+                      setModelListResult(null);
+                    }}
                     placeholder="sk-..."
                     type="password"
                     className="h-12 w-full rounded-2xl border border-black/[0.08] bg-[#fbfaf7] px-4 text-sm font-medium text-slate-800 outline-none focus:border-slate-300 focus:ring-4 focus:ring-slate-200/70"
@@ -398,15 +433,45 @@ export default function SettingsPanel() {
                 </label>
               </div>
 
-              <label className="block">
-                <span className="mb-2 block text-sm font-bold text-slate-700">模型名称</span>
+              <div>
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <label htmlFor="model-name" className="text-sm font-bold text-slate-700">模型名称</label>
+                  <button
+                    type="button"
+                    onClick={handleFetchModels}
+                    disabled={!canFetchModels || fetchingModels}
+                    className={cn(
+                      'inline-flex h-8 items-center justify-center gap-1.5 rounded-lg px-3 text-xs font-black transition',
+                      canFetchModels && !fetchingModels
+                        ? 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                        : 'bg-slate-50 text-slate-300'
+                    )}
+                  >
+                    <RefreshCw className={fetchingModels ? 'animate-spin' : ''} size={13} />
+                    获取
+                  </button>
+                </div>
                 <input
+                  id="model-name"
+                  list="available-models"
                   value={modelName}
                   onChange={(e) => setModelName(e.target.value)}
                   placeholder="例如 gpt-4o、deepseek-chat、claude-sonnet-4"
                   className="h-12 w-full rounded-2xl border border-black/[0.08] bg-[#fbfaf7] px-4 text-sm font-medium text-slate-800 outline-none focus:border-slate-300 focus:ring-4 focus:ring-slate-200/70"
                 />
-              </label>
+                <datalist id="available-models">
+                  {availableModels.map((model) => <option key={model} value={model} />)}
+                </datalist>
+                {modelListResult && (
+                  <p className={cn(
+                    'mt-2 text-xs font-semibold leading-5',
+                    modelListResult.type === 'success' ? 'text-emerald-600' : 'text-rose-600'
+                  )}>
+                    {modelListResult.message}
+                    {modelListResult.type === 'success' && availableModels.length > 0 ? '，点击输入框选择。' : ''}
+                  </p>
+                )}
+              </div>
 
               <label className="block">
                 <span className="mb-2 block text-sm font-bold text-slate-700">上下文消息数</span>

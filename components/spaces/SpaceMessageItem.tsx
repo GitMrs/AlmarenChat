@@ -1,6 +1,6 @@
 'use client';
 
-import { Activity, Check, CheckCircle2, ChevronRight, Clock3, Code2, FileText, Globe2, ListTodo, Loader2, RotateCcw, X, Pencil } from 'lucide-react';
+import { Activity, BookOpen, Check, CheckCircle2, ChevronRight, Clock3, Code2, FileText, Globe2, ListTodo, Loader2, RotateCcw, X, Pencil } from 'lucide-react';
 import MessageActions from '@/components/chat/MessageActions';
 import MessageBubbleFrame from '@/components/chat/MessageBubbleFrame';
 import MessageContent from '@/components/chat/MessageContent';
@@ -81,6 +81,12 @@ function TaskProposal({
             <span>{proposal.deliverables.length} 项产出</span>
           </div>
           <div className="mt-3 flex flex-wrap gap-2">
+            {proposal.skillSnapshot && (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-black text-emerald-700">
+                <BookOpen size={12} />
+                {proposal.skillSnapshot.name}
+              </span>
+            )}
             <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-black text-slate-600">
               <FileText size={12} />
               {capabilities.includes('workspace_write') ? '读写空间文件' : '读取空间资料'}
@@ -242,6 +248,7 @@ export default function SpaceMessageItem({
   const isUser = message.role === 'user';
   const proposal = message.attachments?.find((attachment): attachment is SpaceTaskProposal => attachment.type === 'task_proposal');
   const runResult = message.attachments?.find((attachment): attachment is SpaceRunResultAttachment => attachment.type === 'run_result');
+  const skillInvocation = message.attachments?.find((attachment) => attachment.type === 'skill_invocation');
   return (
     <MessageBubbleFrame
       role={message.role}
@@ -264,6 +271,12 @@ export default function SpaceMessageItem({
         />
       }
     >
+      {skillInvocation?.type === 'skill_invocation' && (
+        <div className="mb-2 inline-flex max-w-full items-center gap-1.5 rounded-md bg-emerald-50 px-2 py-1 text-[11px] font-black text-emerald-700">
+          <BookOpen size={12} className="shrink-0" />
+          <span className="truncate">使用 {skillInvocation.name}</span>
+        </div>
+      )}
       <MessageContent
         role={message.role}
         content={message.content}

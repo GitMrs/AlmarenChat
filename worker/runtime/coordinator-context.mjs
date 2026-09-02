@@ -55,7 +55,13 @@ export function loadCoordinatorDecisionContext(db, run, agents) {
         name: agent.name,
         category: agent.category || '普通成员',
         description: agent.description || '',
-        availableSkills: skillsForAgent(agent),
+        availableSkills: [
+          ...skillsForAgent(agent),
+          ...(authorization.selectedSkill
+            && (!authorization.selectedSkillAgentId || authorization.selectedSkillAgentId === agent.id)
+            ? [authorization.selectedSkill]
+            : []),
+        ],
         status: session?.status || 'IDLE',
         currentTaskId: session?.currentTaskId || null,
       };

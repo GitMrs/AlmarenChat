@@ -45,7 +45,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ s
         discussions: discussions.count,
         runs: runs.count,
       };
-    });
+    }, { preserveEntries: ['.space'] });
     await ensureSpaceRoot(userId, spaceId);
 
     return NextResponse.json({ success: true, deleted });

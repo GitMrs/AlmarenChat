@@ -7,6 +7,7 @@ import { getSpaceForUser, resolveManyAgents } from '@/app/api/_lib/spaces';
 import { taskProposalNeedsClarification } from '@/lib/task-proposals';
 import { coordinatorAuthorization } from '@/lib/agent-runtime-v3-policy.mjs';
 import { taskProposalWithServerCapabilities } from '@/lib/task-proposal-policy.mjs';
+import { getSpaceSkill } from '@/lib/space-skills.mjs';
 
 type TaskProposalAttachment = {
   type: 'task_proposal';
@@ -17,6 +18,8 @@ type TaskProposalAttachment = {
   capabilities?: string[];
   status?: string;
   runId?: string;
+  skillSnapshot?: Record<string, unknown>;
+  skillAgentId?: string;
   [key: string]: unknown;
 };
 
@@ -134,6 +137,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
     if (memberAgents.length === 0) return NextResponse.json({ error: '空间成员不可用' }, { status: 400 });
     let proposalMessage = null;
     let proposal: TaskProposalAttachment | null = null;
+    let validatedSkillSnapshot: Record<string, unknown> | null = null;
     if (typeof proposalMessageId === 'string' && proposalMessageId) {
       proposalMessage = await prisma.spaceMessage.findFirst({ where: { id: proposalMessageId, spaceId } });
       proposal = taskProposalFromAttachments(proposalMessage?.attachments);
@@ -144,6 +148,16 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
         if (existing) return NextResponse.json({ run: existing });
       }
       proposal = applyRevision(proposal, revision);
+      if (proposal.skillSnapshot?.id) {
+        const currentSkill = await getSpaceSkill({
+          projectRoot: process.cwd(), userId, spaceId, skillId: String(proposal.skillSnapshot.id),
+        });
+        if (!currentSkill || currentSkill.digest !== proposal.skillSnapshot.digest) {
+          return NextResponse.json({ error: '任务指定的空间 Skill 已删除或版本发生变化，请重新生成方案' }, { status: 409 });
+        }
+        validatedSkillSnapshot = currentSkill;
+        proposal = { ...proposal, skillSnapshot: currentSkill };
+      }
       goal = taskInput(proposal, goal);
     }
     if (!goal) return NextResponse.json({ error: '任务目标不能为空' }, { status: 400 });
@@ -173,6 +187,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
         if (!currentProposalMessage || !currentProposal) throw new Error('任务方案不存在');
         if (currentProposal.status !== 'pending') throw new Error('任务方案已经处理');
         currentProposal = applyRevision(currentProposal, revision);
+        if (validatedSkillSnapshot) currentProposal = { ...currentProposal, skillSnapshot: validatedSkillSnapshot };
         runInput = taskInput(currentProposal, goal);
       }
 

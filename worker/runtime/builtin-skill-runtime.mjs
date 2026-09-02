@@ -1,6 +1,7 @@
 import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { builtinSkill } from '../../lib/agent-runtime/skill-registry.mjs';
+import { resolveSpaceSkillExecution } from '../../lib/space-skills.mjs';
 import { workspaceAttemptFile, workspaceAttemptRoot } from '../../lib/workspace-staging.mjs';
 import { runSandboxedSkillProcess } from './sandbox-runner.mjs';
 
@@ -89,4 +90,51 @@ export async function executeBuiltinSkill({ projectRoot, skillId, entrypoint, ar
     }
   }
   return { ...result, entrypoint: entrypointName, paths: outputPaths };
+}
+
+async function executeSpaceSkill({ projectRoot, skill, args, workspaceOptions, isCancelled }) {
+  const rawArgs = args && typeof args === 'object' ? args : {};
+  const unknownKeys = Object.keys(rawArgs).filter((key) => !['script', 'paths'].includes(key));
+  if (unknownKeys.length > 0) throw new Error(`Skill 参数未声明：${unknownKeys.join('、')}`);
+  const script = String(rawArgs.script || '');
+  const paths = [...new Set(Array.isArray(rawArgs.paths) ? rawArgs.paths.map(String) : [])];
+  if (!script || paths.length === 0) throw new Error('Space Skill 缺少脚本或输入文件');
+  if (paths.length > 10) throw new Error('Space Skill 单次最多读取 10 个输入文件');
+  const inputs = [];
+  for (const value of paths) {
+    const input = workspaceArgument(workspaceOptions, value, { extensions: ['.md', '.txt', '.json'] }, '输入');
+    const info = await stat(input.target).catch(() => null);
+    if (!info?.isFile()) throw new Error(`Skill 输入文件不存在：${input.logical}`);
+    inputs.push(input.logical);
+  }
+  const resolved = await resolveSpaceSkillExecution({
+    projectRoot,
+    userId: workspaceOptions.userId,
+    spaceId: workspaceOptions.spaceId,
+    skillId: skill.id,
+    digest: skill.digest,
+    script,
+  });
+  const result = await runSandboxedSkillProcess({
+    workspaceRoot: workspaceAttemptRoot(workspaceOptions),
+    skillRoot: resolved.skillRoot,
+    command: 'python3',
+    script: resolved.script,
+    args: inputs,
+    network: false,
+    workspaceAccess: 'read',
+    timeoutMs: 30_000,
+    maxOutputBytes: 64 * 1024,
+    isCancelled,
+  });
+  return { ...result, entrypoint: 'analyze', script: resolved.script, paths: [] };
+}
+
+export async function executeSkill(options) {
+  if (String(options.skill?.id || '').startsWith('space:')) return executeSpaceSkill(options);
+  return executeBuiltinSkill({
+    ...options,
+    skillId: options.skill?.id,
+    entrypoint: options.skill?.execution?.entrypoint,
+  });
 }

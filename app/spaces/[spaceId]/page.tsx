@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Activity, ArrowLeft, Check, CheckCircle2, ChevronRight, Download, FilePenLine, FileText, Globe2, History, ListTodo, Loader2, MessagesSquare, Paperclip, Plus, RotateCcw, Save, Send, Settings2, SkipForward, Square, Trash2, UploadCloud, UsersRound, X } from 'lucide-react';
+import { Activity, ArrowLeft, BookOpen, Check, CheckCircle2, ChevronRight, Download, FilePenLine, FileText, Globe2, History, ListTodo, Loader2, MessagesSquare, PackagePlus, Paperclip, Plus, RotateCcw, Save, Send, Settings2, ShieldCheck, SkipForward, Square, Trash2, UploadCloud, UsersRound, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import AppShell from '@/components/layout/AppShell';
@@ -22,7 +22,7 @@ import { agentRuns as agentRunsApi, agents as agentsApi, spaces as spacesApi, st
 import { getBuiltInAgents } from '@/lib/agents-data';
 import { latestRunInRetryChain } from '@/lib/agent-run-retry-chain.mjs';
 import { isEditableSpaceFile } from '@/lib/space-files';
-import type { Agent, AgentRun, AgentRunEvent, AgentTask, SpaceDiscussion, SpaceFile, SpaceMessage, SpaceTaskProposal } from '@/types';
+import type { Agent, AgentRun, AgentRunEvent, AgentTask, SpaceDiscussion, SpaceFile, SpaceMessage, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal } from '@/types';
 
 const FALLBACK_COLOR = '#4f46e5';
 const SPACE_COORDINATOR_ID = 'space-coordinator';
@@ -357,12 +357,21 @@ export default function SpaceDetailPage() {
   const [discussions, setDiscussions] = useState<SpaceDiscussion[]>([]);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [mode, setMode] = useState<'chat' | 'task'>('chat');
-  const [sidePanel, setSidePanel] = useState<'members' | 'files' | 'runs' | 'settings' | null>(null);
+  const [sidePanel, setSidePanel] = useState<'members' | 'files' | 'skills' | 'runs' | 'settings' | null>(null);
   const [loading, setLoading] = useState(true);
   const [needsLogin, setNeedsLogin] = useState(false);
   const [error, setError] = useState('');
   const [input, setInput] = useState('');
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
+  const [skills, setSkills] = useState<SpaceSkill[]>([]);
+  const [selectedSkillId, setSelectedSkillId] = useState<string | null>(null);
+  const [skillSourceUrl, setSkillSourceUrl] = useState('');
+  const [skillUploadFile, setSkillUploadFile] = useState<File | null>(null);
+  const [skillPreview, setSkillPreview] = useState<SpaceSkillPreview | null>(null);
+  const [skillBusy, setSkillBusy] = useState(false);
+  const [pendingRemoveSkill, setPendingRemoveSkill] = useState<SpaceSkill | null>(null);
+  const [pendingExecutionSkill, setPendingExecutionSkill] = useState<SpaceSkill | null>(null);
+  const [approvedScriptDraft, setApprovedScriptDraft] = useState<string[]>([]);
   const [composerToolsOpen, setComposerToolsOpen] = useState(false);
   const [mentionMenuOpen, setMentionMenuOpen] = useState(false);
   const [mentionQuery, setMentionQuery] = useState('');
@@ -412,6 +421,7 @@ export default function SpaceDetailPage() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const skillZipInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const composerToolsRef = useRef<HTMLDivElement>(null);
 
@@ -448,6 +458,7 @@ export default function SpaceDetailPage() {
       [agent.name, agent.category, agent.description].some((value) => value?.toLocaleLowerCase().includes(query))
     );
   }, [mentionAgents, mentionQuery]);
+  const selectedSkill = skills.find((skill) => skill.id === selectedSkillId) || null;
   const latestRun = runs[0] || null;
   const activeRun = runs.find((run) => ACTIVE_RUN_STATUSES.has(run.status)) || null;
   const latestDiscussion = discussions[0] || null;
@@ -569,12 +580,13 @@ export default function SpaceDetailPage() {
     setLoading(true);
     setError('');
     try {
-      const [spaceResult, messageResult, fileResult, runResult, discussionResult, builtIn, customResult] = await Promise.all([
+      const [spaceResult, messageResult, fileResult, runResult, discussionResult, skillResult, builtIn, customResult] = await Promise.all([
         spacesApi.get(spaceId),
         spacesApi.messages(spaceId, { limit: 60 }),
         spacesApi.files(spaceId),
         spacesApi.runs(spaceId),
         spacesApi.discussions(spaceId),
+        spacesApi.skills(spaceId),
         getBuiltInAgents(),
         agentsApi.mine().catch(() => ({ agents: [] })),
       ]);
@@ -586,6 +598,7 @@ export default function SpaceDetailPage() {
       setFiles(fileResult.files);
       setRuns(runResult.runs);
       setDiscussions(discussionResult.discussions);
+      setSkills(skillResult.skills);
       setSelectedRunId(null);
     } catch (err: any) {
       setError(err.message || '加载空间失败');
@@ -773,7 +786,7 @@ export default function SpaceDetailPage() {
 
   const sendMessage = async (
     content: string,
-    options?: { reuseLastUserMessage?: boolean; historyOverride?: SpaceMessage[] }
+    options?: { reuseLastUserMessage?: boolean; historyOverride?: SpaceMessage[]; skillIdOverride?: string | null }
   ) => {
     if (!content || isStreaming) return;
 
@@ -781,17 +794,27 @@ export default function SpaceDetailPage() {
       dismissDiscussion(latestDiscussion.id);
     }
 
+    const activeSkillId = options?.skillIdOverride === undefined ? selectedSkillId : options.skillIdOverride;
+    const activeSkill = skills.find((skill) => skill.id === activeSkillId) || null;
     const userMessage: SpaceMessage = {
       id: `user-${Date.now()}`,
       spaceId,
       role: 'user',
       content,
+      ...(activeSkill ? { attachments: [{
+        type: 'skill_invocation' as const,
+        skillId: activeSkill.id,
+        name: activeSkill.name,
+        version: activeSkill.version,
+        digest: activeSkill.digest,
+      }] } : {}),
       createdAt: new Date().toISOString(),
     };
     const history = options?.historyOverride || messages;
     const nextMessages = options?.reuseLastUserMessage ? history : [...history, userMessage];
     setMessages(nextMessages);
     if (!options?.reuseLastUserMessage) setInput('');
+    if (!options?.reuseLastUserMessage) setSelectedSkillId(null);
     setIsStreaming(true);
     setStreamingContent('');
     setStreamingSpeakerId(null);
@@ -822,6 +845,7 @@ export default function SpaceDetailPage() {
           interactionMode: targets.length > 1 ? 'multi_reply' : 'chat',
           webSearchEnabled: targets.length <= 1 && webSearchEnabled,
           skipPersistUserMessage: Boolean(options?.reuseLastUserMessage || index > 0),
+          skillId: activeSkillId || undefined,
           signal: controller.signal,
         });
         setStreamingSpeakerId(result.speakerAgentId || replyTargets[index]?.id || null);
@@ -973,9 +997,99 @@ export default function SpaceDetailPage() {
     }
   };
 
+  const previewSkill = async (sourceUrl: string) => {
+    if (skillBusy || !sourceUrl.trim()) return;
+    setSkillBusy(true);
+    setError('');
+    try {
+      const result = await spacesApi.previewSkill(spaceId, sourceUrl.trim());
+      setSkillPreview(result.preview);
+      setSkillUploadFile(null);
+      if (skillZipInputRef.current) skillZipInputRef.current.value = '';
+    } catch (err: any) {
+      setError(err.message || '分析 Skill 失败');
+    } finally {
+      setSkillBusy(false);
+    }
+  };
+
+  const previewUploadedSkill = async (file: File) => {
+    if (skillBusy) return;
+    setSkillBusy(true);
+    setError('');
+    try {
+      const result = await spacesApi.previewUploadedSkill(spaceId, file);
+      setSkillPreview(result.preview);
+      setSkillUploadFile(file);
+    } catch (err: any) {
+      setError(err.message || '分析 Skill ZIP 失败');
+      setSkillUploadFile(null);
+    } finally {
+      setSkillBusy(false);
+    }
+  };
+
+  const installSkill = async () => {
+    if (!skillPreview || skillBusy) return;
+    setSkillBusy(true);
+    setError('');
+    try {
+      const result = skillUploadFile
+        ? await spacesApi.installUploadedSkill(spaceId, skillUploadFile, skillPreview.digest)
+        : await spacesApi.installSkill(spaceId, skillPreview.sourceUrl, skillPreview.digest);
+      setSkills((items) => [...items.filter((item) => item.id !== result.skill.id), result.skill]);
+      setSkillPreview(null);
+      setSkillSourceUrl('');
+      setSkillUploadFile(null);
+      if (skillZipInputRef.current) skillZipInputRef.current.value = '';
+    } catch (err: any) {
+      setError(err.message || '安装 Skill 失败');
+    } finally {
+      setSkillBusy(false);
+    }
+  };
+
+  const removeSkill = async () => {
+    if (!pendingRemoveSkill || skillBusy) return;
+    setSkillBusy(true);
+    setError('');
+    try {
+      await spacesApi.removeSkill(spaceId, pendingRemoveSkill.id);
+      setSkills((items) => items.filter((item) => item.id !== pendingRemoveSkill.id));
+      if (selectedSkillId === pendingRemoveSkill.id) setSelectedSkillId(null);
+      setPendingRemoveSkill(null);
+    } catch (err: any) {
+      setError(err.message || '删除 Skill 失败');
+    } finally {
+      setSkillBusy(false);
+    }
+  };
+
+  const saveSkillExecution = async () => {
+    if (!pendingExecutionSkill || skillBusy) return;
+    setSkillBusy(true);
+    setError('');
+    try {
+      const result = await spacesApi.updateSkillExecution(spaceId, pendingExecutionSkill.id, approvedScriptDraft);
+      setSkills((items) => items.map((item) => item.id === result.skill.id ? result.skill : item));
+      setPendingExecutionSkill(null);
+      setApprovedScriptDraft([]);
+    } catch (err: any) {
+      setError(err.message || '保存脚本执行权限失败');
+    } finally {
+      setSkillBusy(false);
+    }
+  };
+
   const send = () => {
     setMentionMenuOpen(false);
-    return sendMessage(input.trim());
+    const content = input.trim();
+    const addSkill = /^\/skill\s+add\s+(\S+)\s*$/i.exec(content);
+    if (addSkill) {
+      setInput('');
+      return previewSkill(addSkill[1]);
+    }
+    return sendMessage(content);
   };
 
   const copyMessage = (message: SpaceMessage) => {
@@ -996,7 +1110,12 @@ export default function SpaceDetailPage() {
         await spacesApi.deleteMessage(spaceId, latestAssistantMessageId);
       }
       setMessages(nextMessages);
-      await sendMessage(lastUserMessage.content, { reuseLastUserMessage: true, historyOverride: nextMessages });
+      const invocation = lastUserMessage.attachments?.find((attachment) => attachment.type === 'skill_invocation');
+      await sendMessage(lastUserMessage.content, {
+        reuseLastUserMessage: true,
+        historyOverride: nextMessages,
+        skillIdOverride: invocation?.type === 'skill_invocation' ? invocation.skillId : null,
+      });
     } catch (err: any) {
       setError(err.message || '重新生成失败');
     }
@@ -1320,6 +1439,26 @@ export default function SpaceDetailPage() {
                     );
                   })}
                 </div>
+              </section>
+
+              <section className="border-b border-black/[0.06] px-6 py-5">
+                <div className="mb-3 flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-xs font-black text-slate-500">
+                    <BookOpen size={15} />
+                    Space Skills
+                    <span className="text-slate-300">{skills.length}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSidePanel('skills')}
+                    className="text-xs font-black text-slate-400 transition hover:text-slate-950"
+                  >
+                    管理
+                  </button>
+                </div>
+                <p className="text-xs font-semibold leading-5 text-slate-400">
+                  {skills.length > 0 ? skills.slice(0, 3).map((skill) => skill.name).join('、') : '当前空间还没有安装 Skill。'}
+                </p>
               </section>
 
               <section className="border-b border-black/[0.06] px-6 py-5">
@@ -1999,10 +2138,24 @@ export default function SpaceDetailPage() {
 
             <footer className="border-t border-black/[0.06] bg-white p-3 sm:p-4 lg:bg-[#fbfaf7] lg:px-10 lg:pb-4 lg:pt-3">
               <div className="mx-auto max-w-4xl">
-                <ComposerShell>
+                <ComposerShell toolbar={selectedSkill ? (
+                  <div className="inline-flex h-8 max-w-full items-center gap-2 rounded-lg bg-white px-2.5 text-xs font-black text-slate-600 shadow-sm">
+                    <BookOpen size={13} className="shrink-0" />
+                    <span className="truncate">使用 {selectedSkill.name}</span>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedSkillId(null)}
+                      aria-label="取消使用 Skill"
+                      title="取消使用 Skill"
+                      className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-900"
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+                ) : undefined}>
                 <div ref={composerToolsRef} className="relative mb-0.5 shrink-0">
                   {composerToolsOpen && (
-                    <div className="absolute bottom-[calc(100%+10px)] left-0 z-30 w-56 overflow-hidden rounded-lg border border-black/[0.08] bg-white p-1.5 shadow-xl">
+                    <div className="absolute bottom-[calc(100%+10px)] left-0 z-30 max-h-96 w-64 overflow-y-auto rounded-lg border border-black/[0.08] bg-white p-1.5 shadow-xl">
                       <button
                         type="button"
                         onClick={() => {
@@ -2040,6 +2193,33 @@ export default function SpaceDetailPage() {
                         <MessagesSquare size={16} />
                         <span className="min-w-0 flex-1 whitespace-nowrap">发起讨论</span>
                       </button>
+                      <div className="my-1 border-t border-black/[0.06]" />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setComposerToolsOpen(false);
+                          setSidePanel('skills');
+                        }}
+                        className="flex h-10 w-full items-center gap-3 rounded-md px-3 text-left text-xs font-black text-slate-600 transition hover:bg-slate-50 hover:text-slate-950"
+                      >
+                        <PackagePlus size={16} />
+                        <span className="min-w-0 flex-1 whitespace-nowrap">管理 Space Skills</span>
+                      </button>
+                      {skills.map((skill) => (
+                        <button
+                          key={skill.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedSkillId(skill.id === selectedSkillId ? null : skill.id);
+                            setComposerToolsOpen(false);
+                          }}
+                          className={`flex min-h-10 w-full items-center gap-3 rounded-md px-3 py-2 text-left text-xs font-black transition ${skill.id === selectedSkillId ? 'bg-emerald-50 text-emerald-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-950'}`}
+                        >
+                          <BookOpen size={16} className="shrink-0" />
+                          <span className="min-w-0 flex-1 truncate">{skill.name}</span>
+                          {skill.id === selectedSkillId && <Check size={14} className="shrink-0" />}
+                        </button>
+                      ))}
                     </div>
                   )}
                   {mentionMenuOpen && (
@@ -2177,8 +2357,8 @@ export default function SpaceDetailPage() {
               <aside className="absolute inset-y-0 right-0 z-20 flex w-full flex-col border-l border-black/[0.06] bg-white shadow-[-16px_0_40px_-24px_rgba(15,23,42,0.35)] sm:w-[360px]">
                 <div className="flex h-[65px] shrink-0 items-center justify-between border-b border-black/[0.06] px-5">
                   <div className="flex items-center gap-2 text-sm font-black text-slate-800">
-                    {sidePanel === 'members' ? <UsersRound size={17} /> : sidePanel === 'files' ? <FileText size={17} /> : sidePanel === 'runs' ? <History size={17} /> : <Settings2 size={17} />}
-                    {sidePanel === 'members' ? '空间成员' : sidePanel === 'files' ? '空间资料' : sidePanel === 'runs' ? '历史任务' : '空间设置'}
+                    {sidePanel === 'members' ? <UsersRound size={17} /> : sidePanel === 'files' ? <FileText size={17} /> : sidePanel === 'skills' ? <BookOpen size={17} /> : sidePanel === 'runs' ? <History size={17} /> : <Settings2 size={17} />}
+                    {sidePanel === 'members' ? '空间成员' : sidePanel === 'files' ? '空间资料' : sidePanel === 'skills' ? 'Space Skills' : sidePanel === 'runs' ? '历史任务' : '空间设置'}
                   </div>
                   <button
                     type="button"
@@ -2325,6 +2505,101 @@ export default function SpaceDetailPage() {
                         )}
                       </div>
                     </>
+                  ) : sidePanel === 'skills' ? (
+                    <div>
+                      <div className="flex gap-2">
+                        <input
+                          value={skillSourceUrl}
+                          onChange={(event) => setSkillSourceUrl(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter') {
+                              event.preventDefault();
+                              previewSkill(skillSourceUrl);
+                            }
+                          }}
+                          placeholder="GitHub Skill 地址"
+                          className="h-11 min-w-0 flex-1 rounded-lg border border-black/[0.08] bg-[#fbfaf7] px-3 text-xs font-semibold text-slate-700 outline-none focus:border-slate-300"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => previewSkill(skillSourceUrl)}
+                          disabled={!skillSourceUrl.trim() || skillBusy}
+                          title="分析 Skill"
+                          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-slate-950 text-white disabled:bg-slate-200 disabled:text-slate-400"
+                        >
+                          {skillBusy && !skillPreview ? <Loader2 className="animate-spin" size={16} /> : <PackagePlus size={16} />}
+                        </button>
+                      </div>
+                      <input
+                        ref={skillZipInputRef}
+                        type="file"
+                        accept=".zip,application/zip"
+                        className="hidden"
+                        onChange={(event) => {
+                          const file = event.target.files?.[0];
+                          if (file) previewUploadedSkill(file);
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => skillZipInputRef.current?.click()}
+                        disabled={skillBusy}
+                        className="mt-2 flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-dashed border-slate-200 text-xs font-black text-slate-500 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-800 disabled:text-slate-300"
+                      >
+                        <UploadCloud size={15} />
+                        上传 Skill ZIP
+                      </button>
+                      <div className="mt-5 space-y-2">
+                        {skills.length === 0 ? (
+                          <div className="rounded-lg border border-dashed border-slate-200 px-5 py-10 text-center">
+                            <BookOpen className="mx-auto text-slate-300" size={24} />
+                            <div className="mt-3 text-sm font-black text-slate-500">暂无 Space Skill</div>
+                          </div>
+                        ) : skills.map((skill) => (
+                          <div key={skill.id} className="rounded-lg border border-black/[0.06] bg-white px-3 py-3">
+                            <div className="flex items-start gap-3">
+                              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500">
+                                <BookOpen size={16} />
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <div className="truncate text-sm font-black text-slate-800">{skill.name}</div>
+                                <div className="mt-0.5 text-[11px] font-semibold text-slate-400">{skill.id} · {skill.version}</div>
+                                <p
+                                  className="mt-2 line-clamp-3 text-xs font-semibold leading-5 text-slate-500"
+                                  title={skill.description}
+                                >
+                                  {skill.description}
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => setPendingRemoveSkill(skill)}
+                                title="删除 Skill"
+                                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-rose-50 hover:text-rose-500"
+                              >
+                                <Trash2 size={15} />
+                              </button>
+                            </div>
+                            {skill.warnings.map((warning) => (
+                              <div key={warning} className="mt-2 text-[11px] font-semibold leading-5 text-amber-600">{warning}</div>
+                            ))}
+                            {skill.scripts?.length > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setPendingExecutionSkill(skill);
+                                  setApprovedScriptDraft(skill.approvedScripts || []);
+                                }}
+                                className={`mt-3 flex h-9 w-full items-center justify-center gap-2 rounded-lg text-xs font-black transition ${skill.executionEnabled ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                              >
+                                <ShieldCheck size={14} />
+                                {skill.executionEnabled ? `已批准 ${skill.approvedScripts.length} 个脚本` : '配置脚本执行权限'}
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                   ) : sidePanel === 'runs' ? (
                     <div className="space-y-2">
                       {runs.length === 0 ? (
@@ -2511,9 +2786,83 @@ export default function SpaceDetailPage() {
         }}
       />
       <ConfirmDialog
+        open={Boolean(skillPreview)}
+        title={`安装 ${skillPreview?.name || 'Space Skill'}？`}
+        description={skillPreview ? (
+          <div className="space-y-3">
+            <p className="line-clamp-4" title={skillPreview.description}>{skillPreview.description}</p>
+            <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-500">
+              <div>{skillPreview.id} · {skillPreview.version}</div>
+              <div className="mt-1 break-all">{skillUploadFile ? `已上传：${skillUploadFile.name}` : skillPreview.sourceUrl}</div>
+              <div className="mt-1">{skillPreview.files.length} 个文本文件</div>
+            </div>
+            {skillPreview.warnings.map((warning) => (
+              <p key={warning} className="font-semibold text-amber-600">{warning}</p>
+            ))}
+            <p className="text-xs font-semibold text-slate-400">安装不会授予终端、联网、文件写入或脚本执行权限。</p>
+          </div>
+        ) : null}
+        icon={<PackagePlus size={20} />}
+        cancelText="暂不安装"
+        confirmText="确认安装"
+        loading={skillBusy}
+        onCancel={() => {
+          setSkillPreview(null);
+          setSkillUploadFile(null);
+          if (skillZipInputRef.current) skillZipInputRef.current.value = '';
+        }}
+        onConfirm={installSkill}
+      />
+      <ConfirmDialog
+        open={Boolean(pendingExecutionSkill)}
+        title={`配置 ${pendingExecutionSkill?.name || 'Space Skill'} 的脚本权限`}
+        description={pendingExecutionSkill ? (
+          <div className="space-y-3">
+            <p>只有你勾选的 Python 脚本可以在强制沙箱中读取当前任务文件。脚本不能联网、安装依赖或修改工作区。</p>
+            <div className="max-h-56 space-y-2 overflow-y-auto rounded-lg border border-black/[0.06] p-2">
+              {pendingExecutionSkill.scripts.map((script) => (
+                <label key={script} className="flex cursor-pointer items-start gap-3 rounded-md px-2 py-2 hover:bg-slate-50">
+                  <input
+                    type="checkbox"
+                    checked={approvedScriptDraft.includes(script)}
+                    onChange={(event) => setApprovedScriptDraft((items) => event.target.checked
+                      ? [...items, script]
+                      : items.filter((item) => item !== script))}
+                    className="mt-1 h-4 w-4 accent-slate-950"
+                  />
+                  <span className="min-w-0 break-all text-xs font-bold text-slate-700">{script}</span>
+                </label>
+              ))}
+            </div>
+            <p className="text-xs font-semibold text-amber-600">关闭全部勾选即可撤销该 Skill 的脚本执行权限。</p>
+          </div>
+        ) : null}
+        icon={<ShieldCheck size={20} />}
+        cancelText="取消"
+        confirmText="保存权限"
+        loading={skillBusy}
+        onCancel={() => {
+          setPendingExecutionSkill(null);
+          setApprovedScriptDraft([]);
+        }}
+        onConfirm={saveSkillExecution}
+      />
+      <ConfirmDialog
+        open={Boolean(pendingRemoveSkill)}
+        title={`删除 ${pendingRemoveSkill?.name || 'Space Skill'}？`}
+        description="删除后，新的消息和任务不能再选择它；已经开始的任务仍使用当时保存的 Skill 快照。"
+        icon={<Trash2 size={20} />}
+        cancelText="先保留"
+        confirmText="确认删除"
+        destructive
+        loading={skillBusy}
+        onCancel={() => setPendingRemoveSkill(null)}
+        onConfirm={removeSkill}
+      />
+      <ConfirmDialog
         open={clearSpaceOpen}
         title="清空当前空间？"
-        description="聊天记录、历史任务、空间记忆、上传资料和工作区文件都会永久删除。空间本身、成员和执行模式设置会保留。"
+        description="聊天记录、历史任务、空间记忆、上传资料和工作区文件都会永久删除。空间本身、成员、Space Skills 和执行模式设置会保留。"
         icon={<Trash2 size={20} />}
         cancelText="先保留"
         confirmText="确认清空"

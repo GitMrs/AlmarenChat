@@ -460,7 +460,7 @@ async function coordinateNextWork(run, context, triggerEventId) {
                 acceptanceCriteria: '完整满足授权目标，并提供可核对的结果或文件证据。',
                 reason: '该成员是当前可用的执行成员。',
                 webResearchRequired: false,
-                skillId: 'general-task',
+                skillId: authorization.selectedSkill?.id || 'general-task',
                 expectedArtifacts: authorization.artifacts || [],
               }],
             })
@@ -478,7 +478,7 @@ async function coordinateNextWork(run, context, triggerEventId) {
               '当 requiredNextMember 非空时，本轮 tasks 的第一项必须派给该成员；若用户要求其先明确、梳理或分析规则，mode 应为 advisor。' +
               '默认一次只派一项；只有两项成果真正独立且成员不同才可并行派两项。' +
               '不得重复已有任务，不得给 WORKING 成员派活，不得扩大已授权能力。' +
-              '每个成员的 availableSkills 是本轮可选工作方法。优先选择与任务产物匹配的专用 Skill；没有匹配项时才使用 general-task。Skill 不能扩大 authorization 的能力。可执行 Skill 必须使用 executor 模式，并且 authorization 必须包含 code_execute。' +
+              '每个成员的 availableSkills 是本轮可选工作方法。authorization.selectedSkill 非空时，这是用户本轮明确指定的工作方法，第一项任务必须采用它；否则优先选择与任务产物匹配的专用 Skill，没有匹配项时才使用 general-task。Skill 不能扩大 authorization 的能力。可执行 Skill 必须使用 executor 模式，并且 authorization 必须包含 code_execute。' +
               '每个子任务必须设置 webResearchRequired。只有该子任务确实依赖外部公开资料且 authorization.networkPolicy 不是 forbidden 时才能为 true；任务指令明确不联网时必须为 false。' +
               `必须调用 ${COORDINATOR_ACTION_TOOL_NAME} 提交唯一动作。继续工作时提交：{"type":"dispatch","summary":"决策摘要","tasks":[{"agentId":"成员ID","skillId":"Skill ID","mode":"advisor|executor","title":"标题","instruction":"完整指令","acceptanceCriteria":"可核对标准","reason":"选人和 Skill 理由","webResearchRequired":false,"expectedArtifacts":["相对路径或结果"]}]}；` +
               '目标已由已验收成果完全满足时，必须逐项覆盖 authorization 中的 steps 和 deliverables，且只能引用 completed 中的任务 ID：' +
@@ -540,8 +540,16 @@ async function coordinateNextWork(run, context, triggerEventId) {
       allowFinish: completed.length > 0,
       requirements: authorizationRequirements(authorization),
       completedTaskIds: completed.map((task) => task.id),
-      requiredAgentId: dispatchConstraint?.agentId || null,
-      requiredAgentName: dispatchConstraint?.agentName || null,
+      requiredAgentId: dispatchConstraint?.agentId
+        || (existingTasks.length === 0 ? authorization.selectedSkillAgentId : null)
+        || null,
+      requiredAgentName: dispatchConstraint?.agentName
+        || (existingTasks.length === 0
+          ? team.find((member) => member.id === authorization.selectedSkillAgentId)?.name
+          : null)
+        || null,
+      requiredSkillId: existingTasks.length === 0 ? authorization.selectedSkill?.id : null,
+      additionalSkills: authorization.selectedSkill ? [authorization.selectedSkill] : [],
       workspaceWriteAllowed: authorizationAllowsCapability(authorization, 'workspace_write'),
       authorization,
     }, {
