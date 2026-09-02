@@ -17,6 +17,9 @@ export async function GET(request: Request) {
         apiKey: true,
         modelName: true,
         customModelEnabled: true,
+        imageModelEnabled: true,
+        imageModelName: true,
+        imageModelSize: true,
         tavilyApiKey: true,
         defaultStyle: true,
         contextMessageLimit: true,
@@ -42,7 +45,7 @@ export async function PATCH(request: Request) {
     const userId = requireAuth(request);
     const body = await request.json();
 
-    const allowedFields = ['name', 'avatar', 'apiBaseUrl', 'apiKey', 'modelName', 'customModelEnabled', 'tavilyApiKey', 'defaultStyle', 'contextMessageLimit'] as const;
+    const allowedFields = ['name', 'avatar', 'apiBaseUrl', 'apiKey', 'modelName', 'customModelEnabled', 'imageModelEnabled', 'imageModelName', 'imageModelSize', 'tavilyApiKey', 'defaultStyle', 'contextMessageLimit'] as const;
     const data: Record<string, any> = {};
     for (const field of allowedFields) {
       if (body[field] !== undefined) {
@@ -52,6 +55,9 @@ export async function PATCH(request: Request) {
     if (data.contextMessageLimit !== undefined) {
       const limit = Number(data.contextMessageLimit);
       data.contextMessageLimit = Math.max(1, Math.min(80, Number.isFinite(limit) ? Math.floor(limit) : 40));
+    }
+    if (data.imageModelSize !== undefined && !['1024x1024', '1536x1024', '1024x1536'].includes(data.imageModelSize)) {
+      return NextResponse.json({ error: '不支持的默认图片尺寸' }, { status: 400 });
     }
 
     const user = await prisma.user.update({
@@ -66,6 +72,9 @@ export async function PATCH(request: Request) {
         apiKey: true,
         modelName: true,
         customModelEnabled: true,
+        imageModelEnabled: true,
+        imageModelName: true,
+        imageModelSize: true,
         tavilyApiKey: true,
         defaultStyle: true,
         contextMessageLimit: true,

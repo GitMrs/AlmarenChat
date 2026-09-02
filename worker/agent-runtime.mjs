@@ -305,7 +305,7 @@ function loadRunContext(run) {
   const space = db.prepare('SELECT * FROM "Space" WHERE "id" = ? AND "userId" = ?').get(run.spaceId, run.userId);
   if (!space) throw new Error('任务所属空间不存在');
   const user = db.prepare(
-    'SELECT "customModelEnabled", "apiBaseUrl", "apiKey", "modelName", "tavilyApiKey" FROM "User" WHERE "id" = ?'
+    'SELECT "customModelEnabled", "apiBaseUrl", "apiKey", "modelName", "imageModelEnabled", "imageModelName", "imageModelSize", "tavilyApiKey" FROM "User" WHERE "id" = ?'
   ).get(run.userId);
   if (!user) throw new Error('任务所属用户不存在');
 
@@ -345,6 +345,14 @@ function loadRunContext(run) {
       baseURL: useCustomModel ? user.apiBaseUrl : 'https://api-inference.modelscope.cn/v1',
       name: useCustomModel ? user.modelName : 'deepseek-ai/DeepSeek-V4-Flash',
     },
+    imageModel: user.imageModelEnabled && user.apiBaseUrl && user.apiKey && user.imageModelName
+      ? {
+          apiKey: user.apiKey,
+          baseURL: user.apiBaseUrl,
+          name: user.imageModelName,
+          size: user.imageModelSize || '1024x1024',
+        }
+      : null,
     tavilyApiKey: user.tavilyApiKey?.trim() || null,
     researchAudit: null,
     researchResultAudits: [],

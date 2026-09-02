@@ -185,7 +185,7 @@ export type SpaceLearningCommand = {
   instruction?: string;
 };
 
-export type SpaceTaskCapability = 'workspace_read' | 'workspace_write' | 'web_research' | 'code_execute';
+export type SpaceTaskCapability = 'workspace_read' | 'workspace_write' | 'web_research' | 'code_execute' | 'image_generate';
 export type SpaceNetworkPolicy = 'forbidden' | 'allowed' | 'required';
 
 export interface SpaceTaskExecutionStep {
@@ -361,6 +361,10 @@ export interface MessageAttachment {
   name?: string;
   mimeType?: string;
   size?: number;
+  origin?: 'uploaded' | 'generated';
+  prompt?: string;
+  model?: string;
+  imageSize?: string;
 }
 
 export interface FavoriteAgent {

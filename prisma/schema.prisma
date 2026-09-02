@@ -17,6 +17,9 @@ model User {
   apiKey       String?
   modelName    String?
   customModelEnabled Boolean @default(false)
+  imageModelEnabled Boolean @default(false)
+  imageModelName String?
+  imageModelSize String? @default("1024x1024")
   tavilyApiKey String?
   defaultStyle String?
   contextMessageLimit Int @default(40)

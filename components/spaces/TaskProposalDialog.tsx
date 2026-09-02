@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Check, Code2, FileText, Globe2, Loader2, X } from 'lucide-react';
+import { Check, Code2, FileText, Globe2, Image as ImageIcon, Loader2, X } from 'lucide-react';
 import type { SpaceNetworkPolicy, SpaceTaskProposal } from '@/types';
 
 export type TaskProposalRevision = Pick<SpaceTaskProposal, 'goal' | 'steps' | 'deliverables'> & {
@@ -165,6 +165,12 @@ export default function TaskProposalDialog({
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1.5 text-xs font-black text-amber-700">
                   <Code2 size={13} />
                   隔离运行代码
+                </span>
+              )}
+              {capabilities.includes('image_generate') && (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-50 px-3 py-1.5 text-xs font-black text-sky-700">
+                  <ImageIcon size={13} />
+                  最多生成 2 张图片
                 </span>
               )}
               {networkPolicy !== 'forbidden' && (

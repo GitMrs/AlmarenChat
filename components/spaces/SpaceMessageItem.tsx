@@ -1,6 +1,6 @@
 'use client';
 
-import { Activity, BookOpen, Check, CheckCircle2, ChevronRight, Clock3, Code2, FileText, Globe2, ListTodo, Loader2, RotateCcw, X, Pencil } from 'lucide-react';
+import { Activity, BookOpen, Check, CheckCircle2, ChevronRight, Clock3, Code2, FileText, Globe2, Image as ImageIcon, ListTodo, Loader2, RotateCcw, X, Pencil } from 'lucide-react';
 import MessageActions from '@/components/chat/MessageActions';
 import MessageBubbleFrame from '@/components/chat/MessageBubbleFrame';
 import MessageContent from '@/components/chat/MessageContent';
@@ -95,6 +95,12 @@ function TaskProposal({
               <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-black text-amber-700">
                 <Code2 size={12} />
                 隔离运行代码
+              </span>
+            )}
+            {capabilities.includes('image_generate') && (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-50 px-2.5 py-1 text-[11px] font-black text-sky-700">
+                <ImageIcon size={12} />
+                最多生成 2 张图片
               </span>
             )}
             {(proposal.networkPolicy || (capabilities.includes('web_research') ? 'required' : 'forbidden')) !== 'forbidden' && (

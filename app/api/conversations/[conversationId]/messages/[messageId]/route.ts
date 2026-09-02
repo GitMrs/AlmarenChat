@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
+import { removeGeneratedChatImages } from '@/lib/generated-chat-images.mjs';
 
 export async function DELETE(
   request: Request,
@@ -19,9 +20,14 @@ export async function DELETE(
       return NextResponse.json({ error: 'Conversation not found' }, { status: 404 });
     }
 
+    const message = await prisma.message.findFirst({
+      where: { id: messageId, conversationId },
+      select: { attachments: true },
+    });
     await prisma.message.deleteMany({
       where: { id: messageId, conversationId },
     });
+    await removeGeneratedChatImages(message?.attachments).catch(() => {});
 
     await prisma.conversation.update({
       where: { id: conversationId },

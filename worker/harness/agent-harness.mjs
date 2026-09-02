@@ -12,6 +12,7 @@ import { authorizationAllowsCapability } from '../../lib/agent-runtime-v3-policy
 import { skillAllowsTool, skillExecutionToolSchema, spaceSkillReferenceToolSchema, taskSkill } from '../../lib/agent-runtime/skill-registry.mjs';
 import { readSpaceSkillFile } from '../../lib/space-skills.mjs';
 import { executeSkill } from '../runtime/builtin-skill-runtime.mjs';
+import { generateImageToolSchema, generateWorkspaceImage } from '../runtime/image-generation-runtime.mjs';
 
 const READ_TOOLS = new Set(['list_files', 'read_file', 'check_files']);
 export const EXECUTOR_TOOL_ITERATIONS = 10;
@@ -127,6 +128,7 @@ export async function runExecutorHarness({
   registerWorkspaceFile,
   validateSubmission,
   workspaceOptions,
+  generateImage = generateWorkspaceImage,
 }) {
   if (fakeMode) {
     return { result: `[测试结果] ${agent.name}已完成“${task.title}”，目标是：${run.input}`, paused: false };
@@ -135,7 +137,7 @@ export async function runExecutorHarness({
   const skill = taskSkill(task);
   const workspaceWriteAllowed = run.runtimeVersion >= 3
     ? authorizationAllowsCapability(context.authorization, 'workspace_write')
-      && (skillAllowsTool(skill, 'write_file') || skillAllowsTool(skill, 'patch_file'))
+      && (skillAllowsTool(skill, 'write_file') || skillAllowsTool(skill, 'patch_file') || skillAllowsTool(skill, 'generate_image'))
     : wantsWorkspaceWrite(run.input)
       && (skillAllowsTool(skill, 'write_file') || skillAllowsTool(skill, 'patch_file'));
   const codeExecutionAllowed = run.runtimeVersion >= 3
@@ -145,7 +147,12 @@ export async function runExecutorHarness({
     && Boolean(skill.execution);
   const skillToolSchema = codeExecutionAllowed ? skillExecutionToolSchema(skill) : null;
   const skillReferenceTool = spaceSkillReferenceToolSchema(skill);
-  const canProduceArtifacts = workspaceWriteAllowed || codeExecutionAllowed;
+  const imageGenerationAllowed = run.runtimeVersion >= 3
+    && workspaceWriteAllowed
+    && authorizationAllowsCapability(context.authorization, 'image_generate')
+    && skillAllowsTool(skill, 'generate_image')
+    && Boolean(context.imageModel);
+  const canProduceArtifacts = workspaceWriteAllowed || codeExecutionAllowed || imageGenerationAllowed;
   const priorContent = previousResultContext(run.id, previousResults, emit);
   const prior = priorContent ? `\n\n前序步骤结果：\n${priorContent}` : '';
   const research = context.researchContext && needsResearch(run, task)
@@ -197,6 +204,7 @@ export async function runExecutorHarness({
   ];
   const abortController = new AbortController();
   let submittedManifest = null;
+  let generatedImageCount = 0;
   const cancellationTimer = setInterval(() => {
     if (isCancelled()) abortController.abort();
   }, 250);
@@ -211,6 +219,7 @@ export async function runExecutorHarness({
           ? [safeCommandToolSchema]
           : []),
         ...(skillToolSchema ? [skillToolSchema] : []),
+        ...(imageGenerationAllowed ? [generateImageToolSchema] : []),
         ...(skillReferenceTool ? [skillReferenceTool] : []),
         REQUEST_USER_INPUT_TOOL,
         SUBMIT_TASK_RESULT_TOOL,
@@ -317,6 +326,46 @@ export async function runExecutorHarness({
               };
             }
             return toolResult;
+          });
+        }
+        if (name === 'generate_image') {
+          if (generatedImageCount >= 2) {
+            return { ok: false, error: '当前步骤最多生成 2 张图片，请使用已经生成的图片完成交付。' };
+          }
+          generatedImageCount += 1;
+          emit(run.id, 'IMAGE_GENERATION_STARTED', `${agent.name}正在生成图片`, {
+            taskId: task.id,
+            agentId: agent.id,
+            fileName: String(args.fileName || '').slice(0, 80),
+            imageNumber: generatedImageCount,
+          });
+          return generateImage({
+            model: context.imageModel,
+            prompt: args.prompt,
+            fileName: args.fileName,
+            size: args.size,
+            workspaceOptions,
+            isCancelled,
+          }).then(async (toolResult) => {
+            context.touchedPaths.add(toolResult.path);
+            await registerWorkspaceFile(toolResult.path);
+            emit(run.id, 'IMAGE_GENERATION_COMPLETED', `${agent.name}已生成图片`, {
+              taskId: task.id,
+              agentId: agent.id,
+              path: toolResult.path,
+              mimeType: toolResult.mimeType,
+              size: toolResult.size,
+              imageSize: toolResult.imageSize,
+              model: toolResult.model,
+            });
+            return toolResult;
+          }).catch((error) => {
+            emit(run.id, 'IMAGE_GENERATION_FAILED', `${agent.name}生成图片失败`, {
+              taskId: task.id,
+              agentId: agent.id,
+              error: String(error?.message || error).slice(0, 500),
+            });
+            throw error;
           });
         }
         if (name === 'write_file' && blocksUnapprovedFullOverwrite(

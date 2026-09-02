@@ -13,7 +13,7 @@ import AgentDetailsPanel from '@/components/chat/AgentDetailsPanel';
 import ChatComposer from '@/components/chat/ChatComposer';
 import { MessageItem } from '@/components/chat/ChatMessageItem';
 import { getBuiltInAgents } from '@/lib/agents-data';
-import { streamChat, conversations as conversationsApi, agents as agentsApi, user as userApi, uploads } from '@/lib/api';
+import { generateConversationImage, streamChat, conversations as conversationsApi, agents as agentsApi, user as userApi, uploads } from '@/lib/api';
 import {
   DEFAULT_BROWSER_MODEL_CONFIG,
   readBrowserModelConfig,
@@ -96,7 +96,13 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
   const [pendingDeleteMessage, setPendingDeleteMessage] = useState<ChatMessage | null>(null);
   const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
   const [activeActionMessageId, setActiveActionMessageId] = useState<string | null>(null);
-  const [userSettings, setUserSettings] = useState<{ apiBaseUrl?: string; apiKey?: string; modelName?: string } | null>(null);
+  const [userSettings, setUserSettings] = useState<{
+    apiBaseUrl?: string;
+    apiKey?: string;
+    modelName?: string;
+    imageGenerationAvailable?: boolean;
+    imageModelSize?: '1024x1024' | '1536x1024' | '1024x1536';
+  } | null>(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [contextMessageLimit, setContextMessageLimit] = useState(DEFAULT_CONTEXT_MESSAGE_LIMIT);
   const [viewportHeight, setViewportHeight] = useState<number | null>(null);
@@ -106,6 +112,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
   const [uploadingImage, setUploadingImage] = useState(false);
   const [uploadError, setUploadError] = useState('');
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
+  const [chatMode, setChatMode] = useState<'chat' | 'image'>('chat');
   const [browserModelConfig, setBrowserModelConfig] = useState<BrowserModelConfig>({ ...DEFAULT_BROWSER_MODEL_CONFIG });
   const [browserModelDraft, setBrowserModelDraft] = useState<BrowserModelConfig>({ ...DEFAULT_BROWSER_MODEL_CONFIG });
   const [browserModelScope, setBrowserModelScope] = useState<BrowserModelScope>('GLOBAL');
@@ -185,9 +192,13 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
           const { user: u } = await userApi.get();
           setIsLoggedIn(true);
           setContextMessageLimit(Math.max(1, Math.min(MAX_CONTEXT_MESSAGE_LIMIT, u.contextMessageLimit || DEFAULT_CONTEXT_MESSAGE_LIMIT)));
-          if (u.customModelEnabled && u.apiBaseUrl && u.apiKey && u.modelName) {
-            setUserSettings({ apiBaseUrl: u.apiBaseUrl, apiKey: u.apiKey, modelName: u.modelName });
-          }
+          setUserSettings({
+            ...(u.customModelEnabled && u.apiBaseUrl && u.apiKey && u.modelName
+              ? { apiBaseUrl: u.apiBaseUrl, apiKey: u.apiKey, modelName: u.modelName }
+              : {}),
+            imageGenerationAvailable: Boolean(u.imageModelEnabled && u.apiBaseUrl && u.apiKey && u.imageModelName),
+            imageModelSize: u.imageModelSize || '1024x1024',
+          });
         } catch {
           // Not logged in or failed, use defaults
         }
@@ -433,7 +444,12 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
 
   const handleSend = async (
     text?: string,
-    options: { reuseLastUserMessage?: boolean; historyOverride?: ChatMessage[]; attachmentsOverride?: MessageAttachment[] } = {}
+    options: {
+      reuseLastUserMessage?: boolean;
+      historyOverride?: ChatMessage[];
+      attachmentsOverride?: MessageAttachment[];
+      modeOverride?: 'chat' | 'image';
+    } = {}
   ) => {
     if (!isLoggedIn) {
       router.push('/login');
@@ -442,6 +458,8 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
 
     const content = text ?? pendingLargeTextRef.current ?? inputRef.current?.value.trim() ?? '';
     const outgoingAttachments = options.attachmentsOverride || (pendingAttachment ? [pendingAttachment] : []);
+    const requestMode = options.modeOverride || chatMode;
+    if (requestMode === 'image' && outgoingAttachments.length > 0) return;
     if ((!content && outgoingAttachments.length === 0) || isStreaming || uploadingImage) return;
 
     setShouldStickToBottom(true);
@@ -494,6 +512,36 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
         : undefined;
       const usesBrowserModel = browserModelConfig.source === 'OLLAMA';
       let result: { stream: ReadableStream<Uint8Array>; conversationId?: string };
+
+      if (requestMode === 'image') {
+        if (!userSettings?.imageGenerationAvailable || usesBrowserModel) {
+          throw new Error('请先在账号设置中启用并完整配置图片生成模型');
+        }
+        let localConversationId = conversationId || undefined;
+        if (!localConversationId) {
+          const created = await conversationsApi.create({
+            agentId: displayAgent?.id || agentId,
+            title: content.slice(0, 50) || '图片会话',
+            agentSnapshot,
+          });
+          localConversationId = created.conversation.id;
+          setConversationId(localConversationId);
+        }
+        const generated = await generateConversationImage({
+          conversationId: localConversationId,
+          prompt: content,
+          size: userSettings.imageModelSize,
+          skipPersistUserMessage: options.reuseLastUserMessage,
+          signal: controller.signal,
+        });
+        const assistantMessage = toChatMessage(generated.message);
+        const messagesWithAssistant = [...messagesRef.current, assistantMessage];
+        messagesRef.current = messagesWithAssistant;
+        setMessages(messagesWithAssistant);
+        setStreamingContent('');
+        await syncConversationMessages(localConversationId, messagesWithAssistant);
+        return;
+      }
 
       if (usesBrowserModel) {
         if (webSearchEnabled) {
@@ -563,7 +611,13 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
           webSearchEnabled,
           knowledgeEnabled: true,
           agentSnapshot,
-          ...(userSettings || {}),
+          ...(userSettings?.apiBaseUrl && userSettings.apiKey && userSettings.modelName
+            ? {
+                apiBaseUrl: userSettings.apiBaseUrl,
+                apiKey: userSettings.apiKey,
+                modelName: userSettings.modelName,
+              }
+            : {}),
           signal: controller.signal,
         });
       }
@@ -653,11 +707,15 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
     }
 
     const nextMessages = messages.filter((message) => message.id !== lastAssistantMessage?.id);
+    const regenerateMode = lastAssistantMessage?.attachments?.some((attachment) => attachment.origin === 'generated')
+      ? 'image'
+      : 'chat';
     setMessages(nextMessages);
     handleSend(lastUserMessage.content, {
       reuseLastUserMessage: true,
       historyOverride: nextMessages,
       attachmentsOverride: lastUserMessage.attachments || [],
+      modeOverride: regenerateMode,
     });
   };
 
@@ -974,6 +1032,12 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
             onStop={handleStop}
             webSearchEnabled={webSearchEnabled}
             onToggleWebSearch={() => setWebSearchEnabled((value) => !value)}
+            mode={chatMode}
+            imageGenerationAvailable={Boolean(userSettings?.imageGenerationAvailable) && browserModelConfig.source !== 'OLLAMA'}
+            onModeChange={(mode) => {
+              setChatMode(mode);
+              if (mode === 'image') setWebSearchEnabled(false);
+            }}
           />
         )}
       </main>

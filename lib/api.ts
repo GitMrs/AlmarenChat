@@ -471,6 +471,34 @@ export async function streamChat(data: {
   return { stream: res.body!, conversationId };
 }
 
+export async function generateConversationImage(data: {
+  conversationId: string;
+  prompt: string;
+  size?: '1024x1024' | '1536x1024' | '1024x1536';
+  skipPersistUserMessage?: boolean;
+  signal?: AbortSignal;
+}) {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+  const res = await fetch(`${API_BASE}/conversations/${data.conversationId}/images`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({
+      prompt: data.prompt,
+      size: data.size,
+      skipPersistUserMessage: data.skipPersistUserMessage,
+    }),
+    signal: data.signal,
+  });
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ error: `Image generation failed: ${res.status}` }));
+    throw new Error(error.error || `Image generation failed: ${res.status}`);
+  }
+  return res.json() as Promise<{ userMessage?: any; message: any }>;
+}
+
 export async function streamSpaceMessage(data: {
   spaceId: string;
   message: string;
@@ -525,6 +553,9 @@ export const user = {
     apiKey?: string | null;
     modelName?: string | null;
     customModelEnabled?: boolean;
+    imageModelEnabled?: boolean;
+    imageModelName?: string | null;
+    imageModelSize?: string | null;
     tavilyApiKey?: string | null;
     defaultStyle?: string | null;
     contextMessageLimit?: number;

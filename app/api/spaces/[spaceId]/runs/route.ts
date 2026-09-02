@@ -148,6 +148,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
         if (existing) return NextResponse.json({ run: existing });
       }
       proposal = applyRevision(proposal, revision);
+      if (proposal.capabilities?.includes('image_generate')) {
+        const imageSettings = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { imageModelEnabled: true, imageModelName: true, apiBaseUrl: true, apiKey: true },
+        });
+        if (!imageSettings?.imageModelEnabled || !imageSettings.imageModelName || !imageSettings.apiBaseUrl || !imageSettings.apiKey) {
+          return NextResponse.json({ error: '图片生成模型配置不完整，请先在账号设置中完成配置' }, { status: 409 });
+        }
+      }
       if (proposal.skillSnapshot?.id) {
         const currentSkill = await getSpaceSkill({
           projectRoot: process.cwd(), userId, spaceId, skillId: String(proposal.skillSnapshot.id),

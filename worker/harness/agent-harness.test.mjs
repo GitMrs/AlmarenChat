@@ -160,6 +160,61 @@ test('executor exposes executable Skill tools only inside the approved capabilit
   assert.equal(observed[1].includes('run_skill'), true);
 });
 
+test('executor exposes image generation only when authorized and limits it to two calls', async () => {
+  const calls = [];
+  let requestCount = 0;
+  const result = await runExecutorHarness({
+    run: { ...run, runtimeVersion: 3 },
+    task: {
+      ...task,
+      skillId: 'image-generator',
+      skillSnapshot: {
+        id: 'image-generator', name: '图片生成', version: '1.0.0',
+        allowedTools: ['list_files', 'read_file', 'check_files', 'generate_image'],
+        artifactExtensions: ['.png'], requiredArtifactExtensions: [], instructions: '生成图片。', execution: null,
+      },
+    },
+    agent,
+    context: {
+      ...context,
+      authorization: { capabilities: ['workspace_read', 'workspace_write', 'image_generate'] },
+      imageModel: { apiKey: 'key', baseURL: 'https://example.com/v1', name: 'image-model', size: '1024x1024' },
+      touchedPaths: new Set(),
+    },
+    previousResults: [], baselinePaths: new Set(), fakeMode: false, taskTimeoutMs: 30_000,
+    completeMessage: async (_model, _messages, tools) => {
+      assert.equal(tools.some((tool) => tool.function.name === 'generate_image'), true);
+      requestCount += 1;
+      if (requestCount === 1) {
+        return {
+          content: null,
+          tool_calls: ['one', 'two', 'three'].map((fileName) => ({
+            id: fileName, type: 'function',
+            function: { name: 'generate_image', arguments: JSON.stringify({ prompt: fileName, fileName }) },
+          })),
+        };
+      }
+      return {
+        content: null,
+        tool_calls: [{
+          id: 'submit-image', type: 'function',
+          function: { name: 'submit_task_result', arguments: JSON.stringify({ summary: '图片已生成。', remainingIssues: [] }) },
+        }],
+      };
+    },
+    emit: () => {}, isCancelled: () => false, pauseForInput: () => ({ pause: true }),
+    registerWorkspaceFile: async () => {},
+    validateSubmission: async () => ({ ok: true, manifest: { validation: { valid: true } } }),
+    workspaceOptions: {},
+    generateImage: async ({ fileName }) => {
+      calls.push(fileName);
+      return { ok: true, path: `assets/${fileName}.png`, mimeType: 'image/png', size: 12, imageSize: '1024x1024', model: 'image-model' };
+    },
+  });
+  assert.deepEqual(calls, ['one', 'two']);
+  assert.equal(result.result, '图片已生成。');
+});
+
 test('executor retries two empty reasoning responses before accepting the third response', async () => {
   let requests = 0;
   const events = [];

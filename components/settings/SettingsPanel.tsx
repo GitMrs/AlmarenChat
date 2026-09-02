@@ -6,6 +6,7 @@ import {
   Bot,
   Check,
   Database,
+  Image as ImageIcon,
   KeyRound,
   Loader2,
   LogOut,
@@ -33,6 +34,9 @@ type ModelSnapshot = {
   apiBaseUrl: string;
   apiKey: string;
   modelName: string;
+  imageModelEnabled: boolean;
+  imageModelName: string;
+  imageModelSize: string;
   defaultStyle: string;
   contextMessageLimit: number;
 };
@@ -50,6 +54,9 @@ export default function SettingsPanel() {
   const [apiBaseUrl, setApiBaseUrl] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [modelName, setModelName] = useState('');
+  const [imageModelEnabled, setImageModelEnabled] = useState(false);
+  const [imageModelName, setImageModelName] = useState('');
+  const [imageModelSize, setImageModelSize] = useState('1024x1024');
   const [defaultStyle, setDefaultStyle] = useState('详细');
   const [contextMessageLimit, setContextMessageLimit] = useState(40);
   const [tavilyApiKey, setTavilyApiKey] = useState('');
@@ -84,10 +91,13 @@ export default function SettingsPanel() {
       apiBaseUrl: apiBaseUrl.trim(),
       apiKey: apiKey.trim(),
       modelName: modelName.trim(),
+      imageModelEnabled,
+      imageModelName: imageModelName.trim(),
+      imageModelSize,
       defaultStyle,
       contextMessageLimit,
     }),
-    [apiBaseUrl, apiKey, contextMessageLimit, customModelEnabled, defaultStyle, modelName]
+    [apiBaseUrl, apiKey, contextMessageLimit, customModelEnabled, defaultStyle, imageModelEnabled, imageModelName, imageModelSize, modelName]
   );
   const hasAccountChanges = initialAccount ? JSON.stringify(currentAccount) !== JSON.stringify(initialAccount) : false;
   const hasModelChanges = initialModel ? JSON.stringify(currentModel) !== JSON.stringify(initialModel) : false;
@@ -96,6 +106,7 @@ export default function SettingsPanel() {
   const canTestModel = Boolean(apiBaseUrl.trim() && apiKey.trim() && modelName.trim());
   const canFetchModels = Boolean(apiBaseUrl.trim() && apiKey.trim());
   const modelConfigIncomplete = customModelEnabled && !canTestModel;
+  const imageModelConfigIncomplete = imageModelEnabled && !(apiBaseUrl.trim() && apiKey.trim() && imageModelName.trim());
 
   useEffect(() => {
     if (!localStorage.getItem('token')) {
@@ -114,6 +125,9 @@ export default function SettingsPanel() {
         setApiBaseUrl(u.apiBaseUrl || '');
         setApiKey(u.apiKey || '');
         setModelName(u.modelName || '');
+        setImageModelEnabled(Boolean(u.imageModelEnabled));
+        setImageModelName(u.imageModelName || '');
+        setImageModelSize(u.imageModelSize || '1024x1024');
         setTavilyApiKey(u.tavilyApiKey || '');
         setDefaultStyle(u.defaultStyle || '详细');
         setContextMessageLimit(u.contextMessageLimit || 40);
@@ -123,6 +137,9 @@ export default function SettingsPanel() {
           apiBaseUrl: u.apiBaseUrl || '',
           apiKey: u.apiKey || '',
           modelName: u.modelName || '',
+          imageModelEnabled: Boolean(u.imageModelEnabled),
+          imageModelName: u.imageModelName || '',
+          imageModelSize: u.imageModelSize || '1024x1024',
           defaultStyle: u.defaultStyle || '详细',
           contextMessageLimit: u.contextMessageLimit || 40,
         });
@@ -172,12 +189,18 @@ export default function SettingsPanel() {
         apiBaseUrl: currentModel.apiBaseUrl || null,
         apiKey: currentModel.apiKey || null,
         modelName: currentModel.modelName || null,
+        imageModelEnabled: currentModel.imageModelEnabled,
+        imageModelName: currentModel.imageModelName || null,
+        imageModelSize: currentModel.imageModelSize,
         defaultStyle: currentModel.defaultStyle,
         contextMessageLimit: currentModel.contextMessageLimit,
       });
       setApiBaseUrl(currentModel.apiBaseUrl);
       setApiKey(currentModel.apiKey);
       setModelName(currentModel.modelName);
+      setImageModelEnabled(currentModel.imageModelEnabled);
+      setImageModelName(currentModel.imageModelName);
+      setImageModelSize(currentModel.imageModelSize);
       setContextMessageLimit(currentModel.contextMessageLimit);
       setInitialModel(currentModel);
       setModelSaved(true);
@@ -470,6 +493,60 @@ export default function SettingsPanel() {
                     {modelListResult.message}
                     {modelListResult.type === 'success' && availableModels.length > 0 ? '，点击输入框选择。' : ''}
                   </p>
+                )}
+              </div>
+
+              <div className="rounded-2xl border border-black/[0.06] bg-[#fbfaf7] p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex min-w-0 items-start gap-3">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-slate-600 shadow-sm">
+                      <ImageIcon size={16} />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-sm font-black text-slate-900">图片生成模型</div>
+                      <p className="mt-1 text-xs leading-5 text-slate-500">用于获得授权的空间任务，复用上方 Base URL 和 API Key。</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setImageModelEnabled((value) => !value)}
+                    title={imageModelEnabled ? '关闭图片生成模型' : '开启图片生成模型'}
+                    className={cn(
+                      'flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition',
+                      imageModelEnabled ? 'bg-slate-950 text-white' : 'bg-white text-slate-400 shadow-sm'
+                    )}
+                  >
+                    {imageModelEnabled ? <ToggleRight size={18} /> : <ToggleLeft size={18} />}
+                  </button>
+                </div>
+                <div className="mt-4 grid gap-4 sm:grid-cols-[minmax(0,1fr)_160px]">
+                  <label className="block min-w-0">
+                    <span className="mb-2 block text-xs font-bold text-slate-600">图片模型名称</span>
+                    <input
+                      list="available-models"
+                      value={imageModelName}
+                      onChange={(event) => setImageModelName(event.target.value)}
+                      placeholder="例如 gpt-image-1"
+                      disabled={!imageModelEnabled}
+                      className="h-11 w-full min-w-0 rounded-xl border border-black/[0.08] bg-white px-3 text-sm font-medium text-slate-800 outline-none disabled:bg-slate-100 disabled:text-slate-400"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-2 block text-xs font-bold text-slate-600">默认尺寸</span>
+                    <select
+                      value={imageModelSize}
+                      onChange={(event) => setImageModelSize(event.target.value)}
+                      disabled={!imageModelEnabled}
+                      className="h-11 w-full rounded-xl border border-black/[0.08] bg-white px-3 text-sm font-bold text-slate-700 outline-none disabled:bg-slate-100 disabled:text-slate-400"
+                    >
+                      <option value="1024x1024">方图 1024</option>
+                      <option value="1536x1024">横图 3:2</option>
+                      <option value="1024x1536">竖图 2:3</option>
+                    </select>
+                  </label>
+                </div>
+                {imageModelConfigIncomplete && (
+                  <p className="mt-3 text-xs font-semibold text-amber-700">开启图片生成前，请填写 Base URL、API Key 和图片模型名称。</p>
                 )}
               </div>
 

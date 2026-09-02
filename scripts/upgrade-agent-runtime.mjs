@@ -29,6 +29,9 @@ try {
   }
 
   db.transaction(() => {
+    if (!hasColumn('User', 'imageModelEnabled')) db.exec(`ALTER TABLE "User" ADD COLUMN "imageModelEnabled" BOOLEAN NOT NULL DEFAULT false`);
+    if (!hasColumn('User', 'imageModelName')) db.exec('ALTER TABLE "User" ADD COLUMN "imageModelName" TEXT');
+    if (!hasColumn('User', 'imageModelSize')) db.exec(`ALTER TABLE "User" ADD COLUMN "imageModelSize" TEXT DEFAULT '1024x1024'`);
     db.exec(`
       CREATE TABLE IF NOT EXISTS "Space" (
         "id" TEXT NOT NULL PRIMARY KEY,

@@ -61,8 +61,8 @@ const TASK_PROPOSAL_TOOL = {
           type: 'array',
           minItems: 1,
           uniqueItems: true,
-          items: { type: 'string', enum: ['workspace_read', 'workspace_write', 'web_research', 'code_execute'] },
-          description: '任务实际需要的能力。始终包含 workspace_read；创建或修改文件时加入 workspace_write；需要运行已注册 Skill 的 Python/Node 入口时加入 code_execute；需要外部公开资料时加入 web_research。',
+          items: { type: 'string', enum: ['workspace_read', 'workspace_write', 'web_research', 'code_execute', 'image_generate'] },
+          description: '任务实际需要的能力。始终包含 workspace_read；创建或修改文件时加入 workspace_write；需要运行已注册 Skill 的 Python/Node 入口时加入 code_execute；需要生成新图片时加入 image_generate；需要外部公开资料时加入 web_research。',
         },
         networkPolicy: {
           type: 'string',
@@ -91,7 +91,7 @@ type TaskProposal = {
     dependsOn: number[];
     deliverables: string[];
   }>;
-  capabilities: Array<'workspace_read' | 'workspace_write' | 'web_research' | 'code_execute'>;
+  capabilities: Array<'workspace_read' | 'workspace_write' | 'web_research' | 'code_execute' | 'image_generate'>;
   networkPolicy: 'forbidden' | 'allowed' | 'required';
   status: 'pending';
   skillSnapshot?: Record<string, unknown>;
@@ -110,6 +110,7 @@ function pendingTaskProposal(attachments: unknown) {
 function taskProposalFromArgs(
   args: Record<string, unknown>,
   allowWebSearch: boolean,
+  imageModelAvailable: boolean,
   skillSnapshot?: Record<string, unknown> | null,
   skillAgentId?: string
 ): TaskProposal {
@@ -120,6 +121,12 @@ function taskProposalFromArgs(
   const summary = text(args.summary);
   const artifacts = list(args.artifacts);
   const capabilities = taskProposalCapabilities(args.capabilities);
+  if (capabilities.includes('image_generate') && !imageModelAvailable) {
+    throw new Error('账号尚未配置可用的图片生成模型');
+  }
+  if (capabilities.includes('image_generate') && !capabilities.includes('workspace_write')) {
+    throw new Error('图片生成任务必须同时申请 workspace_write');
+  }
   if (skillSnapshot?.execution && !capabilities.includes('code_execute')) capabilities.push('code_execute');
   const steps = normalizeTaskProposalSteps(list(args.steps), artifacts);
   if (!title || !goal || !summary || steps.length === 0) throw new Error('任务方案缺少必要信息');
@@ -152,6 +159,9 @@ async function userModelSettings(userId: string) {
       apiBaseUrl: true,
       apiKey: true,
       modelName: true,
+      imageModelEnabled: true,
+      imageModelName: true,
+      imageModelSize: true,
       tavilyApiKey: true,
       contextMessageLimit: true,
     },
@@ -161,6 +171,7 @@ async function userModelSettings(userId: string) {
     apiBaseUrl: user.customModelEnabled ? user.apiBaseUrl : null,
     apiKey: user.customModelEnabled ? user.apiKey : null,
     modelName: user.customModelEnabled ? user.modelName : null,
+    imageModelAvailable: Boolean(user.imageModelEnabled && user.apiBaseUrl && user.apiKey && user.imageModelName),
     tavilyApiKey: user.tavilyApiKey,
     contextMessageLimit: user.contextMessageLimit || 40,
   };
@@ -360,6 +371,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
         !isMultiReply && allowWebSearch ? '本轮联网搜索已由用户开启。需要外部公开资料或实时事实时调用 web_search；查询当前空间目录和文件必须使用本地只读工具，不得调用 web_search。一次联网查询直接回答，不要生成任务方案。' : '',
         !isMultiReply && !allowWebSearch ? '本轮联网搜索未开启。需要外部公开资料或实时事实时，请简短提示用户开启输入框的联网开关；不得仅为获得联网能力而生成任务方案。' : '',
         !isMultiReply ? '仅在用户明确要求创建或修改文件、网页、代码或文档时，才把写入工作区列入任务。只有任务确实需要运行已注册 Skill 的 Python/Node 入口时才申请 code_execute；普通文件编辑和静态检查不得申请。' : '',
+        !isMultiReply && settings.imageModelAvailable
+          ? '账号已配置图片生成模型。用户明确要求生成图片，或交付物确实需要新图片且方案明确列出图片产物时，可以申请 image_generate；方案必须同时包含 workspace_write，并说明预计图片数量，最多 2 张。不要把使用已有图片误写为图片生成。'
+          : !isMultiReply
+            ? '账号没有可用的图片生成模型，任务方案不得申请 image_generate；需要配图时只能使用现有工作区图片或采用无需新图片的方案。'
+            : '',
         !isMultiReply ? '打招呼、事实问答、概念解释、讨论想法、没有明确交付约束的简单分析，以及几次只读或联网调用可以完成的查看，都直接在当前对话回答。用户明确要求专业分析、评估、审查、方案或清单，并同时给出数量、格式、标准或交付物约束时，应生成任务方案；用户明确要求直接回答或不要创建任务时除外。' : '',
         forceTaskProposal ? '系统已确认当前请求需要形成可验收的专业交付，本轮必须调用 propose_task 提交方案，不要直接用正文代替任务方案。' : '',
       ].join('\n'),
@@ -424,6 +440,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
                 taskProposal = taskProposalFromArgs(
                   args,
                   allowWebSearch,
+                  settings.imageModelAvailable,
                   proposalSkill as Record<string, unknown> | null,
                   selectedSkill && targetAgent.id !== SPACE_COORDINATOR.id
                     ? targetAgent.id
