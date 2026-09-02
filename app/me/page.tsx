@@ -15,6 +15,7 @@ import {
   Link2Off,
   Loader2,
   MessageSquare,
+  MessageCircleHeart,
   PanelsTopLeft,
   Plus,
   Rocket,
@@ -27,6 +28,7 @@ import AppShell from '@/components/layout/AppShell';
 import LoginRequired from '@/components/auth/LoginRequired';
 import SettingsPanel from '@/components/settings/SettingsPanel';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
+import PersonalAssistantSettings from '@/components/assistant/PersonalAssistantSettings';
 import { agents as agentsApi, auth, conversations as conversationsApi, favorites as favoritesApi, spaceShares as spaceSharesApi, spaces as spacesApi } from '@/lib/api';
 import type { Agent, SpaceFileShare } from '@/types';
 import { cn } from '@/lib/utils';
@@ -44,7 +46,7 @@ function MeContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const requestedTab = searchParams.get('tab');
-  const activeTab = requestedTab === 'settings' || requestedTab === 'shares' ? requestedTab : 'assets';
+  const activeTab = requestedTab === 'settings' || requestedTab === 'shares' || requestedTab === 'assistant' ? requestedTab : 'assets';
   const [myAgents, setMyAgents] = useState<Agent[]>([]);
   const [favoriteAgents, setFavoriteAgents] = useState<any[]>([]);
   const [recentConversations, setRecentConversations] = useState<any[]>([]);
@@ -186,7 +188,7 @@ function MeContent() {
     }
   };
 
-  const switchTab = (tab: 'assets' | 'shares' | 'settings') => {
+  const switchTab = (tab: 'assets' | 'shares' | 'settings' | 'assistant') => {
     router.push(tab === 'assets' ? '/me' : `/me?tab=${tab}`);
   };
 
@@ -224,6 +226,7 @@ function MeContent() {
           {[
             { id: 'assets', label: '我的资产', icon: Bot },
             { id: 'shares', label: '网页共享', icon: Globe2 },
+            { id: 'assistant', label: '我的助理', icon: MessageCircleHeart },
             { id: 'settings', label: '账号设置', icon: SlidersHorizontal },
           ].map((tab) => {
             const Icon = tab.icon;
@@ -231,7 +234,7 @@ function MeContent() {
             return (
               <button
                 key={tab.id}
-                onClick={() => switchTab(tab.id as 'assets' | 'shares' | 'settings')}
+                onClick={() => switchTab(tab.id as 'assets' | 'shares' | 'settings' | 'assistant')}
                 className={cn(
                   'inline-flex cursor-pointer items-center gap-2 rounded-full px-4 py-2 text-sm font-black transition',
                   active ? 'bg-slate-950 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-950'
@@ -284,6 +287,8 @@ function MeContent() {
         )}
 
         {!needsLogin && activeTab === 'settings' && <SettingsPanel />}
+
+        {!needsLogin && activeTab === 'assistant' && <PersonalAssistantSettings />}
 
         {!needsLogin && activeTab === 'shares' && (
           <section className="space-y-5">

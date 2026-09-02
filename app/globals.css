@@ -67,6 +67,10 @@ button:disabled {
   cursor: default;
 }
 
+.mobile-bottom-nav {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
 /* Respect reduced motion preferences */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

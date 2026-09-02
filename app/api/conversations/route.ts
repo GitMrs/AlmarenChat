@@ -13,7 +13,7 @@ export async function GET(request: Request) {
     const includeLastMessage = searchParams.get('includeLastMessage') !== 'false';
 
     const conversations = await prisma.conversation.findMany({
-      where: { userId },
+      where: { userId, kind: 'AGENT' },
       include: includeLastMessage ? {
         messages: {
           orderBy: { createdAt: 'desc' },

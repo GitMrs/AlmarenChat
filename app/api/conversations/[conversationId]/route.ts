@@ -12,7 +12,7 @@ export async function GET(
     const { conversationId } = await params;
 
     const conversation = await prisma.conversation.findFirst({
-      where: { id: conversationId, userId },
+      where: { id: conversationId, userId, kind: 'AGENT' },
     });
 
     if (!conversation) {
@@ -37,7 +37,7 @@ export async function DELETE(
     const { conversationId } = await params;
 
     const conversation = await prisma.conversation.findFirst({
-      where: { id: conversationId, userId },
+      where: { id: conversationId, userId, kind: 'AGENT' },
     });
 
     if (!conversation) {
@@ -68,7 +68,7 @@ export async function PATCH(
     const { title, contextMessageLimit } = await request.json();
 
     const conversation = await prisma.conversation.findFirst({
-      where: { id: conversationId, userId },
+      where: { id: conversationId, userId, kind: 'AGENT' },
     });
 
     if (!conversation) {

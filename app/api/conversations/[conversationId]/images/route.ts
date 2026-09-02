@@ -26,7 +26,7 @@ export async function POST(
     if (prompt.length > 2_000) return NextResponse.json({ error: '图片描述不能超过 2000 个字符' }, { status: 400 });
 
     const [conversation, user] = await Promise.all([
-      prisma.conversation.findFirst({ where: { id: conversationId, userId }, select: { id: true } }),
+      prisma.conversation.findFirst({ where: { id: conversationId, userId, kind: 'AGENT' }, select: { id: true } }),
       prisma.user.findUnique({
         where: { id: userId },
         select: { imageModelEnabled: true, imageModelName: true, imageModelSize: true, apiBaseUrl: true, apiKey: true },

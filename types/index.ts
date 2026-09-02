@@ -36,6 +36,32 @@ export interface Conversation {
   createdAt: string;
   updatedAt: string;
   messages?: Message[];
+  kind?: 'AGENT' | 'PERSONAL_ASSISTANT';
+}
+
+export interface PersonalAssistantProfile {
+  name: string;
+  avatar?: string | null;
+  identity?: string | null;
+  soul?: string | null;
+  greeting?: string | null;
+}
+
+export interface AssistantMemoryItem {
+  id: string;
+  category: string;
+  content: string;
+  status: 'ACTIVE' | 'DISABLED';
+  occurrenceCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PersonalAssistantBootstrap {
+  profile: PersonalAssistantProfile;
+  conversationId: string;
+  messages: Message[];
+  memories: AssistantMemoryItem[];
 }
 
 export interface Message {

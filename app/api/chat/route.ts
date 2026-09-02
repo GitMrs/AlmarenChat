@@ -3,12 +3,11 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
-import { isAdminEmail } from '@/app/api/_lib/admin';
 import { buildWebSearchContext } from '@/lib/web-search';
 import { formatKnowledgeContext, getKnowledgeHits } from '@/lib/knowledge';
 import { createModelClient, resolveModelName } from '@/lib/model-client';
+import { reserveChatQuota } from '@/lib/chat-quota';
 
-const DAILY_CHAT_LIMIT = 30;
 const TEXT_CHAT_COST = 1;
 const IMAGE_CHAT_COST = 3;
 
@@ -28,15 +27,6 @@ async function imageAttachmentToDataUrl(attachment: ChatAttachment) {
   const bytes = await readFile(filePath);
   const mimeType = attachment.mimeType || 'image/png';
   return `data:${mimeType};base64,${bytes.toString('base64')}`;
-}
-
-function getQuotaDay() {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Shanghai',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(new Date());
 }
 
 export async function POST(request: Request) {
@@ -91,37 +81,20 @@ export async function POST(request: Request) {
         apiKey &&
         modelName
     );
-    const shouldCountQuota = !usesCustomModel && !isAdminEmail(userSettings.email);
-    const dailyChatLimit = userSettings.dailyChatLimit || DAILY_CHAT_LIMIT;
     const quotaCost = imageAttachments.length > 0 ? IMAGE_CHAT_COST : TEXT_CHAT_COST;
 
-    if (shouldCountQuota) {
-      const day = getQuotaDay();
-      const usage = await prisma.dailyChatUsage.upsert({
-        where: { userId_day: { userId, day } },
-        update: {},
-        create: { userId, day },
-      });
-
-      if (usage.usedCount + quotaCost > dailyChatLimit) {
-        return NextResponse.json(
-          {
-            error: `今日免费聊天次数已用完。你可以明天再来，或在设置里开启自己的模型配置。`,
-            quota: {
-              limit: dailyChatLimit,
-              used: usage.usedCount,
-              remaining: Math.max(0, dailyChatLimit - usage.usedCount),
-              cost: quotaCost,
-            },
-          },
-          { status: 429 }
-        );
-      }
-
-      await prisma.dailyChatUsage.update({
-        where: { userId_day: { userId, day } },
-        data: { usedCount: { increment: quotaCost } },
-      });
+    const quota = await reserveChatQuota({
+      userId,
+      email: userSettings.email,
+      dailyChatLimit: userSettings.dailyChatLimit,
+      usesCustomModel,
+      cost: quotaCost,
+    });
+    if (quota && !quota.allowed) {
+      return NextResponse.json(
+        { error: '今日免费聊天次数已用完。你可以明天再来，或在设置里开启自己的模型配置。', quota },
+        { status: 429 }
+      );
     }
 
     const requestedContextLimit =
@@ -154,7 +127,7 @@ export async function POST(request: Request) {
 
     const conversationSettings = resolvedConversationId
       ? await prisma.conversation.findFirst({
-          where: { id: resolvedConversationId, userId },
+          where: { id: resolvedConversationId, userId, kind: 'AGENT' },
           select: { contextMessageLimit: true },
         })
       : null;

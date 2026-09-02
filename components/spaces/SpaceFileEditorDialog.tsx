@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Code2, Copy, ExternalLink, Eye, Globe2, Loader2, Maximize2, Minimize2, Save, X } from 'lucide-react';
+import { Code2, Copy, ExternalLink, Eye, Globe2, Image as ImageIcon, Loader2, Maximize2, Minimize2, Save, X } from 'lucide-react';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import StaticHtmlPreview from '@/components/spaces/StaticHtmlPreview';
 import { spaces as spacesApi } from '@/lib/api';
@@ -29,6 +29,8 @@ export default function SpaceFileEditorDialog({
   const [mode, setMode] = useState<'preview' | 'source'>('source');
   const [preview, setPreview] = useState<{ url: string; rootUrl: string } | null>(null);
   const [previewError, setPreviewError] = useState('');
+  const [externalImages, setExternalImages] = useState(true);
+  const [externalImagesBusy, setExternalImagesBusy] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const [share, setShare] = useState<{ enabled: boolean; url: string | null } | null>(null);
   const [shareBusy, setShareBusy] = useState(false);
@@ -48,6 +50,8 @@ export default function SpaceFileEditorDialog({
     setMode(/\.html?$/i.test(file.fileName) ? 'preview' : 'source');
     setPreview(null);
     setPreviewError('');
+    setExternalImages(true);
+    setExternalImagesBusy(false);
     setFullscreen(false);
     setShare(null);
     setShareBusy(false);
@@ -68,7 +72,7 @@ export default function SpaceFileEditorDialog({
         if (active) setLoading(false);
       });
     if (/\.html?$/i.test(file.fileName)) {
-      spacesApi.createFilePreview(spaceId, file.id)
+      spacesApi.createFilePreview(spaceId, file.id, { externalImages: true })
         .then((result) => {
           if (active) setPreview(result);
         })
@@ -126,7 +130,7 @@ export default function SpaceFileEditorDialog({
       setUpdatedAt(result.file.updatedAt || null);
       if (htmlPreview) {
         try {
-          setPreview(await spacesApi.createFilePreview(spaceId, file.id));
+          setPreview(await spacesApi.createFilePreview(spaceId, file.id, { externalImages }));
           setPreviewError('');
         } catch (reason: any) {
           setPreview(null);
@@ -138,6 +142,22 @@ export default function SpaceFileEditorDialog({
       setError(reason.message || '保存文件失败');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const toggleExternalImages = async () => {
+    if (!htmlPreview || externalImagesBusy) return;
+    const next = !externalImages;
+    setExternalImagesBusy(true);
+    setPreviewError('');
+    try {
+      const result = await spacesApi.createFilePreview(spaceId, file.id, { externalImages: next });
+      setExternalImages(next);
+      setPreview(result);
+    } catch (reason: any) {
+      setPreviewError(reason.message || '更新外部图片权限失败');
+    } finally {
+      setExternalImagesBusy(false);
     }
   };
 
@@ -251,6 +271,22 @@ export default function SpaceFileEditorDialog({
               </div>
               {htmlPreview && (
                 <div className="mt-2 flex min-w-0 flex-wrap items-center gap-2">
+                  <ImageIcon size={14} className={externalImages ? 'text-emerald-600' : 'text-slate-400'} />
+                  <span className="text-slate-600">外部图片</span>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={externalImages}
+                    aria-label="加载 HTTPS 外部图片"
+                    onClick={toggleExternalImages}
+                    disabled={externalImagesBusy}
+                    title={externalImages ? '停止加载外部图片' : '加载 HTTPS 外部图片'}
+                    className={`relative h-5 w-9 shrink-0 rounded-full transition ${externalImages ? 'bg-emerald-600' : 'bg-slate-200'} disabled:opacity-50`}
+                  >
+                    <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition ${externalImages ? 'left-[18px]' : 'left-0.5'}`} />
+                  </button>
+                  {externalImagesBusy && <Loader2 size={13} className="animate-spin" />}
+                  <span className="mx-1 h-4 w-px bg-slate-200" aria-hidden="true" />
                   <Globe2 size={14} className={share?.enabled ? 'text-emerald-600' : 'text-slate-400'} />
                   <span className="text-slate-600">公开共享</span>
                   <button

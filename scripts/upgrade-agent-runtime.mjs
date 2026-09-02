@@ -32,6 +32,37 @@ try {
     if (!hasColumn('User', 'imageModelEnabled')) db.exec(`ALTER TABLE "User" ADD COLUMN "imageModelEnabled" BOOLEAN NOT NULL DEFAULT false`);
     if (!hasColumn('User', 'imageModelName')) db.exec('ALTER TABLE "User" ADD COLUMN "imageModelName" TEXT');
     if (!hasColumn('User', 'imageModelSize')) db.exec(`ALTER TABLE "User" ADD COLUMN "imageModelSize" TEXT DEFAULT '1024x1024'`);
+    if (!hasColumn('Conversation', 'kind')) db.exec(`ALTER TABLE "Conversation" ADD COLUMN "kind" TEXT NOT NULL DEFAULT 'AGENT'`);
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS "PersonalAssistantProfile" (
+        "userId" TEXT NOT NULL PRIMARY KEY,
+        "conversationId" TEXT NOT NULL,
+        "name" TEXT NOT NULL DEFAULT '小伴',
+        "avatar" TEXT,
+        "identity" TEXT,
+        "soul" TEXT,
+        "greeting" TEXT,
+        "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" DATETIME NOT NULL,
+        CONSTRAINT "PersonalAssistantProfile_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+        CONSTRAINT "PersonalAssistantProfile_conversationId_fkey" FOREIGN KEY ("conversationId") REFERENCES "Conversation" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+      );
+      CREATE TABLE IF NOT EXISTS "AssistantMemoryItem" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "userId" TEXT NOT NULL,
+        "category" TEXT NOT NULL DEFAULT 'preference',
+        "content" TEXT NOT NULL,
+        "status" TEXT NOT NULL DEFAULT 'ACTIVE',
+        "sourceMessageId" TEXT,
+        "occurrenceCount" INTEGER NOT NULL DEFAULT 1,
+        "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" DATETIME NOT NULL,
+        CONSTRAINT "AssistantMemoryItem_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS "Conversation_userId_kind_updatedAt_idx" ON "Conversation"("userId", "kind", "updatedAt");
+      CREATE UNIQUE INDEX IF NOT EXISTS "PersonalAssistantProfile_conversationId_key" ON "PersonalAssistantProfile"("conversationId");
+      CREATE INDEX IF NOT EXISTS "AssistantMemoryItem_userId_status_updatedAt_idx" ON "AssistantMemoryItem"("userId", "status", "updatedAt");
+    `);
     db.exec(`
       CREATE TABLE IF NOT EXISTS "Space" (
         "id" TEXT NOT NULL PRIMARY KEY,

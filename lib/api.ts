@@ -1,4 +1,4 @@
-import type { AgentRun, SpaceDiscussion, SpaceFileShare, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal } from '@/types';
+import type { AgentRun, AssistantMemoryItem, PersonalAssistantBootstrap, PersonalAssistantProfile, SpaceDiscussion, SpaceFileShare, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal } from '@/types';
 
 const API_BASE = '/api';
 
@@ -50,6 +50,46 @@ export const auth = {
       body: JSON.stringify(data),
     }),
   me: () => request<{ user: any }>('/auth/me'),
+};
+
+export type AssistantPageContext = {
+  type: 'space' | 'run' | 'conversation' | 'agent';
+  spaceId?: string;
+  runId?: string;
+  conversationId?: string;
+  agentId?: string;
+};
+
+export const assistant = {
+  get: () => request<PersonalAssistantBootstrap>('/assistant'),
+  updateProfile: (data: Partial<PersonalAssistantProfile>) =>
+    request<{ profile: PersonalAssistantProfile }>('/assistant/profile', { method: 'PATCH', body: JSON.stringify(data) }),
+  addMemory: (data: { content: string; category?: string }) =>
+    request<{ memory: AssistantMemoryItem }>('/assistant/memories', { method: 'POST', body: JSON.stringify(data) }),
+  updateMemory: (id: string, data: { content?: string; status?: 'ACTIVE' | 'DISABLED' }) =>
+    request<{ memory: AssistantMemoryItem }>(`/assistant/memories/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  deleteMemory: (id: string) =>
+    request<{ success: true }>(`/assistant/memories/${id}`, { method: 'DELETE' }),
+  sendMessage: async (data: {
+    message: string;
+    webSearchEnabled: boolean;
+    sharePage: boolean;
+    pageContext?: AssistantPageContext | null;
+    signal?: AbortSignal;
+  }) => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    return fetch(`${API_BASE}/assistant/messages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify({
+        message: data.message,
+        webSearchEnabled: data.webSearchEnabled,
+        sharePage: data.sharePage,
+        pageContext: data.pageContext,
+      }),
+      signal: data.signal,
+    });
+  },
 };
 
 // Agents
@@ -273,8 +313,11 @@ export const spaces = {
     request<{ content: string; updatedAt: string | null; readOnlyReason: string | null }>(
       `/spaces/${spaceId}/files/${fileId}?mode=edit`
     ),
-  createFilePreview: (spaceId: string, fileId: string) =>
-    request<{ url: string; rootUrl: string }>(`/spaces/${spaceId}/files/${fileId}/preview`, { method: 'POST' }),
+  createFilePreview: (spaceId: string, fileId: string, options?: { externalImages?: boolean }) =>
+    request<{ url: string; rootUrl: string }>(`/spaces/${spaceId}/files/${fileId}/preview`, {
+      method: 'POST',
+      body: JSON.stringify(options || {}),
+    }),
   getFileShare: (spaceId: string, fileId: string) =>
     request<{ enabled: boolean; url: string | null }>(`/spaces/${spaceId}/files/${fileId}/share`),
   enableFileShare: (spaceId: string, fileId: string) =>

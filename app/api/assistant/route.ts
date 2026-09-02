@@ -1,0 +1,37 @@
+import { NextResponse } from 'next/server';
+import prisma from '@/app/api/_lib/db';
+import { requireAuth } from '@/app/api/_lib/auth';
+import { ensurePersonalAssistant } from '@/lib/personal-assistant/profile';
+
+export async function GET(request: Request) {
+  try {
+    const userId = requireAuth(request);
+    const profile = await ensurePersonalAssistant(userId);
+    const [messages, memories] = await Promise.all([
+      prisma.message.findMany({
+        where: { conversationId: profile.conversationId },
+        orderBy: { createdAt: 'desc' },
+        take: 60,
+      }),
+      prisma.assistantMemoryItem.findMany({
+        where: { userId },
+        orderBy: { updatedAt: 'desc' },
+      }),
+    ]);
+    return NextResponse.json({
+      profile: {
+        name: profile.name,
+        avatar: profile.avatar,
+        identity: profile.identity,
+        soul: profile.soul,
+        greeting: profile.greeting,
+      },
+      conversationId: profile.conversationId,
+      messages: messages.reverse(),
+      memories,
+    });
+  } catch (error: any) {
+    if (error.message === 'Unauthorized') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}

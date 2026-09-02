@@ -12,7 +12,7 @@ export async function GET(
 
     // Verify conversation belongs to user
     const conversation = await prisma.conversation.findFirst({
-      where: { id: conversationId, userId },
+      where: { id: conversationId, userId, kind: 'AGENT' },
     });
     if (!conversation) {
       return NextResponse.json({ error: 'Conversation not found' }, { status: 404 });
@@ -56,7 +56,7 @@ export async function POST(
 
     // Verify conversation belongs to user
     const conversation = await prisma.conversation.findFirst({
-      where: { id: conversationId, userId },
+      where: { id: conversationId, userId, kind: 'AGENT' },
     });
     if (!conversation) {
       return NextResponse.json({ error: 'Conversation not found' }, { status: 404 });

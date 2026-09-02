@@ -22,7 +22,7 @@ export default function BottomNav() {
   };
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-black/[0.06] bg-white/92 backdrop-blur-xl md:hidden">
+    <nav className="mobile-bottom-nav fixed inset-x-0 bottom-0 z-50 border-t border-black/[0.06] bg-white/92 backdrop-blur-xl md:hidden">
       <div className="flex h-[68px] items-center justify-around">
         {tabs.map((tab) => {
           const Icon = tab.icon;

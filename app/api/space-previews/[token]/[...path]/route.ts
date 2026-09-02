@@ -3,7 +3,7 @@ import path from 'node:path';
 import { NextResponse } from 'next/server';
 import { ensureSpaceRoot, resolveSpacePath } from '@/app/api/_lib/spaces';
 import { verifySpacePreviewToken } from '@/lib/space-preview-token.mjs';
-import { STATIC_HTML_SANDBOX } from '@/lib/static-html-sandbox.mjs';
+import { spacePreviewPolicy } from '@/lib/space-preview-policy.mjs';
 import { workspaceAttemptFile } from '@/lib/workspace-staging.mjs';
 
 const MAX_PREVIEW_FILE_BYTES = 5 * 1024 * 1024;
@@ -25,26 +25,6 @@ const MIME_TYPES: Record<string, string> = {
   '.woff': 'font/woff',
   '.woff2': 'font/woff2',
 };
-
-function previewPolicy(request: Request, token: string) {
-  const origin = new URL(request.url).origin;
-  const root = `${origin}/api/space-previews/${token}/`;
-  return [
-    `sandbox ${STATIC_HTML_SANDBOX}`,
-    "default-src 'none'",
-    `script-src 'unsafe-inline' ${root}`,
-    `style-src 'unsafe-inline' ${root}`,
-    `img-src ${root} data: blob:`,
-    `font-src ${root} data:`,
-    `media-src ${root}`,
-    `connect-src ${root}`,
-    "object-src 'none'",
-    "frame-src 'none'",
-    "worker-src 'none'",
-    `form-action ${root}`,
-    "base-uri 'none'",
-  ].join('; ');
-}
 
 export async function GET(
   request: Request,
@@ -87,7 +67,11 @@ export async function GET(
         'Content-Type': mimeType,
         'Content-Length': String(bytes.byteLength),
         'Cache-Control': 'private, no-store',
-        'Content-Security-Policy': previewPolicy(request, token),
+        'Content-Security-Policy': spacePreviewPolicy({
+          origin: new URL(request.url).origin,
+          token,
+          externalImages: scope.externalImages,
+        }),
         'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=(), usb=()',
         'Referrer-Policy': 'no-referrer',
         'X-Content-Type-Options': 'nosniff',

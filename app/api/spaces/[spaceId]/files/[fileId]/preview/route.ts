@@ -15,6 +15,8 @@ export async function POST(
   try {
     const userId = requireAuth(request);
     const { spaceId, fileId } = await params;
+    const body = await request.json().catch(() => ({}));
+    const externalImages = body?.externalImages === true;
     const space = await getSpaceForUser(spaceId, userId);
     if (!space) return NextResponse.json({ error: 'Space not found' }, { status: 404 });
 
@@ -28,8 +30,8 @@ export async function POST(
       ? await prisma.agentTask.findUnique({ where: { id: file.taskId }, select: { attempt: true } })
       : null;
     const scope = stagedTask
-      ? { userId, spaceId, root: 'staging', taskId: file.taskId, attempt: stagedTask.attempt }
-      : { userId, spaceId, root: 'space' };
+      ? { userId, spaceId, root: 'staging', taskId: file.taskId, attempt: stagedTask.attempt, externalImages }
+      : { userId, spaceId, root: 'space', externalImages };
     const token = signSpacePreviewToken(scope);
     const relativePath = stagedTask && file.relativePath.startsWith('workspace/')
       ? file.relativePath.slice('workspace/'.length)

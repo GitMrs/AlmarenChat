@@ -12,7 +12,7 @@ export async function DELETE(
     const { conversationId, messageId } = await params;
 
     const conversation = await prisma.conversation.findFirst({
-      where: { id: conversationId, userId },
+      where: { id: conversationId, userId, kind: 'AGENT' },
       select: { id: true },
     });
 
