@@ -75,7 +75,7 @@ function MeContent() {
         Promise.all([
           agentsApi.mine().then((result) => setMyAgents(result.agents)),
           favoritesApi.list().then((result) => setFavoriteAgents(result.favorites)),
-          conversationsApi.list().then((result) => setRecentConversations(result.conversations.slice(0, 5))),
+          conversationsApi.list({ limit: 5, includeLastMessage: false }).then((result) => setRecentConversations(result.conversations)),
         ])
       )
       .catch((err: any) => {
@@ -481,7 +481,7 @@ function MeContent() {
             )}
           </div>
 
-          <aside className="space-y-5">
+          <aside className="min-w-0 space-y-5">
             <div className="rounded-[28px] border border-black/[0.06] bg-white p-6 shadow-sm">
               <div className="mb-4 flex items-center gap-2 text-sm font-black text-slate-950">
                 <ShieldCheck size={18} />
@@ -541,9 +541,9 @@ function MeContent() {
                     onClick={() => {
                       router.push(`/conversations/${item.id}`);
                     }}
-                    className="w-full cursor-pointer rounded-2xl bg-[#fbfaf7] p-3 text-left transition hover:bg-slate-100"
+                    className="w-full min-w-0 max-w-full cursor-pointer overflow-hidden rounded-2xl bg-[#fbfaf7] p-3 text-left transition hover:bg-slate-100"
                   >
-                    <div className="truncate text-sm font-black text-slate-950">{item.title || '新对话'}</div>
+                    <div className="block min-w-0 max-w-full truncate text-sm font-black text-slate-950">{item.title || '新对话'}</div>
                     <div className="mt-1 truncate text-xs text-slate-500">{item.agentName || '未知 Agent'}</div>
                     <div className="mt-1 text-xs font-semibold text-slate-400">
                       {new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).format(new Date(item.updatedAt))}

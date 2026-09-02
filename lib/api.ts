@@ -104,7 +104,13 @@ export const agents = {
 
 // Conversations
 export const conversations = {
-  list: () => request<{ conversations: any[] }>('/conversations'),
+  list: (options?: { limit?: number; includeLastMessage?: boolean }) => {
+    const params = new URLSearchParams();
+    if (options?.limit) params.set('limit', String(options.limit));
+    if (options?.includeLastMessage === false) params.set('includeLastMessage', 'false');
+    const query = params.toString();
+    return request<{ conversations: any[] }>(`/conversations${query ? `?${query}` : ''}`);
+  },
   get: (id: string) => request<{ conversation: any }>(`/conversations/${id}`),
   create: (data: {
     agentId: string;

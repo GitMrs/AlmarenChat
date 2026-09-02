@@ -5,19 +5,37 @@ import { requireAuth } from '@/app/api/_lib/auth';
 export async function GET(request: Request) {
   try {
     const userId = requireAuth(request);
+    const searchParams = new URL(request.url).searchParams;
+    const requestedLimit = Number(searchParams.get('limit'));
+    const limit = Number.isFinite(requestedLimit) && requestedLimit > 0
+      ? Math.min(100, Math.round(requestedLimit))
+      : undefined;
+    const includeLastMessage = searchParams.get('includeLastMessage') !== 'false';
 
     const conversations = await prisma.conversation.findMany({
       where: { userId },
-      include: {
+      include: includeLastMessage ? {
         messages: {
           orderBy: { createdAt: 'desc' },
           take: 1,
+          select: { id: true, role: true, content: true, createdAt: true },
         },
-      },
+      } : undefined,
       orderBy: { updatedAt: 'desc' },
+      take: limit,
     });
 
-    return NextResponse.json({ conversations });
+    return NextResponse.json({
+      conversations: includeLastMessage
+        ? conversations.map((conversation: any) => ({
+            ...conversation,
+            messages: conversation.messages.map((message: any) => ({
+              ...message,
+              content: message.content.slice(0, 500),
+            })),
+          }))
+        : conversations,
+    });
   } catch (e: any) {
     if (e.message === 'Unauthorized') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

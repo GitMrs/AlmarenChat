@@ -48,8 +48,8 @@ export default function HomePage() {
     });
 
     if (token) {
-      conversationsApi.list().then((result) => {
-        setRecentConversations(result.conversations.slice(0, 3));
+      conversationsApi.list({ limit: 3, includeLastMessage: false }).then((result) => {
+        setRecentConversations(result.conversations);
       }).catch(() => {});
     }
   }, []);
