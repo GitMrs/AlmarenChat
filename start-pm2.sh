@@ -18,6 +18,9 @@ if [ -z "$DATABASE_URL" ] || [[ "$DATABASE_URL" == file:/app/* ]]; then
   export DATABASE_URL="file:./data/dev.db"
 fi
 
+echo "Verifying SQLite native bindings..."
+yarn db:verify-native
+
 echo "Upgrading Agent Runtime schema..."
 yarn db:upgrade-agent-runtime
 

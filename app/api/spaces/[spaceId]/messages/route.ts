@@ -16,7 +16,9 @@ import { normalizeTaskProposalSteps, taskProposalCapabilities, taskProposalNeeds
 import { professionalDeliverableNeedsTask } from '@/lib/task-proposal-policy.mjs';
 import { compressConversationContext, estimateMessagesTokens } from '@/lib/context-compression';
 import { spaceMemoryContext } from '@/lib/space-memory-policy.mjs';
-import { persistSpaceMemory, rebuildSpaceMemory } from '@/app/api/_lib/space-memory';
+import { persistSpaceMemory, rebuildSpaceMemory, spaceMemoryNeedsTrustedRebuild } from '@/app/api/_lib/space-memory';
+import { recentRunEvidenceContext } from '@/lib/agent-run-evidence.mjs';
+import { readSpaceLearning, spaceLearningContext } from '@/lib/space-learning.mjs';
 import { buildWebSearchContext } from '@/lib/web-search';
 import { createModelClient, resolveModelName } from '@/lib/model-client';
 import { getSpaceSkill, readSpaceSkillFile } from '@/lib/space-skills.mjs';
@@ -222,11 +224,32 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
     }
 
     let persistedMemory = await prisma.spaceMemory.findUnique({ where: { spaceId } });
-    if (!persistedMemory) {
+    if (!persistedMemory || spaceMemoryNeedsTrustedRebuild(persistedMemory)) {
       await rebuildSpaceMemory(spaceId);
       persistedMemory = await prisma.spaceMemory.findUnique({ where: { spaceId } });
     }
     const projectMemory = spaceMemoryContext(persistedMemory);
+    const teamLearning = spaceLearningContext(await readSpaceLearning({ projectRoot: process.cwd(), userId, spaceId }));
+    const recentRuns = await prisma.agentRun.findMany({
+      where: { spaceId },
+      orderBy: { createdAt: 'desc' },
+      take: 3,
+      select: {
+        id: true,
+        status: true,
+        input: true,
+        result: true,
+        error: true,
+        artifactManifests: { select: { status: true, entries: true, validation: true } },
+        taskCompletions: { select: { status: true } },
+        events: {
+          where: { type: 'TOOL_COMPLETED' },
+          orderBy: { sequence: 'asc' },
+          select: { type: true, payload: true },
+        },
+      },
+    });
+    const runEvidence = recentRunEvidenceContext(recentRuns);
 
     let persistedUserMessage: { id: string; createdAt: Date } | null = null;
     if (!skipPersistUserMessage) {
@@ -302,6 +325,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
       space.description ? `当前空间说明：${space.description}` : '',
       space.instructions ? `当前空间规则：\n${space.instructions}` : '',
       projectMemory,
+      teamLearning,
+      runEvidence,
       currentPendingProposal
         ? [
             '当前已有一份待用户确认的任务方案：',
@@ -472,13 +497,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
               at: persistedUserMessage.createdAt.toISOString(),
               refId: persistedUserMessage.id,
             }] : []),
-            {
+            ...(taskProposal ? [{
               type: taskProposal ? 'task_proposal' : 'assistant_message',
               actor: targetAgent.name,
               summary: taskProposal ? `${taskProposal.title}：${taskProposal.summary}` : loopResult.content,
               at: result.assistantMessage.createdAt.toISOString(),
               refId: result.assistantMessage.id,
-            },
+            }] : []),
           ]);
           await prisma.space.update({ where: { id: spaceId }, data: { updatedAt: new Date() } });
           controller.close();

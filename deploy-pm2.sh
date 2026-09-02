@@ -19,8 +19,35 @@ fi
 echo "Preparing directories..."
 mkdir -p data public/uploads/images public/uploads/documents
 
+missing_build_tools=()
+for command_name in python3 make g++; do
+  if ! command -v "$command_name" >/dev/null 2>&1; then
+    missing_build_tools+=("$command_name")
+  fi
+done
+
+if [ "${#missing_build_tools[@]}" -gt 0 ]; then
+  echo "Error: native module build tools are missing: ${missing_build_tools[*]}"
+  echo "Debian/Ubuntu: sudo apt-get update && sudo apt-get install -y python3 make g++"
+  echo "RHEL/Rocky/AlmaLinux: sudo dnf install -y python3 make gcc-c++"
+  exit 1
+fi
+
 echo "Installing dependencies..."
-yarn install --frozen-lockfile
+ONNXRUNTIME_NODE_INSTALL=skip yarn install --frozen-lockfile
+
+echo "Verifying SQLite native bindings..."
+if ! yarn db:verify-native; then
+  SQLITE_NATIVE_DIR="node_modules/@prisma/adapter-better-sqlite3/node_modules/better-sqlite3"
+  if [ ! -d "$SQLITE_NATIVE_DIR" ]; then
+    echo "Error: Prisma SQLite driver not found: $SQLITE_NATIVE_DIR"
+    exit 1
+  fi
+
+  echo "SQLite native bindings are missing. Rebuilding only Prisma's SQLite driver..."
+  npm run install --prefix "$SQLITE_NATIVE_DIR"
+  yarn db:verify-native
+fi
 
 echo "Syncing database schema..."
 set -a

@@ -147,6 +147,44 @@ export interface SpaceFileShare {
   updatedAt?: string | null;
 }
 
+export type SpaceLearningCategory = 'collaboration' | 'acceptance' | 'delivery' | 'execution';
+
+export interface SpaceLearningEvidence {
+  runId: string;
+  kind: string;
+  summary: string;
+  at: string;
+}
+
+export interface SpaceLearningItem {
+  id: string;
+  key: string;
+  category: SpaceLearningCategory;
+  title: string;
+  instruction: string;
+  status: 'pending' | 'ignored' | 'active' | 'disabled';
+  occurrences: number;
+  evidence: SpaceLearningEvidence[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SpaceLearning {
+  version: number;
+  revision: number;
+  proposals: SpaceLearningItem[];
+  rules: SpaceLearningItem[];
+  history: Array<{ revision: number; action: string; itemId: string; title: string; at: string }>;
+}
+
+export type SpaceLearningCommand = {
+  action: 'approve' | 'ignore' | 'update_rule' | 'disable_rule' | 'enable_rule';
+  id: string;
+  category?: SpaceLearningCategory;
+  title?: string;
+  instruction?: string;
+};
+
 export type SpaceTaskCapability = 'workspace_read' | 'workspace_write' | 'web_research' | 'code_execute';
 export type SpaceNetworkPolicy = 'forbidden' | 'allowed' | 'required';
 

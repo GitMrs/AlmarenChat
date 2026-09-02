@@ -22,7 +22,7 @@ import { agentRuns as agentRunsApi, agents as agentsApi, spaces as spacesApi, st
 import { getBuiltInAgents } from '@/lib/agents-data';
 import { latestRunInRetryChain } from '@/lib/agent-run-retry-chain.mjs';
 import { isEditableSpaceFile } from '@/lib/space-files';
-import type { Agent, AgentRun, AgentRunEvent, AgentTask, SpaceDiscussion, SpaceFile, SpaceMessage, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal } from '@/types';
+import type { Agent, AgentRun, AgentRunEvent, AgentTask, SpaceDiscussion, SpaceFile, SpaceLearning, SpaceLearningItem, SpaceMessage, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal } from '@/types';
 
 const FALLBACK_COLOR = '#4f46e5';
 const SPACE_COORDINATOR_ID = 'space-coordinator';
@@ -72,6 +72,12 @@ const FILE_STATUS_LABELS: Record<string, string> = {
   GENERATING: '生成中',
   WAITING_APPROVAL: '待审核',
   INCOMPLETE: '未完成',
+};
+const LEARNING_CATEGORY_LABELS: Record<string, string> = {
+  collaboration: '协作与派发',
+  acceptance: '验收与返工',
+  delivery: '交付可信度',
+  execution: '执行方法',
 };
 
 type RunEventPayload = {
@@ -388,6 +394,9 @@ export default function SpaceDetailPage() {
   const [instructionsDraft, setInstructionsDraft] = useState('');
   const [executionModeDraft, setExecutionModeDraft] = useState<'AUTO' | 'REVIEW_DISPATCH'>('REVIEW_DISPATCH');
   const [savingInstructions, setSavingInstructions] = useState(false);
+  const [learning, setLearning] = useState<SpaceLearning | null>(null);
+  const [learningReadme, setLearningReadme] = useState('');
+  const [learningActionId, setLearningActionId] = useState('');
   const [clearSpaceOpen, setClearSpaceOpen] = useState(false);
   const [clearingSpace, setClearingSpace] = useState(false);
   const [runActionLoading, setRunActionLoading] = useState(false);
@@ -580,13 +589,14 @@ export default function SpaceDetailPage() {
     setLoading(true);
     setError('');
     try {
-      const [spaceResult, messageResult, fileResult, runResult, discussionResult, skillResult, builtIn, customResult] = await Promise.all([
+      const [spaceResult, messageResult, fileResult, runResult, discussionResult, skillResult, learningResult, builtIn, customResult] = await Promise.all([
         spacesApi.get(spaceId),
         spacesApi.messages(spaceId, { limit: 60 }),
         spacesApi.files(spaceId),
         spacesApi.runs(spaceId),
         spacesApi.discussions(spaceId),
         spacesApi.skills(spaceId),
+        spacesApi.learning(spaceId),
         getBuiltInAgents(),
         agentsApi.mine().catch(() => ({ agents: [] })),
       ]);
@@ -599,6 +609,8 @@ export default function SpaceDetailPage() {
       setRuns(runResult.runs);
       setDiscussions(discussionResult.discussions);
       setSkills(skillResult.skills);
+      setLearning(learningResult.learning);
+      setLearningReadme(learningResult.readme);
       setSelectedRunId(null);
     } catch (err: any) {
       setError(err.message || '加载空间失败');
@@ -661,9 +673,12 @@ export default function SpaceDetailPage() {
     const refreshCompletion = () => Promise.all([
       spacesApi.files(spaceId),
       spacesApi.messages(spaceId, { limit: 60 }),
-    ]).then(([fileResult, messageResult]) => {
+      spacesApi.learning(spaceId),
+    ]).then(([fileResult, messageResult, learningResult]) => {
       setFiles(fileResult.files);
       setMessages(messageResult.messages);
+      setLearning(learningResult.learning);
+      setLearningReadme(learningResult.readme);
     }).catch(() => {});
     refreshCompletion();
     const timer = window.setTimeout(refreshCompletion, 1_000);
@@ -974,6 +989,37 @@ export default function SpaceDetailPage() {
     }
   };
 
+  const updateLearningDraft = (collection: 'proposals' | 'rules', id: string, field: 'title' | 'instruction', value: string) => {
+    setLearning((current) => current ? {
+      ...current,
+      [collection]: current[collection].map((item) => item.id === id ? { ...item, [field]: value } : item),
+    } : current);
+  };
+
+  const applyLearningAction = async (
+    item: SpaceLearningItem,
+    action: 'approve' | 'ignore' | 'update_rule' | 'disable_rule' | 'enable_rule'
+  ) => {
+    if (learningActionId) return;
+    setLearningActionId(item.id);
+    setError('');
+    try {
+      const result = await spacesApi.updateLearning(spaceId, {
+        action,
+        id: item.id,
+        category: item.category,
+        title: item.title,
+        instruction: item.instruction,
+      });
+      setLearning(result.learning);
+      setLearningReadme(result.readme);
+    } catch (err: any) {
+      setError(err.message || '更新空间成长规则失败');
+    } finally {
+      setLearningActionId('');
+    }
+  };
+
   const clearSpaceContents = async () => {
     if (clearingSpace || isStreaming || activeRun || activeDiscussion) return;
     setClearingSpace(true);
@@ -984,6 +1030,8 @@ export default function SpaceDetailPage() {
       setFiles([]);
       setRuns([]);
       setDiscussions([]);
+      setLearning(null);
+      setLearningReadme('');
       setSelectedRunId(null);
       setMode('chat');
       setInput('');
@@ -2687,10 +2735,154 @@ export default function SpaceDetailPage() {
                         {savingInstructions ? <Loader2 className="animate-spin" size={15} /> : <Save size={15} />}
                         保存设置
                       </button>
+                      <section className="border-t border-black/[0.06] pt-5">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="flex items-center gap-2 text-sm font-black text-slate-700">
+                              <BookOpen size={16} />
+                              团队成长
+                            </div>
+                            <p className="mt-1 text-xs font-semibold leading-5 text-slate-400">
+                              只将你确认的经验写入成长 README，并用于后续规划、执行和验收。
+                            </p>
+                          </div>
+                          <span className="shrink-0 text-xs font-black text-slate-400">v{learning?.revision || 0}</span>
+                        </div>
+
+                        {learning && (
+                          <div className="mt-4 grid grid-cols-3 border-y border-black/[0.06] py-3 text-center">
+                            <div>
+                              <div className="text-base font-black text-slate-800">{learning.proposals.filter((item) => item.status === 'pending').length}</div>
+                              <div className="mt-0.5 text-[11px] font-bold text-slate-400">待确认</div>
+                            </div>
+                            <div className="border-x border-black/[0.06]">
+                              <div className="text-base font-black text-slate-800">{learning.rules.filter((item) => item.status === 'active').length}</div>
+                              <div className="mt-0.5 text-[11px] font-bold text-slate-400">已生效</div>
+                            </div>
+                            <div>
+                              <div className="text-base font-black text-slate-800">{[...learning.proposals, ...learning.rules].reduce((sum, item) => sum + item.occurrences, 0)}</div>
+                              <div className="mt-0.5 text-[11px] font-bold text-slate-400">累计发现</div>
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="mt-4 space-y-3">
+                          {learning?.proposals.filter((item) => item.status === 'pending').map((item) => (
+                            <div key={item.id} className="rounded-lg border border-amber-200 bg-amber-50/60 p-3">
+                              <div className="flex items-center justify-between gap-3">
+                                <span className="text-[11px] font-black text-amber-700">待确认 · {LEARNING_CATEGORY_LABELS[item.category]}</span>
+                                <span className="text-[11px] font-bold text-amber-600">发现 {item.occurrences} 次</span>
+                              </div>
+                              <input
+                                value={item.title}
+                                maxLength={120}
+                                onChange={(event) => updateLearningDraft('proposals', item.id, 'title', event.target.value)}
+                                aria-label="成长建议标题"
+                                className="mt-2 w-full border-0 bg-transparent text-sm font-black text-slate-800 outline-none"
+                              />
+                              <textarea
+                                value={item.instruction}
+                                maxLength={1_200}
+                                rows={3}
+                                onChange={(event) => updateLearningDraft('proposals', item.id, 'instruction', event.target.value)}
+                                aria-label="成长建议内容"
+                                className="mt-1 w-full resize-y rounded-md border border-amber-200 bg-white px-3 py-2 text-xs font-semibold leading-5 text-slate-700 outline-none focus:border-amber-300"
+                              />
+                              {item.evidence.at(-1) && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSidePanel(null);
+                                    openTaskRun(item.evidence.at(-1)!.runId);
+                                  }}
+                                  className="mt-2 text-left text-[11px] font-bold text-slate-400 hover:text-slate-700"
+                                >
+                                  证据任务：{item.evidence.at(-1)!.summary || item.evidence.at(-1)!.runId}
+                                </button>
+                              )}
+                              <div className="mt-3 flex justify-end gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => applyLearningAction(item, 'ignore')}
+                                  disabled={Boolean(learningActionId)}
+                                  className="h-9 rounded-lg px-3 text-xs font-black text-slate-500 hover:bg-white disabled:text-slate-300"
+                                >
+                                  忽略
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => applyLearningAction(item, 'approve')}
+                                  disabled={Boolean(learningActionId) || !item.title.trim() || !item.instruction.trim()}
+                                  className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-slate-950 px-3 text-xs font-black text-white disabled:bg-slate-200"
+                                >
+                                  {learningActionId === item.id ? <Loader2 className="animate-spin" size={13} /> : <Check size={13} />}
+                                  应用经验
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+
+                          {learning?.rules.map((item) => (
+                            <div key={item.id} className={`rounded-lg border p-3 ${item.status === 'active' ? 'border-black/[0.08] bg-white' : 'border-black/[0.06] bg-slate-50 opacity-70'}`}>
+                              <div className="flex items-center justify-between gap-3">
+                                <span className="text-[11px] font-black text-slate-400">{LEARNING_CATEGORY_LABELS[item.category]} · {item.status === 'active' ? '已生效' : '已停用'}</span>
+                                <span className="text-[11px] font-bold text-slate-400">发现 {item.occurrences} 次</span>
+                              </div>
+                              <input
+                                value={item.title}
+                                maxLength={120}
+                                onChange={(event) => updateLearningDraft('rules', item.id, 'title', event.target.value)}
+                                aria-label="成长规则标题"
+                                className="mt-2 w-full border-0 bg-transparent text-sm font-black text-slate-800 outline-none"
+                              />
+                              <textarea
+                                value={item.instruction}
+                                maxLength={1_200}
+                                rows={2}
+                                onChange={(event) => updateLearningDraft('rules', item.id, 'instruction', event.target.value)}
+                                aria-label="成长规则内容"
+                                className="mt-1 w-full resize-y rounded-md border border-black/[0.06] bg-[#fbfaf7] px-3 py-2 text-xs font-semibold leading-5 text-slate-700 outline-none focus:border-slate-300"
+                              />
+                              <div className="mt-3 flex justify-end gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => applyLearningAction(item, item.status === 'active' ? 'disable_rule' : 'enable_rule')}
+                                  disabled={Boolean(learningActionId)}
+                                  className="h-9 rounded-lg px-3 text-xs font-black text-slate-500 hover:bg-slate-50 disabled:text-slate-300"
+                                >
+                                  {item.status === 'active' ? '停用' : '启用'}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => applyLearningAction(item, 'update_rule')}
+                                  disabled={Boolean(learningActionId) || !item.title.trim() || !item.instruction.trim()}
+                                  className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-black/[0.08] px-3 text-xs font-black text-slate-700 hover:bg-slate-50 disabled:text-slate-300"
+                                >
+                                  {learningActionId === item.id ? <Loader2 className="animate-spin" size={13} /> : <Save size={13} />}
+                                  保存
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+
+                          {learning && learning.rules.length === 0 && learning.proposals.every((item) => item.status !== 'pending') && (
+                            <div className="rounded-lg border border-dashed border-slate-200 px-4 py-6 text-center text-xs font-semibold leading-5 text-slate-400">
+                              暂无成长经验。任务出现用户纠正、返工或验收问题后，这里会生成待确认建议。
+                            </div>
+                          )}
+                        </div>
+
+                        {learningReadme && (
+                          <details className="mt-4 border-t border-black/[0.06] pt-3">
+                            <summary className="cursor-pointer text-xs font-black text-slate-500">查看生成的 README</summary>
+                            <pre className="mt-3 max-h-64 overflow-auto whitespace-pre-wrap rounded-lg bg-slate-950 p-3 text-[11px] font-medium leading-5 text-slate-200">{learningReadme}</pre>
+                          </details>
+                        )}
+                      </section>
                       <div className="border-t border-black/[0.06] pt-5">
                         <div className="text-sm font-black text-slate-700">清空空间内容</div>
                         <p className="mt-1 text-xs font-semibold leading-5 text-slate-400">
-                          删除全部聊天记录、历史任务、空间记忆和文件，保留空间成员与设置。
+                          删除全部聊天记录、历史任务、空间记忆、成长经验和文件，保留空间成员与设置。
                         </p>
                         <button
                           type="button"
@@ -2862,7 +3054,7 @@ export default function SpaceDetailPage() {
       <ConfirmDialog
         open={clearSpaceOpen}
         title="清空当前空间？"
-        description="聊天记录、历史任务、空间记忆、上传资料和工作区文件都会永久删除。空间本身、成员、Space Skills 和执行模式设置会保留。"
+        description="聊天记录、历史任务、空间记忆、成长经验、上传资料和工作区文件都会永久删除。空间本身、成员、Space Skills 和执行模式设置会保留。"
         icon={<Trash2 size={20} />}
         cancelText="先保留"
         confirmText="确认清空"

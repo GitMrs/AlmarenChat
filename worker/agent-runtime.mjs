@@ -25,6 +25,7 @@ import { taskRequiresWorkspaceWrite } from '../lib/workspace-write-intent.mjs';
 import { COORDINATOR_ACTION_TOOL, COORDINATOR_ACTION_TOOL_NAME, COORDINATOR_REVIEW_TOOL, COORDINATOR_REVIEW_TOOL_NAME, authorizationAllowsCapability, authorizationRequirements, coordinatorDecisionTrigger, coordinatorTaskReviewInstructions, coordinatorTaskReviewRequest, dispatchConstraintFromFeedback, dispatchRequiresApproval, requestCoordinatorAction, requestCoordinatorReviewAction, structuredToolOutput } from '../lib/agent-runtime-v3-policy.mjs';
 import { completionIdFor } from '../lib/agent-completion-policy.mjs';
 import { appendSpaceMemory, spaceMemoryContext } from '../lib/space-memory-policy.mjs';
+import { readSpaceLearningSync, spaceLearningContext } from '../lib/space-learning.mjs';
 import { prepareWorkspaceAttempt } from '../lib/workspace-staging.mjs';
 import { taskSkill, validateSkillArtifacts } from '../lib/agent-runtime/skill-registry.mjs';
 import {
@@ -350,7 +351,10 @@ function loadRunContext(run) {
     researchSources: [],
     researchContext: '',
     authorization,
-    projectMemory: spaceMemoryContext(memory),
+    projectMemory: [
+      spaceMemoryContext(memory),
+      spaceLearningContext(readSpaceLearningSync({ projectRoot, userId: run.userId, spaceId: run.spaceId })),
+    ].filter(Boolean).join('\n\n'),
     touchedPaths: new Set(),
   };
 }
