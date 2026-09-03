@@ -158,7 +158,7 @@ export default function HomePage() {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="搜索感兴趣的 Agent、技能或应用场景..."
-                className="h-11 flex-1 bg-transparent px-2 text-sm font-semibold text-slate-800 outline-none placeholder:text-slate-400"
+                className="h-11 min-w-0 flex-1 bg-transparent px-2 text-sm font-semibold text-slate-800 outline-none placeholder:text-slate-400"
               />
               <button
                 type="submit"
