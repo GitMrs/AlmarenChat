@@ -7,7 +7,7 @@ export async function GET(request: Request) {
   try {
     const userId = requireAuth(request);
     const profile = await ensurePersonalAssistant(userId);
-    const [messages, memories] = await Promise.all([
+    const [messages, memories, reminders] = await Promise.all([
       prisma.message.findMany({
         where: { conversationId: profile.conversationId },
         orderBy: { createdAt: 'desc' },
@@ -17,6 +17,18 @@ export async function GET(request: Request) {
         where: { userId },
         orderBy: { updatedAt: 'desc' },
       }),
+      prisma.assistantReminder.findMany({
+        where: {
+          userId,
+          status: { in: ['PENDING', 'COMPLETED'] },
+        },
+        orderBy: [
+          { status: 'desc' },
+          { dueTime: 'asc' },
+          { createdAt: 'desc' },
+        ],
+        take: 30,
+      }),
     ]);
     return NextResponse.json({
       profile: {
@@ -25,10 +37,19 @@ export async function GET(request: Request) {
         identity: profile.identity,
         soul: profile.soul,
         greeting: profile.greeting,
+        proactiveEnabled: profile.proactiveEnabled === null || profile.proactiveEnabled === undefined ? true : Boolean(profile.proactiveEnabled),
       },
       conversationId: profile.conversationId,
       messages: messages.reverse(),
       memories,
+      reminders: reminders.map((r) => ({
+        id: r.id,
+        content: r.content,
+        dueTime: r.dueTime ? r.dueTime.toISOString() : null,
+        status: r.status,
+        createdAt: r.createdAt.toISOString(),
+        updatedAt: r.updatedAt.toISOString(),
+      })),
     });
   } catch (error: any) {
     if (error.message === 'Unauthorized') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

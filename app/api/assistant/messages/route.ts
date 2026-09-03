@@ -94,6 +94,16 @@ export async function POST(request: Request) {
       data: { conversationId: profile.conversationId, role: 'user', content: textMessage },
     });
 
+    if (history.length === 0) {
+      const generatedTitle = textMessage.slice(0, 24).replace(/[\r\n]+/g, ' ').trim();
+      if (generatedTitle) {
+        prisma.conversation.update({
+          where: { id: profile.conversationId },
+          data: { title: generatedTitle },
+        }).catch(() => {});
+      }
+    }
+
     const client = createModelClient(
       usesCustomModel ? userSettings.apiBaseUrl : undefined,
       usesCustomModel ? userSettings.apiKey : undefined

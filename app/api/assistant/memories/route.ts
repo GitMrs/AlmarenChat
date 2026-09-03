@@ -30,3 +30,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
+
+export async function DELETE(request: Request) {
+  try {
+    const userId = requireAuth(request);
+    await prisma.assistantMemoryItem.deleteMany({ where: { userId } });
+    return NextResponse.json({ success: true });
+  } catch (error: any) {
+    if (error.message === 'Unauthorized') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}

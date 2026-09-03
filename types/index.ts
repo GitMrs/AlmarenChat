@@ -45,6 +45,7 @@ export interface PersonalAssistantProfile {
   identity?: string | null;
   soul?: string | null;
   greeting?: string | null;
+  proactiveEnabled?: boolean;
 }
 
 export interface AssistantMemoryItem {
@@ -57,11 +58,31 @@ export interface AssistantMemoryItem {
   updatedAt: string;
 }
 
+export interface AssistantReminder {
+  id: string;
+  content: string;
+  dueTime: string | null;
+  status: 'PENDING' | 'COMPLETED' | 'DISMISSED';
+  sourceMessageId?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface PersonalAssistantBootstrap {
   profile: PersonalAssistantProfile;
   conversationId: string;
   messages: Message[];
   memories: AssistantMemoryItem[];
+  reminders?: AssistantReminder[];
+}
+
+export interface AssistantConversationSummary {
+  id: string;
+  title: string | null;
+  createdAt: string;
+  updatedAt: string;
+  messageCount: number;
+  lastMessageSnippet: string | null;
 }
 
 export interface Message {

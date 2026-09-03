@@ -1,4 +1,4 @@
-import type { AgentRun, AssistantMemoryItem, PersonalAssistantBootstrap, PersonalAssistantProfile, SpaceDiscussion, SpaceFileShare, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal } from '@/types';
+import type { AgentRun, AssistantConversationSummary, AssistantMemoryItem, AssistantReminder, Message, PersonalAssistantBootstrap, PersonalAssistantProfile, SpaceDiscussion, SpaceFileShare, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal } from '@/types';
 
 const API_BASE = '/api';
 
@@ -62,6 +62,21 @@ export type AssistantPageContext = {
 
 export const assistant = {
   get: () => request<PersonalAssistantBootstrap>('/assistant'),
+  listConversations: () =>
+    request<{ conversations: AssistantConversationSummary[]; currentConversationId: string }>('/assistant/conversations'),
+  newConversation: (title?: string) =>
+    request<{ conversationId: string; messages: Message[] }>('/assistant/conversations', {
+      method: 'POST',
+      body: JSON.stringify({ title }),
+    }),
+  switchConversation: (conversationId: string) =>
+    request<{ conversationId: string; messages: Message[] }>(`/assistant/conversations/${conversationId}`, {
+      method: 'POST',
+    }),
+  deleteConversation: (conversationId: string) =>
+    request<{ success: true; currentConversationId: string; messages?: Message[] }>(`/assistant/conversations/${conversationId}`, {
+      method: 'DELETE',
+    }),
   updateProfile: (data: Partial<PersonalAssistantProfile>) =>
     request<{ profile: PersonalAssistantProfile }>('/assistant/profile', { method: 'PATCH', body: JSON.stringify(data) }),
   addMemory: (data: { content: string; category?: string }) =>
@@ -70,6 +85,53 @@ export const assistant = {
     request<{ memory: AssistantMemoryItem }>(`/assistant/memories/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
   deleteMemory: (id: string) =>
     request<{ success: true }>(`/assistant/memories/${id}`, { method: 'DELETE' }),
+  clearAllMemories: () =>
+    request<{ success: true }>('/assistant/memories', { method: 'DELETE' }),
+  extractMemories: (data: {
+    mode: 'single' | 'conversation';
+    userMessage?: string;
+    assistantMessage?: string;
+    conversationId?: string;
+  }) =>
+    request<{ suggestions: Array<{ content: string; category: string }> }>('/assistant/memories/extract', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  getProactiveGreeting: () =>
+    request<{
+      shouldGreet: boolean;
+      greeting?: string;
+      assistantName?: string;
+      assistantAvatar?: string;
+      hour?: number;
+    }>('/assistant/proactive'),
+  acceptProactiveGreeting: (text: string) =>
+    request<{ message: Message }>('/assistant/proactive', {
+      method: 'POST',
+      body: JSON.stringify({ text }),
+    }),
+  listReminders: () =>
+    request<{ reminders: AssistantReminder[] }>('/assistant/reminders'),
+  createReminder: (data: { content: string; dueTime?: string | null }) =>
+    request<{ reminder: AssistantReminder }>('/assistant/reminders', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  updateReminder: (data: { id: string; status?: 'PENDING' | 'COMPLETED' | 'DISMISSED'; snoozeMinutes?: number; dueTime?: string | null; content?: string }) =>
+    request<{ reminder: AssistantReminder }>('/assistant/reminders', {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+  deleteReminder: (id: string) =>
+    request<{ success: boolean; id: string }>('/assistant/reminders', {
+      method: 'DELETE',
+      body: JSON.stringify({ id }),
+    }),
+  parseReminder: (data: { userMessage: string; assistantMessage?: string }) =>
+    request<{ hasReminder: boolean; reminder?: AssistantReminder }>('/assistant/reminders/parse', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
   sendMessage: async (data: {
     message: string;
     webSearchEnabled: boolean;
