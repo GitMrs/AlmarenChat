@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { Bot, Compass, Plus, Sparkles, UserRound, MessageCircle, PanelsTopLeft } from 'lucide-react';
+import { Bot, Compass, Sparkles, UserRound, MessageCircle, PanelsTopLeft } from 'lucide-react';
 import BottomNav from './BottomNav';
 import { cn } from '@/lib/utils';
 
@@ -18,7 +18,6 @@ const navItems = [
   { label: '发现', href: '/', icon: Compass },
   { label: '广场', href: '/agents', icon: Bot },
   { label: '空间', href: '/spaces', icon: PanelsTopLeft },
-  { label: '创建', href: '/create-agent', icon: Plus },
   { label: '会话', href: '/conversations', icon: MessageCircle },
 ];
 

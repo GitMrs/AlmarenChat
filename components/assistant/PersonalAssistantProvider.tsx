@@ -889,20 +889,29 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
                   </div>
                   <button
                     type="button"
-                    onClick={() => handleNewConversation()}
-                    disabled={Boolean(busyConversationId)}
+                    onClick={() => onRequestNewConversation()}
+                    disabled={Boolean(busyConversationId) || extractingSummary}
                     aria-label="开启新话题"
-                    title="开启新话题"
-                    className="flex h-8 items-center gap-1 rounded-lg bg-slate-950 px-2.5 text-xs font-black text-white hover:bg-slate-800 disabled:opacity-40"
+                    title={extractingSummary ? '正在整理小结...' : '开启新话题'}
+                    className="flex h-8 items-center gap-1.5 rounded-lg bg-slate-950 px-2.5 text-xs font-black text-white hover:bg-slate-800 disabled:opacity-40 cursor-pointer"
                   >
-                    <Plus size={14} />
+                    {extractingSummary ? <Loader2 size={13} className="animate-spin text-amber-400" /> : <Plus size={14} />}
                     <span>新话题</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setOpen(false); router.push('/me?tab=assistant'); }}
+                    aria-label="助理设置"
+                    title="助理设置"
+                    className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 cursor-pointer"
+                  >
+                    <Settings2 size={16} />
                   </button>
                   <button
                     type="button"
                     onClick={() => setOpen(false)}
                     aria-label="关闭个人助理"
-                    className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100"
+                    className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 cursor-pointer"
                   >
                     <PanelRightClose size={18} />
                   </button>
@@ -1002,25 +1011,6 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
                   </div>
                   <button
                     type="button"
-                    onClick={() => onRequestNewConversation()}
-                    disabled={Boolean(busyConversationId) || streaming || extractingSummary}
-                    aria-label="开启新话题"
-                    title={extractingSummary ? '正在整理小结...' : '开启新话题'}
-                    className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100 hover:text-slate-950 disabled:opacity-30 cursor-pointer"
-                  >
-                    {extractingSummary ? <Loader2 size={16} className="animate-spin text-amber-600" /> : <Plus size={18} />}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={openHistory}
-                    aria-label="历史话题"
-                    title="历史话题"
-                    className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100 hover:text-slate-950"
-                  >
-                    <History size={17} />
-                  </button>
-                  <button
-                    type="button"
                     onClick={() => setRemindersOpen((prev) => !prev)}
                     aria-label="待办与便签"
                     title={remindersOpen ? '收起便签与待办' : '查看便签与待办'}
@@ -1040,19 +1030,19 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
                   </button>
                   <button
                     type="button"
-                    onClick={() => { setOpen(false); router.push('/me?tab=assistant'); }}
-                    aria-label="助理设置"
-                    title="助理设置"
-                    className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100"
+                    onClick={openHistory}
+                    aria-label="历史话题"
+                    title="历史话题"
+                    className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100 hover:text-slate-950 cursor-pointer"
                   >
-                    <Settings2 size={17} />
+                    <History size={17} />
                   </button>
                   <button
                     type="button"
                     onClick={() => setOpen(false)}
                     aria-label="收起"
                     title="收起"
-                    className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100"
+                    className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 cursor-pointer"
                   >
                     <PanelRightClose size={18} />
                   </button>

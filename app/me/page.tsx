@@ -226,7 +226,7 @@ function MeContent() {
           {[
             { id: 'assets', label: '我的资产', icon: Bot },
             { id: 'shares', label: '网页共享', icon: Globe2 },
-            { id: 'assistant', label: '我的助理', icon: MessageCircleHeart },
+            { id: 'assistant', label: '助理设置', icon: MessageCircleHeart },
             { id: 'settings', label: '账号设置', icon: SlidersHorizontal },
           ].map((tab) => {
             const Icon = tab.icon;

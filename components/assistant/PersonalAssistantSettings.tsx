@@ -305,7 +305,7 @@ export default function PersonalAssistantSettings() {
             <MessageCircleHeart size={15} />
             Personal Assistant
           </div>
-          <h2 className="mt-1 text-2xl font-black text-slate-950">我的助理</h2>
+          <h2 className="mt-1 text-2xl font-black text-slate-950">助理设置</h2>
         </div>
         <button
           type="button"
