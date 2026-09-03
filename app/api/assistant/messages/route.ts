@@ -6,7 +6,7 @@ import { createModelClient, resolveModelName } from '@/lib/model-client';
 import { buildWebSearchContext } from '@/lib/web-search';
 import { ensurePersonalAssistant } from '@/lib/personal-assistant/profile';
 import { buildPersonalAssistantPrompt } from '@/lib/personal-assistant/prompt-builder';
-import { buildAssistantPlatformContext, resolveSharedPageContext } from '@/lib/personal-assistant/platform-context';
+import { buildAssistantActivityContext, buildAssistantPlatformContext, resolveSharedPageContext } from '@/lib/personal-assistant/platform-context';
 
 export const runtime = 'nodejs';
 
@@ -55,7 +55,7 @@ export async function POST(request: Request) {
     }
 
     const contextLimit = Math.max(8, Math.min(80, userSettings.contextMessageLimit || 40));
-    const [history, memories, platformContext, pageContext, webContext] = await Promise.all([
+    const [history, memories, platformContext, activityContext, pageContext, webContext] = await Promise.all([
       prisma.message.findMany({
         where: { conversationId: profile.conversationId },
         orderBy: { createdAt: 'desc' },
@@ -69,6 +69,7 @@ export async function POST(request: Request) {
         select: { category: true, content: true },
       }),
       buildAssistantPlatformContext(userId),
+      buildAssistantActivityContext(userId, textMessage),
       sharePage ? resolveSharedPageContext(userId, body.pageContext) : Promise.resolve(null),
       webSearchEnabled ? buildWebSearchContext(textMessage, userSettings.tavilyApiKey) : Promise.resolve(null),
     ]);
@@ -78,6 +79,7 @@ export async function POST(request: Request) {
       profile,
       memories,
       platformContext,
+      activityContext,
       pageContext,
       webEnabled: webSearchEnabled,
     });

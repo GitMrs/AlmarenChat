@@ -11,6 +11,26 @@ function getBeijingHour(): number {
   return (now.getUTCHours() + 8) % 24;
 }
 
+function getBeijingDateKey(): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
+}
+
+async function claimGreeting(userId: string, sourceKey: string, greeting: string) {
+  try {
+    return await prisma.assistantProactiveDelivery.create({
+      data: { userId, sourceKey, greeting },
+    });
+  } catch (error: any) {
+    if (error?.code === 'P2002') return null;
+    throw error;
+  }
+}
+
 // 常见容易产生后续结果的事件关键词匹配表（Suzu Lives 因果回访机制）
 const EVENT_PATTERNS: Array<{
   regex: RegExp;
@@ -137,10 +157,18 @@ export async function GET(request: Request) {
         const diffMs = now - new Date(rem.dueTime).getTime();
         // 提醒时间刚过 0~3 小时内，进行因果回访
         if (diffMs >= 0 && diffMs <= 3 * 3600 * 1000) {
+          const sourceKey = `reminder:${rem.id}:${rem.dueTime.toISOString()}`;
+          const delivered = await prisma.assistantProactiveDelivery.findUnique({
+            where: { userId_sourceKey: { userId, sourceKey } },
+          });
+          if (delivered) continue;
           const fallback = `关于便签里的「${rem.content}」，现在进展得还顺利吗？✨`;
           const dynamicGreeting = await generateAiEventFollowUp(userId, `待办事项：${rem.content}`, fallback);
+          const delivery = await claimGreeting(userId, sourceKey, dynamicGreeting);
+          if (!delivery) continue;
           return NextResponse.json({
             shouldGreet: true,
+            deliveryId: delivery.id,
             greeting: dynamicGreeting,
             assistantName: profile.name || '小伴',
             assistantAvatar: profile.avatar || '🌿',
@@ -157,23 +185,22 @@ export async function GET(request: Request) {
       if (msgAge >= 45 * 60 * 1000 && msgAge <= 20 * 3600 * 1000) {
         for (const pattern of EVENT_PATTERNS) {
           if (pattern.regex.test(uMsg.content)) {
-            // 检查助手后续是否已经专门就该事件回访过了
-            const followedUp = recentMessages.some(
-              (m) =>
-                m.role === 'assistant' &&
-                new Date(m.createdAt).getTime() > new Date(uMsg.createdAt).getTime() &&
-                pattern.regex.test(m.content)
-            );
-            if (!followedUp) {
-              const fallback = pattern.generateFollowUp(uMsg.content);
-              const dynamicGreeting = await generateAiEventFollowUp(userId, uMsg.content, fallback);
-              return NextResponse.json({
-                shouldGreet: true,
-                greeting: dynamicGreeting,
-                assistantName: profile.name || '小伴',
-                assistantAvatar: profile.avatar || '🌿',
-              });
-            }
+            const sourceKey = `message:${uMsg.id}`;
+            const delivered = await prisma.assistantProactiveDelivery.findUnique({
+              where: { userId_sourceKey: { userId, sourceKey } },
+            });
+            if (delivered) continue;
+            const fallback = pattern.generateFollowUp(uMsg.content);
+            const dynamicGreeting = await generateAiEventFollowUp(userId, uMsg.content, fallback);
+            const delivery = await claimGreeting(userId, sourceKey, dynamicGreeting);
+            if (!delivery) continue;
+            return NextResponse.json({
+              shouldGreet: true,
+              deliveryId: delivery.id,
+              greeting: dynamicGreeting,
+              assistantName: profile.name || '小伴',
+              assistantAvatar: profile.avatar || '🌿',
+            });
           }
         }
       }
@@ -184,11 +211,16 @@ export async function GET(request: Request) {
     const bjHour = getBeijingHour();
 
     if (lastInteractionAge >= 10 * 3600 * 1000) {
+      const dateKey = getBeijingDateKey();
       // 晨间开启新一天 (7:00 - 10:30)
       if (bjHour >= 7 && bjHour <= 10) {
+        const greeting = '早呀！新的一天开始了，今天手头有什么想推进的吗？随时唤我。🌿';
+        const delivery = await claimGreeting(userId, `daily:${dateKey}:morning`, greeting);
+        if (!delivery) return NextResponse.json({ shouldGreet: false, reason: 'already_delivered' });
         return NextResponse.json({
           shouldGreet: true,
-          greeting: `早呀！新的一天开始了，今天手头有什么想推进的吗？随时唤我。🌿`,
+          deliveryId: delivery.id,
+          greeting,
           assistantName: profile.name || '小伴',
           assistantAvatar: profile.avatar || '🌿',
           hour: bjHour,
@@ -196,9 +228,13 @@ export async function GET(request: Request) {
       }
       // 夜间回顾/休息前 (21:30 - 23:30)
       if (bjHour >= 21 && bjHour <= 23) {
+        const greeting = '今天忙碌了一整天，今晚有什么想聊聊或整理的想法吗？🌙';
+        const delivery = await claimGreeting(userId, `daily:${dateKey}:evening`, greeting);
+        if (!delivery) return NextResponse.json({ shouldGreet: false, reason: 'already_delivered' });
         return NextResponse.json({
           shouldGreet: true,
-          greeting: `今天忙碌了一整天，今晚有什么想聊聊或整理的想法吗？🌙`,
+          deliveryId: delivery.id,
+          greeting,
           assistantName: profile.name || '小伴',
           assistantAvatar: profile.avatar || '🌿',
           hour: bjHour,
@@ -219,17 +255,42 @@ export async function POST(request: Request) {
     const userId = requireAuth(request);
     const profile = await ensurePersonalAssistant(userId);
     const body = await request.json().catch(() => ({}));
-    const text = typeof body.text === 'string' ? body.text.trim().slice(0, 1000) : '';
-    if (!text) {
-      return NextResponse.json({ error: 'Text required' }, { status: 400 });
-    }
+    const deliveryId = typeof body.deliveryId === 'string' ? body.deliveryId : '';
+    if (!deliveryId) return NextResponse.json({ error: 'Delivery required' }, { status: 400 });
 
-    const message = await prisma.message.create({
-      data: {
-        conversationId: profile.conversationId,
-        role: 'assistant',
-        content: text,
-      },
+    const delivery = await prisma.assistantProactiveDelivery.findFirst({
+      where: { id: deliveryId, userId },
+    });
+    if (!delivery) return NextResponse.json({ error: '问候不存在' }, { status: 404 });
+
+    const message = await prisma.$transaction(async (tx) => {
+      const current = await tx.assistantProactiveDelivery.findFirst({
+        where: { id: delivery.id, userId },
+      });
+      if (!current) throw new Error('问候不存在');
+      if (current.messageId) {
+        const existing = await tx.message.findUnique({ where: { id: current.messageId } });
+        if (existing) return existing;
+      }
+
+      const claimed = await tx.assistantProactiveDelivery.updateMany({
+        where: { id: current.id, userId, messageId: null, status: 'SHOWN' },
+        data: { status: 'OPENING', openedAt: new Date() },
+      });
+      if (!claimed.count) throw new Error('问候已处理');
+
+      const created = await tx.message.create({
+        data: {
+          conversationId: profile.conversationId,
+          role: 'assistant',
+          content: current.greeting,
+        },
+      });
+      await tx.assistantProactiveDelivery.update({
+        where: { id: current.id },
+        data: { status: 'OPENED', messageId: created.id },
+      });
+      return created;
     });
 
     return NextResponse.json({

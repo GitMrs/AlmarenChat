@@ -1,4 +1,4 @@
-import type { AgentRun, AssistantConversationSummary, AssistantMemoryItem, AssistantReminder, Message, PersonalAssistantBootstrap, PersonalAssistantProfile, SpaceDiscussion, SpaceFileShare, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal } from '@/types';
+import type { AgentRun, AssistantConversationSummary, AssistantMemoryItem, AssistantReminder, AssistantReminderCandidate, Message, PersonalAssistantBootstrap, PersonalAssistantProfile, SpaceDiscussion, SpaceFileShare, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal } from '@/types';
 
 const API_BASE = '/api';
 
@@ -100,15 +100,16 @@ export const assistant = {
   getProactiveGreeting: () =>
     request<{
       shouldGreet: boolean;
+      deliveryId?: string;
       greeting?: string;
       assistantName?: string;
       assistantAvatar?: string;
       hour?: number;
     }>('/assistant/proactive'),
-  acceptProactiveGreeting: (text: string) =>
+  acceptProactiveGreeting: (deliveryId: string) =>
     request<{ message: Message }>('/assistant/proactive', {
       method: 'POST',
-      body: JSON.stringify({ text }),
+      body: JSON.stringify({ deliveryId }),
     }),
   listReminders: () =>
     request<{ reminders: AssistantReminder[] }>('/assistant/reminders'),
@@ -116,6 +117,11 @@ export const assistant = {
     request<{ reminder: AssistantReminder }>('/assistant/reminders', {
       method: 'POST',
       body: JSON.stringify(data),
+    }),
+  createReminders: (items: AssistantReminderCandidate[]) =>
+    request<{ reminder: AssistantReminder; reminders: AssistantReminder[] }>('/assistant/reminders', {
+      method: 'POST',
+      body: JSON.stringify({ items }),
     }),
   updateReminder: (data: { id: string; status?: 'PENDING' | 'COMPLETED' | 'DISMISSED'; snoozeMinutes?: number; dueTime?: string | null; content?: string }) =>
     request<{ reminder: AssistantReminder }>('/assistant/reminders', {
@@ -127,12 +133,11 @@ export const assistant = {
       method: 'DELETE',
       body: JSON.stringify({ id }),
     }),
-  parseReminder: (data: { userMessage: string; assistantMessage?: string }) =>
+  parseReminder: (data: { userMessage: string }) =>
     request<{
       hasReminder: boolean;
-      reminder?: AssistantReminder;
-      reminders?: AssistantReminder[];
-      count?: number;
+      explicit?: boolean;
+      candidates?: AssistantReminderCandidate[];
     }>('/assistant/reminders/parse', {
       method: 'POST',
       body: JSON.stringify(data),

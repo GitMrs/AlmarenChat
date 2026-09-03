@@ -63,6 +63,36 @@ try {
       CREATE UNIQUE INDEX IF NOT EXISTS "PersonalAssistantProfile_conversationId_key" ON "PersonalAssistantProfile"("conversationId");
       CREATE INDEX IF NOT EXISTS "AssistantMemoryItem_userId_status_updatedAt_idx" ON "AssistantMemoryItem"("userId", "status", "updatedAt");
     `);
+    if (!hasColumn('PersonalAssistantProfile', 'proactiveEnabled')) {
+      db.exec('ALTER TABLE "PersonalAssistantProfile" ADD COLUMN "proactiveEnabled" BOOLEAN NOT NULL DEFAULT true');
+    }
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS "AssistantReminder" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "userId" TEXT NOT NULL,
+        "content" TEXT NOT NULL,
+        "dueTime" DATETIME,
+        "status" TEXT NOT NULL DEFAULT 'PENDING',
+        "sourceMessageId" TEXT,
+        "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" DATETIME NOT NULL,
+        CONSTRAINT "AssistantReminder_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS "AssistantReminder_userId_status_dueTime_idx" ON "AssistantReminder"("userId", "status", "dueTime");
+      CREATE TABLE IF NOT EXISTS "AssistantProactiveDelivery" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "userId" TEXT NOT NULL,
+        "sourceKey" TEXT NOT NULL,
+        "greeting" TEXT NOT NULL,
+        "status" TEXT NOT NULL DEFAULT 'SHOWN',
+        "messageId" TEXT,
+        "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "openedAt" DATETIME,
+        CONSTRAINT "AssistantProactiveDelivery_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS "AssistantProactiveDelivery_userId_sourceKey_key" ON "AssistantProactiveDelivery"("userId", "sourceKey");
+      CREATE INDEX IF NOT EXISTS "AssistantProactiveDelivery_userId_createdAt_idx" ON "AssistantProactiveDelivery"("userId", "createdAt");
+    `);
     db.exec(`
       CREATE TABLE IF NOT EXISTS "Space" (
         "id" TEXT NOT NULL PRIMARY KEY,

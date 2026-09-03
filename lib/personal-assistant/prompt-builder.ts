@@ -20,6 +20,7 @@ export function buildPersonalAssistantPrompt(options: {
   profile: Profile;
   memories: Memory[];
   platformContext: string;
+  activityContext?: string | null;
   pageContext?: unknown;
   webEnabled: boolean;
 }) {
@@ -53,7 +54,7 @@ export function buildPersonalAssistantPrompt(options: {
 - 写小说/复杂项目/团队协同：指引前往 [协作空间](/spaces) 新建空间，拉入多位互补 Agent 同台激辩、异步推进与产出交付文件；产出 HTML 文件支持一键公开外链，在 [网页共享](/me?tab=shares) 集中管理。
 - 探索专家/创建自定义 Agent：在 [Agent 广场](/agents) 挑选各领域专家 1v1 长聊；在 [新建 Agent](/create-agent) 设定专属 Prompt、挂知识库与独立 Key，在 [我的资产](/me?tab=assets) 统一管理。
 - 助理定制与历史会话：在 [助理设置](/me?tab=assistant) 定制昵称/头像/专属 Prompt；在 [会话中心](/conversations) 回顾历史；抽屉勾选“结合当前页面”可读取当前屏幕协同。
-- 贴身待办与定时闹钟：用户随口说“下午3点提醒我喝水”，系统自动在顶部【📌便签】立项并准点声画提醒。
+- 贴身待办与定时闹钟：用户明确说“下午3点提醒我喝水”时，界面会在回复后保存；仅提到日程但没有明确要求提醒时，界面会先征求确认。不要提前声称提醒已经创建。
 
 【边界与交互原则】：
 - 涉及页面跳转时，使用标准 Markdown 链接（如 [页面名称](/path)）方便用户一键直达。
@@ -65,6 +66,9 @@ ${memoryText}
 
 平台摘要（只读）：
 ${options.platformContext}
+
+按日期查询的平台活动证据：
+${options.activityContext || '（本轮没有查询日期活动；不要猜测用户某天做过什么）'}
 
 本轮明确共享的页面上下文：
 ${pageText}`;

@@ -37,6 +37,7 @@ model User {
   personalAssistant PersonalAssistantProfile?
   assistantMemories AssistantMemoryItem[]
   assistantReminders AssistantReminder[]
+  assistantProactiveDeliveries AssistantProactiveDelivery[]
 }
 
 model Agent {
@@ -252,6 +253,21 @@ model AssistantReminder {
   updatedAt       DateTime  @updatedAt
 
   @@index([userId, status, dueTime])
+}
+
+model AssistantProactiveDelivery {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sourceKey String
+  greeting  String
+  status    String   @default("SHOWN")
+  messageId String?
+  createdAt DateTime @default(now())
+  openedAt  DateTime?
+
+  @@unique([userId, sourceKey])
+  @@index([userId, createdAt])
 }
 
 model FavoriteAgent {

@@ -68,6 +68,11 @@ export interface AssistantReminder {
   updatedAt: string;
 }
 
+export interface AssistantReminderCandidate {
+  content: string;
+  dueTime: string | null;
+}
+
 export interface PersonalAssistantBootstrap {
   profile: PersonalAssistantProfile;
   conversationId: string;

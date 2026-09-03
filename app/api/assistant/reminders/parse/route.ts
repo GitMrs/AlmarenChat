@@ -2,17 +2,9 @@ import { NextResponse } from 'next/server';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { createModelClient, resolveModelName } from '@/lib/model-client';
+import { classifyReminderRequest } from '@/lib/personal-assistant/reminder-intent.mjs';
 
 export const runtime = 'nodejs';
-
-// 关键词预过滤，避免普通无提醒意图的闲聊频繁打大模型
-const INTENT_KEYWORDS = [
-  '提醒', '闹钟', '叫我', '记一下', '便签', '备忘', '记下', '待办', '别忘了', '不要忘', '日程', '安排',
-  '分钟后', '点钟', '点整', '点后', '点半', '点', '小时后', '明天', '后天', '大后天',
-  '周一', '周二', '周三', '周四', '周五', '周六', '周日', '周末',
-  '上午', '中午', '下午', '晚上', '今晚', '明早', '早晨', '清晨', '深夜', '下班',
-  '00', '30', '15', '45', ':', '：',
-];
 
 export async function POST(request: Request) {
   try {
@@ -23,8 +15,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ hasReminder: false });
     }
 
-    const hasCue = INTENT_KEYWORDS.some((kw) => userMessage.includes(kw));
-    if (!hasCue) {
+    const reminderIntent = classifyReminderRequest(userMessage);
+    if (!reminderIntent.hasCue) {
       return NextResponse.json({ hasReminder: false });
     }
 
@@ -105,7 +97,7 @@ ${userMessage.slice(0, 500)}
       return NextResponse.json({ hasReminder: false });
     }
 
-    const createdReminders = [];
+    const candidates = [];
     for (const item of rawItems) {
       const content = typeof item.content === 'string' ? item.content.trim().slice(0, 300) : '';
       if (!content) continue;
@@ -118,34 +110,20 @@ ${userMessage.slice(0, 500)}
         }
       }
 
-      const created = await prisma.assistantReminder.create({
-        data: {
-          userId,
-          content,
-          dueTime: validDueTime,
-          status: 'PENDING',
-        },
-      });
-
-      createdReminders.push({
-        id: created.id,
-        content: created.content,
-        dueTime: created.dueTime ? created.dueTime.toISOString() : null,
-        status: created.status,
-        createdAt: created.createdAt.toISOString(),
-        updatedAt: created.updatedAt.toISOString(),
+      candidates.push({
+        content,
+        dueTime: validDueTime ? validDueTime.toISOString() : null,
       });
     }
 
-    if (createdReminders.length === 0) {
+    if (candidates.length === 0) {
       return NextResponse.json({ hasReminder: false });
     }
 
     return NextResponse.json({
       hasReminder: true,
-      reminders: createdReminders,
-      reminder: createdReminders[0],
-      count: createdReminders.length,
+      explicit: reminderIntent.explicit,
+      candidates,
     });
   } catch (error: any) {
     if (error.message === 'Unauthorized') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

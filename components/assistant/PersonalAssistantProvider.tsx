@@ -9,7 +9,7 @@ import MessageContent from '@/components/chat/MessageContent';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import { assistant, type AssistantPageContext } from '@/lib/api';
 import { cn } from '@/lib/utils';
-import type { AssistantConversationSummary, AssistantReminder, Message, PersonalAssistantBootstrap } from '@/types';
+import type { AssistantConversationSummary, AssistantReminder, AssistantReminderCandidate, Message, PersonalAssistantBootstrap } from '@/types';
 
 const HIDDEN_PATHS = ['/login'];
 
@@ -93,9 +93,9 @@ function AssistantLauncher({
 }: {
   open: boolean;
   onClick: () => void;
-  proactiveGreeting?: { text: string; name?: string; avatar?: string } | null;
+  proactiveGreeting?: { deliveryId: string; text: string; name?: string; avatar?: string } | null;
   onDismissGreeting?: () => void;
-  onAcceptGreeting?: (text: string) => void;
+  onAcceptGreeting?: (text: string, deliveryId: string) => void;
   proactiveEnabled?: boolean;
   activeReminderAlert?: AssistantReminder | null;
   onCompleteReminder?: (id: string) => void;
@@ -175,7 +175,7 @@ function AssistantLauncher({
         <div
           role="status"
           aria-live="polite"
-          onClick={() => onAcceptGreeting?.(proactiveGreeting.text)}
+          onClick={() => onAcceptGreeting?.(proactiveGreeting.text, proactiveGreeting.deliveryId)}
           className="absolute bottom-14 right-0 w-72 rounded-2xl border border-amber-200/90 bg-white/95 p-3.5 shadow-xl backdrop-blur-md transition animate-in fade-in slide-in-from-bottom-2 duration-300 text-left cursor-pointer group hover:border-amber-300"
         >
           <div className="flex items-center justify-between gap-1.5 pb-1 text-[11px] font-black text-amber-900">
@@ -290,7 +290,7 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
       setClearingAssistantMessages(false);
     }
   };
-  const [proactiveGreeting, setProactiveGreeting] = useState<{ text: string; name?: string; avatar?: string } | null>(null);
+  const [proactiveGreeting, setProactiveGreeting] = useState<{ deliveryId: string; text: string; name?: string; avatar?: string } | null>(null);
   const [localProactive, setLocalProactive] = useState<boolean | null>(() => {
     if (typeof window === 'undefined') return null;
     const saved = localStorage.getItem('almaren_assistant_proactive_enabled');
@@ -305,6 +305,8 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
   const [remindToast, setRemindToast] = useState<string | null>(null);
   const [newNoteText, setNewNoteText] = useState('');
   const [addingNote, setAddingNote] = useState(false);
+  const [pendingReminderCandidates, setPendingReminderCandidates] = useState<AssistantReminderCandidate[] | null>(null);
+  const [creatingReminderCandidates, setCreatingReminderCandidates] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const toolsRef = useRef<HTMLDivElement>(null);
@@ -527,8 +529,9 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
 
       try {
         const res = await assistant.getProactiveGreeting();
-        if (res.shouldGreet && res.greeting) {
+        if (res.shouldGreet && res.deliveryId && res.greeting) {
           setProactiveGreeting({
+            deliveryId: res.deliveryId,
             text: res.greeting,
             name: res.assistantName,
             avatar: res.assistantAvatar,
@@ -560,10 +563,10 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
     return () => clearTimeout(timer);
   }, [proactiveGreeting]);
 
-  const handleAcceptGreeting = async (greetingText?: string) => {
+  const handleAcceptGreeting = async (greetingText?: string, deliveryId?: string) => {
     setProactiveGreeting(null);
     setOpen(true);
-    if (!greetingText) return;
+    if (!greetingText || !deliveryId) return;
 
     // 检查是否已有重复项，并先在前端呈现这条问候消息
     const now = new Date().toISOString();
@@ -589,7 +592,7 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
     });
 
     try {
-      const res = await assistant.acceptProactiveGreeting(greetingText);
+      const res = await assistant.acceptProactiveGreeting(deliveryId);
       if (res?.message) {
         setData((prev) => prev ? {
           ...prev,
@@ -645,6 +648,26 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
     }
   };
 
+  const createReminderCandidates = async (candidates: AssistantReminderCandidate[]) => {
+    if (!candidates.length || creatingReminderCandidates) return;
+    setCreatingReminderCandidates(true);
+    try {
+      const created = await assistant.createReminders(candidates);
+      const newItems = created.reminders;
+      const newIds = new Set(newItems.map((item) => item.id));
+      setReminders((current) => [...newItems, ...current.filter((item) => !newIds.has(item.id))]);
+      setPendingReminderCandidates(null);
+      setRemindToast(newItems.length === 1
+        ? `小伴已记下待办：「${newItems[0].content}」⏰`
+        : `小伴已为你记下 ${newItems.length} 项日程待办 ⏰`);
+      setTimeout(() => setRemindToast(null), 4500);
+    } catch (err: any) {
+      setError(err.message || '创建提醒失败');
+    } finally {
+      setCreatingReminderCandidates(false);
+    }
+  };
+
   const send = async () => {
     const content = input.trim();
     if (!content || streaming || !data) return;
@@ -697,22 +720,11 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
       if (content.length >= 2) {
         assistant.parseReminder({
           userMessage: content,
-          assistantMessage: answer,
         }).then((remRes) => {
-          if (remRes?.hasReminder) {
-            const newItems = remRes.reminders?.length
-              ? remRes.reminders
-              : remRes.reminder ? [remRes.reminder] : [];
-            if (newItems.length > 0) {
-              const newIds = new Set(newItems.map((r) => r.id));
-              setReminders((prev) => [...newItems, ...prev.filter((r) => !newIds.has(r.id))]);
-              if (newItems.length === 1) {
-                setRemindToast(`小伴已记下待办：「${newItems[0].content}」⏰`);
-              } else {
-                setRemindToast(`小伴已为你记下 ${newItems.length} 项日程待办 ⏰`);
-              }
-              setTimeout(() => setRemindToast(null), 4500);
-            }
+          const candidates = remRes?.candidates || [];
+          if (remRes?.hasReminder && candidates.length > 0) {
+            if (remRes.explicit) createReminderCandidates(candidates);
+            else setPendingReminderCandidates(candidates);
           }
         }).catch(() => {});
       }
@@ -1417,6 +1429,53 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
               </>
             )}
           </aside>
+        </div>
+      )}
+
+      {pendingReminderCandidates && (
+        <div
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/30 px-4 backdrop-blur-xs"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="assistant-reminder-confirm-title"
+        >
+          <div className="w-full max-w-sm rounded-lg border border-black/[0.08] bg-white p-5 shadow-2xl">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-700">
+                <Clock size={18} />
+              </div>
+              <div className="min-w-0">
+                <h3 id="assistant-reminder-confirm-title" className="text-base font-black text-slate-950">要添加提醒吗？</h3>
+                <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">你提到了日程，但没有明确要求小伴设置提醒。</p>
+              </div>
+            </div>
+            <div className="my-4 space-y-2">
+              {pendingReminderCandidates.map((candidate, index) => (
+                <div key={`${candidate.content}-${index}`} className="rounded-lg border border-black/[0.06] bg-slate-50 px-3 py-2.5">
+                  <p className="text-sm font-bold text-slate-800">{candidate.content}</p>
+                  <p className="mt-1 text-xs font-semibold text-slate-400">{formatReminderDue(candidate.dueTime)}</p>
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setPendingReminderCandidates(null)}
+                disabled={creatingReminderCandidates}
+                className="flex h-10 flex-1 items-center justify-center gap-1.5 rounded-lg border border-black/10 text-xs font-black text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+              >
+                <X size={14} />暂不添加
+              </button>
+              <button
+                type="button"
+                onClick={() => createReminderCandidates(pendingReminderCandidates)}
+                disabled={creatingReminderCandidates}
+                className="flex h-10 flex-1 items-center justify-center gap-1.5 rounded-lg bg-slate-950 text-xs font-black text-white disabled:opacity-40"
+              >
+                {creatingReminderCandidates ? <Loader2 className="animate-spin" size={14} /> : <Check size={14} />}添加提醒
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

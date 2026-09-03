@@ -48,37 +48,37 @@ export async function POST(request: Request) {
   try {
     const userId = requireAuth(request);
     const body = await request.json().catch(() => ({}));
-    const content = typeof body.content === 'string' ? body.content.trim().slice(0, 300) : '';
-    if (!content) {
+    const rawItems = Array.isArray(body.items) ? body.items.slice(0, 10) : [body];
+    const items = rawItems.map((item: any) => {
+      const content = typeof item?.content === 'string' ? item.content.trim().slice(0, 300) : '';
+      let dueTime: Date | null = null;
+      if (item?.dueTime) {
+        const parsed = new Date(item.dueTime);
+        if (!Number.isNaN(parsed.getTime())) dueTime = parsed;
+      }
+      return { content, dueTime };
+    }).filter((item: { content: string }) => item.content);
+    if (!items.length) {
       return NextResponse.json({ error: '内容不能为空' }, { status: 400 });
     }
 
-    let dueTime: Date | null = null;
-    if (body.dueTime) {
-      const parsed = new Date(body.dueTime);
-      if (!Number.isNaN(parsed.getTime())) {
-        dueTime = parsed;
-      }
-    }
-
-    const reminder = await prisma.assistantReminder.create({
-      data: {
-        userId,
-        content,
-        dueTime,
-        status: 'PENDING',
-      },
-    });
+    const reminders = await prisma.$transaction(items.map((item: { content: string; dueTime: Date | null }) => (
+      prisma.assistantReminder.create({
+        data: { userId, content: item.content, dueTime: item.dueTime, status: 'PENDING' },
+      })
+    )));
+    const serialized = reminders.map((reminder) => ({
+      id: reminder.id,
+      content: reminder.content,
+      dueTime: reminder.dueTime ? reminder.dueTime.toISOString() : null,
+      status: reminder.status,
+      createdAt: reminder.createdAt.toISOString(),
+      updatedAt: reminder.updatedAt.toISOString(),
+    }));
 
     return NextResponse.json({
-      reminder: {
-        id: reminder.id,
-        content: reminder.content,
-        dueTime: reminder.dueTime ? reminder.dueTime.toISOString() : null,
-        status: reminder.status,
-        createdAt: reminder.createdAt.toISOString(),
-        updatedAt: reminder.updatedAt.toISOString(),
-      },
+      reminder: serialized[0],
+      reminders: serialized,
     });
   } catch (error: any) {
     if (error.message === 'Unauthorized') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
