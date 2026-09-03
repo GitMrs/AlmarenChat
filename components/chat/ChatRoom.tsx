@@ -96,6 +96,8 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
   const [pendingDeleteMessage, setPendingDeleteMessage] = useState<ChatMessage | null>(null);
   const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
   const [activeActionMessageId, setActiveActionMessageId] = useState<string | null>(null);
+  const [confirmClearOpen, setConfirmClearOpen] = useState(false);
+  const [clearingMessages, setClearingMessages] = useState(false);
   const [userSettings, setUserSettings] = useState<{
     apiBaseUrl?: string;
     apiKey?: string;
@@ -740,6 +742,23 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
     }
   };
 
+  const handleClearMessages = async () => {
+    const targetConversationId = conversationId || existingConversationId;
+    setClearingMessages(true);
+    try {
+      if (targetConversationId) {
+        await conversationsApi.clearMessages(targetConversationId);
+      }
+      setMessages([]);
+      setHasMoreMessages(false);
+      setConfirmClearOpen(false);
+    } catch (error: any) {
+      console.error('Clear messages failed:', error);
+    } finally {
+      setClearingMessages(false);
+    }
+  };
+
   const updateContextMessageLimit = async (value: number) => {
     if (!isLoggedIn) return;
 
@@ -1033,6 +1052,8 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
             webSearchEnabled={webSearchEnabled}
             onToggleWebSearch={() => setWebSearchEnabled((value) => !value)}
             mode={chatMode}
+            onClearMessages={() => setConfirmClearOpen(true)}
+            canClearMessages={messages.length > 0}
             imageGenerationAvailable={Boolean(userSettings?.imageGenerationAvailable) && browserModelConfig.source !== 'OLLAMA'}
             onModeChange={(mode) => {
               setChatMode(mode);

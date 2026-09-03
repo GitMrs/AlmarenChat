@@ -153,3 +153,24 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
+
+export async function DELETE(request: Request) {
+  try {
+    const userId = requireAuth(request);
+    const profile = await ensurePersonalAssistant(userId);
+
+    await prisma.message.deleteMany({
+      where: { conversationId: profile.conversationId },
+    });
+
+    await prisma.conversation.update({
+      where: { id: profile.conversationId },
+      data: { updatedAt: new Date() },
+    });
+
+    return NextResponse.json({ success: true });
+  } catch (error: any) {
+    if (error.message === 'Unauthorized') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}

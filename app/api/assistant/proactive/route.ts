@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { ensurePersonalAssistant } from '@/lib/personal-assistant/profile';
+import { createModelClient, resolveModelName } from '@/lib/model-client';
 
 export const runtime = 'nodejs';
 
@@ -10,80 +11,90 @@ function getBeijingHour(): number {
   return (now.getUTCHours() + 8) % 24;
 }
 
-function generateProactiveGreeting(
-  assistantName: string,
-  memories: Array<{ content: string }>,
-  bjHour: number
-): string {
-  // Check if any memories can be echoed
-  const echoMemory = memories.find((m) => {
-    const text = m.content.toLowerCase();
-    return (
-      text.includes('咖啡') ||
-      text.includes('失眠') ||
-      text.includes('睡') ||
-      text.includes('茶') ||
-      text.includes('猫') ||
-      text.includes('狗')
+// 常见容易产生后续结果的事件关键词匹配表（Suzu Lives 因果回访机制）
+const EVENT_PATTERNS: Array<{
+  regex: RegExp;
+  generateFollowUp: (userText: string) => string;
+}> = [
+  {
+    regex: /(?:开会|汇报|开例会|述职|过方案|讲方案|评委)/,
+    generateFollowUp: () => `刚才的会议与方案汇报开得还顺利吗？大家反馈如何？✨`,
+  },
+  {
+    regex: /(?:面试|复试|hr面|一面|二面|三面|笔试)/,
+    generateFollowUp: () => `之前聊到的面试/笔试情况怎么样啦？发挥得还顺心吗？🌱`,
+  },
+  {
+    regex: /(?:发版|发布|上线|部署|推代码|发代码|热更)/,
+    generateFollowUp: () => `刚才的新版本发布上线顺利吗？各项监控与服务状态都平稳吧？🚀`,
+  },
+  {
+    regex: /(?:发烧|感冒|头疼|头晕|肚子疼|胃疼|生病|难受|挂水|输液|咳嗽)/,
+    generateFollowUp: () => `现在身体感觉好点了吗？有没有舒服一些？多歇歇别硬撑哦 🌿`,
+  },
+  {
+    regex: /(?:看牙|拔牙|补牙|看医生|去医院|体检|拿药)/,
+    generateFollowUp: () => `去医院检查/治疗回来了吗？现在身体感觉如何？🕊️`,
+  },
+  {
+    regex: /(?:考试|答辩|考研|考公|考证|查分)/,
+    generateFollowUp: () => `刚才的考试/答辩结束了吧？心情稍微放松下来了吗？✨`,
+  },
+  {
+    regex: /(?:出差|赶飞机|坐飞机|赶高铁|坐高铁)/,
+    generateFollowUp: () => `路上还顺利吗？已经平安抵达目的地了吗？🎒`,
+  },
+  {
+    regex: /(?:写完|搞定|做完|交差|交稿)/,
+    generateFollowUp: () => `手头那件要紧事已经顺利搞定了吗？忙完了记得松口气歇歇~ 🍵`,
+  },
+];
+
+async function generateAiEventFollowUp(
+  userId: string,
+  userMessage: string,
+  fallback: string
+): Promise<string> {
+  try {
+    const userSettings = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { customModelEnabled: true, apiBaseUrl: true, apiKey: true, modelName: true },
+    });
+    const usesCustom = Boolean(
+      userSettings?.customModelEnabled && userSettings?.apiBaseUrl && userSettings?.apiKey
     );
-  });
+    const client = createModelClient(
+      usesCustom ? userSettings?.apiBaseUrl : undefined,
+      usesCustom ? userSettings?.apiKey : undefined
+    );
+    const model = resolveModelName(usesCustom ? userSettings?.modelName : undefined);
 
-  // Morning (6:00 - 10:59)
-  if (bjHour >= 6 && bjHour < 11) {
-    if (echoMemory && echoMemory.content.includes('咖啡')) {
-      return `早安呀！今天的那杯咖啡喝了没？新的一天元气满满~ ☕`;
+    const prompt = `你是贴身伙伴小伴。用户前段时间对你说过一句话：
+"""
+${userMessage.slice(0, 300)}
+"""
+现在时间过去了一会儿（事情可能已经发生或有初步结果）。
+请你根据用户原话中具体提到的人名、项目、事情或身体状况，生成一句极其自然、温和关切、有分寸的单次回访问候（严格在35字以内）。
+要求：
+1. 必须提炼出原话中的具体细节（如具体人名、具体事项名），就像真朋友自然问候进展，绝不使用空洞套话；
+2. 简短精炼，仅输出一句话，语气温和有温度，可带 1 个轻量 emoji；
+3. 直接输出这句话本身，严禁带有引号、解释、前后缀或任何多余字符。`;
+
+    const completion = await client.chat.completions.create({
+      model,
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.6,
+      max_tokens: 60,
+    });
+
+    const result = completion.choices[0]?.message?.content?.trim();
+    if (result && result.length >= 4 && result.length <= 60) {
+      return result.replace(/^["“'「]|["”'」]$/g, '').trim();
     }
-    if (echoMemory && (echoMemory.content.includes('失眠') || echoMemory.content.includes('睡'))) {
-      return `早呀！昨晚睡得还好吗？今天精神好点没？✨`;
-    }
-    const morningList = [
-      `早安！今天状态怎么样？喝杯温水开启舒心的一天吧~ 🌿`,
-      `早上好呀！新的一天又见面了，今天有想推进的小目标吗？✨`,
-      `早呀！愿你今天思路清晰，心情轻盈，${assistantName}随时都在哦~ ☕`,
-    ];
-    return morningList[Math.floor(Math.random() * morningList.length)];
+    return fallback;
+  } catch {
+    return fallback;
   }
-
-  // Noon (11:00 - 13:59)
-  if (bjHour >= 11 && bjHour < 14) {
-    const noonList = [
-      `中午好呀！忙碌了半天辛苦啦，记得按时吃顿美味的午餐 🍲`,
-      `午间好！吃完饭不妨闭目养神一会儿，给大脑充充电~ 🌿`,
-      `辛苦啦！午餐吃饱了吗？稍微歇歇眼睛，别一直盯着屏幕哦 🍵`,
-    ];
-    return noonList[Math.floor(Math.random() * noonList.length)];
-  }
-
-  // Afternoon (14:00 - 17:59)
-  if (bjHour >= 14 && bjHour < 18) {
-    if (echoMemory && echoMemory.content.includes('咖啡')) {
-      return `下午好！下午容易犯困，要不要来杯咖啡提提神？☕`;
-    }
-    const afternoonList = [
-      `下午好！坐久了容易疲劳，站起来活动下肩颈、喝口水再继续吧 💧`,
-      `午后的一点温和问候~ 进度还顺利吗？累了就摸摸鱼换换脑子 🌿`,
-      `下午状态怎么样？如果遇到卡住的想法，随时唤我一起理理思路 ✨`,
-    ];
-    return afternoonList[Math.floor(Math.random() * afternoonList.length)];
-  }
-
-  // Evening (18:00 - 22:59)
-  if (bjHour >= 18 && bjHour < 23) {
-    const eveningList = [
-      `晚上好！今天忙碌了一整天，今晚打算好好放松一下吗？🌙`,
-      `傍晚好呀！晚饭吃了吗？忙完手头的事，给自己留一点惬意时光吧 🍵`,
-      `晚上好！这一天过得还顺心吗？有什么想聊聊的日常碎碎念吗？✨`,
-    ];
-    return eveningList[Math.floor(Math.random() * eveningList.length)];
-  }
-
-  // Midnight / Late night (23:00 - 05:59)
-  const nightList = [
-    `夜深了，还在忙呢？别太熬夜，手头的事明天再做也来得及，早点休息哦 🌙`,
-    `这么晚还没休息呀？揉揉酸痛的眼睛，早点钻进被窝睡个好觉吧 ✨`,
-    `夜深人静啦，注意身体别硬撑，小伴祝你今晚有个好梦 🕊️`,
-  ];
-  return nightList[Math.floor(Math.random() * nightList.length)];
 }
 
 export async function GET(request: Request) {
@@ -95,22 +106,108 @@ export async function GET(request: Request) {
       return NextResponse.json({ shouldGreet: false, reason: 'disabled' });
     }
 
-    const memories = await prisma.assistantMemoryItem.findMany({
-      where: { userId, status: 'ACTIVE' },
-      select: { content: true },
-      take: 20,
+    const now = Date.now();
+
+    // 1. 获取小伴当前会话最近消息（判断活跃度与历史事件）
+    const recentMessages = await prisma.message.findMany({
+      where: { conversationId: profile.conversationId },
+      orderBy: { createdAt: 'desc' },
+      take: 8,
     });
 
+    const latestMessage = recentMessages[0];
+    if (latestMessage) {
+      const msSinceLast = now - new Date(latestMessage.createdAt).getTime();
+      // 如果 25 分钟内才聊过天，用户正专注或刚走开，绝不弹窗打扰（保持静默）
+      if (msSinceLast < 25 * 60 * 1000) {
+        return NextResponse.json({ shouldGreet: false, reason: 'recently_active' });
+      }
+    }
+
+    // 2. 检查待办与便签中是否有因果事件（Suzu Lives 临时待办回访）
+    const pendingReminders = await prisma.assistantReminder.findMany({
+      where: { userId, status: 'PENDING' },
+      orderBy: [{ dueTime: 'asc' }, { createdAt: 'desc' }],
+      take: 5,
+    });
+
+    // 优先检查是否有到期或临近的事件待办（到期前后3小时内）
+    for (const rem of pendingReminders) {
+      if (rem.dueTime) {
+        const diffMs = now - new Date(rem.dueTime).getTime();
+        // 提醒时间刚过 0~3 小时内，进行因果回访
+        if (diffMs >= 0 && diffMs <= 3 * 3600 * 1000) {
+          const fallback = `关于便签里的「${rem.content}」，现在进展得还顺利吗？✨`;
+          const dynamicGreeting = await generateAiEventFollowUp(userId, `待办事项：${rem.content}`, fallback);
+          return NextResponse.json({
+            shouldGreet: true,
+            greeting: dynamicGreeting,
+            assistantName: profile.name || '小伴',
+            assistantAvatar: profile.avatar || '🌿',
+          });
+        }
+      }
+    }
+
+    // 3. 检查最近会话中用户是否提到了有后续结果的真实事件（Suzu Lives 因果回访机制）
+    const userMessages = recentMessages.filter((m) => m.role === 'user');
+    for (const uMsg of userMessages) {
+      const msgAge = now - new Date(uMsg.createdAt).getTime();
+      // 距今 45 分钟到 20 小时之间的用户事件
+      if (msgAge >= 45 * 60 * 1000 && msgAge <= 20 * 3600 * 1000) {
+        for (const pattern of EVENT_PATTERNS) {
+          if (pattern.regex.test(uMsg.content)) {
+            // 检查助手后续是否已经专门就该事件回访过了
+            const followedUp = recentMessages.some(
+              (m) =>
+                m.role === 'assistant' &&
+                new Date(m.createdAt).getTime() > new Date(uMsg.createdAt).getTime() &&
+                pattern.regex.test(m.content)
+            );
+            if (!followedUp) {
+              const fallback = pattern.generateFollowUp(uMsg.content);
+              const dynamicGreeting = await generateAiEventFollowUp(userId, uMsg.content, fallback);
+              return NextResponse.json({
+                shouldGreet: true,
+                greeting: dynamicGreeting,
+                assistantName: profile.name || '小伴',
+                assistantAvatar: profile.avatar || '🌿',
+              });
+            }
+          }
+        }
+      }
+    }
+
+    // 4. 若无明确事件，只有当处于“跨较长时间重连（距离上次互动已超 10 小时）”且在特定适宜时段才发起轻量重连
+    const lastInteractionAge = latestMessage ? now - new Date(latestMessage.createdAt).getTime() : Infinity;
     const bjHour = getBeijingHour();
-    const greeting = generateProactiveGreeting(profile.name || '小伴', memories, bjHour);
 
-    return NextResponse.json({
-      shouldGreet: true,
-      greeting,
-      assistantName: profile.name || '小伴',
-      assistantAvatar: profile.avatar || '🌿',
-      hour: bjHour,
-    });
+    if (lastInteractionAge >= 10 * 3600 * 1000) {
+      // 晨间开启新一天 (7:00 - 10:30)
+      if (bjHour >= 7 && bjHour <= 10) {
+        return NextResponse.json({
+          shouldGreet: true,
+          greeting: `早呀！新的一天开始了，今天手头有什么想推进的吗？随时唤我。🌿`,
+          assistantName: profile.name || '小伴',
+          assistantAvatar: profile.avatar || '🌿',
+          hour: bjHour,
+        });
+      }
+      // 夜间回顾/休息前 (21:30 - 23:30)
+      if (bjHour >= 21 && bjHour <= 23) {
+        return NextResponse.json({
+          shouldGreet: true,
+          greeting: `今天忙碌了一整天，今晚有什么想聊聊或整理的想法吗？🌙`,
+          assistantName: profile.name || '小伴',
+          assistantAvatar: profile.avatar || '🌿',
+          hour: bjHour,
+        });
+      }
+    }
+
+    // 5. 其余时段无特定事件依据时：严格遵从 Suzu Lives 哲学——【保持沉默（NO_REPLY）】，绝不尬聊打扰！
+    return NextResponse.json({ shouldGreet: false, reason: 'no_event_silent' });
   } catch (error: any) {
     if (error.message === 'Unauthorized') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     return NextResponse.json({ shouldGreet: false, error: error.message }, { status: 500 });

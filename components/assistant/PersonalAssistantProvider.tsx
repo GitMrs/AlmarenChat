@@ -275,6 +275,21 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
     selected: Set<number>;
   } | null>(null);
   const [extractingSummary, setExtractingSummary] = useState(false);
+  const [confirmClearAssistantOpen, setConfirmClearAssistantOpen] = useState(false);
+  const [clearingAssistantMessages, setClearingAssistantMessages] = useState(false);
+
+  const handleClearAssistantMessages = async () => {
+    setClearingAssistantMessages(true);
+    try {
+      await assistant.clearMessages();
+      setData((prev) => (prev ? { ...prev, messages: [] } : prev));
+      setConfirmClearAssistantOpen(false);
+    } catch (e) {
+      console.error('Failed to clear assistant messages:', e);
+    } finally {
+      setClearingAssistantMessages(false);
+    }
+  };
   const [proactiveGreeting, setProactiveGreeting] = useState<{ text: string; name?: string; avatar?: string } | null>(null);
   const [localProactive, setLocalProactive] = useState<boolean | null>(() => {
     if (typeof window === 'undefined') return null;
@@ -313,8 +328,13 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
       failedAtRef.current = 0;
       setData(null);
     };
+    const handleOpen = () => setOpen(true);
     window.addEventListener('personal-assistant-updated', invalidate);
-    return () => window.removeEventListener('personal-assistant-updated', invalidate);
+    window.addEventListener('open-personal-assistant', handleOpen);
+    return () => {
+      window.removeEventListener('personal-assistant-updated', invalidate);
+      window.removeEventListener('open-personal-assistant', handleOpen);
+    };
   }, []);
   useEffect(() => {
     const onProactiveChanged = (event: Event) => {
@@ -482,11 +502,11 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
     if (!pageContext) setSharePage(false);
   }, [pageContext]);
 
-  // 在线主动关怀：仅当用户打开网页在前台、未展开抽屉且冷却满足时感应
+  // 在线主动关怀：仅当用户打开网页在前台、未展开抽屉且冷却满足时感应（动态 4-6 次/天，75分钟冷却）
   useEffect(() => {
     if (!loggedIn || open || hidden) return;
 
-    const timer = setTimeout(async () => {
+    const checkProactive = async () => {
       if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
         return;
       }
@@ -500,10 +520,10 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
       if (savedDate === todayStr) {
         count = parseInt(localStorage.getItem(PROACTIVE_KEY + '_count') || '0', 10);
       }
-      if (count >= 2) return;
+      if (count >= 5) return;
 
       const lastTime = parseInt(localStorage.getItem(PROACTIVE_KEY) || '0', 10);
-      if (now - lastTime < 3 * 60 * 60 * 1000) return;
+      if (now - lastTime < 75 * 60 * 1000) return;
 
       try {
         const res = await assistant.getProactiveGreeting();
@@ -520,9 +540,15 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
       } catch {
         // Silently fail
       }
-    }, 3200);
+    };
 
-    return () => clearTimeout(timer);
+    const initialTimer = setTimeout(checkProactive, 3200);
+    const intervalTimer = setInterval(checkProactive, 180000);
+
+    return () => {
+      clearTimeout(initialTimer);
+      clearInterval(intervalTimer);
+    };
   }, [loggedIn, open, hidden]);
 
   // 问候气泡 8 秒后自动优雅淡出
@@ -667,16 +693,26 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
         }).catch(() => {});
       }
 
-      // 自然语言待办提醒与便签智能识别
+      // 自然语言待办提醒与多日程智能识别
       if (content.length >= 2) {
         assistant.parseReminder({
           userMessage: content,
           assistantMessage: answer,
         }).then((remRes) => {
-          if (remRes?.hasReminder && remRes.reminder) {
-            setReminders((prev) => [remRes.reminder!, ...prev.filter((r) => r.id !== remRes.reminder!.id)]);
-            setRemindToast(`小伴已记下待办：「${remRes.reminder.content}」⏰`);
-            setTimeout(() => setRemindToast(null), 4500);
+          if (remRes?.hasReminder) {
+            const newItems = remRes.reminders?.length
+              ? remRes.reminders
+              : remRes.reminder ? [remRes.reminder] : [];
+            if (newItems.length > 0) {
+              const newIds = new Set(newItems.map((r) => r.id));
+              setReminders((prev) => [...newItems, ...prev.filter((r) => !newIds.has(r.id))]);
+              if (newItems.length === 1) {
+                setRemindToast(`小伴已记下待办：「${newItems[0].content}」⏰`);
+              } else {
+                setRemindToast(`小伴已为你记下 ${newItems.length} 项日程待办 ⏰`);
+              }
+              setTimeout(() => setRemindToast(null), 4500);
+            }
           }
         }).catch(() => {});
       }
@@ -1310,6 +1346,19 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
                             <span className="min-w-0 flex-1">结合当前页面</span>
                             {sharePage && <Check size={14} />}
                           </button>
+                          <div className="my-1 h-[1px] bg-black/[0.06]" />
+                          <button
+                            type="button"
+                            disabled={!data?.messages?.length || streaming}
+                            onClick={() => {
+                              setToolsOpen(false);
+                              setConfirmClearAssistantOpen(true);
+                            }}
+                            className="flex min-h-10 w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-xs font-black text-rose-600 transition hover:bg-rose-50 hover:text-rose-700 disabled:opacity-40 cursor-pointer"
+                          >
+                            <Trash2 size={16} />
+                            <span className="min-w-0 flex-1">清空当前对话</span>
+                          </button>
                         </div>
                       )}
                       <button
@@ -1446,6 +1495,20 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
         </div>
       )}
 
+      <ConfirmDialog
+        open={confirmClearAssistantOpen}
+        title="清空小伴当前对话？"
+        description="清空后将从头开始交流，不会影响已保存的长期记忆与便签提醒。"
+        icon={<Trash2 size={20} />}
+        confirmText="确认清空"
+        cancelText="先保留"
+        destructive
+        loading={clearingAssistantMessages}
+        onCancel={() => {
+          if (!clearingAssistantMessages) setConfirmClearAssistantOpen(false);
+        }}
+        onConfirm={handleClearAssistantMessages}
+      />
       <ConfirmDialog
         open={Boolean(pendingDeleteConversation)}
         title="删除这个历史话题？"

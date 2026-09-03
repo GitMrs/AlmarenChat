@@ -128,7 +128,12 @@ export const assistant = {
       body: JSON.stringify({ id }),
     }),
   parseReminder: (data: { userMessage: string; assistantMessage?: string }) =>
-    request<{ hasReminder: boolean; reminder?: AssistantReminder }>('/assistant/reminders/parse', {
+    request<{
+      hasReminder: boolean;
+      reminder?: AssistantReminder;
+      reminders?: AssistantReminder[];
+      count?: number;
+    }>('/assistant/reminders/parse', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
@@ -152,6 +157,10 @@ export const assistant = {
       signal: data.signal,
     });
   },
+  clearMessages: () =>
+    request<{ success: boolean }>('/assistant/messages', {
+      method: 'DELETE',
+    }),
 };
 
 // Agents
@@ -260,6 +269,10 @@ export const conversations = {
     }),
   deleteMessage: (conversationId: string, messageId: string) =>
     request<{ success: boolean }>(`/conversations/${conversationId}/messages/${messageId}`, {
+      method: 'DELETE',
+    }),
+  clearMessages: (conversationId: string) =>
+    request<{ success: boolean }>(`/conversations/${conversationId}/messages`, {
       method: 'DELETE',
     }),
 };

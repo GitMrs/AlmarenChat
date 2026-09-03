@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Check, Globe2, Image as ImageIcon, ImagePlus, Loader2, Plus, Send, Square, X } from 'lucide-react';
+import { Check, Globe2, Image as ImageIcon, ImagePlus, Loader2, Plus, Send, Square, Trash2, X } from 'lucide-react';
 import ComposerShell from '@/components/chat/ComposerShell';
 import { cn } from '@/lib/utils';
 import type { MessageAttachment } from '@/types';
@@ -29,6 +29,8 @@ type ChatComposerProps = {
   mode: 'chat' | 'image';
   imageGenerationAvailable: boolean;
   onModeChange: (mode: 'chat' | 'image') => void;
+  onClearMessages?: () => void;
+  canClearMessages?: boolean;
 };
 
 export default function ChatComposer({
@@ -54,6 +56,8 @@ export default function ChatComposer({
   mode,
   imageGenerationAvailable,
   onModeChange,
+  onClearMessages,
+  canClearMessages = false,
 }: ChatComposerProps) {
   const [toolsOpen, setToolsOpen] = useState(false);
   const toolsRef = useRef<HTMLDivElement>(null);
@@ -188,6 +192,23 @@ export default function ChatComposer({
                   <span className="min-w-0 flex-1">生成图片</span>
                   {mode === 'image' && <Check size={14} />}
                 </button>
+                {canClearMessages && onClearMessages && (
+                  <>
+                    <div className="my-1 h-[1px] bg-black/[0.06]" />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setToolsOpen(false);
+                        onClearMessages();
+                      }}
+                      disabled={isStreaming}
+                      className="flex min-h-10 w-full items-center gap-3 rounded-md px-3 py-2 text-left text-xs font-black text-rose-600 transition hover:bg-rose-50 hover:text-rose-700 disabled:text-slate-300 cursor-pointer"
+                    >
+                      <Trash2 size={16} />
+                      <span className="min-w-0 flex-1">清空聊天记录</span>
+                    </button>
+                  </>
+                )}
               </div>
             )}
             <button
