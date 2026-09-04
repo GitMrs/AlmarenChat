@@ -1,4 +1,4 @@
-import type { AgentRun, AssistantConversationSummary, AssistantMemoryItem, AssistantQQBinding, AssistantReminder, AssistantReminderCandidate, Message, PersonalAssistantBootstrap, PersonalAssistantProfile, SpaceDiscussion, SpaceFileShare, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal } from '@/types';
+import type { AgentRun, AssistantConversationSummary, AssistantExperienceMessage, AssistantMemoryItem, AssistantQQBinding, AssistantReminder, AssistantReminderCandidate, Message, PersonalAssistantBootstrap, PersonalAssistantProfile, SpaceDiscussion, SpaceFileShare, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal } from '@/types';
 
 const API_BASE = '/api';
 
@@ -54,6 +54,8 @@ export const auth = {
 
 export const assistant = {
   get: () => request<PersonalAssistantBootstrap>('/assistant'),
+  getExperience: (experienceId: string) =>
+    request<{ experience: { id: string; messages: AssistantExperienceMessage[] } }>(`/assistant/experiences/${experienceId}`),
   getQQBinding: () => request<{ binding: AssistantQQBinding | null }>('/assistant/qq'),
   saveQQBinding: (data: { appId: string; appSecret: string }) =>
     request<{ binding: AssistantQQBinding }>('/assistant/qq', { method: 'PUT', body: JSON.stringify(data) }),
@@ -63,12 +65,12 @@ export const assistant = {
   listConversations: () =>
     request<{ conversations: AssistantConversationSummary[]; currentConversationId: string }>('/assistant/conversations'),
   newConversation: (title?: string) =>
-    request<{ conversationId: string; messages: Message[] }>('/assistant/conversations', {
+    request<{ conversationId: string; conversationMode: 'TEMPORARY'; messages: Message[] }>('/assistant/conversations', {
       method: 'POST',
       body: JSON.stringify({ title }),
     }),
   switchConversation: (conversationId: string) =>
-    request<{ conversationId: string; messages: Message[] }>(`/assistant/conversations/${conversationId}`, {
+    request<{ conversationId: string; conversationMode: 'MAIN' | 'TEMPORARY'; messages: Message[] }>(`/assistant/conversations/${conversationId}`, {
       method: 'POST',
     }),
   deleteConversation: (conversationId: string) =>
@@ -179,6 +181,7 @@ export const assistant = {
     }),
   sendMessage: async (data: {
     message: string;
+    conversationId: string;
     userMessageId: string;
     assistantMessageId: string;
     webSearchEnabled: boolean;
@@ -190,6 +193,7 @@ export const assistant = {
       headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
       body: JSON.stringify({
         message: data.message,
+        conversationId: data.conversationId,
         userMessageId: data.userMessageId,
         assistantMessageId: data.assistantMessageId,
         webSearchEnabled: data.webSearchEnabled,
@@ -199,17 +203,20 @@ export const assistant = {
   },
   prepareLocalMessage: (data: {
     message: string;
+    conversationId: string;
     userMessageId: string;
     signal?: AbortSignal;
   }) =>
     request<{
       messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>;
       conversationId: string;
+      conversationMode: 'MAIN' | 'TEMPORARY';
     }>('/assistant/messages', {
       method: 'POST',
       body: JSON.stringify({
         operation: 'prepare-local',
         message: data.message,
+        conversationId: data.conversationId,
         userMessageId: data.userMessageId,
         webSearchEnabled: false,
       }),
@@ -220,14 +227,15 @@ export const assistant = {
       method: 'POST',
       body: JSON.stringify({ operation: 'persist-local', conversationId, content, assistantMessageId }),
     }),
-  deleteMessage: (messageId: string) =>
+  deleteMessage: (messageId: string, conversationId: string) =>
     request<{ success: boolean }>('/assistant/messages', {
       method: 'DELETE',
-      body: JSON.stringify({ messageId }),
+      body: JSON.stringify({ messageId, conversationId }),
     }),
-  clearMessages: () =>
+  clearMessages: (conversationId: string) =>
     request<{ success: boolean }>('/assistant/messages', {
       method: 'DELETE',
+      body: JSON.stringify({ conversationId }),
     }),
 };
 

@@ -55,7 +55,7 @@ export async function PUT(request: Request) {
     }
 
     const appSecretCiphertext = encryptQQCredential(appSecret);
-    await ensurePersonalAssistant(userId);
+    const profile = await ensurePersonalAssistant(userId);
     const binding = await prisma.$transaction(async (tx) => {
       const existing = await tx.assistantQQBinding.findUnique({ where: { userId } });
       if (existing) {
@@ -68,16 +68,14 @@ export async function PUT(request: Request) {
             status: 'PENDING',
             lastError: null,
             connectedAt: null,
+            conversationId: profile.conversationId,
             ...(existing.appId === appId ? {} : { qqOpenId: null, lastInboundAt: null }),
           },
         });
       }
 
-      const conversation = await tx.conversation.create({
-        data: { userId, kind: 'PERSONAL_ASSISTANT', title: 'QQ 小伴' },
-      });
       return tx.assistantQQBinding.create({
-        data: { userId, conversationId: conversation.id, appId, appSecretCiphertext },
+        data: { userId, conversationId: profile.conversationId, appId, appSecretCiphertext },
       });
     });
 

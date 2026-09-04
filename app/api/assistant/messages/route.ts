@@ -8,6 +8,7 @@ import { buildWebSearchContext } from '@/lib/web-search';
 import { ensurePersonalAssistant } from '@/lib/personal-assistant/profile';
 import { buildPersonalAssistantPrompt } from '@/lib/personal-assistant/prompt-builder';
 import { buildAssistantActivityContext, buildAssistantPlatformContext } from '@/lib/personal-assistant/platform-context';
+import { archiveOldMainChatMessages, loadAssistantMemoryContext } from '@/lib/personal-assistant/experience-memory';
 
 export const runtime = 'nodejs';
 
@@ -41,7 +42,7 @@ export async function POST(request: Request) {
         const saved = updated.count
           ? await tx.message.findUniqueOrThrow({ where: { id: assistantMessageId } })
           : await tx.message.create({
-            data: { id: assistantMessageId, conversationId: conversation.id, role: 'assistant', content },
+            data: { id: assistantMessageId, conversationId: conversation.id, role: 'assistant', source: 'WEB', content },
           });
         await tx.conversation.update({
           where: { id: conversation.id },
@@ -79,9 +80,27 @@ export async function POST(request: Request) {
     ]);
     if (!userSettings) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
+    const requestedConversationId = typeof body.conversationId === 'string' ? body.conversationId.trim() : '';
+    const targetConversation = await prisma.conversation.findFirst({
+      where: {
+        id: requestedConversationId || profile.conversationId,
+        userId,
+        kind: 'PERSONAL_ASSISTANT',
+      },
+      select: { id: true, assistantMode: true },
+    });
+    if (!targetConversation) return NextResponse.json({ error: '会话不存在' }, { status: 404 });
+    const conversationId = targetConversation.id;
+    const conversationMode = conversationId === profile.conversationId ? 'MAIN' : 'TEMPORARY';
+
     const usesCustomModel = Boolean(
       userSettings.customModelEnabled && userSettings.apiBaseUrl && userSettings.apiKey && userSettings.modelName
     );
+    const client = createModelClient(
+      usesCustomModel ? userSettings.apiBaseUrl : undefined,
+      usesCustomModel ? userSettings.apiKey : undefined
+    );
+    const model = resolveModelName(usesCustomModel ? userSettings.modelName : undefined);
     const quota = localMode ? null : await reserveChatQuota({
       userId,
       email: userSettings.email,
@@ -95,18 +114,36 @@ export async function POST(request: Request) {
       );
     }
 
+    if (conversationMode === 'MAIN') {
+      await archiveOldMainChatMessages({
+        userId,
+        conversationId,
+        ...(!localMode ? {
+          summarize: async (prompt: string) => {
+            const completion = await client.chat.completions.create({
+              model,
+              messages: [{ role: 'user', content: prompt }],
+              temperature: 0.1,
+            }, { timeout: 20_000 });
+            return completion.choices[0]?.message?.content || null;
+          },
+        } : {}),
+      });
+    }
+
     const contextLimit = Math.max(8, Math.min(80, userSettings.contextMessageLimit || 40));
     const contextSources = {
       spaces: profile.includeSpaceContext,
       tasks: profile.includeTaskContext,
       chats: profile.includeChatContext,
     };
-    const [history, memories, platformContext, activityContext, webContext] = await Promise.all([
-      prisma.message.findMany({
-        where: { conversationId: profile.conversationId },
-        orderBy: { createdAt: 'desc' },
-        take: contextLimit,
-        select: { role: true, content: true },
+    const [memoryContext, memories, platformContext, activityContext, webContext] = await Promise.all([
+      loadAssistantMemoryContext({
+        userId,
+        conversationId,
+        query: textMessage,
+        historyLimit: contextLimit,
+        includeExperiences: conversationMode === 'MAIN',
       }),
       prisma.assistantMemoryItem.findMany({
         where: { userId, status: 'ACTIVE' },
@@ -126,10 +163,18 @@ export async function POST(request: Request) {
       platformContext,
       activityContext,
       webEnabled: webSearchEnabled,
+      experienceContext: memoryContext.experienceContext,
     });
     const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
-      { role: 'system', content: [systemPrompt, webContext ? `本轮联网结果：\n${webContext}` : ''].filter(Boolean).join('\n\n') },
-      ...history.reverse().filter((item) => item.role === 'user' || item.role === 'assistant').map((item) => ({
+      {
+        role: 'system',
+        content: [
+          systemPrompt,
+          conversationMode === 'TEMPORARY' ? '【会话模式】：这是临时聊天，不将本轮内容视为长期经历。' : '',
+          webContext ? `本轮联网结果：\n${webContext}` : '',
+        ].filter(Boolean).join('\n\n'),
+      },
+      ...memoryContext.history.filter((item) => item.role === 'user' || item.role === 'assistant').map((item) => ({
         role: item.role as 'user' | 'assistant',
         content: item.content,
       })),
@@ -137,28 +182,22 @@ export async function POST(request: Request) {
     ];
 
     await prisma.message.create({
-      data: { id: userMessageId, conversationId: profile.conversationId, role: 'user', content: textMessage },
+      data: { id: userMessageId, conversationId, role: 'user', source: 'WEB', content: textMessage },
     });
 
-    if (history.length === 0) {
+    if (memoryContext.history.length === 0) {
       const generatedTitle = textMessage.slice(0, 24).replace(/[\r\n]+/g, ' ').trim();
       if (generatedTitle) {
-        prisma.conversation.update({
-          where: { id: profile.conversationId },
-          data: { title: generatedTitle },
-        }).catch(() => {});
+        if (conversationMode === 'TEMPORARY') {
+          prisma.conversation.update({ where: { id: conversationId }, data: { title: generatedTitle } }).catch(() => {});
+        }
       }
     }
 
     if (localMode) {
-      return NextResponse.json({ messages, conversationId: profile.conversationId });
+      return NextResponse.json({ messages, conversationId, conversationMode });
     }
 
-    const client = createModelClient(
-      usesCustomModel ? userSettings.apiBaseUrl : undefined,
-      usesCustomModel ? userSettings.apiKey : undefined
-    );
-    const model = resolveModelName(usesCustomModel ? userSettings.modelName : undefined);
     const encoder = new TextEncoder();
     const modelAbortController = new AbortController();
     const readable = new ReadableStream({
@@ -168,16 +207,16 @@ export async function POST(request: Request) {
           if (!fullContent.trim()) return;
           await prisma.$transaction(async (tx) => {
             const updated = await tx.message.updateMany({
-              where: { id: assistantMessageId, conversationId: profile.conversationId, role: 'assistant' },
+              where: { id: assistantMessageId, conversationId, role: 'assistant' },
               data: { content: fullContent },
             });
             if (!updated.count) {
               await tx.message.create({
-                data: { id: assistantMessageId, conversationId: profile.conversationId, role: 'assistant', content: fullContent },
+                data: { id: assistantMessageId, conversationId, role: 'assistant', source: 'WEB', content: fullContent },
               });
             }
             await tx.conversation.update({
-              where: { id: profile.conversationId },
+              where: { id: conversationId },
               data: { updatedAt: new Date() },
             });
           });
@@ -219,7 +258,8 @@ export async function POST(request: Request) {
       headers: {
         'Content-Type': 'text/plain; charset=utf-8',
         'Cache-Control': 'no-cache, no-transform',
-        'x-conversation-id': profile.conversationId,
+        'x-conversation-id': conversationId,
+        'x-conversation-mode': conversationMode,
       },
     });
   } catch (error: any) {
@@ -234,16 +274,43 @@ export async function DELETE(request: Request) {
     const profile = await ensurePersonalAssistant(userId);
     const body = await request.json().catch(() => ({}));
     const messageId = typeof body.messageId === 'string' ? body.messageId.trim() : '';
-
-    await prisma.message.deleteMany({
+    const requestedConversationId = typeof body.conversationId === 'string' ? body.conversationId.trim() : '';
+    const conversation = await prisma.conversation.findFirst({
       where: {
-        conversationId: profile.conversationId,
-        ...(messageId ? { id: messageId } : {}),
+        id: requestedConversationId || profile.conversationId,
+        userId,
+        kind: 'PERSONAL_ASSISTANT',
       },
+      select: { id: true },
     });
+    if (!conversation) return NextResponse.json({ error: '会话不存在' }, { status: 404 });
+
+    if (messageId) {
+      const target = await prisma.message.findFirst({
+        where: { id: messageId, conversationId: conversation.id },
+        select: { id: true, assistantExperienceId: true },
+      });
+      if (target) {
+        await prisma.$transaction(async (tx) => {
+          if (target.assistantExperienceId) {
+            await tx.message.updateMany({
+              where: { assistantExperienceId: target.assistantExperienceId },
+              data: { assistantExperienceId: null },
+            });
+            await tx.assistantExperience.deleteMany({ where: { id: target.assistantExperienceId } });
+          }
+          await tx.message.delete({ where: { id: target.id } });
+        });
+      }
+    } else {
+      await prisma.$transaction([
+        prisma.message.deleteMany({ where: { conversationId: conversation.id } }),
+        prisma.assistantExperience.deleteMany({ where: { conversationId: conversation.id } }),
+      ]);
+    }
 
     await prisma.conversation.update({
-      where: { id: profile.conversationId },
+      where: { id: conversation.id },
       data: { updatedAt: new Date() },
     });
 

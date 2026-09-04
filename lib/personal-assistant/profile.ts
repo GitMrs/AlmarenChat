@@ -8,12 +8,27 @@ export async function ensurePersonalAssistant(userId: string) {
     where: { userId },
     include: { conversation: true },
   });
-  if (existing) return existing;
+  if (existing) {
+    if (existing.conversation.assistantMode !== 'MAIN') {
+      await prisma.$transaction([
+        prisma.conversation.updateMany({
+          where: { userId, kind: 'PERSONAL_ASSISTANT', assistantMode: 'MAIN', id: { not: existing.conversationId } },
+          data: { assistantMode: 'TEMPORARY' },
+        }),
+        prisma.conversation.update({
+          where: { id: existing.conversationId },
+          data: { assistantMode: 'MAIN' },
+        }),
+      ]);
+      existing.conversation.assistantMode = 'MAIN';
+    }
+    return existing;
+  }
 
   try {
     return await prisma.$transaction(async (tx) => {
       const conversation = await tx.conversation.create({
-        data: { userId, kind: 'PERSONAL_ASSISTANT', title: '我的助理' },
+        data: { userId, kind: 'PERSONAL_ASSISTANT', assistantMode: 'MAIN', title: '主聊天' },
       });
       return tx.personalAssistantProfile.create({
         data: {

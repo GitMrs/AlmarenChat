@@ -49,6 +49,12 @@ export async function POST(request: Request) {
     if (mode === 'single') {
       const userMsg = typeof body.userMessage === 'string' ? body.userMessage.trim() : '';
       const assistantMsg = typeof body.assistantMessage === 'string' ? body.assistantMessage.trim() : '';
+      const conversationId = typeof body.conversationId === 'string' ? body.conversationId.trim() : '';
+      const conversation = conversationId ? await prisma.conversation.findFirst({
+        where: { id: conversationId, userId, kind: 'PERSONAL_ASSISTANT', assistantMode: 'MAIN' },
+        select: { id: true },
+      }) : null;
+      if (!conversation) return NextResponse.json({ suggestions: [] });
       if (!userMsg || isTrivial(userMsg)) {
         return NextResponse.json({ suggestions: [] });
       }
@@ -60,6 +66,7 @@ export async function POST(request: Request) {
       const conversation = await prisma.conversation.findFirst({
         where: { id: conversationId, userId, kind: 'PERSONAL_ASSISTANT' },
         select: {
+          assistantMode: true,
           messages: {
             orderBy: { createdAt: 'desc' },
             take: 16,
@@ -68,6 +75,7 @@ export async function POST(request: Request) {
         },
       });
       if (!conversation) return NextResponse.json({ error: '会话不存在' }, { status: 404 });
+      if (conversation.assistantMode !== 'MAIN') return NextResponse.json({ suggestions: [] });
 
       const messages = conversation.messages;
       if (messages.length < 2) return NextResponse.json({ suggestions: [] });

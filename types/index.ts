@@ -61,6 +61,23 @@ export interface AssistantMemoryItem {
   updatedAt: string;
 }
 
+export interface AssistantExperience {
+  id: string;
+  summary: string;
+  messageCount: number;
+  startAt: string;
+  endAt: string;
+  createdAt: string;
+}
+
+export interface AssistantExperienceMessage {
+  id: string;
+  role: 'user' | 'assistant' | 'system';
+  source: 'WEB' | 'QQ' | 'SYSTEM';
+  content: string;
+  createdAt: string;
+}
+
 export interface AssistantReminder {
   id: string;
   content: string;
@@ -79,8 +96,11 @@ export interface AssistantReminderCandidate {
 export interface PersonalAssistantBootstrap {
   profile: PersonalAssistantProfile;
   conversationId: string;
+  mainConversationId: string;
+  conversationMode: AssistantConversationMode;
   messages: Message[];
   memories: AssistantMemoryItem[];
+  experiences?: AssistantExperience[];
   reminders?: AssistantReminder[];
 }
 
@@ -103,12 +123,16 @@ export interface AssistantConversationSummary {
   updatedAt: string;
   messageCount: number;
   lastMessageSnippet: string | null;
+  mode: AssistantConversationMode;
 }
+
+export type AssistantConversationMode = 'MAIN' | 'TEMPORARY';
 
 export interface Message {
   id: string;
   conversationId: string;
   role: 'user' | 'assistant' | 'system';
+  source?: 'WEB' | 'QQ' | 'SYSTEM';
   content: string;
   attachments?: MessageAttachment[];
   createdAt: string;

@@ -7,7 +7,7 @@ export async function GET(request: Request) {
   try {
     const userId = requireAuth(request);
     const profile = await ensurePersonalAssistant(userId);
-    const [messages, memories, reminders] = await Promise.all([
+    const [messages, memories, experiences, reminders] = await Promise.all([
       prisma.message.findMany({
         where: { conversationId: profile.conversationId },
         orderBy: { createdAt: 'desc' },
@@ -16,6 +16,19 @@ export async function GET(request: Request) {
       prisma.assistantMemoryItem.findMany({
         where: { userId },
         orderBy: { updatedAt: 'desc' },
+      }),
+      prisma.assistantExperience.findMany({
+        where: { userId, conversationId: profile.conversationId },
+        orderBy: { endAt: 'desc' },
+        take: 20,
+        select: {
+          id: true,
+          summary: true,
+          messageCount: true,
+          startAt: true,
+          endAt: true,
+          createdAt: true,
+        },
       }),
       prisma.assistantReminder.findMany({
         where: {
@@ -43,8 +56,11 @@ export async function GET(request: Request) {
         includeChatContext: profile.includeChatContext,
       },
       conversationId: profile.conversationId,
+      mainConversationId: profile.conversationId,
+      conversationMode: 'MAIN',
       messages: messages.reverse(),
       memories,
+      experiences,
       reminders: reminders.map((r) => ({
         id: r.id,
         content: r.content,

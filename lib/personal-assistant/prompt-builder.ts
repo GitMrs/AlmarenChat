@@ -19,6 +19,7 @@ export function buildPersonalAssistantPrompt(options: {
   userName: string;
   profile: Profile;
   memories: Memory[];
+  experienceContext?: string | null;
   platformContext: string;
   activityContext?: string | null;
   webEnabled: boolean;
@@ -61,6 +62,9 @@ export function buildPersonalAssistantPrompt(options: {
 
 已确认记忆：
 ${memoryText}
+
+主聊天经历摘要（系统从较早的原始对话批量压缩而来；可能省略细节，不得覆盖用户已确认记忆或较新的原话）：
+${options.experienceContext || '（尚无已归档的主聊天经历）'}
 
 平台摘要（只读；仅包含用户在设置中允许的来源，禁止推断已关闭来源）：
 ${options.platformContext}

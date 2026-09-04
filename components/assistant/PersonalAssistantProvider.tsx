@@ -11,6 +11,7 @@ import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import { assistant } from '@/lib/api';
 import { completeBrowserModel, readBrowserModelConfigForScope, streamBrowserModel } from '@/lib/browser-model';
 import { cn } from '@/lib/utils';
+import { shouldExtractMemorySuggestion } from '@/lib/personal-assistant/memory-intent.mjs';
 import type { AssistantConversationSummary, AssistantReminder, AssistantReminderCandidate, Message, PersonalAssistantBootstrap } from '@/types';
 
 const HIDDEN_PATHS = ['/login'];
@@ -294,7 +295,8 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
   const handleClearAssistantMessages = async () => {
     setClearingAssistantMessages(true);
     try {
-      await assistant.clearMessages();
+      if (!data) return;
+      await assistant.clearMessages(data.conversationId);
       setData((prev) => (prev ? { ...prev, messages: [] } : prev));
       setConfirmClearAssistantOpen(false);
     } catch (e) {
@@ -627,16 +629,18 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
     // 检查是否已有重复项，并先在前端呈现这条问候消息
     const now = new Date().toISOString();
     const tempId = `greeting-${Date.now()}`;
+    const showingMainChat = data?.conversationMode === 'MAIN';
     const optimisticMessage: Message = {
       id: tempId,
-      conversationId: data?.conversationId || 'current',
+      conversationId: data?.mainConversationId || 'current',
       role: 'assistant',
+      source: 'SYSTEM',
       content: greetingText,
       createdAt: now,
     };
 
     setData((prev) => {
-      if (!prev) return prev;
+      if (!prev || !showingMainChat) return prev;
       const lastMsg = prev.messages[prev.messages.length - 1];
       if (lastMsg?.content === greetingText && lastMsg.role === 'assistant') {
         return prev;
@@ -650,10 +654,20 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
     try {
       const res = await assistant.acceptProactiveGreeting(deliveryId);
       if (res?.message) {
-        setData((prev) => prev ? {
-          ...prev,
-          messages: prev.messages.map((m) => m.id === tempId ? res.message : m),
-        } : prev);
+        if (showingMainChat) {
+          setData((prev) => prev ? {
+            ...prev,
+            messages: prev.messages.map((m) => m.id === tempId ? res.message : m),
+          } : prev);
+        } else if (data) {
+          const main = await assistant.switchConversation(data.mainConversationId);
+          setData((prev) => prev ? {
+            ...prev,
+            conversationId: main.conversationId,
+            conversationMode: main.conversationMode,
+            messages: main.messages,
+          } : prev);
+        }
       }
     } catch {
       // 保留前端乐观展示
@@ -719,7 +733,7 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
     const target = pendingDeleteMessage;
     setDeletingMessageId(target.id);
     try {
-      await assistant.deleteMessage(target.id);
+      await assistant.deleteMessage(target.id, target.conversationId);
       setData((current) => current ? {
         ...current,
         messages: current.messages.filter((message) => message.id !== target.id),
@@ -828,6 +842,7 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
       if (usesLocalModel) {
         const prepared = await assistant.prepareLocalMessage({
           message: content,
+          conversationId: data.conversationId,
           userMessageId: userMessage.id,
           signal: controller.signal,
         });
@@ -841,6 +856,7 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
       } else {
         const response = await assistant.sendMessage({
           message: content,
+          conversationId: data.conversationId,
           userMessageId: userMessage.id,
           assistantMessageId: assistantMessage.id,
           webSearchEnabled: webEnabled,
@@ -870,11 +886,12 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
       }
 
       // 方案 A：流式结束后异步轻量提取长期记忆建议
-      if (content.length >= 3 && answer) {
+      if (data.conversationMode === 'MAIN' && answer && shouldExtractMemorySuggestion(content)) {
         extractMemoriesWithCurrentModel({
           mode: 'single',
           userMessage: content,
           assistantMessage: answer,
+          conversationId: data.conversationId,
         }).then((extractRes) => {
           if (extractRes?.suggestions && extractRes.suggestions.length > 0) {
             setBubbleSuggestions((prev) => ({
@@ -966,10 +983,15 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
     setBusyConversationId('new');
     try {
       const res = await assistant.newConversation(title);
-      setData((current) => current ? { ...current, conversationId: res.conversationId, messages: [] } : current);
+      setData((current) => current ? {
+        ...current,
+        conversationId: res.conversationId,
+        conversationMode: res.conversationMode,
+        messages: [],
+      } : current);
       setView('chat');
     } catch (err: any) {
-      setError(err.message || '创建新话题失败');
+      setError(err.message || '创建临时聊天失败');
     } finally {
       setBusyConversationId(null);
     }
@@ -978,6 +1000,11 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
   const onRequestNewConversation = async (title?: string) => {
     if (!data) return;
     if (streaming) abortRef.current?.abort();
+
+    if (data.conversationMode === 'TEMPORARY') {
+      handleNewConversation(title);
+      return;
+    }
 
     // 消息少于 2 条直接重开，不弹出打扰
     if (data.messages.length < 2) {
@@ -1026,7 +1053,7 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
       const res = await assistant.listConversations();
       setConversations(res.conversations);
     } catch (err: any) {
-      setError(err.message || '加载历史话题失败');
+      setError(err.message || '加载聊天记录失败');
     } finally {
       setLoadingConversations(false);
     }
@@ -1042,7 +1069,12 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
     setError('');
     try {
       const res = await assistant.switchConversation(targetId);
-      setData((current) => current ? { ...current, conversationId: res.conversationId, messages: res.messages } : current);
+      setData((current) => current ? {
+        ...current,
+        conversationId: res.conversationId,
+        conversationMode: res.conversationMode,
+        messages: res.messages,
+      } : current);
       setView('chat');
     } catch (err: any) {
       setError(err.message || '切换话题失败');
@@ -1069,6 +1101,7 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
         setData({
           ...data,
           conversationId: res.currentConversationId,
+          conversationMode: 'MAIN',
           messages: res.messages || [],
         });
       }
@@ -1122,19 +1155,19 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
                     <ArrowLeft size={18} />
                   </button>
                   <div className="min-w-0 flex-1">
-                    <h2 className="truncate text-sm font-black text-slate-900">历史话题</h2>
-                    <p className="text-[11px] font-semibold text-slate-400">随时切回过去的对话继续聊</p>
+                    <h2 className="truncate text-sm font-black text-slate-900">聊天记录</h2>
+                    <p className="text-[11px] font-semibold text-slate-400">主聊天长期连续，临时聊天互相独立</p>
                   </div>
                   <button
                     type="button"
                     onClick={() => onRequestNewConversation()}
                     disabled={Boolean(busyConversationId) || extractingSummary}
-                    aria-label="开启新话题"
-                    title={extractingSummary ? '正在整理小结...' : '开启新话题'}
+                    aria-label="开启临时聊天"
+                    title={extractingSummary ? '正在整理主聊天...' : '开启临时聊天'}
                     className="flex h-8 items-center gap-1.5 rounded-lg bg-slate-950 px-2.5 text-xs font-black text-white hover:bg-slate-800 disabled:opacity-40 cursor-pointer"
                   >
                     {extractingSummary ? <Loader2 size={13} className="animate-spin text-amber-400" /> : <Plus size={14} />}
-                    <span>新话题</span>
+                    <span>临时聊天</span>
                   </button>
                   <button
                     type="button"
@@ -1162,7 +1195,7 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
                     </div>
                   ) : conversations.length === 0 ? (
                     <div className="py-16 text-center text-sm font-semibold text-slate-400">
-                      暂无历史话题
+                      暂无聊天记录
                     </div>
                   ) : (
                     conversations.map((item) => {
@@ -1183,7 +1216,7 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
                         >
                           <div className="flex items-center justify-between gap-2">
                             <h3 className="min-w-0 flex-1 truncate text-sm font-black text-slate-900">
-                              {item.title || '新话题'}
+                              {item.title || (item.mode === 'MAIN' ? '主聊天' : '临时聊天')}
                             </h3>
                             <div className="flex items-center gap-1.5">
                               {isActive && (
@@ -1191,16 +1224,24 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
                                   进行中
                                 </span>
                               )}
-                              <button
-                                type="button"
-                                onClick={(e) => handleDeleteConversation(item, e)}
-                                disabled={isBusy}
-                                aria-label="删除话题"
-                                title="删除话题"
-                                className="flex h-7 w-7 items-center justify-center rounded-md text-slate-400 opacity-80 hover:bg-rose-50 hover:text-rose-600 group-hover:opacity-100"
-                              >
-                                {isBusy ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
-                              </button>
+                              <span className={cn(
+                                'rounded-full px-2 py-0.5 text-[10px] font-black',
+                                item.mode === 'MAIN' ? 'bg-slate-950 text-white' : 'bg-slate-100 text-slate-500'
+                              )}>
+                                {item.mode === 'MAIN' ? '主聊天' : '临时'}
+                              </span>
+                              {item.mode === 'TEMPORARY' && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => handleDeleteConversation(item, e)}
+                                  disabled={isBusy}
+                                  aria-label="删除临时聊天"
+                                  title="删除临时聊天"
+                                  className="flex h-7 w-7 items-center justify-center rounded-md text-slate-400 opacity-80 hover:bg-rose-50 hover:text-rose-600 group-hover:opacity-100"
+                                >
+                                  {isBusy ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                                </button>
+                              )}
                             </div>
                           </div>
                           <p className="mt-1 line-clamp-1 text-xs text-slate-500 font-medium">
@@ -1225,6 +1266,14 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5">
                       <h1 className="truncate text-sm font-black text-slate-900">{data?.profile.name || '个人助理'}</h1>
+                      {data && (
+                        <span className={cn(
+                          'shrink-0 rounded-full px-2 py-0.5 text-[10px] font-black',
+                          data.conversationMode === 'MAIN' ? 'bg-slate-950 text-white' : 'bg-amber-100 text-amber-800'
+                        )}>
+                          {data.conversationMode === 'MAIN' ? '主聊天' : '临时'}
+                        </span>
+                      )}
                       {(() => {
                         const active = localProactive !== null ? localProactive : isProactive(data?.profile.proactiveEnabled);
                         return (
@@ -1247,6 +1296,19 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
                     </div>
                     <p className="truncate text-[11px] font-semibold text-slate-400">陪你聊天，也帮你看清平台里的事</p>
                   </div>
+                  {data?.conversationMode === 'TEMPORARY' && (
+                    <button
+                      type="button"
+                      onClick={() => handleSwitchConversation(data.mainConversationId)}
+                      disabled={Boolean(busyConversationId)}
+                      aria-label="返回主聊天"
+                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-950 text-xs font-black text-white hover:bg-slate-800 disabled:opacity-40 sm:w-auto sm:gap-1.5 sm:px-2.5"
+                      title="返回长期连续的主聊天"
+                    >
+                      <MessageCircleHeart size={14} />
+                      <span className="hidden sm:inline">主聊天</span>
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => setRemindersOpen((prev) => !prev)}
@@ -1269,8 +1331,8 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
                   <button
                     type="button"
                     onClick={openHistory}
-                    aria-label="历史话题"
-                    title="历史话题"
+                    aria-label="聊天记录"
+                    title="聊天记录"
                     className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100 hover:text-slate-950 cursor-pointer"
                   >
                     <History size={17} />
@@ -1431,6 +1493,14 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
                           />
                         ) : null}
                       >
+                        {message.source === 'QQ' && (
+                          <div className={cn(
+                            'mb-1.5 text-[10px] font-black',
+                            message.role === 'user' ? 'text-white/60' : 'text-slate-400'
+                          )}>
+                            来自 QQ
+                          </div>
+                        )}
                         {message.content ? <MessageContent role={message.role} content={message.content} /> : <span className="inline-flex gap-1 py-1"><i className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-300" /><i className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-300 [animation-delay:120ms]" /><i className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-300 [animation-delay:240ms]" /></span>}
                       </MessageBubbleFrame>
 
@@ -1677,7 +1747,7 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
             <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-50 text-amber-600">
               <Sparkles size={20} />
             </div>
-            <h3 className="text-lg font-black text-slate-950">开启新话题前的小结</h3>
+            <h3 className="text-lg font-black text-slate-950">开启临时聊天前的小结</h3>
             <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">
               在这段聊天中，小伴为你梳理了以下习惯与偏好，是否存入长期记忆库？
             </p>
@@ -1725,7 +1795,7 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
                 className="flex h-10 w-full items-center justify-center gap-1.5 rounded-xl bg-slate-950 text-xs font-black text-white shadow-sm transition hover:bg-slate-800 disabled:opacity-40 cursor-pointer"
               >
                 <Check size={14} />
-                <span>存入已选记忆并开启新话题</span>
+                <span>存入已选记忆并开启临时聊天</span>
               </button>
               <button
                 type="button"
@@ -1735,7 +1805,7 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
                 }}
                 className="flex h-9 w-full items-center justify-center text-xs font-bold text-slate-500 hover:text-slate-900 cursor-pointer"
               >
-                直接开启新话题（不存记忆）
+                直接开启临时聊天（不存记忆）
               </button>
             </div>
           </div>
@@ -1759,7 +1829,7 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
       <ConfirmDialog
         open={confirmClearAssistantOpen}
         title="清空小伴当前对话？"
-        description="清空后将从头开始交流，不会影响已保存的长期记忆与便签提醒。"
+        description="清空后将删除当前聊天的原始消息；如果是主聊天，也会删除由这些消息生成的自动经历。已确认的长期记忆与便签提醒不受影响。"
         icon={<Trash2 size={20} />}
         confirmText="确认清空"
         cancelText="先保留"
@@ -1772,8 +1842,8 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
       />
       <ConfirmDialog
         open={Boolean(pendingDeleteConversation)}
-        title="删除这个历史话题？"
-        description={`确定要删除「${pendingDeleteConversation?.title || '新话题'}」吗？删除后该话题的历史聊天记录将无法找回。`}
+        title="删除这个临时聊天？"
+        description={`确定要删除「${pendingDeleteConversation?.title || '临时聊天'}」吗？删除后聊天记录将无法找回。`}
         icon={<Trash2 size={20} />}
         confirmText="确认删除"
         cancelText="先保留"

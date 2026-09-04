@@ -6,6 +6,7 @@ import { createModelClient, resolveModelName } from '@/lib/model-client';
 import { buildAssistantActivityContext, buildAssistantPlatformContext } from '@/lib/personal-assistant/platform-context';
 import { buildPersonalAssistantPrompt } from '@/lib/personal-assistant/prompt-builder';
 import { ensurePersonalAssistant } from '@/lib/personal-assistant/profile';
+import { archiveOldMainChatMessages, loadAssistantMemoryContext } from '@/lib/personal-assistant/experience-memory';
 import { buildReminderExtractionPrompt, parseReminderExtraction } from '@/lib/personal-assistant/reminder-extraction.mjs';
 import { classifyReminderRequest } from '@/lib/personal-assistant/reminder-intent.mjs';
 import { isValidInternalQQSecret } from '@/lib/qq-assistant/credentials.mjs';
@@ -16,11 +17,6 @@ export const runtime = 'nodejs';
 function eventMessageId(kind: 'user' | 'assistant', appId: string, eventId: string) {
   const digest = createHash('sha256').update(`${appId}:${eventId}`).digest('hex');
   return `qq-${kind}-${digest}`;
-}
-
-function eventConversationId(appId: string, eventId: string) {
-  const digest = createHash('sha256').update(`${appId}:${eventId}`).digest('hex');
-  return `qq-conversation-${digest}`;
 }
 
 export async function POST(request: Request) {
@@ -37,29 +33,23 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'QQ 消息参数不完整' }, { status: 400 });
     }
 
-    const binding = await prisma.assistantQQBinding.findUnique({ where: { userId } });
-    if (!binding?.enabled) return NextResponse.json({ error: 'QQ Bot 未启用' }, { status: 409 });
+    const storedBinding = await prisma.assistantQQBinding.findUnique({ where: { userId } });
+    if (!storedBinding?.enabled) return NextResponse.json({ error: 'QQ Bot 未启用' }, { status: 409 });
+
+    const profile = await ensurePersonalAssistant(userId);
+    const binding = storedBinding.conversationId === profile.conversationId
+      ? storedBinding
+      : await prisma.assistantQQBinding.update({
+          where: { userId },
+          data: { conversationId: profile.conversationId },
+        });
 
     const command = classifyQQCommand(message);
     if (command.type === 'NEW_CONVERSATION') {
-      const conversationId = eventConversationId(binding.appId, eventId);
-      const existingConversation = await prisma.conversation.findFirst({
-        where: { id: conversationId, userId, kind: 'PERSONAL_ASSISTANT' },
+      return NextResponse.json({
+        content: 'QQ 现在与网页主聊天保持连续，不再单独切换话题。临时聊天可以在网页端开启。',
+        conversationId: binding.conversationId,
       });
-      if (existingConversation) {
-        return NextResponse.json({ content: '新的话题已经开启，我们从这里继续。', conversationId });
-      }
-      const conversation = await prisma.$transaction(async (tx) => {
-        const created = await tx.conversation.create({
-          data: { id: conversationId, userId, kind: 'PERSONAL_ASSISTANT', title: 'QQ 小伴' },
-        });
-        await tx.assistantQQBinding.update({
-          where: { userId },
-          data: { conversationId: created.id },
-        });
-        return created;
-      });
-      return NextResponse.json({ content: '新的话题已经开启，我们从这里继续。', conversationId: conversation.id });
     }
 
     const assistantMessageId = eventMessageId('assistant', binding.appId, eventId);
@@ -71,22 +61,19 @@ export async function POST(request: Request) {
       return NextResponse.json({ content: existingReply.content, conversationId: existingReply.conversationId, replayed: true });
     }
 
-    const [profile, userSettings] = await Promise.all([
-      ensurePersonalAssistant(userId),
-      prisma.user.findUnique({
-        where: { id: userId },
-        select: {
-          name: true,
-          email: true,
-          customModelEnabled: true,
-          apiBaseUrl: true,
-          apiKey: true,
-          modelName: true,
-          dailyChatLimit: true,
-          contextMessageLimit: true,
-        },
-      }),
-    ]);
+    const userSettings = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        name: true,
+        email: true,
+        customModelEnabled: true,
+        apiBaseUrl: true,
+        apiKey: true,
+        modelName: true,
+        dailyChatLimit: true,
+        contextMessageLimit: true,
+      },
+    });
     if (!userSettings) return NextResponse.json({ error: '用户不存在' }, { status: 404 });
 
     const usesCustomModel = Boolean(
@@ -102,18 +89,37 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: '今日免费聊天次数已用完，请稍后再来。' }, { status: 429 });
     }
 
+    const client = createModelClient(
+      usesCustomModel ? userSettings.apiBaseUrl : undefined,
+      usesCustomModel ? userSettings.apiKey : undefined
+    );
+    const model = resolveModelName(usesCustomModel ? userSettings.modelName : undefined);
+    await archiveOldMainChatMessages({
+      userId,
+      conversationId: binding.conversationId,
+      summarize: async (prompt: string) => {
+        const completion = await client.chat.completions.create({
+          model,
+          messages: [{ role: 'user', content: prompt }],
+          temperature: 0.1,
+        }, { timeout: 20_000 });
+        return completion.choices[0]?.message?.content || null;
+      },
+    });
+
     const contextLimit = Math.max(8, Math.min(80, userSettings.contextMessageLimit || 40));
     const contextSources = {
       spaces: profile.includeSpaceContext,
       tasks: profile.includeTaskContext,
       chats: profile.includeChatContext,
     };
-    const [history, memories, platformContext, activityContext] = await Promise.all([
-      prisma.message.findMany({
-        where: { conversationId: binding.conversationId },
-        orderBy: { createdAt: 'desc' },
-        take: contextLimit,
-        select: { role: true, content: true },
+    const [memoryContext, memories, platformContext, activityContext] = await Promise.all([
+      loadAssistantMemoryContext({
+        userId,
+        conversationId: binding.conversationId,
+        query: message,
+        historyLimit: contextLimit,
+        includeExperiences: true,
       }),
       prisma.assistantMemoryItem.findMany({
         where: { userId, status: 'ACTIVE' },
@@ -133,23 +139,19 @@ export async function POST(request: Request) {
         platformContext,
         activityContext,
         webEnabled: false,
+        experienceContext: memoryContext.experienceContext,
       }),
-      '【当前渠道】：你正在 QQ 私聊中回复用户。不要提供站内相对链接；回答保持适合即时消息阅读。QQ 使用独立话题，但长期记忆、任务和提醒与网页共享。用户要求提醒时不要声称已经创建，系统会在回复末尾附加真实创建结果。',
+      '【当前渠道】：你正在 QQ 私聊中回复用户。QQ 与网页共用同一个主聊天上下文；不要提供站内相对链接，回答保持适合即时消息阅读。长期记忆、任务和提醒也与网页共享。用户要求提醒时不要声称已经创建，系统会在回复末尾附加真实创建结果。',
     ].join('\n\n');
     const modelMessages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
       { role: 'system', content: systemPrompt },
-      ...history.reverse().filter((item) => item.role === 'user' || item.role === 'assistant').map((item) => ({
+      ...memoryContext.history.filter((item) => item.role === 'user' || item.role === 'assistant').map((item) => ({
         role: item.role as 'user' | 'assistant',
         content: item.content,
       })),
       { role: 'user', content: message },
     ];
 
-    const client = createModelClient(
-      usesCustomModel ? userSettings.apiBaseUrl : undefined,
-      usesCustomModel ? userSettings.apiKey : undefined
-    );
-    const model = resolveModelName(usesCustomModel ? userSettings.modelName : undefined);
     const completion = await client.chat.completions.create({ model, messages: modelMessages });
     const modelContent = completion.choices[0]?.message?.content?.trim();
     if (!modelContent) throw new Error('模型没有返回可展示的正文');
@@ -194,16 +196,15 @@ export async function POST(request: Request) {
           },
         })),
         prisma.message.create({
-          data: { id: userMessageId, conversationId: binding.conversationId, role: 'user', content: message },
+          data: { id: userMessageId, conversationId: binding.conversationId, role: 'user', source: 'QQ', content: message },
         }),
         prisma.message.create({
-          data: { id: assistantMessageId, conversationId: binding.conversationId, role: 'assistant', content },
+          data: { id: assistantMessageId, conversationId: binding.conversationId, role: 'assistant', source: 'QQ', content },
         }),
         prisma.conversation.update({
           where: { id: binding.conversationId },
           data: {
             updatedAt: new Date(),
-            ...(history.length === 0 ? { title: message.slice(0, 24).replace(/[\r\n]+/g, ' ') || 'QQ 小伴' } : {}),
           },
         }),
       ]);

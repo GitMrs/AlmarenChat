@@ -1,12 +1,12 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Bot, Brain, Eye, EyeOff, Heart, Loader2, MessageCircleHeart, Plus, RefreshCw, RotateCcw, Save, Sparkles, Trash2, Unplug, Upload } from 'lucide-react';
+import { Bot, Brain, ChevronDown, Eye, EyeOff, Heart, Loader2, MessageCircleHeart, Plus, RefreshCw, RotateCcw, Save, Sparkles, Trash2, Unplug, Upload } from 'lucide-react';
 import Avatar from '@/components/shared/Avatar';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import { assistant, uploads } from '@/lib/api';
 import { cn } from '@/lib/utils';
-import type { AssistantMemoryItem, AssistantQQBinding, PersonalAssistantProfile } from '@/types';
+import type { AssistantExperience, AssistantExperienceMessage, AssistantMemoryItem, AssistantQQBinding, PersonalAssistantProfile } from '@/types';
 
 const EMPTY_PROFILE: PersonalAssistantProfile = {
   name: '',
@@ -74,6 +74,10 @@ const COMPANION_PRESETS: CompanionPreset[] = [
 export default function PersonalAssistantSettings() {
   const [profile, setProfile] = useState<PersonalAssistantProfile>(EMPTY_PROFILE);
   const [memories, setMemories] = useState<AssistantMemoryItem[]>([]);
+  const [experiences, setExperiences] = useState<AssistantExperience[]>([]);
+  const [expandedExperienceId, setExpandedExperienceId] = useState<string | null>(null);
+  const [experienceMessages, setExperienceMessages] = useState<Record<string, AssistantExperienceMessage[]>>({});
+  const [loadingExperienceId, setLoadingExperienceId] = useState<string | null>(null);
   const [newMemory, setNewMemory] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -102,6 +106,7 @@ export default function PersonalAssistantSettings() {
       .then((result) => {
         setProfile(result.profile);
         setMemories(result.memories);
+        setExperiences(result.experiences || []);
       })
       .catch((reason: any) => setError(reason.message || '加载助理设置失败'))
       .finally(() => setLoading(false));
@@ -422,6 +427,24 @@ export default function PersonalAssistantSettings() {
   }
 
   const activeMemoryCount = memories.filter((m) => m.status === 'ACTIVE').length;
+
+  const toggleExperience = async (experienceId: string) => {
+    if (expandedExperienceId === experienceId) {
+      setExpandedExperienceId(null);
+      return;
+    }
+    setExpandedExperienceId(experienceId);
+    if (experienceMessages[experienceId]) return;
+    setLoadingExperienceId(experienceId);
+    try {
+      const result = await assistant.getExperience(experienceId);
+      setExperienceMessages((current) => ({ ...current, [experienceId]: result.experience.messages }));
+    } catch (reason: any) {
+      setError(reason.message || '读取经历原文失败');
+    } finally {
+      setLoadingExperienceId(null);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -986,6 +1009,63 @@ export default function PersonalAssistantSettings() {
               );
             })
           )}
+        </div>
+
+        <div className="border-t border-black/[0.06] pt-5">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h4 className="text-sm font-black text-slate-900">自动经历</h4>
+              <p className="mt-1 text-xs font-medium leading-5 text-slate-400">
+                较早的主聊天会分批压缩为可追溯摘要；临时聊天不会进入这里，也不会直接变成长期事实。
+              </p>
+            </div>
+            <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-black text-slate-600">
+              最近 {experiences.length} 段
+            </span>
+          </div>
+
+          <div className="mt-4 max-h-80 space-y-3 overflow-y-auto overscroll-contain pr-1">
+            {experiences.length === 0 ? (
+              <div className="border-y border-dashed border-black/10 py-8 text-center text-sm font-semibold text-slate-400">
+                主聊天积累一段时间后，会在这里形成经历摘要
+              </div>
+            ) : experiences.map((experience) => (
+              <article key={experience.id} className="border-b border-black/[0.06] pb-3 last:border-b-0">
+                <div className="flex items-start gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold text-slate-400">
+                      <span>{new Date(experience.startAt).toLocaleDateString('zh-CN')} - {new Date(experience.endAt).toLocaleDateString('zh-CN')}</span>
+                      <span>{experience.messageCount} 条原始消息</span>
+                    </div>
+                    <p className="mt-1.5 whitespace-pre-wrap text-sm font-medium leading-6 text-slate-700">{experience.summary}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => toggleExperience(experience.id)}
+                    aria-label={expandedExperienceId === experience.id ? '收起经历原文' : '查看经历原文'}
+                    title={expandedExperienceId === experience.id ? '收起原文' : '查看原文'}
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-800"
+                  >
+                    {loadingExperienceId === experience.id
+                      ? <Loader2 size={14} className="animate-spin" />
+                      : <ChevronDown size={15} className={cn('transition-transform', expandedExperienceId === experience.id && 'rotate-180')} />}
+                  </button>
+                </div>
+                {expandedExperienceId === experience.id && experienceMessages[experience.id] && (
+                  <div className="mt-3 border-l-2 border-slate-200 pl-3">
+                    {experienceMessages[experience.id].map((message) => (
+                      <div key={message.id} className="mb-2 last:mb-0">
+                        <div className="text-[10px] font-black text-slate-400">
+                          {message.role === 'user' ? '用户' : '助理'} · {message.source}
+                        </div>
+                        <p className="mt-0.5 whitespace-pre-wrap text-xs font-medium leading-5 text-slate-600">{message.content}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </article>
+            ))}
+          </div>
         </div>
       </section>
 

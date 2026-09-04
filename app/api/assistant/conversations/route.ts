@@ -30,6 +30,7 @@ export async function GET(request: Request) {
       updatedAt: item.updatedAt.toISOString(),
       messageCount: item._count.messages,
       lastMessageSnippet: item.messages[0]?.content ? item.messages[0].content.slice(0, 80) : null,
+      mode: item.id === profile.conversationId ? 'MAIN' : 'TEMPORARY',
     }));
 
     return NextResponse.json({
@@ -49,27 +50,20 @@ export async function POST(request: Request) {
 
     const body = await request.json().catch(() => ({}));
     const rawTitle = typeof body.title === 'string' ? body.title.trim().slice(0, 40) : '';
-    const title = rawTitle || '新话题';
+    const title = rawTitle || '临时聊天';
 
-    const result = await prisma.$transaction(async (tx) => {
-      const newConversation = await tx.conversation.create({
-        data: {
-          userId,
-          kind: 'PERSONAL_ASSISTANT',
-          title,
-        },
-      });
-
-      await tx.personalAssistantProfile.update({
-        where: { userId },
-        data: { conversationId: newConversation.id },
-      });
-
-      return newConversation;
+    const result = await prisma.conversation.create({
+      data: {
+        userId,
+        kind: 'PERSONAL_ASSISTANT',
+        assistantMode: 'TEMPORARY',
+        title,
+      },
     });
 
     return NextResponse.json({
       conversationId: result.id,
+      conversationMode: 'TEMPORARY',
       messages: [],
     });
   } catch (error: any) {

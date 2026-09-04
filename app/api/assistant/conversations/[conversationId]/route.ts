@@ -9,7 +9,7 @@ export async function POST(
 ) {
   try {
     const userId = requireAuth(request);
-    await ensurePersonalAssistant(userId);
+    const profile = await ensurePersonalAssistant(userId);
     const { conversationId } = await params;
 
     const conversation = await prisma.conversation.findFirst({
@@ -19,20 +19,15 @@ export async function POST(
       return NextResponse.json({ error: '会话不存在' }, { status: 404 });
     }
 
-    const [messages] = await prisma.$transaction([
-      prisma.message.findMany({
-        where: { conversationId },
-        orderBy: { createdAt: 'desc' },
-        take: 60,
-      }),
-      prisma.personalAssistantProfile.update({
-        where: { userId },
-        data: { conversationId },
-      }),
-    ]);
+    const messages = await prisma.message.findMany({
+      where: { conversationId },
+      orderBy: { createdAt: 'desc' },
+      take: 60,
+    });
 
     return NextResponse.json({
       conversationId,
+      conversationMode: conversation.id === profile.conversationId ? 'MAIN' : 'TEMPORARY',
       messages: messages.reverse(),
     });
   } catch (error: any) {
@@ -56,54 +51,15 @@ export async function DELETE(
     if (!target) {
       return NextResponse.json({ error: '会话不存在' }, { status: 404 });
     }
-
-    let nextActiveId = profile.conversationId;
-    let nextMessages: any[] | null = null;
-
-    if (profile.conversationId === conversationId) {
-      const fallback = await prisma.conversation.findFirst({
-        where: {
-          userId,
-          kind: 'PERSONAL_ASSISTANT',
-          id: { not: conversationId },
-        },
-        orderBy: { updatedAt: 'desc' },
-      });
-
-      if (fallback) {
-        nextActiveId = fallback.id;
-      } else {
-        const fresh = await prisma.conversation.create({
-          data: {
-            userId,
-            kind: 'PERSONAL_ASSISTANT',
-            title: '我的助理',
-          },
-        });
-        nextActiveId = fresh.id;
-      }
-
-      await prisma.personalAssistantProfile.update({
-        where: { userId },
-        data: { conversationId: nextActiveId },
-      });
-
-      const msgs = await prisma.message.findMany({
-        where: { conversationId: nextActiveId },
-        orderBy: { createdAt: 'desc' },
-        take: 60,
-      });
-      nextMessages = msgs.reverse();
+    if (target.id === profile.conversationId || target.assistantMode === 'MAIN') {
+      return NextResponse.json({ error: '主聊天不能删除，可以清空其中的消息' }, { status: 409 });
     }
 
     const qqBinding = await prisma.assistantQQBinding.findUnique({ where: { userId } });
     if (qqBinding?.conversationId === conversationId) {
-      const fresh = await prisma.conversation.create({
-        data: { userId, kind: 'PERSONAL_ASSISTANT', title: 'QQ 小伴' },
-      });
       await prisma.assistantQQBinding.update({
         where: { userId },
-        data: { conversationId: fresh.id },
+        data: { conversationId: profile.conversationId },
       });
     }
 
@@ -112,10 +68,16 @@ export async function DELETE(
       prisma.conversation.delete({ where: { id: conversationId } }),
     ]);
 
+    const mainMessages = await prisma.message.findMany({
+      where: { conversationId: profile.conversationId },
+      orderBy: { createdAt: 'desc' },
+      take: 60,
+    });
+
     return NextResponse.json({
       success: true,
-      currentConversationId: nextActiveId,
-      ...(nextMessages !== null ? { messages: nextMessages } : {}),
+      currentConversationId: profile.conversationId,
+      messages: mainMessages.reverse(),
     });
   } catch (error: any) {
     if (error.message === 'Unauthorized') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

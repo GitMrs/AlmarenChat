@@ -33,6 +33,10 @@ try {
     if (!hasColumn('User', 'imageModelName')) db.exec('ALTER TABLE "User" ADD COLUMN "imageModelName" TEXT');
     if (!hasColumn('User', 'imageModelSize')) db.exec(`ALTER TABLE "User" ADD COLUMN "imageModelSize" TEXT DEFAULT '1024x1024'`);
     if (!hasColumn('Conversation', 'kind')) db.exec(`ALTER TABLE "Conversation" ADD COLUMN "kind" TEXT NOT NULL DEFAULT 'AGENT'`);
+    if (!hasColumn('Conversation', 'assistantMode')) db.exec('ALTER TABLE "Conversation" ADD COLUMN "assistantMode" TEXT');
+    if (hasTable('Message') && !hasColumn('Message', 'source')) {
+      db.exec(`ALTER TABLE "Message" ADD COLUMN "source" TEXT NOT NULL DEFAULT 'WEB'`);
+    }
     db.exec(`
       CREATE TABLE IF NOT EXISTS "PersonalAssistantProfile" (
         "userId" TEXT NOT NULL PRIMARY KEY,
@@ -66,6 +70,31 @@ try {
       CREATE INDEX IF NOT EXISTS "Conversation_userId_kind_updatedAt_idx" ON "Conversation"("userId", "kind", "updatedAt");
       CREATE UNIQUE INDEX IF NOT EXISTS "PersonalAssistantProfile_conversationId_key" ON "PersonalAssistantProfile"("conversationId");
       CREATE INDEX IF NOT EXISTS "AssistantMemoryItem_userId_status_updatedAt_idx" ON "AssistantMemoryItem"("userId", "status", "updatedAt");
+    `);
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS "AssistantExperience" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "userId" TEXT NOT NULL,
+        "conversationId" TEXT NOT NULL,
+        "summary" TEXT NOT NULL,
+        "messageCount" INTEGER NOT NULL,
+        "startAt" DATETIME NOT NULL,
+        "endAt" DATETIME NOT NULL,
+        "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" DATETIME NOT NULL,
+        CONSTRAINT "AssistantExperience_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+        CONSTRAINT "AssistantExperience_conversationId_fkey" FOREIGN KEY ("conversationId") REFERENCES "Conversation" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+      );
+    `);
+    if (hasTable('Message') && !hasColumn('Message', 'assistantExperienceId')) {
+      db.exec('ALTER TABLE "Message" ADD COLUMN "assistantExperienceId" TEXT REFERENCES "AssistantExperience"("id") ON DELETE SET NULL ON UPDATE CASCADE');
+    }
+    if (hasTable('Message')) {
+      db.exec('CREATE INDEX IF NOT EXISTS "Message_assistantExperienceId_idx" ON "Message"("assistantExperienceId")');
+    }
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS "AssistantExperience_userId_endAt_idx" ON "AssistantExperience"("userId", "endAt");
+      CREATE INDEX IF NOT EXISTS "AssistantExperience_conversationId_endAt_idx" ON "AssistantExperience"("conversationId", "endAt");
     `);
     if (!hasColumn('PersonalAssistantProfile', 'proactiveEnabled')) {
       db.exec('ALTER TABLE "PersonalAssistantProfile" ADD COLUMN "proactiveEnabled" BOOLEAN NOT NULL DEFAULT true');
@@ -161,6 +190,61 @@ try {
         CONSTRAINT "AssistantQQEvent_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE
       );
       CREATE INDEX IF NOT EXISTS "AssistantQQEvent_userId_createdAt_idx" ON "AssistantQQEvent"("userId", "createdAt");
+    `);
+    db.exec(`
+      UPDATE "Conversation"
+      SET "assistantMode" = 'TEMPORARY'
+      WHERE "kind" = 'PERSONAL_ASSISTANT' AND "assistantMode" IS NULL;
+
+      UPDATE "Conversation"
+      SET "assistantMode" = 'TEMPORARY'
+      WHERE "kind" = 'PERSONAL_ASSISTANT'
+        AND "assistantMode" = 'MAIN'
+        AND "id" NOT IN (SELECT "conversationId" FROM "PersonalAssistantProfile");
+
+      UPDATE "Conversation"
+      SET "assistantMode" = 'MAIN'
+      WHERE "id" IN (SELECT "conversationId" FROM "PersonalAssistantProfile");
+
+      CREATE INDEX IF NOT EXISTS "Conversation_userId_kind_assistantMode_updatedAt_idx"
+      ON "Conversation"("userId", "kind", "assistantMode", "updatedAt");
+
+      CREATE UNIQUE INDEX IF NOT EXISTS "Conversation_personalAssistant_main_key"
+      ON "Conversation"("userId")
+      WHERE "kind" = 'PERSONAL_ASSISTANT' AND "assistantMode" = 'MAIN';
+    `);
+    if (hasColumn('Conversation', 'title')) {
+      db.exec(`
+        UPDATE "Conversation"
+        SET "title" = '主聊天'
+        WHERE "id" IN (SELECT "conversationId" FROM "PersonalAssistantProfile")
+          AND "title" = '我的助理'
+      `);
+    }
+    if (hasTable('Message')) {
+      db.exec(`
+        UPDATE "Message"
+        SET "source" = 'QQ'
+        WHERE "conversationId" IN (
+          SELECT binding."conversationId"
+          FROM "AssistantQQBinding" binding
+          JOIN "PersonalAssistantProfile" profile ON profile."userId" = binding."userId"
+          WHERE binding."conversationId" <> profile."conversationId"
+        )
+      `);
+    }
+    db.exec(`
+      UPDATE "AssistantQQBinding"
+      SET "conversationId" = (
+        SELECT profile."conversationId"
+        FROM "PersonalAssistantProfile" profile
+        WHERE profile."userId" = "AssistantQQBinding"."userId"
+      )
+      WHERE EXISTS (
+        SELECT 1
+        FROM "PersonalAssistantProfile" profile
+        WHERE profile."userId" = "AssistantQQBinding"."userId"
+      )
     `);
     db.exec(`
       CREATE TABLE IF NOT EXISTS "Space" (

@@ -559,6 +559,7 @@ export async function POST(request: Request) {
         data: {
           conversationId: profile.conversationId,
           role: 'assistant',
+          source: 'SYSTEM',
           content: current.greeting,
         },
       });

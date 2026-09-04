@@ -36,6 +36,7 @@ model User {
   discussions   SpaceDiscussion[]
   personalAssistant PersonalAssistantProfile?
   assistantMemories AssistantMemoryItem[]
+  assistantExperiences AssistantExperience[]
   assistantReminders AssistantReminder[]
   assistantProactiveDeliveries AssistantProactiveDelivery[]
   assistantQQBinding AssistantQQBinding?
@@ -193,10 +194,12 @@ model Conversation {
   agentDescription    String?
   agentSystemPrompt   String?
   contextMessageLimit Int?
+  assistantMode       String?
   title               String?
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
   messages            Message[]
+  assistantExperiences AssistantExperience[]
   personalAssistant   PersonalAssistantProfile?
   assistantQQBinding  AssistantQQBinding?
 
@@ -208,11 +211,15 @@ model Message {
   conversationId String
   conversation   Conversation @relation(fields: [conversationId], references: [id])
   role           String       // "user" | "assistant" | "system"
+  source         String       @default("WEB") // "WEB" | "QQ" | "SYSTEM"
   content        String
   attachments    Json?
+  assistantExperienceId String?
+  assistantExperience AssistantExperience? @relation(fields: [assistantExperienceId], references: [id], onDelete: SetNull)
   createdAt      DateTime     @default(now())
 
   @@index([conversationId, createdAt])
+  @@index([assistantExperienceId])
 }
 
 model PersonalAssistantProfile {
@@ -246,6 +253,24 @@ model AssistantMemoryItem {
   updatedAt       DateTime @updatedAt
 
   @@index([userId, status, updatedAt])
+}
+
+model AssistantExperience {
+  id             String       @id @default(uuid())
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  summary        String
+  messageCount   Int
+  startAt        DateTime
+  endAt          DateTime
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  messages       Message[]
+
+  @@index([userId, endAt])
+  @@index([conversationId, endAt])
 }
 
 model AssistantReminder {
