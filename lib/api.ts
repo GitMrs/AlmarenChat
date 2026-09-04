@@ -102,19 +102,25 @@ export const assistant = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
-  getProactiveGreeting: (modelSource: 'ONLINE' | 'OLLAMA' = 'ONLINE') =>
+  getProactiveGreeting: (modelSource: 'ONLINE' | 'OLLAMA' = 'ONLINE', allowNew = true) =>
     request<{
       shouldGreet: boolean;
+      recovered?: boolean;
       deliveryId?: string;
       greeting?: string;
       assistantName?: string;
       assistantAvatar?: string;
       hour?: number;
-    }>(`/assistant/proactive?modelSource=${modelSource}`),
+    }>(`/assistant/proactive?modelSource=${modelSource}&allowNew=${allowNew}`),
   acceptProactiveGreeting: (deliveryId: string) =>
     request<{ message: Message }>('/assistant/proactive', {
       method: 'POST',
       body: JSON.stringify({ deliveryId }),
+    }),
+  dismissProactiveGreeting: (deliveryId: string) =>
+    request<{ success: true }>('/assistant/proactive', {
+      method: 'POST',
+      body: JSON.stringify({ deliveryId, action: 'dismiss' }),
     }),
   listReminders: () =>
     request<{ reminders: AssistantReminder[] }>('/assistant/reminders'),

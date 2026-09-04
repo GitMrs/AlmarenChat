@@ -123,13 +123,37 @@ export async function GET(request: Request) {
   try {
     const userId = requireAuth(request);
     const profile = await ensurePersonalAssistant(userId);
-    const allowOnlineModel = new URL(request.url).searchParams.get('modelSource') !== 'OLLAMA';
+    const searchParams = new URL(request.url).searchParams;
+    const allowOnlineModel = searchParams.get('modelSource') !== 'OLLAMA';
+    const allowNew = searchParams.get('allowNew') !== 'false';
 
     if (profile.proactiveEnabled === false) {
       return NextResponse.json({ shouldGreet: false, reason: 'disabled' });
     }
 
     const now = Date.now();
+    const unreadDelivery = await prisma.assistantProactiveDelivery.findFirst({
+      where: {
+        userId,
+        status: 'SHOWN',
+        messageId: null,
+        createdAt: { gte: new Date(now - 24 * 3600 * 1000) },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (unreadDelivery) {
+      return NextResponse.json({
+        shouldGreet: true,
+        recovered: true,
+        deliveryId: unreadDelivery.id,
+        greeting: unreadDelivery.greeting,
+        assistantName: profile.name || '小伴',
+        assistantAvatar: profile.avatar || '🌿',
+      });
+    }
+    if (!allowNew) {
+      return NextResponse.json({ shouldGreet: false, reason: 'local_cooldown' });
+    }
 
     // 1. 获取小伴当前会话最近消息（判断活跃度与历史事件）
     const recentMessages = await prisma.message.findMany({
@@ -260,6 +284,14 @@ export async function POST(request: Request) {
     const body = await request.json().catch(() => ({}));
     const deliveryId = typeof body.deliveryId === 'string' ? body.deliveryId : '';
     if (!deliveryId) return NextResponse.json({ error: 'Delivery required' }, { status: 400 });
+
+    if (body.action === 'dismiss') {
+      await prisma.assistantProactiveDelivery.updateMany({
+        where: { id: deliveryId, userId, status: 'SHOWN', messageId: null },
+        data: { status: 'DISMISSED' },
+      });
+      return NextResponse.json({ success: true });
+    }
 
     const delivery = await prisma.assistantProactiveDelivery.findFirst({
       where: { id: deliveryId, userId },

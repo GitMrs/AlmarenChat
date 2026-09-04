@@ -83,6 +83,7 @@ function AssistantLauncher({
   open,
   onClick,
   proactiveGreeting,
+  proactiveGreetingCollapsed = false,
   onDismissGreeting,
   onAcceptGreeting,
   proactiveEnabled = true,
@@ -95,6 +96,7 @@ function AssistantLauncher({
   open: boolean;
   onClick: () => void;
   proactiveGreeting?: { deliveryId: string; text: string; name?: string; avatar?: string } | null;
+  proactiveGreetingCollapsed?: boolean;
   onDismissGreeting?: () => void;
   onAcceptGreeting?: (text: string, deliveryId: string) => void;
   proactiveEnabled?: boolean;
@@ -171,7 +173,7 @@ function AssistantLauncher({
           </div>
           <div className="absolute -bottom-1.5 right-4 h-3 w-3 rotate-45 border-b border-r border-orange-300 bg-white" />
         </div>
-      ) : proactiveGreeting ? (
+      ) : proactiveGreeting && !proactiveGreetingCollapsed ? (
         /* 柔和微光的主动关怀悬浮气泡 */
         <div
           role="status"
@@ -215,9 +217,19 @@ function AssistantLauncher({
 
       <button
         type="button"
-        onClick={onClick}
+        onClick={() => {
+          if (proactiveGreeting && proactiveGreetingCollapsed && !activeReminderAlert) {
+            onAcceptGreeting?.(proactiveGreeting.text, proactiveGreeting.deliveryId);
+            return;
+          }
+          onClick();
+        }}
         aria-label="打开个人助理"
-        title={activeReminderAlert ? `⏰ 提醒：${activeReminderAlert.content}` : proactiveEnabled ? '小伴在线陪伴中' : '小伴待命中'}
+        title={activeReminderAlert
+          ? `⏰ 提醒：${activeReminderAlert.content}`
+          : proactiveGreeting && proactiveGreetingCollapsed
+            ? '有一条未读问候'
+            : proactiveEnabled ? '小伴在线陪伴中' : '小伴待命中'}
         className={cn(
           'flex h-11 w-11 items-center justify-center rounded-full border bg-white text-slate-700 shadow-lg transition hover:-translate-y-0.5 hover:text-slate-950 cursor-pointer',
           activeReminderAlert ? 'border-orange-400 ring-4 ring-orange-200 animate-bounce' : 'border-black/10'
@@ -233,6 +245,10 @@ function AssistantLauncher({
             <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-orange-400 opacity-75" />
               <span className="relative inline-flex h-2.5 w-2.5 rounded-full border-2 border-white bg-orange-500" />
+            </span>
+          ) : proactiveGreeting && proactiveGreetingCollapsed ? (
+            <span className="absolute -top-2 -right-2 flex h-5 min-w-5 items-center justify-center rounded-full border-2 border-white bg-amber-500 px-1 text-[10px] font-black text-white shadow-sm">
+              1
             </span>
           ) : pendingCount > 0 ? (
             <span className="absolute -top-1.5 -right-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500 px-1 text-[9px] font-black text-white shadow-xs">
@@ -292,6 +308,7 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
     }
   };
   const [proactiveGreeting, setProactiveGreeting] = useState<{ deliveryId: string; text: string; name?: string; avatar?: string } | null>(null);
+  const [proactiveGreetingCollapsed, setProactiveGreetingCollapsed] = useState(false);
   const [localProactive, setLocalProactive] = useState<boolean | null>(() => {
     if (typeof window === 'undefined') return null;
     const saved = localStorage.getItem('almaren_assistant_proactive_enabled');
@@ -515,7 +532,7 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
 
   // 在线主动关怀：仅当用户打开网页在前台、未展开抽屉且冷却满足时感应（动态 4-6 次/天，75分钟冷却）
   useEffect(() => {
-    if (!loggedIn || open || hidden) return;
+    if (!loggedIn || open || hidden || proactiveGreeting) return;
 
     const checkProactive = async () => {
       if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
@@ -531,14 +548,12 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
       if (savedDate === todayStr) {
         count = parseInt(localStorage.getItem(PROACTIVE_KEY + '_count') || '0', 10);
       }
-      if (count >= 5) return;
-
       const lastTime = parseInt(localStorage.getItem(PROACTIVE_KEY) || '0', 10);
-      if (now - lastTime < 75 * 60 * 1000) return;
+      const allowNew = count < 5 && now - lastTime >= 75 * 60 * 1000;
 
       try {
         const modelSource = readBrowserModelConfig(data?.conversationId).config.source;
-        const res = await assistant.getProactiveGreeting(modelSource);
+        const res = await assistant.getProactiveGreeting(modelSource, allowNew);
         if (res.shouldGreet && res.deliveryId && res.greeting) {
           setProactiveGreeting({
             deliveryId: res.deliveryId,
@@ -546,9 +561,12 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
             name: res.assistantName,
             avatar: res.assistantAvatar,
           });
-          localStorage.setItem(PROACTIVE_KEY, String(now));
-          localStorage.setItem(PROACTIVE_DATE_KEY, todayStr);
-          localStorage.setItem(PROACTIVE_KEY + '_count', String(count + 1));
+          setProactiveGreetingCollapsed(false);
+          if (!res.recovered) {
+            localStorage.setItem(PROACTIVE_KEY, String(now));
+            localStorage.setItem(PROACTIVE_DATE_KEY, todayStr);
+            localStorage.setItem(PROACTIVE_KEY + '_count', String(count + 1));
+          }
         }
       } catch {
         // Silently fail
@@ -562,19 +580,20 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
       clearTimeout(initialTimer);
       clearInterval(intervalTimer);
     };
-  }, [loggedIn, open, hidden, data?.conversationId]);
+  }, [loggedIn, open, hidden, data?.conversationId, proactiveGreeting]);
 
-  // 问候气泡 8 秒后自动优雅淡出
+  // 问候气泡 8 秒后收起为未读标记，直到用户打开或明确关闭
   useEffect(() => {
     if (!proactiveGreeting) return;
     const timer = setTimeout(() => {
-      setProactiveGreeting(null);
+      setProactiveGreetingCollapsed(true);
     }, 8000);
     return () => clearTimeout(timer);
   }, [proactiveGreeting]);
 
   const handleAcceptGreeting = async (greetingText?: string, deliveryId?: string) => {
     setProactiveGreeting(null);
+    setProactiveGreetingCollapsed(false);
     setOpen(true);
     if (!greetingText || !deliveryId) return;
 
@@ -655,6 +674,18 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
         },
       } : current);
       setError(err.message || '更新在线陪伴状态失败');
+    }
+  };
+
+  const handleDismissGreeting = async () => {
+    const delivery = proactiveGreeting;
+    setProactiveGreeting(null);
+    setProactiveGreetingCollapsed(false);
+    if (!delivery) return;
+    try {
+      await assistant.dismissProactiveGreeting(delivery.deliveryId);
+    } catch {
+      // The unread delivery will be recovered on the next page load if dismissal was not saved.
     }
   };
 
@@ -961,7 +992,8 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
           open={open}
           onClick={() => setOpen(true)}
           proactiveGreeting={proactiveGreeting}
-          onDismissGreeting={() => setProactiveGreeting(null)}
+          proactiveGreetingCollapsed={proactiveGreetingCollapsed}
+          onDismissGreeting={handleDismissGreeting}
           onAcceptGreeting={handleAcceptGreeting}
           proactiveEnabled={localProactive !== null ? localProactive : isProactive(data?.profile.proactiveEnabled)}
           activeReminderAlert={activeReminderAlert}
