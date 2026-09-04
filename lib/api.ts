@@ -108,10 +108,27 @@ export const assistant = {
       recovered?: boolean;
       deliveryId?: string;
       greeting?: string;
+      expiresAt?: string;
+      modelMessages?: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>;
       assistantName?: string;
       assistantAvatar?: string;
       hour?: number;
     }>(`/assistant/proactive?modelSource=${modelSource}&allowNew=${allowNew}`),
+  completeLocalProactiveGreeting: (deliveryId: string, localResponse: string) =>
+    request<{ shouldGreet: boolean; greeting?: string; reason?: string }>('/assistant/proactive', {
+      method: 'POST',
+      body: JSON.stringify({ deliveryId, localResponse, action: 'complete-local' }),
+    }),
+  markProactiveGreetingShown: (deliveryId: string) =>
+    request<{ success: true }>('/assistant/proactive', {
+      method: 'POST',
+      body: JSON.stringify({ deliveryId, action: 'shown' }),
+    }),
+  skipProactiveGreeting: (deliveryId: string) =>
+    request<{ success: true }>('/assistant/proactive', {
+      method: 'POST',
+      body: JSON.stringify({ deliveryId, action: 'skip' }),
+    }),
   acceptProactiveGreeting: (deliveryId: string) =>
     request<{ message: Message }>('/assistant/proactive', {
       method: 'POST',
@@ -122,6 +139,11 @@ export const assistant = {
       method: 'POST',
       body: JSON.stringify({ deliveryId, action: 'dismiss' }),
     }),
+  expireProactiveGreeting: (deliveryId: string) =>
+    request<{ success: true }>('/assistant/proactive', {
+      method: 'POST',
+      body: JSON.stringify({ deliveryId, action: 'expire' }),
+    }),
   listReminders: () =>
     request<{ reminders: AssistantReminder[] }>('/assistant/reminders'),
   createReminder: (data: { content: string; dueTime?: string | null }) =>
@@ -129,10 +151,13 @@ export const assistant = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
-  createReminders: (items: AssistantReminderCandidate[]) =>
+  createReminders: (
+    items: AssistantReminderCandidate[],
+    source: { sourceMessageId: string; idempotencyKey: string }
+  ) =>
     request<{ reminder: AssistantReminder; reminders: AssistantReminder[] }>('/assistant/reminders', {
       method: 'POST',
-      body: JSON.stringify({ items }),
+      body: JSON.stringify({ items, ...source }),
     }),
   updateReminder: (data: { id: string; status?: 'PENDING' | 'COMPLETED' | 'DISMISSED'; snoozeMinutes?: number; dueTime?: string | null; content?: string }) =>
     request<{ reminder: AssistantReminder }>('/assistant/reminders', {
@@ -156,6 +181,8 @@ export const assistant = {
     }),
   sendMessage: async (data: {
     message: string;
+    userMessageId: string;
+    assistantMessageId: string;
     webSearchEnabled: boolean;
     sharePage: boolean;
     pageContext?: AssistantPageContext | null;
@@ -167,6 +194,8 @@ export const assistant = {
       headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
       body: JSON.stringify({
         message: data.message,
+        userMessageId: data.userMessageId,
+        assistantMessageId: data.assistantMessageId,
         webSearchEnabled: data.webSearchEnabled,
         sharePage: data.sharePage,
         pageContext: data.pageContext,
@@ -176,6 +205,7 @@ export const assistant = {
   },
   prepareLocalMessage: (data: {
     message: string;
+    userMessageId: string;
     sharePage: boolean;
     pageContext?: AssistantPageContext | null;
     signal?: AbortSignal;
@@ -188,16 +218,22 @@ export const assistant = {
       body: JSON.stringify({
         operation: 'prepare-local',
         message: data.message,
+        userMessageId: data.userMessageId,
         webSearchEnabled: false,
         sharePage: data.sharePage,
         pageContext: data.pageContext,
       }),
       signal: data.signal,
     }),
-  persistLocalMessage: (conversationId: string, content: string) =>
+  persistLocalMessage: (conversationId: string, content: string, assistantMessageId: string) =>
     request<{ message: Message }>('/assistant/messages', {
       method: 'POST',
-      body: JSON.stringify({ operation: 'persist-local', conversationId, content }),
+      body: JSON.stringify({ operation: 'persist-local', conversationId, content, assistantMessageId }),
+    }),
+  deleteMessage: (messageId: string) =>
+    request<{ success: boolean }>('/assistant/messages', {
+      method: 'DELETE',
+      body: JSON.stringify({ messageId }),
     }),
   clearMessages: () =>
     request<{ success: boolean }>('/assistant/messages', {

@@ -223,6 +223,9 @@ model PersonalAssistantProfile {
   soul           String?
   greeting       String?
   proactiveEnabled Boolean     @default(true)
+  includeSpaceContext Boolean  @default(true)
+  includeTaskContext Boolean   @default(true)
+  includeChatContext Boolean   @default(true)
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 }
@@ -250,9 +253,11 @@ model AssistantReminder {
   dueTime         DateTime?
   status          String    @default("PENDING")
   sourceMessageId String?
+  idempotencyKey  String?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
+  @@unique([userId, idempotencyKey])
   @@index([userId, status, dueTime])
 }
 
@@ -261,6 +266,7 @@ model AssistantProactiveDelivery {
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   sourceKey String
+  activeKey String?
   greeting  String
   status    String   @default("SHOWN")
   messageId String?
@@ -268,6 +274,7 @@ model AssistantProactiveDelivery {
   openedAt  DateTime?
 
   @@unique([userId, sourceKey])
+  @@unique([userId, activeKey])
   @@index([userId, createdAt])
 }
 

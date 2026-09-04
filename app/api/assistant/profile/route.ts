@@ -20,6 +20,9 @@ export async function PATCH(request: Request) {
       ...(clean(body.soul, 1000) !== undefined ? { soul: clean(body.soul, 1000) } : {}),
       ...(clean(body.greeting, 300) !== undefined ? { greeting: clean(body.greeting, 300) } : {}),
       ...(typeof body.proactiveEnabled === 'boolean' ? { proactiveEnabled: body.proactiveEnabled } : {}),
+      ...(typeof body.includeSpaceContext === 'boolean' ? { includeSpaceContext: body.includeSpaceContext } : {}),
+      ...(typeof body.includeTaskContext === 'boolean' ? { includeTaskContext: body.includeTaskContext } : {}),
+      ...(typeof body.includeChatContext === 'boolean' ? { includeChatContext: body.includeChatContext } : {}),
     };
     const profile = await prisma.personalAssistantProfile.update({ where: { userId }, data });
     return NextResponse.json({ profile });

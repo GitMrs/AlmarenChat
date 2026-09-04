@@ -46,6 +46,9 @@ export interface PersonalAssistantProfile {
   soul?: string | null;
   greeting?: string | null;
   proactiveEnabled?: boolean;
+  includeSpaceContext?: boolean;
+  includeTaskContext?: boolean;
+  includeChatContext?: boolean;
 }
 
 export interface AssistantMemoryItem {

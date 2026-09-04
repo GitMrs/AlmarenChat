@@ -3,8 +3,14 @@ import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { ensurePersonalAssistant } from '@/lib/personal-assistant/profile';
 import { createModelClient, resolveModelName } from '@/lib/model-client';
+import { shouldSkipEventFollowUp } from '@/lib/personal-assistant/proactive-follow-up.mjs';
 
 export const runtime = 'nodejs';
+
+const PROACTIVE_TTL_MS = 24 * 3600 * 1000;
+const PROACTIVE_GENERATION_TTL_MS = 5 * 60 * 1000;
+const PROACTIVE_COOLDOWN_MS = 75 * 60 * 1000;
+const MAX_PROACTIVE_PER_DAY = 5;
 
 function getBeijingHour(): number {
   const now = new Date();
@@ -20,10 +26,25 @@ function getBeijingDateKey(): string {
   }).format(new Date());
 }
 
-async function claimGreeting(userId: string, sourceKey: string, greeting: string) {
+function getBeijingDayStart(now: number) {
+  const shifted = new Date(now + 8 * 3600 * 1000);
+  shifted.setUTCHours(0, 0, 0, 0);
+  return new Date(shifted.getTime() - 8 * 3600 * 1000);
+}
+
+function deliveryExpiresAt(createdAt: Date) {
+  return new Date(createdAt.getTime() + PROACTIVE_TTL_MS).toISOString();
+}
+
+async function claimGreeting(
+  userId: string,
+  sourceKey: string,
+  greeting: string,
+  status: 'GENERATING' | 'PENDING' | 'SKIPPED' = 'PENDING'
+) {
   try {
     return await prisma.assistantProactiveDelivery.create({
-      data: { userId, sourceKey, greeting },
+      data: { userId, sourceKey, greeting, status, activeKey: status === 'SKIPPED' ? null : 'ACTIVE' },
     });
   } catch (error: any) {
     if (error?.code === 'P2002') return null;
@@ -70,13 +91,86 @@ const EVENT_PATTERNS: Array<{
   },
 ];
 
-async function generateAiEventFollowUp(
-  userId: string,
+type ProactiveModelMessage = { role: 'user'; content: string };
+type ProactiveGeneration = { greeting: string | null; modelMessages?: ProactiveModelMessage[] };
+
+function parseProactiveDecision(raw: string, fallback: string): string | null {
+  const json = raw.replace(/```json/gi, '').replace(/```/g, '').match(/\{[\s\S]*\}/)?.[0];
+  if (!json) return null;
+  try {
+    const parsed = JSON.parse(json) as { shouldFollowUp?: boolean; greeting?: string };
+    if (parsed.shouldFollowUp !== true) return null;
+    const greeting = typeof parsed.greeting === 'string' ? parsed.greeting.trim() : '';
+    return greeting.length >= 4 && greeting.length <= 60 ? greeting : fallback;
+  } catch {
+    return null;
+  }
+}
+
+function buildEventPrompt(
   userMessage: string,
+  recentContext: string,
+  assistantName: string,
+  assistantIdentity?: string | null,
+  assistantStyle?: string | null
+) {
+  return `你是用户的贴身伙伴${assistantName}。${assistantIdentity?.trim() ? `你的身份设定是：${assistantIdentity.trim().slice(0, 300)}。` : ''}${assistantStyle?.trim() ? `你的相处风格是：${assistantStyle.trim().slice(0, 300)}。` : ''}请先判断现在是否适合主动回访，而不是看到关键词就追问。
+
+需要回访的原始事件：
+"""
+${userMessage.slice(0, 300)}
+"""
+
+原始事件之后的近期对话：
+"""
+${recentContext.slice(0, 800) || '没有后续对话'}
+"""
+
+以下情况必须不回访：事件已取消、已经完成或已有结果；用户明确不想再谈；近期情绪表明追问会造成压力；后续对话已经回答了准备追问的问题。
+只有事件仍有自然的后续、用户没有拒绝、当前情绪适合时才回访。
+
+严格只输出 JSON：
+{"shouldFollowUp":true,"greeting":"一句35字以内、包含原话具体细节的温和问候"}
+或：
+{"shouldFollowUp":false,"greeting":""}
+
+要求：
+1. 不确定是否适合时，shouldFollowUp 必须为 false；
+2. 问候必须提炼原话中的具体细节，不能使用空洞套话；
+3. 语气温和有分寸，可带 1 个轻量 emoji。`;
+}
+
+function buildDailyPrompt(
+  period: 'morning' | 'evening',
+  recentContext: string,
+  assistantName: string,
+  assistantIdentity?: string | null,
+  assistantStyle?: string | null
+) {
+  const scene = period === 'morning' ? '早晨重新连接' : '晚上轻声问候';
+  return `你是用户的贴身伙伴${assistantName}。${assistantIdentity?.trim() ? `你的身份设定是：${assistantIdentity.trim().slice(0, 300)}。` : ''}${assistantStyle?.trim() ? `你的相处风格是：${assistantStyle.trim().slice(0, 300)}。` : ''}
+现在适合进行一次${scene}，请结合近期对话判断是否会打扰用户，并生成一句35字以内的自然问候。
+
+近期对话：
+"""
+${recentContext.slice(0, 800) || '没有近期对话'}
+"""
+
+如果用户近期明确不想交流、情绪不适合被追问，或问候只会形成空洞尬聊，shouldFollowUp 必须为 false。
+严格只输出 JSON：
+{"shouldFollowUp":true,"greeting":"一句自然、有分寸的问候"}
+或：
+{"shouldFollowUp":false,"greeting":""}`;
+}
+
+async function generateAiProactiveGreeting(
+  userId: string,
+  prompt: string,
   fallback: string,
   allowOnlineModel: boolean
-): Promise<string> {
-  if (!allowOnlineModel) return fallback;
+): Promise<ProactiveGeneration> {
+  const modelMessages: ProactiveModelMessage[] = [{ role: 'user', content: prompt }];
+  if (!allowOnlineModel) return { greeting: fallback, modelMessages };
   try {
     const userSettings = await prisma.user.findUnique({
       where: { id: userId },
@@ -91,31 +185,17 @@ async function generateAiEventFollowUp(
     );
     const model = resolveModelName(usesCustom ? userSettings?.modelName : undefined);
 
-    const prompt = `你是贴身伙伴小伴。用户前段时间对你说过一句话：
-"""
-${userMessage.slice(0, 300)}
-"""
-现在时间过去了一会儿（事情可能已经发生或有初步结果）。
-请你根据用户原话中具体提到的人名、项目、事情或身体状况，生成一句极其自然、温和关切、有分寸的单次回访问候（严格在35字以内）。
-要求：
-1. 必须提炼出原话中的具体细节（如具体人名、具体事项名），就像真朋友自然问候进展，绝不使用空洞套话；
-2. 简短精炼，仅输出一句话，语气温和有温度，可带 1 个轻量 emoji；
-3. 直接输出这句话本身，严禁带有引号、解释、前后缀或任何多余字符。`;
-
     const completion = await client.chat.completions.create({
       model,
-      messages: [{ role: 'user', content: prompt }],
-      temperature: 0.6,
-      max_tokens: 60,
+      messages: modelMessages,
+      temperature: 0.2,
+      max_tokens: 120,
     });
 
-    const result = completion.choices[0]?.message?.content?.trim();
-    if (result && result.length >= 4 && result.length <= 60) {
-      return result.replace(/^["“'「]|["”'」]$/g, '').trim();
-    }
-    return fallback;
+    const result = completion.choices[0]?.message?.content?.trim() || '';
+    return { greeting: parseProactiveDecision(result, fallback) };
   } catch {
-    return fallback;
+    return { greeting: null };
   }
 }
 
@@ -132,12 +212,22 @@ export async function GET(request: Request) {
     }
 
     const now = Date.now();
+    const unreadCutoff = new Date(now - PROACTIVE_TTL_MS);
+    const generationCutoff = new Date(now - PROACTIVE_GENERATION_TTL_MS);
+    await prisma.assistantProactiveDelivery.updateMany({
+      where: { userId, status: 'GENERATING', messageId: null, createdAt: { lt: generationCutoff } },
+      data: { status: 'SKIPPED', activeKey: null },
+    });
+    await prisma.assistantProactiveDelivery.updateMany({
+      where: { userId, status: { in: ['PENDING', 'SHOWN'] }, messageId: null, createdAt: { lt: unreadCutoff } },
+      data: { status: 'EXPIRED', activeKey: null },
+    });
     const unreadDelivery = await prisma.assistantProactiveDelivery.findFirst({
       where: {
         userId,
-        status: 'SHOWN',
+        status: { in: ['PENDING', 'SHOWN'] },
         messageId: null,
-        createdAt: { gte: new Date(now - 24 * 3600 * 1000) },
+        createdAt: { gte: unreadCutoff },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -147,6 +237,7 @@ export async function GET(request: Request) {
         recovered: true,
         deliveryId: unreadDelivery.id,
         greeting: unreadDelivery.greeting,
+        expiresAt: deliveryExpiresAt(unreadDelivery.createdAt),
         assistantName: profile.name || '小伴',
         assistantAvatar: profile.avatar || '🌿',
       });
@@ -155,12 +246,33 @@ export async function GET(request: Request) {
       return NextResponse.json({ shouldGreet: false, reason: 'local_cooldown' });
     }
 
+    const todayDeliveries = await prisma.assistantProactiveDelivery.findMany({
+      where: {
+        userId,
+        createdAt: { gte: getBeijingDayStart(now) },
+        status: { not: 'SKIPPED' },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: MAX_PROACTIVE_PER_DAY,
+      select: { createdAt: true },
+    });
+    if (todayDeliveries.length >= MAX_PROACTIVE_PER_DAY) {
+      return NextResponse.json({ shouldGreet: false, reason: 'daily_limit' });
+    }
+    if (todayDeliveries[0] && now - todayDeliveries[0].createdAt.getTime() < PROACTIVE_COOLDOWN_MS) {
+      return NextResponse.json({ shouldGreet: false, reason: 'server_cooldown' });
+    }
+
     // 1. 获取小伴当前会话最近消息（判断活跃度与历史事件）
     const recentMessages = await prisma.message.findMany({
       where: { conversationId: profile.conversationId },
       orderBy: { createdAt: 'desc' },
       take: 8,
     });
+    const recentContext = [...recentMessages]
+      .reverse()
+      .map((message) => `${message.role === 'user' ? '用户' : '助手'}：${message.content.slice(0, 240)}`)
+      .join('\n');
 
     const latestMessage = recentMessages[0];
     if (latestMessage) {
@@ -190,13 +302,35 @@ export async function GET(request: Request) {
           });
           if (delivered) continue;
           const fallback = `关于便签里的「${rem.content}」，现在进展得还顺利吗？✨`;
-          const dynamicGreeting = await generateAiEventFollowUp(userId, `待办事项：${rem.content}`, fallback, allowOnlineModel);
-          const delivery = await claimGreeting(userId, sourceKey, dynamicGreeting);
+          const generation = await generateAiProactiveGreeting(
+            userId,
+            buildEventPrompt(
+              `待办事项：${rem.content}`,
+              recentContext,
+              profile.name || '小伴',
+              profile.identity,
+              profile.soul
+            ),
+            fallback,
+            allowOnlineModel
+          );
+          if (!generation.greeting) {
+            await claimGreeting(userId, sourceKey, '', 'SKIPPED');
+            continue;
+          }
+          const delivery = await claimGreeting(
+            userId,
+            sourceKey,
+            generation.greeting,
+            allowOnlineModel ? 'PENDING' : 'GENERATING'
+          );
           if (!delivery) continue;
           return NextResponse.json({
             shouldGreet: true,
             deliveryId: delivery.id,
-            greeting: dynamicGreeting,
+            greeting: generation.greeting,
+            expiresAt: deliveryExpiresAt(delivery.createdAt),
+            modelMessages: generation.modelMessages,
             assistantName: profile.name || '小伴',
             assistantAvatar: profile.avatar || '🌿',
           });
@@ -217,14 +351,50 @@ export async function GET(request: Request) {
               where: { userId_sourceKey: { userId, sourceKey } },
             });
             if (delivered) continue;
+            const laterMessages = recentMessages.filter(
+              (message) => new Date(message.createdAt).getTime() > new Date(uMsg.createdAt).getTime()
+            );
+            const laterUserTexts = laterMessages
+              .filter((message) => message.role === 'user')
+              .map((message) => message.content);
+            if (shouldSkipEventFollowUp(uMsg.content, laterUserTexts)) {
+              await claimGreeting(userId, sourceKey, '', 'SKIPPED');
+              continue;
+            }
             const fallback = pattern.generateFollowUp(uMsg.content);
-            const dynamicGreeting = await generateAiEventFollowUp(userId, uMsg.content, fallback, allowOnlineModel);
-            const delivery = await claimGreeting(userId, sourceKey, dynamicGreeting);
+            const eventContext = [...laterMessages]
+              .reverse()
+              .map((message) => `${message.role === 'user' ? '用户' : '助手'}：${message.content.slice(0, 240)}`)
+              .join('\n');
+            const generation = await generateAiProactiveGreeting(
+              userId,
+              buildEventPrompt(
+                uMsg.content,
+                eventContext,
+                profile.name || '小伴',
+                profile.identity,
+                profile.soul
+              ),
+              fallback,
+              allowOnlineModel
+            );
+            if (!generation.greeting) {
+              await claimGreeting(userId, sourceKey, '', 'SKIPPED');
+              continue;
+            }
+            const delivery = await claimGreeting(
+              userId,
+              sourceKey,
+              generation.greeting,
+              allowOnlineModel ? 'PENDING' : 'GENERATING'
+            );
             if (!delivery) continue;
             return NextResponse.json({
               shouldGreet: true,
               deliveryId: delivery.id,
-              greeting: dynamicGreeting,
+              greeting: generation.greeting,
+              expiresAt: deliveryExpiresAt(delivery.createdAt),
+              modelMessages: generation.modelMessages,
               assistantName: profile.name || '小伴',
               assistantAvatar: profile.avatar || '🌿',
             });
@@ -241,13 +411,30 @@ export async function GET(request: Request) {
       const dateKey = getBeijingDateKey();
       // 晨间开启新一天 (7:00 - 10:30)
       if (bjHour >= 7 && bjHour <= 10) {
-        const greeting = '早呀！新的一天开始了，今天手头有什么想推进的吗？随时唤我。🌿';
-        const delivery = await claimGreeting(userId, `daily:${dateKey}:morning`, greeting);
+        const fallback = '早呀！新的一天开始了，今天手头有什么想推进的吗？随时唤我。🌿';
+        const generation = await generateAiProactiveGreeting(
+          userId,
+          buildDailyPrompt('morning', recentContext, profile.name || '小伴', profile.identity, profile.soul),
+          fallback,
+          allowOnlineModel
+        );
+        if (!generation.greeting) {
+          await claimGreeting(userId, `daily:${dateKey}:morning`, '', 'SKIPPED');
+          return NextResponse.json({ shouldGreet: false, reason: 'not_suitable' });
+        }
+        const delivery = await claimGreeting(
+          userId,
+          `daily:${dateKey}:morning`,
+          generation.greeting,
+          allowOnlineModel ? 'PENDING' : 'GENERATING'
+        );
         if (!delivery) return NextResponse.json({ shouldGreet: false, reason: 'already_delivered' });
         return NextResponse.json({
           shouldGreet: true,
           deliveryId: delivery.id,
-          greeting,
+          greeting: generation.greeting,
+          expiresAt: deliveryExpiresAt(delivery.createdAt),
+          modelMessages: generation.modelMessages,
           assistantName: profile.name || '小伴',
           assistantAvatar: profile.avatar || '🌿',
           hour: bjHour,
@@ -255,13 +442,30 @@ export async function GET(request: Request) {
       }
       // 夜间回顾/休息前 (21:30 - 23:30)
       if (bjHour >= 21 && bjHour <= 23) {
-        const greeting = '今天忙碌了一整天，今晚有什么想聊聊或整理的想法吗？🌙';
-        const delivery = await claimGreeting(userId, `daily:${dateKey}:evening`, greeting);
+        const fallback = '今天忙碌了一整天，今晚有什么想聊聊或整理的想法吗？🌙';
+        const generation = await generateAiProactiveGreeting(
+          userId,
+          buildDailyPrompt('evening', recentContext, profile.name || '小伴', profile.identity, profile.soul),
+          fallback,
+          allowOnlineModel
+        );
+        if (!generation.greeting) {
+          await claimGreeting(userId, `daily:${dateKey}:evening`, '', 'SKIPPED');
+          return NextResponse.json({ shouldGreet: false, reason: 'not_suitable' });
+        }
+        const delivery = await claimGreeting(
+          userId,
+          `daily:${dateKey}:evening`,
+          generation.greeting,
+          allowOnlineModel ? 'PENDING' : 'GENERATING'
+        );
         if (!delivery) return NextResponse.json({ shouldGreet: false, reason: 'already_delivered' });
         return NextResponse.json({
           shouldGreet: true,
           deliveryId: delivery.id,
-          greeting,
+          greeting: generation.greeting,
+          expiresAt: deliveryExpiresAt(delivery.createdAt),
+          modelMessages: generation.modelMessages,
           assistantName: profile.name || '小伴',
           assistantAvatar: profile.avatar || '🌿',
           hour: bjHour,
@@ -285,10 +489,47 @@ export async function POST(request: Request) {
     const deliveryId = typeof body.deliveryId === 'string' ? body.deliveryId : '';
     if (!deliveryId) return NextResponse.json({ error: 'Delivery required' }, { status: 400 });
 
-    if (body.action === 'dismiss') {
+    if (body.action === 'complete-local') {
+      const localResponse = typeof body.localResponse === 'string' ? body.localResponse.trim().slice(0, 2000) : '';
+      const delivery = await prisma.assistantProactiveDelivery.findFirst({
+        where: { id: deliveryId, userId, status: 'GENERATING', messageId: null },
+      });
+      if (!delivery) return NextResponse.json({ shouldGreet: false, reason: 'already_processed' });
+      const greeting = parseProactiveDecision(localResponse, delivery.greeting);
+      if (!greeting) {
+        await prisma.assistantProactiveDelivery.update({
+          where: { id: delivery.id },
+          data: { status: 'SKIPPED', activeKey: null },
+        });
+        return NextResponse.json({ shouldGreet: false, reason: 'not_suitable' });
+      }
+      await prisma.assistantProactiveDelivery.update({
+        where: { id: delivery.id },
+        data: { greeting, status: 'PENDING' },
+      });
+      return NextResponse.json({ shouldGreet: true, greeting });
+    }
+
+    if (body.action === 'shown') {
       await prisma.assistantProactiveDelivery.updateMany({
-        where: { id: deliveryId, userId, status: 'SHOWN', messageId: null },
-        data: { status: 'DISMISSED' },
+        where: { id: deliveryId, userId, status: { in: ['PENDING', 'SHOWN'] }, messageId: null },
+        data: { status: 'SHOWN' },
+      });
+      return NextResponse.json({ success: true });
+    }
+
+    if (body.action === 'skip') {
+      await prisma.assistantProactiveDelivery.updateMany({
+        where: { id: deliveryId, userId, status: { in: ['GENERATING', 'PENDING', 'SHOWN'] }, messageId: null },
+        data: { status: 'SKIPPED', activeKey: null },
+      });
+      return NextResponse.json({ success: true });
+    }
+
+    if (body.action === 'dismiss' || body.action === 'expire') {
+      await prisma.assistantProactiveDelivery.updateMany({
+        where: { id: deliveryId, userId, status: { in: ['PENDING', 'SHOWN'] }, messageId: null },
+        data: { status: body.action === 'expire' ? 'EXPIRED' : 'DISMISSED', activeKey: null },
       });
       return NextResponse.json({ success: true });
     }
@@ -309,7 +550,7 @@ export async function POST(request: Request) {
       }
 
       const claimed = await tx.assistantProactiveDelivery.updateMany({
-        where: { id: current.id, userId, messageId: null, status: 'SHOWN' },
+        where: { id: current.id, userId, messageId: null, status: { in: ['PENDING', 'SHOWN'] } },
         data: { status: 'OPENING', openedAt: new Date() },
       });
       if (!claimed.count) throw new Error('问候已处理');
@@ -323,7 +564,7 @@ export async function POST(request: Request) {
       });
       await tx.assistantProactiveDelivery.update({
         where: { id: current.id },
-        data: { status: 'OPENED', messageId: created.id },
+        data: { status: 'OPENED', messageId: created.id, activeKey: null },
       });
       return created;
     });

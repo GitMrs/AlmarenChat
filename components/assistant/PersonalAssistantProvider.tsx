@@ -4,6 +4,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, Bell, Check, CheckSquare, ChevronDown, ChevronUp, Clock, Cpu, Globe2, History, Loader2, Menu, MessageCircleHeart, PanelRightClose, Pin, Plus, Send, Settings2, Sparkles, Square, Trash2, X } from 'lucide-react';
 import ComposerShell from '@/components/chat/ComposerShell';
+import MessageActions from '@/components/chat/MessageActions';
 import MessageBubbleFrame from '@/components/chat/MessageBubbleFrame';
 import MessageContent from '@/components/chat/MessageContent';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
@@ -294,6 +295,10 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
   const [extractingSummary, setExtractingSummary] = useState(false);
   const [confirmClearAssistantOpen, setConfirmClearAssistantOpen] = useState(false);
   const [clearingAssistantMessages, setClearingAssistantMessages] = useState(false);
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+  const [activeActionMessageId, setActiveActionMessageId] = useState<string | null>(null);
+  const [pendingDeleteMessage, setPendingDeleteMessage] = useState<Message | null>(null);
+  const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
 
   const handleClearAssistantMessages = async () => {
     setClearingAssistantMessages(true);
@@ -307,7 +312,13 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
       setClearingAssistantMessages(false);
     }
   };
-  const [proactiveGreeting, setProactiveGreeting] = useState<{ deliveryId: string; text: string; name?: string; avatar?: string } | null>(null);
+  const [proactiveGreeting, setProactiveGreeting] = useState<{
+    deliveryId: string;
+    text: string;
+    expiresAt?: string;
+    name?: string;
+    avatar?: string;
+  } | null>(null);
   const [proactiveGreetingCollapsed, setProactiveGreetingCollapsed] = useState(false);
   const [localProactive, setLocalProactive] = useState<boolean | null>(() => {
     if (typeof window === 'undefined') return null;
@@ -323,7 +334,10 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
   const [remindToast, setRemindToast] = useState<string | null>(null);
   const [newNoteText, setNewNoteText] = useState('');
   const [addingNote, setAddingNote] = useState(false);
-  const [pendingReminderCandidates, setPendingReminderCandidates] = useState<AssistantReminderCandidate[] | null>(null);
+  const [pendingReminderCandidates, setPendingReminderCandidates] = useState<{
+    candidates: AssistantReminderCandidate[];
+    sourceMessageId: string;
+  } | null>(null);
   const [creatingReminderCandidates, setCreatingReminderCandidates] = useState(false);
   const [localModelActive, setLocalModelActive] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
@@ -469,16 +483,20 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
     try {
       await assistant.updateReminder({ id: item.id, status: nextStatus });
     } catch (err: any) {
+      setReminders((prev) => prev.map((r) => r.id === item.id ? { ...r, status: item.status } : r));
       setError(err.message || '更新待办失败');
     }
   };
 
-  const handleDeleteReminder = async (id: string) => {
-    setReminders((prev) => prev.filter((r) => r.id !== id));
-    if (activeReminderAlert?.id === id) setActiveReminderAlert(null);
+  const handleDeleteReminder = async (item: AssistantReminder) => {
+    const wasActive = activeReminderAlert?.id === item.id;
+    setReminders((prev) => prev.filter((r) => r.id !== item.id));
+    if (wasActive) setActiveReminderAlert(null);
     try {
-      await assistant.deleteReminder(id);
+      await assistant.deleteReminder(item.id);
     } catch (err: any) {
+      setReminders((prev) => prev.some((r) => r.id === item.id) ? prev : [item, ...prev]);
+      if (wasActive) setActiveReminderAlert(item);
       setError(err.message || '删除待办失败');
     }
   };
@@ -501,6 +519,7 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
   };
 
   const handleSnoozeReminder = async (id: string, minutes = 10) => {
+    const previousAlert = activeReminderAlert?.id === id ? activeReminderAlert : null;
     setActiveReminderAlert(null);
     try {
       const res = await assistant.updateReminder({ id, snoozeMinutes: minutes });
@@ -508,11 +527,13 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
       setRemindToast(`已为你推迟 ${minutes} 分钟后再提醒 ⏰`);
       setTimeout(() => setRemindToast(null), 3500);
     } catch (err: any) {
+      if (previousAlert) setActiveReminderAlert(previousAlert);
       setError(err.message || '推迟提醒失败');
     }
   };
 
   const handleCompleteReminderAlert = async (id: string) => {
+    const previousAlert = activeReminderAlert?.id === id ? activeReminderAlert : null;
     setActiveReminderAlert(null);
     setReminders((prev) => prev.map((r) => r.id === id ? { ...r, status: 'COMPLETED' } : r));
     try {
@@ -520,6 +541,8 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
       setRemindToast('太棒了，又完成了一项待办！✨');
       setTimeout(() => setRemindToast(null), 3500);
     } catch (err: any) {
+      setReminders((prev) => prev.map((r) => r.id === id ? { ...r, status: previousAlert?.status || 'PENDING' } : r));
+      if (previousAlert) setActiveReminderAlert(previousAlert);
       setError(err.message || '完成提醒失败');
     }
   };
@@ -530,7 +553,7 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
     if (!pageContext) setSharePage(false);
   }, [pageContext]);
 
-  // 在线主动关怀：仅当用户打开网页在前台、未展开抽屉且冷却满足时感应（动态 4-6 次/天，75分钟冷却）
+  // 主动关怀：仅在网页前台且抽屉收起时检查，频率由服务端统一限制。
   useEffect(() => {
     if (!loggedIn || open || hidden || proactiveGreeting) return;
 
@@ -539,34 +562,30 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
         return;
       }
 
-      const PROACTIVE_KEY = 'almaren_assistant_last_proactive';
-      const PROACTIVE_DATE_KEY = 'almaren_assistant_proactive_date';
-      const now = Date.now();
-      const todayStr = new Date().toDateString();
-      const savedDate = localStorage.getItem(PROACTIVE_DATE_KEY);
-      let count = 0;
-      if (savedDate === todayStr) {
-        count = parseInt(localStorage.getItem(PROACTIVE_KEY + '_count') || '0', 10);
-      }
-      const lastTime = parseInt(localStorage.getItem(PROACTIVE_KEY) || '0', 10);
-      const allowNew = count < 5 && now - lastTime >= 75 * 60 * 1000;
-
       try {
-        const modelSource = readBrowserModelConfigForScope('GLOBAL').source;
-        const res = await assistant.getProactiveGreeting(modelSource, allowNew);
-        if (res.shouldGreet && res.deliveryId && res.greeting) {
+        const modelConfig = readBrowserModelConfigForScope('GLOBAL');
+        const res = await assistant.getProactiveGreeting(modelConfig.source);
+        let greeting = res.greeting;
+        if (modelConfig.source === 'OLLAMA' && res.deliveryId && res.modelMessages?.length) {
+          try {
+            const localResponse = await completeBrowserModel({ config: modelConfig, messages: res.modelMessages });
+            const completed = await assistant.completeLocalProactiveGreeting(res.deliveryId, localResponse);
+            if (!completed.shouldGreet) return;
+            greeting = completed.greeting || greeting;
+          } catch {
+            await assistant.skipProactiveGreeting(res.deliveryId).catch(() => {});
+            return;
+          }
+        }
+        if (res.shouldGreet && res.deliveryId && greeting) {
           setProactiveGreeting({
             deliveryId: res.deliveryId,
-            text: res.greeting,
+            text: greeting,
+            expiresAt: res.expiresAt,
             name: res.assistantName,
             avatar: res.assistantAvatar,
           });
           setProactiveGreetingCollapsed(false);
-          if (!res.recovered) {
-            localStorage.setItem(PROACTIVE_KEY, String(now));
-            localStorage.setItem(PROACTIVE_DATE_KEY, todayStr);
-            localStorage.setItem(PROACTIVE_KEY + '_count', String(count + 1));
-          }
         }
       } catch {
         // Silently fail
@@ -582,12 +601,34 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
     };
   }, [loggedIn, open, hidden, data?.conversationId, proactiveGreeting]);
 
+  useEffect(() => {
+    if (!proactiveGreeting || activeReminderAlert || open || hidden || !loggedIn) return;
+    assistant.markProactiveGreetingShown(proactiveGreeting.deliveryId).catch(() => {});
+  }, [activeReminderAlert, hidden, loggedIn, open, proactiveGreeting]);
+
   // 问候气泡 8 秒后收起为未读标记，直到用户打开或明确关闭
   useEffect(() => {
-    if (!proactiveGreeting) return;
+    if (!proactiveGreeting || activeReminderAlert || open || hidden || !loggedIn) return;
     const timer = setTimeout(() => {
       setProactiveGreetingCollapsed(true);
     }, 8000);
+    return () => clearTimeout(timer);
+  }, [activeReminderAlert, hidden, loggedIn, open, proactiveGreeting]);
+
+  useEffect(() => {
+    if (!proactiveGreeting?.expiresAt) return;
+    const deliveryId = proactiveGreeting.deliveryId;
+    const remaining = new Date(proactiveGreeting.expiresAt).getTime() - Date.now();
+    const expire = () => {
+      setProactiveGreeting((current) => current?.deliveryId === deliveryId ? null : current);
+      setProactiveGreetingCollapsed(false);
+      assistant.expireProactiveGreeting(deliveryId).catch(() => {});
+    };
+    if (!Number.isFinite(remaining) || remaining <= 0) {
+      expire();
+      return;
+    }
+    const timer = setTimeout(expire, remaining);
     return () => clearTimeout(timer);
   }, [proactiveGreeting]);
 
@@ -677,6 +718,45 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
     }
   };
 
+  const handleCopyMessage = async (id: string, content: string) => {
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopiedMessageId(id);
+      setTimeout(() => setCopiedMessageId(null), 1800);
+    } catch {
+      setError('复制失败，请稍后重试');
+    }
+  };
+
+  const handleDeleteMessage = async () => {
+    if (!pendingDeleteMessage || deletingMessageId) return;
+    const target = pendingDeleteMessage;
+    setDeletingMessageId(target.id);
+    try {
+      await assistant.deleteMessage(target.id);
+      setData((current) => current ? {
+        ...current,
+        messages: current.messages.filter((message) => message.id !== target.id),
+      } : current);
+      setBubbleSuggestions((current) => {
+        const next = { ...current };
+        delete next[target.id];
+        return next;
+      });
+      setSavedTips((current) => {
+        const next = { ...current };
+        delete next[target.id];
+        return next;
+      });
+      setActiveActionMessageId(null);
+      setPendingDeleteMessage(null);
+    } catch (err: any) {
+      setError(err.message || '删除消息失败');
+    } finally {
+      setDeletingMessageId(null);
+    }
+  };
+
   const handleDismissGreeting = async () => {
     const delivery = proactiveGreeting;
     setProactiveGreeting(null);
@@ -689,11 +769,14 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
     }
   };
 
-  const createReminderCandidates = async (candidates: AssistantReminderCandidate[]) => {
+  const createReminderCandidates = async (candidates: AssistantReminderCandidate[], sourceMessageId: string) => {
     if (!candidates.length || creatingReminderCandidates) return;
     setCreatingReminderCandidates(true);
     try {
-      const created = await assistant.createReminders(candidates);
+      const created = await assistant.createReminders(candidates, {
+        sourceMessageId,
+        idempotencyKey: `assistant-reminders:${sourceMessageId}`,
+      });
       const newItems = created.reminders;
       const newIds = new Set(newItems.map((item) => item.id));
       setReminders((current) => [...newItems, ...current.filter((item) => !newIds.has(item.id))]);
@@ -738,25 +821,28 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
     const content = input.trim();
     if (!content || streaming || !data) return;
     const now = new Date().toISOString();
-    const userMessage: Message = { id: `local-user-${Date.now()}`, conversationId: data.conversationId, role: 'user', content, createdAt: now };
-    const assistantMessage: Message = { id: `local-assistant-${Date.now()}`, conversationId: data.conversationId, role: 'assistant', content: '', createdAt: now };
+    const userMessage: Message = { id: crypto.randomUUID(), conversationId: data.conversationId, role: 'user', content, createdAt: now };
+    const assistantMessage: Message = { id: crypto.randomUUID(), conversationId: data.conversationId, role: 'assistant', content: '', createdAt: now };
     setData({ ...data, messages: [...data.messages, userMessage, assistantMessage] });
     setInput('');
     setError('');
     setStreaming(true);
     const controller = new AbortController();
     abortRef.current = controller;
+    let usesLocalModel = false;
+    let localConversationId = '';
+    let answer = '';
     try {
       const modelConfig = readBrowserModelConfigForScope('GLOBAL');
-      const usesLocalModel = modelConfig.source === 'OLLAMA';
+      usesLocalModel = modelConfig.source === 'OLLAMA';
       setLocalModelActive(usesLocalModel);
       if (usesLocalModel && webEnabled) throw new Error('浏览器直连 Ollama 时不能使用服务端联网搜索');
 
       let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
-      let localConversationId = '';
       if (usesLocalModel) {
         const prepared = await assistant.prepareLocalMessage({
           message: content,
+          userMessageId: userMessage.id,
           sharePage,
           pageContext,
           signal: controller.signal,
@@ -769,7 +855,15 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
         });
         reader = stream.getReader();
       } else {
-        const response = await assistant.sendMessage({ message: content, webSearchEnabled: webEnabled, sharePage, pageContext, signal: controller.signal });
+        const response = await assistant.sendMessage({
+          message: content,
+          userMessageId: userMessage.id,
+          assistantMessageId: assistantMessage.id,
+          webSearchEnabled: webEnabled,
+          sharePage,
+          pageContext,
+          signal: controller.signal,
+        });
         if (!response.ok) {
           const payload = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
           throw new Error(payload.error || `HTTP ${response.status}`);
@@ -778,7 +872,6 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
       }
       const decoder = new TextDecoder();
       if (!reader) throw new Error('模型没有返回内容');
-      let answer = '';
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -791,7 +884,7 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
 
       if (usesLocalModel) {
         if (!answer.trim()) throw new Error('Ollama 没有返回可展示的正文');
-        await assistant.persistLocalMessage(localConversationId, answer);
+        await assistant.persistLocalMessage(localConversationId, answer, assistantMessage.id);
       }
 
       // 方案 A：流式结束后异步轻量提取长期记忆建议
@@ -815,14 +908,36 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
         parseReminderWithCurrentModel(content).then((remRes) => {
           const candidates = remRes?.candidates || [];
           if (remRes?.hasReminder && candidates.length > 0) {
-            if (remRes.explicit) createReminderCandidates(candidates);
-            else setPendingReminderCandidates(candidates);
+            if (remRes.explicit) createReminderCandidates(candidates, userMessage.id);
+            else setPendingReminderCandidates({ candidates, sourceMessageId: userMessage.id });
           }
         }).catch(() => {});
       }
     } catch (err: any) {
+      if (answer.trim()) {
+        const interruptedAnswer = `${answer.trimEnd()}\n\n_回复已中止_`;
+        let keepPartial = !usesLocalModel;
+        if (usesLocalModel && localConversationId) {
+          try {
+            await assistant.persistLocalMessage(localConversationId, interruptedAnswer, assistantMessage.id);
+            keepPartial = true;
+          } catch {
+            keepPartial = false;
+          }
+        }
+        setData((current) => current ? {
+          ...current,
+          messages: current.messages
+            .filter((message) => keepPartial || message.id !== assistantMessage.id)
+            .map((message) => message.id === assistantMessage.id ? { ...message, content: interruptedAnswer } : message),
+        } : current);
+      } else {
+        setData((current) => current ? {
+          ...current,
+          messages: current.messages.filter((message) => message.id !== assistantMessage.id),
+        } : current);
+      }
       if (err.name !== 'AbortError') setError(err.message || '发送失败');
-      setData((current) => current ? { ...current, messages: current.messages.filter((message) => message.id !== assistantMessage.id || message.content) } : current);
     } finally {
       setStreaming(false);
       abortRef.current = null;
@@ -1287,7 +1402,10 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
                                 </span>
                                 <button
                                   type="button"
-                                  onClick={() => handleDeleteReminder(item.id)}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    handleDeleteReminder(item);
+                                  }}
                                   className="text-slate-300 hover:text-rose-600 p-0.5 cursor-pointer opacity-0 group-hover:opacity-100 transition"
                                   title="删除"
                                 >
@@ -1311,7 +1429,26 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
                   )}
                   {data?.messages.map((message) => (
                     <div key={message.id} className="space-y-2">
-                      <MessageBubbleFrame role={message.role} avatar={data.profile.avatar || '🌿'} agentName={data.profile.name} userColor="#0f172a" showAgentName={false}>
+                      <MessageBubbleFrame
+                        role={message.role}
+                        avatar={data.profile.avatar || '🌿'}
+                        agentName={data.profile.name}
+                        userColor="#0f172a"
+                        showAgentName={false}
+                        onActivate={() => setActiveActionMessageId((current) => current === message.id ? null : message.id)}
+                        footer={message.content && !streaming ? (
+                          <MessageActions
+                            role={message.role}
+                            createdAt={message.createdAt}
+                            copied={copiedMessageId === message.id}
+                            active={activeActionMessageId === message.id}
+                            canRegenerate={false}
+                            onCopy={() => handleCopyMessage(message.id, message.content)}
+                            onRegenerate={() => {}}
+                            onDelete={() => setPendingDeleteMessage(message)}
+                          />
+                        ) : null}
+                      >
                         {message.content ? <MessageContent role={message.role} content={message.content} /> : <span className="inline-flex gap-1 py-1"><i className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-300" /><i className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-300 [animation-delay:120ms]" /><i className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-300 [animation-delay:240ms]" /></span>}
                       </MessageBubbleFrame>
 
@@ -1549,7 +1686,7 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
               </div>
             </div>
             <div className="my-4 space-y-2">
-              {pendingReminderCandidates.map((candidate, index) => (
+              {pendingReminderCandidates.candidates.map((candidate, index) => (
                 <div key={`${candidate.content}-${index}`} className="rounded-lg border border-black/[0.06] bg-slate-50 px-3 py-2.5">
                   <p className="text-sm font-bold text-slate-800">{candidate.content}</p>
                   <p className="mt-1 text-xs font-semibold text-slate-400">{formatReminderDue(candidate.dueTime)}</p>
@@ -1567,7 +1704,10 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
               </button>
               <button
                 type="button"
-                onClick={() => createReminderCandidates(pendingReminderCandidates)}
+                onClick={() => createReminderCandidates(
+                  pendingReminderCandidates.candidates,
+                  pendingReminderCandidates.sourceMessageId
+                )}
                 disabled={creatingReminderCandidates}
                 className="flex h-10 flex-1 items-center justify-center gap-1.5 rounded-lg bg-slate-950 text-xs font-black text-white disabled:opacity-40"
               >
@@ -1653,6 +1793,20 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
         </div>
       )}
 
+      <ConfirmDialog
+        open={Boolean(pendingDeleteMessage)}
+        title="删除这条消息？"
+        description="删除后不会再出现在当前助理对话中。"
+        icon={<Trash2 size={20} />}
+        confirmText="确认删除"
+        cancelText="先保留"
+        destructive
+        loading={Boolean(pendingDeleteMessage && deletingMessageId === pendingDeleteMessage.id)}
+        onCancel={() => {
+          if (!deletingMessageId) setPendingDeleteMessage(null);
+        }}
+        onConfirm={handleDeleteMessage}
+      />
       <ConfirmDialog
         open={confirmClearAssistantOpen}
         title="清空小伴当前对话？"

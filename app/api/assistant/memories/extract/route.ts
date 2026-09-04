@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { createModelClient, resolveModelName } from '@/lib/model-client';
+import { memoryFingerprint } from '@/lib/personal-assistant/memory-dedup.mjs';
 
 export const runtime = 'nodejs';
 
@@ -80,11 +81,10 @@ export async function POST(request: Request) {
     const existingMemories = await prisma.assistantMemoryItem.findMany({
       where: { userId, status: 'ACTIVE' },
       select: { content: true },
-      take: 40,
     });
 
     const existingListStr = existingMemories.length > 0
-      ? existingMemories.map((m) => `- ${m.content}`).join('\n')
+      ? existingMemories.slice(0, 40).map((m) => `- ${m.content}`).join('\n')
       : '（暂无已记录的记忆）';
 
     const prompt = `你是一个温暖、克制、敏锐的专属陪伴助理记忆提炼器。
@@ -149,11 +149,13 @@ ${dialogueContext}
 
     const rawSuggestions = extractJsonArray(rawResponse);
 
-    // Filter out items already recorded or similar
-    const existingSet = new Set(existingMemories.map((m) => m.content.trim().toLowerCase()));
-    const finalSuggestions = rawSuggestions.filter(
-      (item) => !existingSet.has(item.content.toLowerCase())
-    );
+    const knownFingerprints = new Set(existingMemories.map((memory) => memoryFingerprint(memory.content)));
+    const finalSuggestions = rawSuggestions.filter((item) => {
+      const fingerprint = memoryFingerprint(item.content);
+      if (!fingerprint || knownFingerprints.has(fingerprint)) return false;
+      knownFingerprints.add(fingerprint);
+      return true;
+    });
 
     return NextResponse.json({ suggestions: finalSuggestions.slice(0, 3) });
   } catch (error: any) {

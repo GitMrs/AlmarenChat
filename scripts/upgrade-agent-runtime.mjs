@@ -42,6 +42,10 @@ try {
         "identity" TEXT,
         "soul" TEXT,
         "greeting" TEXT,
+        "proactiveEnabled" BOOLEAN NOT NULL DEFAULT true,
+        "includeSpaceContext" BOOLEAN NOT NULL DEFAULT true,
+        "includeTaskContext" BOOLEAN NOT NULL DEFAULT true,
+        "includeChatContext" BOOLEAN NOT NULL DEFAULT true,
         "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         "updatedAt" DATETIME NOT NULL,
         CONSTRAINT "PersonalAssistantProfile_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
@@ -66,6 +70,15 @@ try {
     if (!hasColumn('PersonalAssistantProfile', 'proactiveEnabled')) {
       db.exec('ALTER TABLE "PersonalAssistantProfile" ADD COLUMN "proactiveEnabled" BOOLEAN NOT NULL DEFAULT true');
     }
+    if (!hasColumn('PersonalAssistantProfile', 'includeSpaceContext')) {
+      db.exec('ALTER TABLE "PersonalAssistantProfile" ADD COLUMN "includeSpaceContext" BOOLEAN NOT NULL DEFAULT true');
+    }
+    if (!hasColumn('PersonalAssistantProfile', 'includeTaskContext')) {
+      db.exec('ALTER TABLE "PersonalAssistantProfile" ADD COLUMN "includeTaskContext" BOOLEAN NOT NULL DEFAULT true');
+    }
+    if (!hasColumn('PersonalAssistantProfile', 'includeChatContext')) {
+      db.exec('ALTER TABLE "PersonalAssistantProfile" ADD COLUMN "includeChatContext" BOOLEAN NOT NULL DEFAULT true');
+    }
     db.exec(`
       CREATE TABLE IF NOT EXISTS "AssistantReminder" (
         "id" TEXT NOT NULL PRIMARY KEY,
@@ -74,6 +87,7 @@ try {
         "dueTime" DATETIME,
         "status" TEXT NOT NULL DEFAULT 'PENDING',
         "sourceMessageId" TEXT,
+        "idempotencyKey" TEXT,
         "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         "updatedAt" DATETIME NOT NULL,
         CONSTRAINT "AssistantReminder_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE
@@ -83,6 +97,7 @@ try {
         "id" TEXT NOT NULL PRIMARY KEY,
         "userId" TEXT NOT NULL,
         "sourceKey" TEXT NOT NULL,
+        "activeKey" TEXT,
         "greeting" TEXT NOT NULL,
         "status" TEXT NOT NULL DEFAULT 'SHOWN',
         "messageId" TEXT,
@@ -92,6 +107,16 @@ try {
       );
       CREATE UNIQUE INDEX IF NOT EXISTS "AssistantProactiveDelivery_userId_sourceKey_key" ON "AssistantProactiveDelivery"("userId", "sourceKey");
       CREATE INDEX IF NOT EXISTS "AssistantProactiveDelivery_userId_createdAt_idx" ON "AssistantProactiveDelivery"("userId", "createdAt");
+    `);
+    if (!hasColumn('AssistantReminder', 'idempotencyKey')) {
+      db.exec('ALTER TABLE "AssistantReminder" ADD COLUMN "idempotencyKey" TEXT');
+    }
+    if (!hasColumn('AssistantProactiveDelivery', 'activeKey')) {
+      db.exec('ALTER TABLE "AssistantProactiveDelivery" ADD COLUMN "activeKey" TEXT');
+    }
+    db.exec(`
+      CREATE UNIQUE INDEX IF NOT EXISTS "AssistantReminder_userId_idempotencyKey_key" ON "AssistantReminder"("userId", "idempotencyKey");
+      CREATE UNIQUE INDEX IF NOT EXISTS "AssistantProactiveDelivery_userId_activeKey_key" ON "AssistantProactiveDelivery"("userId", "activeKey");
     `);
     db.exec(`
       CREATE TABLE IF NOT EXISTS "Space" (

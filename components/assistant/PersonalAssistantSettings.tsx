@@ -8,7 +8,16 @@ import { assistant, uploads } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import type { AssistantMemoryItem, PersonalAssistantProfile } from '@/types';
 
-const EMPTY_PROFILE: PersonalAssistantProfile = { name: '', avatar: '', identity: '', soul: '', greeting: '' };
+const EMPTY_PROFILE: PersonalAssistantProfile = {
+  name: '',
+  avatar: '',
+  identity: '',
+  soul: '',
+  greeting: '',
+  includeSpaceContext: true,
+  includeTaskContext: true,
+  includeChatContext: true,
+};
 
 const COMPANION_EMBLEMS = ['🌿', '☕', '✨', '💬', '🌙', '🌟', '🕊️', '🧸'];
 
@@ -114,13 +123,23 @@ export default function PersonalAssistantSettings() {
     }
     try {
       await assistant.updateProfile({ proactiveEnabled: nextVal });
-    } catch {
-      // Keep optimistic local state
+    } catch (reason: any) {
+      setProfile((current) => ({ ...current, proactiveEnabled: active }));
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('almaren_assistant_proactive_enabled', String(active));
+        window.dispatchEvent(new CustomEvent('personal-assistant-proactive-changed', { detail: { enabled: active } }));
+      }
+      setError(reason.message || '更新在线陪伴状态失败');
     }
   };
 
   const changeProfile = (field: keyof PersonalAssistantProfile, value: string) => {
     setProfile((current) => ({ ...current, [field]: value }));
+    setNotice('');
+  };
+
+  const toggleContextSource = (field: 'includeSpaceContext' | 'includeTaskContext' | 'includeChatContext') => {
+    setProfile((current) => ({ ...current, [field]: current[field] === false }));
     setNotice('');
   };
 
@@ -279,6 +298,9 @@ export default function PersonalAssistantSettings() {
             '真诚、温和、懂得倾听；不讲冰冷机械的客套话，像认识很久的朋友一样自然交流；在你疲惫或迷茫时给予理解和情绪支持，在你需要决策时耐心地陪你理清头绪。',
           greeting: '我在呢。今天过得怎么样？想随便聊聊，还是一起梳理点什么？',
           proactiveEnabled: true,
+          includeSpaceContext: true,
+          includeTaskContext: true,
+          includeChatContext: true,
         });
         setNotice('已重置为默认陪伴人设，点击右上角「保存设置」后生效');
         setConfirmModal(null);
@@ -550,6 +572,50 @@ export default function PersonalAssistantSettings() {
             </div>
           );
         })()}
+
+        <div className="rounded-2xl border border-black/[0.06] bg-[#fbfaf7] p-4">
+          <div>
+            <div className="text-xs font-black text-slate-900">每轮自动参考</div>
+            <p className="mt-1 text-xs font-medium leading-5 text-slate-500">
+              分别控制小伴每次回复时可读取的平台摘要；关闭后，对应内容也不会进入日期活动回顾。
+            </p>
+          </div>
+          <div className="mt-3 divide-y divide-black/[0.06]">
+            {([
+              ['includeSpaceContext', '空间', '近期空间、空间消息与文件'],
+              ['includeTaskContext', '任务', '运行中、失败及历史任务活动'],
+              ['includeChatContext', 'Agent 聊天', '近期 Agent 单聊与消息活动'],
+            ] as const).map(([field, label, description]) => {
+              const enabled = profile[field] !== false;
+              return (
+                <div key={field} className="flex min-h-12 items-center justify-between gap-4 py-2">
+                  <div className="min-w-0">
+                    <div className="text-xs font-black text-slate-800">{label}</div>
+                    <div className="text-[11px] font-medium text-slate-400">{description}</div>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={enabled}
+                    aria-label={`${enabled ? '关闭' : '开启'}${label}上下文`}
+                    onClick={() => toggleContextSource(field)}
+                    className={cn(
+                      'relative h-6 w-11 shrink-0 rounded-full transition cursor-pointer',
+                      enabled ? 'bg-emerald-600' : 'bg-slate-300'
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        'absolute top-1 h-4 w-4 rounded-full bg-white shadow-sm transition',
+                        enabled ? 'left-6' : 'left-1'
+                      )}
+                    />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
       </section>
 
       {/* 卡片 2：长期记忆 */}

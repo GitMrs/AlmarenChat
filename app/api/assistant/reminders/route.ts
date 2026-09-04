@@ -48,30 +48,44 @@ export async function POST(request: Request) {
   try {
     const userId = requireAuth(request);
     const body = await request.json().catch(() => ({}));
+    const sourceMessageId = typeof body.sourceMessageId === 'string' ? body.sourceMessageId.trim().slice(0, 100) : '';
+    const idempotencyKey = typeof body.idempotencyKey === 'string' ? body.idempotencyKey.trim().slice(0, 180) : '';
     const rawItems = Array.isArray(body.items) ? body.items.slice(0, 10) : [body];
-    const items = rawItems.map((item: any) => {
+    const items = rawItems.map((item: any, index: number) => {
       const content = typeof item?.content === 'string' ? item.content.trim().slice(0, 300) : '';
       let dueTime: Date | null = null;
       if (item?.dueTime) {
         const parsed = new Date(item.dueTime);
         if (!Number.isNaN(parsed.getTime())) dueTime = parsed;
       }
-      return { content, dueTime };
+      return {
+        content,
+        dueTime,
+        sourceMessageId: sourceMessageId || null,
+        idempotencyKey: idempotencyKey ? `${idempotencyKey}:${index}` : null,
+      };
     }).filter((item: { content: string }) => item.content);
     if (!items.length) {
       return NextResponse.json({ error: '内容不能为空' }, { status: 400 });
     }
 
-    const reminders = await prisma.$transaction(items.map((item: { content: string; dueTime: Date | null }) => (
-      prisma.assistantReminder.create({
-        data: { userId, content: item.content, dueTime: item.dueTime, status: 'PENDING' },
-      })
+    const reminders = await prisma.$transaction(items.map((item) => (
+      item.idempotencyKey
+        ? prisma.assistantReminder.upsert({
+          where: { userId_idempotencyKey: { userId, idempotencyKey: item.idempotencyKey } },
+          update: {},
+          create: { userId, content: item.content, dueTime: item.dueTime, sourceMessageId: item.sourceMessageId, idempotencyKey: item.idempotencyKey, status: 'PENDING' },
+        })
+        : prisma.assistantReminder.create({
+          data: { userId, content: item.content, dueTime: item.dueTime, sourceMessageId: item.sourceMessageId, status: 'PENDING' },
+        })
     )));
     const serialized = reminders.map((reminder) => ({
       id: reminder.id,
       content: reminder.content,
       dueTime: reminder.dueTime ? reminder.dueTime.toISOString() : null,
       status: reminder.status,
+      sourceMessageId: reminder.sourceMessageId,
       createdAt: reminder.createdAt.toISOString(),
       updatedAt: reminder.updatedAt.toISOString(),
     }));
