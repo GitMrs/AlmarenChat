@@ -1162,7 +1162,7 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
                   </button>
                   <div className="min-w-0 flex-1">
                     <h2 className="truncate text-sm font-black text-slate-900">聊天记录</h2>
-                    <p className="text-[11px] font-semibold text-slate-400">主聊天长期连续，临时聊天互相独立</p>
+                    <p className="truncate text-[11px] font-semibold text-slate-400">主聊天长期连续，临时聊天互相独立</p>
                   </div>
                   <button
                     type="button"
@@ -1170,10 +1170,9 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
                     disabled={Boolean(busyConversationId) || extractingSummary}
                     aria-label="开启临时聊天"
                     title={extractingSummary ? '正在整理主聊天...' : '开启临时聊天'}
-                    className="flex h-8 items-center gap-1.5 rounded-lg bg-slate-950 px-2.5 text-xs font-black text-white hover:bg-slate-800 disabled:opacity-40 cursor-pointer"
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-950 text-white hover:bg-slate-800 disabled:opacity-40 cursor-pointer"
                   >
                     {extractingSummary ? <Loader2 size={13} className="animate-spin text-amber-400" /> : <Plus size={14} />}
-                    <span>临时聊天</span>
                   </button>
                   <button
                     type="button"
