@@ -4,12 +4,12 @@ import { requireAuth } from '@/app/api/_lib/auth';
 import { ensurePersonalAssistant } from '@/lib/personal-assistant/profile';
 import { createModelClient, resolveModelName } from '@/lib/model-client';
 import { shouldSkipEventFollowUp } from '@/lib/personal-assistant/proactive-follow-up.mjs';
+import { resolveProactiveWait } from '@/lib/personal-assistant/proactive-schedule.mjs';
 
 export const runtime = 'nodejs';
 
 const PROACTIVE_TTL_MS = 24 * 3600 * 1000;
 const PROACTIVE_GENERATION_TTL_MS = 5 * 60 * 1000;
-const PROACTIVE_COOLDOWN_MS = 75 * 60 * 1000;
 const MAX_PROACTIVE_PER_DAY = 5;
 
 function getBeijingHour(): number {
@@ -246,29 +246,56 @@ export async function GET(request: Request) {
       return NextResponse.json({ shouldGreet: false, reason: 'local_cooldown' });
     }
 
-    const todayDeliveries = await prisma.assistantProactiveDelivery.findMany({
-      where: {
-        userId,
-        createdAt: { gte: getBeijingDayStart(now) },
-        status: { not: 'SKIPPED' },
-      },
-      orderBy: { createdAt: 'desc' },
-      take: MAX_PROACTIVE_PER_DAY,
-      select: { createdAt: true },
-    });
-    if (todayDeliveries.length >= MAX_PROACTIVE_PER_DAY) {
-      return NextResponse.json({ shouldGreet: false, reason: 'daily_limit' });
-    }
-    if (todayDeliveries[0] && now - todayDeliveries[0].createdAt.getTime() < PROACTIVE_COOLDOWN_MS) {
-      return NextResponse.json({ shouldGreet: false, reason: 'server_cooldown' });
-    }
-
-    // 1. 获取小伴当前会话最近消息（判断活跃度与历史事件）
     const recentMessages = await prisma.message.findMany({
       where: { conversationId: profile.conversationId },
       orderBy: { createdAt: 'desc' },
       take: 8,
     });
+    const latestUserMessage = await prisma.message.findFirst({
+      where: { conversationId: profile.conversationId, role: 'user' },
+      orderBy: { createdAt: 'desc' },
+      select: { createdAt: true },
+    });
+    const [todayDeliveries, unansweredDeliveries] = await Promise.all([
+      prisma.assistantProactiveDelivery.findMany({
+        where: {
+          userId,
+          createdAt: { gte: getBeijingDayStart(now) },
+          status: { not: 'SKIPPED' },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: MAX_PROACTIVE_PER_DAY,
+        select: { createdAt: true },
+      }),
+      prisma.assistantProactiveDelivery.findMany({
+        where: {
+          userId,
+          status: { not: 'SKIPPED' },
+          ...(latestUserMessage ? { createdAt: { gt: latestUserMessage.createdAt } } : {}),
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 4,
+        select: { createdAt: true },
+      }),
+    ]);
+    if (todayDeliveries.length >= MAX_PROACTIVE_PER_DAY) {
+      return NextResponse.json({ shouldGreet: false, reason: 'daily_limit' });
+    }
+    const proactiveWait = resolveProactiveWait({
+      now,
+      lastUserAt: latestUserMessage?.createdAt,
+      unansweredDeliveries,
+    });
+    if (proactiveWait.retryAfterMs > 0) {
+      return NextResponse.json({
+        shouldGreet: false,
+        reason: 'server_backoff',
+        retryAfterMs: proactiveWait.retryAfterMs,
+        backoffLevel: proactiveWait.level,
+      });
+    }
+
+    // 1. 获取小伴当前会话最近消息（判断活跃度与历史事件）
     const recentContext = [...recentMessages]
       .reverse()
       .map((message) => `${message.role === 'user' ? '用户' : '助手'}：${message.content.slice(0, 240)}`)

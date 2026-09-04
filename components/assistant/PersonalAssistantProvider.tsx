@@ -335,6 +335,7 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
   const [localModelActive, setLocalModelActive] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const proactiveNextCheckAtRef = useRef(0);
   const toolsRef = useRef<HTMLDivElement>(null);
   const hidden = HIDDEN_PATHS.some((path) => pathname.startsWith(path));
 
@@ -549,10 +550,14 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
       if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
         return;
       }
+      if (Date.now() < proactiveNextCheckAtRef.current) return;
 
       try {
         const modelConfig = readBrowserModelConfigForScope('GLOBAL');
         const res = await assistant.getProactiveGreeting(modelConfig.source);
+        proactiveNextCheckAtRef.current = res.retryAfterMs
+          ? Date.now() + res.retryAfterMs
+          : 0;
         let greeting = res.greeting;
         if (modelConfig.source === 'OLLAMA' && res.deliveryId && res.modelMessages?.length) {
           try {
@@ -820,6 +825,7 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
   const send = async () => {
     const content = input.trim();
     if (!content || streaming || !data) return;
+    proactiveNextCheckAtRef.current = 0;
     const now = new Date().toISOString();
     const userMessage: Message = { id: crypto.randomUUID(), conversationId: data.conversationId, role: 'user', content, createdAt: now };
     const assistantMessage: Message = { id: crypto.randomUUID(), conversationId: data.conversationId, role: 'assistant', content: '', createdAt: now };

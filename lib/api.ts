@@ -113,6 +113,9 @@ export const assistant = {
       assistantName?: string;
       assistantAvatar?: string;
       hour?: number;
+      reason?: string;
+      retryAfterMs?: number;
+      backoffLevel?: number;
     }>(`/assistant/proactive?modelSource=${modelSource}&allowNew=${allowNew}`),
   completeLocalProactiveGreeting: (deliveryId: string, localResponse: string) =>
     request<{ shouldGreet: boolean; greeting?: string; reason?: string }>('/assistant/proactive', {
