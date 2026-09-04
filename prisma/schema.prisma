@@ -140,6 +140,7 @@ model SpaceFile {
   status       String   @default("READY")
   shareId      String?  @unique
   shareEnabled Boolean  @default(false)
+  externalDependencies Boolean @default(false)
   sharedAt     DateTime?
   createdAt    DateTime @default(now())
   updatedAt    DateTime? @updatedAt

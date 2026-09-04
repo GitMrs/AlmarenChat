@@ -28,6 +28,7 @@ export async function GET(
     return NextResponse.json({
       enabled: file.shareEnabled,
       url: file.shareEnabled ? shareUrl(file.shareId) : null,
+      externalDependencies: file.externalDependencies,
     });
   } catch (error: any) {
     if (error.message === 'Unauthorized') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -46,14 +47,16 @@ export async function PUT(
     if (file.status !== 'READY') {
       return NextResponse.json({ error: '当前文件状态不允许公开共享' }, { status: 409 });
     }
+    const body = await request.json().catch(() => ({}));
+    const externalDependencies = body?.externalDependencies === true;
     const shareId = file.shareEnabled && file.shareId
       ? file.shareId
       : randomUUID().replaceAll('-', '');
     await prisma.spaceFile.update({
       where: { id: file.id },
-      data: { shareId, shareEnabled: true, sharedAt: new Date() },
+      data: { shareId, shareEnabled: true, externalDependencies, sharedAt: new Date() },
     });
-    return NextResponse.json({ enabled: true, url: shareUrl(shareId) });
+    return NextResponse.json({ enabled: true, url: shareUrl(shareId), externalDependencies });
   } catch (error: any) {
     if (error.message === 'Unauthorized') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     return NextResponse.json({ error: '开启共享失败' }, { status: 500 });
@@ -72,7 +75,7 @@ export async function DELETE(
       where: { id: file.id },
       data: { shareId: null, shareEnabled: false, sharedAt: null },
     });
-    return NextResponse.json({ enabled: false, url: null });
+    return NextResponse.json({ enabled: false, url: null, externalDependencies: file.externalDependencies });
   } catch (error: any) {
     if (error.message === 'Unauthorized') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     return NextResponse.json({ error: '关闭共享失败' }, { status: 500 });

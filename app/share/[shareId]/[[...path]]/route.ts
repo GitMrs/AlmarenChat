@@ -5,18 +5,20 @@ import prisma from '@/app/api/_lib/db';
 import { resolveSpacePath, spaceRoot } from '@/app/api/_lib/spaces';
 import { isValidShareId, resolveSharedResource } from '@/lib/space-share-policy.mjs';
 import { STATIC_HTML_SANDBOX } from '@/lib/static-html-sandbox.mjs';
+import { TRUSTED_STATIC_CDN_SOURCES } from '@/lib/space-preview-policy.mjs';
 
 const MAX_SHARED_FILE_BYTES = 5 * 1024 * 1024;
 
-function sharePolicy(request: Request, shareId: string) {
+function sharePolicy(request: Request, shareId: string, externalDependencies: boolean) {
   const root = `${new URL(request.url).origin}/share/${shareId}/`;
+  const cdnSources = externalDependencies ? ` ${TRUSTED_STATIC_CDN_SOURCES.join(' ')}` : '';
   return [
     `sandbox ${STATIC_HTML_SANDBOX}`,
     "default-src 'none'",
-    `script-src 'unsafe-inline' ${root}`,
-    `style-src 'unsafe-inline' ${root}`,
+    `script-src 'unsafe-inline' ${root}${cdnSources}`,
+    `style-src 'unsafe-inline' ${root}${cdnSources}`,
     `img-src ${root} data: blob:`,
-    `font-src ${root} data:`,
+    `font-src ${root} data:${cdnSources}`,
     `media-src ${root}`,
     `connect-src ${root}`,
     "object-src 'none'",
@@ -74,7 +76,7 @@ export async function GET(
         'Content-Type': mimeType,
         'Content-Length': String(bytes.byteLength),
         'Cache-Control': 'no-store',
-        'Content-Security-Policy': sharePolicy(request, shareId),
+        'Content-Security-Policy': sharePolicy(request, shareId, entry.externalDependencies),
         'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=(), usb=()',
         'Referrer-Policy': 'no-referrer',
         'X-Content-Type-Options': 'nosniff',

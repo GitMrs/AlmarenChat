@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Code2, Copy, ExternalLink, Eye, Globe2, Image as ImageIcon, Loader2, Maximize2, Minimize2, Save, X } from 'lucide-react';
+import { Code2, Copy, ExternalLink, Eye, Globe2, Image as ImageIcon, Loader2, Maximize2, Minimize2, Package, Save, X } from 'lucide-react';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import StaticHtmlPreview from '@/components/spaces/StaticHtmlPreview';
 import { spaces as spacesApi } from '@/lib/api';
@@ -31,8 +31,10 @@ export default function SpaceFileEditorDialog({
   const [previewError, setPreviewError] = useState('');
   const [externalImages, setExternalImages] = useState(true);
   const [externalImagesBusy, setExternalImagesBusy] = useState(false);
+  const [externalDependencies, setExternalDependencies] = useState(false);
+  const [externalDependenciesBusy, setExternalDependenciesBusy] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
-  const [share, setShare] = useState<{ enabled: boolean; url: string | null } | null>(null);
+  const [share, setShare] = useState<{ enabled: boolean; url: string | null; externalDependencies: boolean } | null>(null);
   const [shareBusy, setShareBusy] = useState(false);
   const [shareError, setShareError] = useState('');
   const [shareMessage, setShareMessage] = useState('');
@@ -52,6 +54,8 @@ export default function SpaceFileEditorDialog({
     setPreviewError('');
     setExternalImages(true);
     setExternalImagesBusy(false);
+    setExternalDependencies(false);
+    setExternalDependenciesBusy(false);
     setFullscreen(false);
     setShare(null);
     setShareBusy(false);
@@ -72,20 +76,27 @@ export default function SpaceFileEditorDialog({
         if (active) setLoading(false);
       });
     if (/\.html?$/i.test(file.fileName)) {
-      spacesApi.createFilePreview(spaceId, file.id, { externalImages: true })
-        .then((result) => {
-          if (active) setPreview(result);
-        })
-        .catch((reason: any) => {
-          if (active) setPreviewError(reason.message || '创建网页预览失败');
-        });
-      spacesApi.getFileShare(spaceId, file.id)
-        .then((result) => {
-          if (active) setShare(result);
-        })
-        .catch((reason: any) => {
+      void (async () => {
+        let allowExternalDependencies = false;
+        try {
+          const result = await spacesApi.getFileShare(spaceId, file.id);
+          if (!active) return;
+          setShare(result);
+          allowExternalDependencies = result.externalDependencies;
+          setExternalDependencies(allowExternalDependencies);
+        } catch (reason: any) {
           if (active) setShareError(reason.message || '读取共享状态失败');
-        });
+        }
+        try {
+          const result = await spacesApi.createFilePreview(spaceId, file.id, {
+            externalImages: true,
+            externalDependencies: allowExternalDependencies,
+          });
+          if (active) setPreview(result);
+        } catch (reason: any) {
+          if (active) setPreviewError(reason.message || '创建网页预览失败');
+        }
+      })();
     }
     return () => {
       active = false;
@@ -130,7 +141,7 @@ export default function SpaceFileEditorDialog({
       setUpdatedAt(result.file.updatedAt || null);
       if (htmlPreview) {
         try {
-          setPreview(await spacesApi.createFilePreview(spaceId, file.id, { externalImages }));
+          setPreview(await spacesApi.createFilePreview(spaceId, file.id, { externalImages, externalDependencies }));
           setPreviewError('');
         } catch (reason: any) {
           setPreview(null);
@@ -151,13 +162,41 @@ export default function SpaceFileEditorDialog({
     setExternalImagesBusy(true);
     setPreviewError('');
     try {
-      const result = await spacesApi.createFilePreview(spaceId, file.id, { externalImages: next });
+      const result = await spacesApi.createFilePreview(spaceId, file.id, {
+        externalImages: next,
+        externalDependencies,
+      });
       setExternalImages(next);
       setPreview(result);
     } catch (reason: any) {
       setPreviewError(reason.message || '更新外部图片权限失败');
     } finally {
       setExternalImagesBusy(false);
+    }
+  };
+
+  const toggleExternalDependencies = async () => {
+    if (!htmlPreview || externalDependenciesBusy) return;
+    const next = !externalDependencies;
+    setExternalDependenciesBusy(true);
+    setPreviewError('');
+    setShareError('');
+    setShareMessage('');
+    try {
+      if (share?.enabled) {
+        setShare(await spacesApi.enableFileShare(spaceId, file.id, { externalDependencies: next }));
+      }
+      const result = await spacesApi.createFilePreview(spaceId, file.id, {
+        externalImages,
+        externalDependencies: next,
+      });
+      setExternalDependencies(next);
+      setPreview(result);
+      if (share?.enabled) setShareMessage(next ? '共享页已允许受信任的外部依赖' : '共享页已停止加载外部依赖');
+    } catch (reason: any) {
+      setPreviewError(reason.message || '更新外部依赖权限失败');
+    } finally {
+      setExternalDependenciesBusy(false);
     }
   };
 
@@ -169,7 +208,7 @@ export default function SpaceFileEditorDialog({
     try {
       const result = share.enabled
         ? await spacesApi.disableFileShare(spaceId, file.id)
-        : await spacesApi.enableFileShare(spaceId, file.id);
+        : await spacesApi.enableFileShare(spaceId, file.id, { externalDependencies });
       setShare(result);
       setShareMessage(result.enabled ? '任何获得链接的人都可以访问' : '共享已关闭，原链接已失效');
     } catch (reason: any) {
@@ -286,6 +325,22 @@ export default function SpaceFileEditorDialog({
                     <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition ${externalImages ? 'left-[18px]' : 'left-0.5'}`} />
                   </button>
                   {externalImagesBusy && <Loader2 size={13} className="animate-spin" />}
+                  <span className="mx-1 h-4 w-px bg-slate-200" aria-hidden="true" />
+                  <Package size={14} className={externalDependencies ? 'text-emerald-600' : 'text-slate-400'} />
+                  <span className="text-slate-600">外部依赖</span>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={externalDependencies}
+                    aria-label="加载受信任 CDN 的外部依赖"
+                    onClick={toggleExternalDependencies}
+                    disabled={externalDependenciesBusy}
+                    title={externalDependencies ? '停止加载外部依赖' : '允许加载受信任 CDN 的脚本、样式和字体'}
+                    className={`relative h-5 w-9 shrink-0 rounded-full transition ${externalDependencies ? 'bg-emerald-600' : 'bg-slate-200'} disabled:opacity-50`}
+                  >
+                    <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition ${externalDependencies ? 'left-[18px]' : 'left-0.5'}`} />
+                  </button>
+                  {externalDependenciesBusy && <Loader2 size={13} className="animate-spin" />}
                   <span className="mx-1 h-4 w-px bg-slate-200" aria-hidden="true" />
                   <Globe2 size={14} className={share?.enabled ? 'text-emerald-600' : 'text-slate-400'} />
                   <span className="text-slate-600">公开共享</span>

@@ -8,7 +8,7 @@ import MessageBubbleFrame from '@/components/chat/MessageBubbleFrame';
 import MessageContent from '@/components/chat/MessageContent';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import { assistant, type AssistantPageContext } from '@/lib/api';
-import { completeBrowserModel, readBrowserModelConfig, streamBrowserModel } from '@/lib/browser-model';
+import { completeBrowserModel, readBrowserModelConfigForScope, streamBrowserModel } from '@/lib/browser-model';
 import { cn } from '@/lib/utils';
 import type { AssistantConversationSummary, AssistantReminder, AssistantReminderCandidate, Message, PersonalAssistantBootstrap } from '@/types';
 
@@ -334,7 +334,7 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
 
   useEffect(() => {
     if (!open) return;
-    const local = readBrowserModelConfig(data?.conversationId).config.source === 'OLLAMA';
+    const local = readBrowserModelConfigForScope('GLOBAL').source === 'OLLAMA';
     setLocalModelActive(local);
     if (local) setWebEnabled(false);
   }, [data?.conversationId, open]);
@@ -552,7 +552,7 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
       const allowNew = count < 5 && now - lastTime >= 75 * 60 * 1000;
 
       try {
-        const modelSource = readBrowserModelConfig(data?.conversationId).config.source;
+        const modelSource = readBrowserModelConfigForScope('GLOBAL').source;
         const res = await assistant.getProactiveGreeting(modelSource, allowNew);
         if (res.shouldGreet && res.deliveryId && res.greeting) {
           setProactiveGreeting({
@@ -715,7 +715,7 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
     assistantMessage?: string;
     conversationId?: string;
   }) => {
-    const modelConfig = readBrowserModelConfig(payload.conversationId || data?.conversationId).config;
+    const modelConfig = readBrowserModelConfigForScope('GLOBAL');
     if (modelConfig.source !== 'OLLAMA') return assistant.extractMemories(payload);
 
     const prepared = await assistant.extractMemories({ ...payload, localOnly: true });
@@ -725,7 +725,7 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
   };
 
   const parseReminderWithCurrentModel = async (userMessage: string) => {
-    const modelConfig = readBrowserModelConfig(data?.conversationId).config;
+    const modelConfig = readBrowserModelConfigForScope('GLOBAL');
     if (modelConfig.source !== 'OLLAMA') return assistant.parseReminder({ userMessage });
 
     const prepared = await assistant.parseReminder({ userMessage, localOnly: true });
@@ -747,7 +747,7 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
     const controller = new AbortController();
     abortRef.current = controller;
     try {
-      const modelConfig = readBrowserModelConfig(data.conversationId).config;
+      const modelConfig = readBrowserModelConfigForScope('GLOBAL');
       const usesLocalModel = modelConfig.source === 'OLLAMA';
       setLocalModelActive(usesLocalModel);
       if (usesLocalModel && webEnabled) throw new Error('浏览器直连 Ollama 时不能使用服务端联网搜索');

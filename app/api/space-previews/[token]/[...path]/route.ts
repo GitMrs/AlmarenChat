@@ -71,6 +71,7 @@ export async function GET(
           origin: new URL(request.url).origin,
           token,
           externalImages: scope.externalImages,
+          externalDependencies: scope.externalDependencies,
         }),
         'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=(), usb=()',
         'Referrer-Policy': 'no-referrer',

@@ -16,16 +16,14 @@ import { getBuiltInAgents } from '@/lib/agents-data';
 import { generateConversationImage, streamChat, conversations as conversationsApi, agents as agentsApi, user as userApi, uploads } from '@/lib/api';
 import {
   DEFAULT_BROWSER_MODEL_CONFIG,
-  readBrowserModelConfig,
   readBrowserModelConfigForScope,
-  saveBrowserModelConfig,
   streamBrowserModel,
 } from '@/lib/browser-model';
 import { cn } from '@/lib/utils';
 import { CATEGORY_COLORS } from '@/types';
 import type { Agent, MessageAttachment } from '@/types';
 import type { ChatMessage, DisplayAgent } from '@/components/chat/ChatMessageItem';
-import type { BrowserModelConfig, BrowserModelScope } from '@/lib/browser-model';
+import type { BrowserModelConfig } from '@/lib/browser-model';
 
 const promptMap: Record<string, string[]> = {
   写作: ['帮我把这段话改得更有吸引力', '生成 5 个标题', '把内容改成小红书风格'],
@@ -116,11 +114,6 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
   const [chatMode, setChatMode] = useState<'chat' | 'image'>('chat');
   const [browserModelConfig, setBrowserModelConfig] = useState<BrowserModelConfig>({ ...DEFAULT_BROWSER_MODEL_CONFIG });
-  const [browserModelDraft, setBrowserModelDraft] = useState<BrowserModelConfig>({ ...DEFAULT_BROWSER_MODEL_CONFIG });
-  const [browserModelScope, setBrowserModelScope] = useState<BrowserModelScope>('GLOBAL');
-  const [browserModelSaving, setBrowserModelSaving] = useState(false);
-  const [browserModelSaved, setBrowserModelSaved] = useState(false);
-  const [browserModelError, setBrowserModelError] = useState('');
   const [hasMoreMessages, setHasMoreMessages] = useState(false);
   const [loadingMoreMessages, setLoadingMoreMessages] = useState(false);
   const [shouldStickToBottom, setShouldStickToBottom] = useState(true);
@@ -143,13 +136,8 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
   }, [messages]);
 
   useEffect(() => {
-    const stored = readBrowserModelConfig(existingConversationId);
-    setBrowserModelConfig(stored.config);
-    setBrowserModelDraft(stored.config);
-    setBrowserModelScope(stored.scope);
-    setBrowserModelSaved(false);
-    setBrowserModelError('');
-  }, [existingConversationId]);
+    setBrowserModelConfig(readBrowserModelConfigForScope('GLOBAL'));
+  }, []);
 
   useEffect(() => {
     const updateViewportHeight = () => {
@@ -774,41 +762,6 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
     }
   };
 
-  const updateBrowserModelDraft = (config: BrowserModelConfig) => {
-    setBrowserModelDraft(config);
-    setBrowserModelSaved(false);
-    setBrowserModelError('');
-  };
-
-  const updateBrowserModelScope = (scope: BrowserModelScope) => {
-    const currentConversationId = conversationId || existingConversationId;
-    setBrowserModelScope(scope);
-    setBrowserModelDraft(readBrowserModelConfigForScope(scope, currentConversationId));
-    setBrowserModelSaved(false);
-    setBrowserModelError('');
-  };
-
-  const persistBrowserModelConfig = () => {
-    setBrowserModelSaving(true);
-    setBrowserModelSaved(false);
-    setBrowserModelError('');
-
-    try {
-      const normalized = saveBrowserModelConfig(
-        browserModelDraft,
-        browserModelScope,
-        conversationId || existingConversationId
-      );
-      setBrowserModelConfig(normalized);
-      setBrowserModelDraft(normalized);
-      setBrowserModelSaved(true);
-    } catch (error: any) {
-      setBrowserModelError(error.message || '模型设置保存失败');
-    } finally {
-      setBrowserModelSaving(false);
-    }
-  };
-
   const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
@@ -906,20 +859,12 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
         isLoggedIn={isLoggedIn}
         contextMessageLimit={contextMessageLimit}
         maxContextMessageLimit={MAX_CONTEXT_MESSAGE_LIMIT}
-        modelConfig={browserModelDraft}
-        modelScope={browserModelScope}
-        canScopeToConversation={Boolean(conversationId || existingConversationId)}
-        modelConfigSaving={browserModelSaving}
-        modelConfigSaved={browserModelSaved}
-        modelConfigError={browserModelError}
+        modelConfig={browserModelConfig}
         onBack={() => router.back()}
         onToggleDetails={() => setDetailsOpen((value) => !value)}
         onOpenMobileDetails={() => setMobileDetailsOpen(true)}
         onCloseMobileDetails={() => setMobileDetailsOpen(false)}
         onContextMessageLimitChange={updateContextMessageLimit}
-        onModelConfigChange={updateBrowserModelDraft}
-        onModelScopeChange={updateBrowserModelScope}
-        onSaveModelConfig={persistBrowserModelConfig}
       />
 
       <main className="flex min-h-0 min-w-0 flex-1 flex-col">

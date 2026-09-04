@@ -3,8 +3,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  Bot,
   Check,
+  Cloud,
+  Cpu,
   Database,
   Image as ImageIcon,
   KeyRound,
@@ -21,9 +22,13 @@ import {
 } from 'lucide-react';
 import LoginRequired from '@/components/auth/LoginRequired';
 import { auth, user as userApi } from '@/lib/api';
+import {
+  DEFAULT_BROWSER_MODEL_CONFIG,
+  readBrowserModelConfigForScope,
+  saveBrowserModelConfig,
+  type BrowserModelConfig,
+} from '@/lib/browser-model';
 import { cn } from '@/lib/utils';
-
-const preferencePills = ['简洁', '详细', '轻松', '专业'];
 
 type AccountSnapshot = {
   name: string;
@@ -37,7 +42,6 @@ type ModelSnapshot = {
   imageModelEnabled: boolean;
   imageModelName: string;
   imageModelSize: string;
-  defaultStyle: string;
   contextMessageLimit: number;
 };
 
@@ -57,12 +61,13 @@ export default function SettingsPanel() {
   const [imageModelEnabled, setImageModelEnabled] = useState(false);
   const [imageModelName, setImageModelName] = useState('');
   const [imageModelSize, setImageModelSize] = useState('1024x1024');
-  const [defaultStyle, setDefaultStyle] = useState('详细');
   const [contextMessageLimit, setContextMessageLimit] = useState(40);
   const [tavilyApiKey, setTavilyApiKey] = useState('');
   const [initialAccount, setInitialAccount] = useState<AccountSnapshot | null>(null);
   const [initialModel, setInitialModel] = useState<ModelSnapshot | null>(null);
   const [initialSearch, setInitialSearch] = useState<SearchSnapshot | null>(null);
+  const [browserModelConfig, setBrowserModelConfig] = useState<BrowserModelConfig>({ ...DEFAULT_BROWSER_MODEL_CONFIG });
+  const [initialBrowserModelConfig, setInitialBrowserModelConfig] = useState<BrowserModelConfig | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [savingAccount, setSavingAccount] = useState(false);
@@ -70,6 +75,7 @@ export default function SettingsPanel() {
   const [savingSearch, setSavingSearch] = useState(false);
   const [accountSaved, setAccountSaved] = useState(false);
   const [modelSaved, setModelSaved] = useState(false);
+  const [browserModelSaved, setBrowserModelSaved] = useState(false);
   const [searchSaved, setSearchSaved] = useState(false);
   const [testing, setTesting] = useState(false);
   const [fetchingModels, setFetchingModels] = useState(false);
@@ -77,6 +83,7 @@ export default function SettingsPanel() {
   const [modelListResult, setModelListResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [testResult, setTestResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [error, setError] = useState('');
+  const [browserModelError, setBrowserModelError] = useState('');
   const [needsLogin, setNeedsLogin] = useState(false);
 
   const currentAccount = useMemo(
@@ -94,13 +101,15 @@ export default function SettingsPanel() {
       imageModelEnabled,
       imageModelName: imageModelName.trim(),
       imageModelSize,
-      defaultStyle,
       contextMessageLimit,
     }),
-    [apiBaseUrl, apiKey, contextMessageLimit, customModelEnabled, defaultStyle, imageModelEnabled, imageModelName, imageModelSize, modelName]
+    [apiBaseUrl, apiKey, contextMessageLimit, customModelEnabled, imageModelEnabled, imageModelName, imageModelSize, modelName]
   );
   const hasAccountChanges = initialAccount ? JSON.stringify(currentAccount) !== JSON.stringify(initialAccount) : false;
   const hasModelChanges = initialModel ? JSON.stringify(currentModel) !== JSON.stringify(initialModel) : false;
+  const hasBrowserModelChanges = initialBrowserModelConfig
+    ? JSON.stringify(browserModelConfig) !== JSON.stringify(initialBrowserModelConfig)
+    : false;
   const currentSearch = useMemo(() => ({ tavilyApiKey: tavilyApiKey.trim() }), [tavilyApiKey]);
   const hasSearchChanges = initialSearch ? JSON.stringify(currentSearch) !== JSON.stringify(initialSearch) : false;
   const canTestModel = Boolean(apiBaseUrl.trim() && apiKey.trim() && modelName.trim());
@@ -109,6 +118,10 @@ export default function SettingsPanel() {
   const imageModelConfigIncomplete = imageModelEnabled && !(apiBaseUrl.trim() && apiKey.trim() && imageModelName.trim());
 
   useEffect(() => {
+    const storedBrowserModel = readBrowserModelConfigForScope('GLOBAL');
+    setBrowserModelConfig(storedBrowserModel);
+    setInitialBrowserModelConfig(storedBrowserModel);
+
     if (!localStorage.getItem('token')) {
       setNeedsLogin(true);
       setLoading(false);
@@ -129,7 +142,6 @@ export default function SettingsPanel() {
         setImageModelName(u.imageModelName || '');
         setImageModelSize(u.imageModelSize || '1024x1024');
         setTavilyApiKey(u.tavilyApiKey || '');
-        setDefaultStyle(u.defaultStyle || '详细');
         setContextMessageLimit(u.contextMessageLimit || 40);
         setInitialAccount({ name: u.name || '' });
         setInitialModel({
@@ -140,7 +152,6 @@ export default function SettingsPanel() {
           imageModelEnabled: Boolean(u.imageModelEnabled),
           imageModelName: u.imageModelName || '',
           imageModelSize: u.imageModelSize || '1024x1024',
-          defaultStyle: u.defaultStyle || '详细',
           contextMessageLimit: u.contextMessageLimit || 40,
         });
         setInitialSearch({ tavilyApiKey: u.tavilyApiKey || '' });
@@ -192,7 +203,6 @@ export default function SettingsPanel() {
         imageModelEnabled: currentModel.imageModelEnabled,
         imageModelName: currentModel.imageModelName || null,
         imageModelSize: currentModel.imageModelSize,
-        defaultStyle: currentModel.defaultStyle,
         contextMessageLimit: currentModel.contextMessageLimit,
       });
       setApiBaseUrl(currentModel.apiBaseUrl);
@@ -251,6 +261,22 @@ export default function SettingsPanel() {
     }
   };
 
+  const handleSaveBrowserModel = () => {
+    if (!hasBrowserModelChanges) return;
+
+    setBrowserModelError('');
+    setBrowserModelSaved(false);
+    try {
+      const normalized = saveBrowserModelConfig(browserModelConfig, 'GLOBAL');
+      setBrowserModelConfig(normalized);
+      setInitialBrowserModelConfig(normalized);
+      setBrowserModelSaved(true);
+      setTimeout(() => setBrowserModelSaved(false), 2000);
+    } catch (err: any) {
+      setBrowserModelError(err.message || '保存本地模型设置失败');
+    }
+  };
+
   const handleFetchModels = async () => {
     if (!canFetchModels || fetchingModels) return;
     setFetchingModels(true);
@@ -290,7 +316,7 @@ export default function SettingsPanel() {
     return (
       <LoginRequired
         title="登录后管理设置"
-        description="账号资料、模型配置、Agent 默认偏好和隐私设置都需要保存到你的账号下。"
+        description="账号资料、模型配置和隐私设置都需要保存到你的账号下。"
       />
     );
   }
@@ -402,14 +428,119 @@ export default function SettingsPanel() {
           </section>
 
           <section className="rounded-[28px] border border-black/[0.06] bg-white p-5 shadow-sm sm:p-6">
+            <div className="mb-5 flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-100 text-slate-700">
+                <KeyRound size={18} />
+              </div>
+              <div>
+                <h2 className="text-xl font-black text-slate-950">AI 模型设置</h2>
+                <p className="text-sm text-slate-500">设置 Agent 单聊和小助手默认使用的模型。</p>
+              </div>
+            </div>
+
+            <div className="mb-5 rounded-2xl border border-black/[0.06] bg-[#fbfaf7] p-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <div className="text-sm font-black text-slate-900">默认运行方式</div>
+                  <p className="mt-1 text-xs leading-5 text-slate-500">本地模式仅保存在当前浏览器，其他设备仍使用线上模型。</p>
+                </div>
+                <div className="grid shrink-0 grid-cols-2 gap-1 rounded-lg bg-white p-1 shadow-sm ring-1 ring-black/[0.06]">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBrowserModelConfig((config) => ({ ...config, source: 'ONLINE' }));
+                      setBrowserModelError('');
+                      setBrowserModelSaved(false);
+                    }}
+                    className={cn(
+                      'flex h-9 items-center justify-center gap-2 rounded-md px-4 text-xs font-black transition',
+                      browserModelConfig.source === 'ONLINE' ? 'bg-slate-950 text-white shadow-sm' : 'text-slate-500'
+                    )}
+                  >
+                    <Cloud size={14} />
+                    线上模型
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBrowserModelConfig((config) => ({ ...config, source: 'OLLAMA' }));
+                      setBrowserModelError('');
+                      setBrowserModelSaved(false);
+                    }}
+                    className={cn(
+                      'flex h-9 items-center justify-center gap-2 rounded-md px-4 text-xs font-black transition',
+                      browserModelConfig.source === 'OLLAMA' ? 'bg-slate-950 text-white shadow-sm' : 'text-slate-500'
+                    )}
+                  >
+                    <Cpu size={14} />
+                    本地 Ollama
+                  </button>
+                </div>
+              </div>
+
+              {browserModelConfig.source === 'OLLAMA' && (
+                <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                  <label className="block">
+                    <span className="mb-2 block text-xs font-bold text-slate-600">Ollama Base URL</span>
+                    <input
+                      type="url"
+                      value={browserModelConfig.baseUrl}
+                      onChange={(event) => setBrowserModelConfig((config) => ({ ...config, baseUrl: event.target.value }))}
+                      placeholder="http://localhost:11434/v1"
+                      className="h-11 w-full rounded-xl border border-black/[0.08] bg-white px-3 text-sm font-medium text-slate-800 outline-none focus:border-slate-300"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-2 block text-xs font-bold text-slate-600">模型名称</span>
+                    <input
+                      value={browserModelConfig.model}
+                      onChange={(event) => setBrowserModelConfig((config) => ({ ...config, model: event.target.value }))}
+                      placeholder="例如 qwen3:8b"
+                      className="h-11 w-full rounded-xl border border-black/[0.08] bg-white px-3 text-sm font-medium text-slate-800 outline-none focus:border-slate-300"
+                    />
+                  </label>
+                  <label className="block sm:col-span-2">
+                    <span className="mb-2 block text-xs font-bold text-slate-600">API Key（可选）</span>
+                    <input
+                      type="password"
+                      value={browserModelConfig.apiKey}
+                      onChange={(event) => setBrowserModelConfig((config) => ({ ...config, apiKey: event.target.value }))}
+                      autoComplete="off"
+                      className="h-11 w-full rounded-xl border border-black/[0.08] bg-white px-3 text-sm font-medium text-slate-800 outline-none focus:border-slate-300"
+                    />
+                  </label>
+                </div>
+              )}
+
+              <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-xs font-semibold leading-5 text-slate-500">
+                  {browserModelConfig.source === 'OLLAMA'
+                    ? '启用后，此浏览器中的 Agent 和小助手默认直连 Ollama。'
+                    : '线上模式使用下方的平台默认模型或你的在线 API。'}
+                </p>
+                <button
+                  type="button"
+                  onClick={handleSaveBrowserModel}
+                  disabled={!hasBrowserModelChanges}
+                  className={cn(
+                    'inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-full px-4 text-sm font-black transition',
+                    hasBrowserModelChanges
+                      ? 'bg-slate-950 text-white shadow-sm hover:-translate-y-0.5'
+                      : 'bg-slate-100 text-slate-400'
+                  )}
+                >
+                  {browserModelSaved && <Check size={15} />}
+                  {hasBrowserModelChanges ? '保存运行方式' : browserModelSaved ? '已保存' : '无需保存'}
+                </button>
+              </div>
+              {browserModelError && <p className="mt-3 text-xs font-semibold text-rose-600">{browserModelError}</p>}
+            </div>
+
             <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-100 text-slate-700">
-                  <KeyRound size={18} />
-                </div>
                 <div>
-                  <h2 className="text-xl font-black text-slate-950">AI 模型设置</h2>
-                  <p className="text-sm text-slate-500">配置 Base URL、API Key 和模型名称。</p>
+                  <h3 className="text-base font-black text-slate-900">线上模型服务</h3>
+                  <p className="text-xs leading-5 text-slate-500">关闭自定义服务时使用平台默认模型。</p>
                 </div>
               </div>
               <button
@@ -504,7 +635,7 @@ export default function SettingsPanel() {
                     </div>
                     <div className="min-w-0">
                       <div className="text-sm font-black text-slate-900">图片生成模型</div>
-                      <p className="mt-1 text-xs leading-5 text-slate-500">用于获得授权的空间任务，复用上方 Base URL 和 API Key。</p>
+                      <p className="mt-1 text-xs leading-5 text-slate-500">用于获得授权的空间任务，使用上方在线服务的 Base URL 和 API Key。</p>
                     </div>
                   </div>
                   <button
@@ -627,37 +758,6 @@ export default function SettingsPanel() {
             </div>
           </section>
 
-          <section className="rounded-[28px] border border-black/[0.06] bg-white p-5 shadow-sm sm:p-6">
-            <div className="mb-5 flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-100 text-slate-700">
-                <Bot size={18} />
-              </div>
-              <div>
-                <h2 className="text-xl font-black text-slate-950">Agent 默认偏好</h2>
-                <p className="text-sm text-slate-500">影响创建 Agent 和默认回答方式。</p>
-              </div>
-            </div>
-
-            <div>
-              <div className="mb-3 text-sm font-bold text-slate-700">默认回答风格</div>
-              <div className="flex flex-wrap gap-2">
-                {preferencePills.map((item) => (
-                  <button
-                    key={item}
-                    onClick={() => setDefaultStyle(item)}
-                    className={cn(
-                      'rounded-full border px-4 py-2 text-sm font-bold transition',
-                      defaultStyle === item
-                        ? 'border-slate-950 bg-slate-950 text-white'
-                        : 'border-black/[0.06] bg-[#fbfaf7] text-slate-600 hover:bg-white'
-                    )}
-                  >
-                    {item}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </section>
         </div>
 
         <aside className="space-y-6">

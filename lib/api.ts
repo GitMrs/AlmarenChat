@@ -430,17 +430,20 @@ export const spaces = {
     request<{ content: string; updatedAt: string | null; readOnlyReason: string | null }>(
       `/spaces/${spaceId}/files/${fileId}?mode=edit`
     ),
-  createFilePreview: (spaceId: string, fileId: string, options?: { externalImages?: boolean }) =>
+  createFilePreview: (spaceId: string, fileId: string, options?: { externalImages?: boolean; externalDependencies?: boolean }) =>
     request<{ url: string; rootUrl: string }>(`/spaces/${spaceId}/files/${fileId}/preview`, {
       method: 'POST',
       body: JSON.stringify(options || {}),
     }),
   getFileShare: (spaceId: string, fileId: string) =>
-    request<{ enabled: boolean; url: string | null }>(`/spaces/${spaceId}/files/${fileId}/share`),
-  enableFileShare: (spaceId: string, fileId: string) =>
-    request<{ enabled: boolean; url: string }>(`/spaces/${spaceId}/files/${fileId}/share`, { method: 'PUT' }),
+    request<{ enabled: boolean; url: string | null; externalDependencies: boolean }>(`/spaces/${spaceId}/files/${fileId}/share`),
+  enableFileShare: (spaceId: string, fileId: string, options?: { externalDependencies?: boolean }) =>
+    request<{ enabled: boolean; url: string; externalDependencies: boolean }>(`/spaces/${spaceId}/files/${fileId}/share`, {
+      method: 'PUT',
+      body: JSON.stringify(options || {}),
+    }),
   disableFileShare: (spaceId: string, fileId: string) =>
-    request<{ enabled: false; url: null }>(`/spaces/${spaceId}/files/${fileId}/share`, { method: 'DELETE' }),
+    request<{ enabled: false; url: null; externalDependencies: boolean }>(`/spaces/${spaceId}/files/${fileId}/share`, { method: 'DELETE' }),
   updateFileText: (spaceId: string, fileId: string, content: string, updatedAt: string | null) =>
     request<{ file: any }>(`/spaces/${spaceId}/files/${fileId}`, {
       method: 'PUT',
