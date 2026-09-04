@@ -189,3 +189,26 @@ export async function streamBrowserModel({
     },
   });
 }
+
+export async function completeBrowserModel({
+  config,
+  messages,
+  signal,
+}: {
+  config: BrowserModelConfig;
+  messages: ModelMessage[];
+  signal?: AbortSignal;
+}) {
+  const stream = await streamBrowserModel({ config, messages, signal });
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let content = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    content += decoder.decode(value, { stream: true });
+  }
+  content += decoder.decode();
+  return content.trim();
+}

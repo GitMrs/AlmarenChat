@@ -2,12 +2,13 @@
 
 import { usePathname, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Bell, Check, CheckSquare, ChevronDown, ChevronUp, Clock, Globe2, History, Loader2, Menu, MessageCircleHeart, PanelRightClose, Pin, Plus, Send, Settings2, Sparkles, Square, Trash2, X } from 'lucide-react';
+import { ArrowLeft, Bell, Check, CheckSquare, ChevronDown, ChevronUp, Clock, Cpu, Globe2, History, Loader2, Menu, MessageCircleHeart, PanelRightClose, Pin, Plus, Send, Settings2, Sparkles, Square, Trash2, X } from 'lucide-react';
 import ComposerShell from '@/components/chat/ComposerShell';
 import MessageBubbleFrame from '@/components/chat/MessageBubbleFrame';
 import MessageContent from '@/components/chat/MessageContent';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import { assistant, type AssistantPageContext } from '@/lib/api';
+import { completeBrowserModel, readBrowserModelConfig, streamBrowserModel } from '@/lib/browser-model';
 import { cn } from '@/lib/utils';
 import type { AssistantConversationSummary, AssistantReminder, AssistantReminderCandidate, Message, PersonalAssistantBootstrap } from '@/types';
 
@@ -307,11 +308,19 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
   const [addingNote, setAddingNote] = useState(false);
   const [pendingReminderCandidates, setPendingReminderCandidates] = useState<AssistantReminderCandidate[] | null>(null);
   const [creatingReminderCandidates, setCreatingReminderCandidates] = useState(false);
+  const [localModelActive, setLocalModelActive] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const toolsRef = useRef<HTMLDivElement>(null);
   const pageContext = useMemo(() => inferPageContext(pathname), [pathname]);
   const hidden = HIDDEN_PATHS.some((path) => pathname.startsWith(path));
+
+  useEffect(() => {
+    if (!open) return;
+    const local = readBrowserModelConfig(data?.conversationId).config.source === 'OLLAMA';
+    setLocalModelActive(local);
+    if (local) setWebEnabled(false);
+  }, [data?.conversationId, open]);
 
   useEffect(() => {
     if (!toolsOpen) return;
@@ -528,7 +537,8 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
       if (now - lastTime < 75 * 60 * 1000) return;
 
       try {
-        const res = await assistant.getProactiveGreeting();
+        const modelSource = readBrowserModelConfig(data?.conversationId).config.source;
+        const res = await assistant.getProactiveGreeting(modelSource);
         if (res.shouldGreet && res.deliveryId && res.greeting) {
           setProactiveGreeting({
             deliveryId: res.deliveryId,
@@ -552,7 +562,7 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
       clearTimeout(initialTimer);
       clearInterval(intervalTimer);
     };
-  }, [loggedIn, open, hidden]);
+  }, [loggedIn, open, hidden, data?.conversationId]);
 
   // 问候气泡 8 秒后自动优雅淡出
   useEffect(() => {
@@ -668,6 +678,31 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
     }
   };
 
+  const extractMemoriesWithCurrentModel = async (payload: {
+    mode: 'single' | 'conversation';
+    userMessage?: string;
+    assistantMessage?: string;
+    conversationId?: string;
+  }) => {
+    const modelConfig = readBrowserModelConfig(payload.conversationId || data?.conversationId).config;
+    if (modelConfig.source !== 'OLLAMA') return assistant.extractMemories(payload);
+
+    const prepared = await assistant.extractMemories({ ...payload, localOnly: true });
+    if (!prepared.modelMessages?.length) return prepared;
+    const localResponse = await completeBrowserModel({ config: modelConfig, messages: prepared.modelMessages });
+    return assistant.extractMemories({ ...payload, localResponse });
+  };
+
+  const parseReminderWithCurrentModel = async (userMessage: string) => {
+    const modelConfig = readBrowserModelConfig(data?.conversationId).config;
+    if (modelConfig.source !== 'OLLAMA') return assistant.parseReminder({ userMessage });
+
+    const prepared = await assistant.parseReminder({ userMessage, localOnly: true });
+    if (!prepared.modelMessages?.length) return prepared;
+    const localResponse = await completeBrowserModel({ config: modelConfig, messages: prepared.modelMessages });
+    return assistant.parseReminder({ userMessage, localResponse });
+  };
+
   const send = async () => {
     const content = input.trim();
     if (!content || streaming || !data) return;
@@ -681,12 +716,35 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
     const controller = new AbortController();
     abortRef.current = controller;
     try {
-      const response = await assistant.sendMessage({ message: content, webSearchEnabled: webEnabled, sharePage, pageContext, signal: controller.signal });
-      if (!response.ok) {
-        const payload = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
-        throw new Error(payload.error || `HTTP ${response.status}`);
+      const modelConfig = readBrowserModelConfig(data.conversationId).config;
+      const usesLocalModel = modelConfig.source === 'OLLAMA';
+      setLocalModelActive(usesLocalModel);
+      if (usesLocalModel && webEnabled) throw new Error('浏览器直连 Ollama 时不能使用服务端联网搜索');
+
+      let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+      let localConversationId = '';
+      if (usesLocalModel) {
+        const prepared = await assistant.prepareLocalMessage({
+          message: content,
+          sharePage,
+          pageContext,
+          signal: controller.signal,
+        });
+        localConversationId = prepared.conversationId;
+        const stream = await streamBrowserModel({
+          config: modelConfig,
+          messages: prepared.messages,
+          signal: controller.signal,
+        });
+        reader = stream.getReader();
+      } else {
+        const response = await assistant.sendMessage({ message: content, webSearchEnabled: webEnabled, sharePage, pageContext, signal: controller.signal });
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+          throw new Error(payload.error || `HTTP ${response.status}`);
+        }
+        reader = response.body?.getReader();
       }
-      const reader = response.body?.getReader();
       const decoder = new TextDecoder();
       if (!reader) throw new Error('模型没有返回内容');
       let answer = '';
@@ -700,9 +758,14 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
         } : current);
       }
 
+      if (usesLocalModel) {
+        if (!answer.trim()) throw new Error('Ollama 没有返回可展示的正文');
+        await assistant.persistLocalMessage(localConversationId, answer);
+      }
+
       // 方案 A：流式结束后异步轻量提取长期记忆建议
       if (content.length >= 3 && answer) {
-        assistant.extractMemories({
+        extractMemoriesWithCurrentModel({
           mode: 'single',
           userMessage: content,
           assistantMessage: answer,
@@ -718,9 +781,7 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
 
       // 自然语言待办提醒与多日程智能识别
       if (content.length >= 2) {
-        assistant.parseReminder({
-          userMessage: content,
-        }).then((remRes) => {
+        parseReminderWithCurrentModel(content).then((remRes) => {
           const candidates = remRes?.candidates || [];
           if (remRes?.hasReminder && candidates.length > 0) {
             if (remRes.explicit) createReminderCandidates(candidates);
@@ -798,7 +859,7 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
 
     setExtractingSummary(true);
     try {
-      const res = await assistant.extractMemories({
+      const res = await extractMemoriesWithCurrentModel({
         mode: 'conversation',
         conversationId: data.conversationId,
       });
@@ -1285,8 +1346,14 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
                   {error && <p className="mb-2 px-1 text-xs font-bold text-rose-600">{error}</p>}
                   <ComposerShell
                     rowClassName="gap-2"
-                    toolbar={(webEnabled || sharePage) ? (
+                    toolbar={(webEnabled || sharePage || localModelActive) ? (
                       <div className="flex flex-wrap items-center gap-1.5 pb-1 pt-0.5">
+                        {localModelActive && (
+                          <div className="inline-flex h-7 items-center gap-1.5 rounded-lg bg-slate-100 px-2 text-xs font-black text-slate-700 shadow-xs">
+                            <Cpu size={12} className="shrink-0" />
+                            <span>Ollama 本地</span>
+                          </div>
+                        )}
                         {webEnabled && (
                           <div className="inline-flex h-7 items-center gap-1.5 rounded-lg bg-emerald-50 px-2 text-xs font-black text-emerald-700 shadow-xs">
                             <Globe2 size={12} className="shrink-0" />

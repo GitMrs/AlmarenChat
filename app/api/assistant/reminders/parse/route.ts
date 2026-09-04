@@ -46,28 +46,41 @@ ${userMessage.slice(0, 500)}
 请严格只输出标准 JSON 格式，不要添加 Markdown 代码块标记或任何多余文字：
 {"hasReminder": true, "items": [{"content": "喝水", "dueTime": "2026-09-03T16:30:00+08:00"}, {"content": "开会", "dueTime": "2026-09-03T17:00:00+08:00"}]}`;
 
-    const userSettings = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { customModelEnabled: true, apiBaseUrl: true, apiKey: true, modelName: true },
-    });
+    const modelMessages = [{ role: 'user' as const, content: prompt }];
+    const hasLocalResponse = typeof body.localResponse === 'string';
+    let rawText = hasLocalResponse ? body.localResponse.trim() : '';
 
-    const usesCustom = Boolean(
-      userSettings?.customModelEnabled && userSettings?.apiBaseUrl && userSettings?.apiKey
-    );
-    const client = createModelClient(
-      usesCustom ? userSettings?.apiBaseUrl : undefined,
-      usesCustom ? userSettings?.apiKey : undefined
-    );
-    const model = resolveModelName(usesCustom ? userSettings?.modelName : undefined);
+    if (!hasLocalResponse && body.localOnly === true) {
+      return NextResponse.json({
+        hasReminder: true,
+        explicit: reminderIntent.explicit,
+        candidates: [],
+        modelMessages,
+      });
+    }
 
-    const completion = await client.chat.completions.create({
-      model,
-      messages: [{ role: 'user', content: prompt }],
-      temperature: 0.1,
-      max_tokens: 400,
-    });
+    if (!hasLocalResponse) {
+      const userSettings = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { customModelEnabled: true, apiBaseUrl: true, apiKey: true, modelName: true },
+      });
+      const usesCustom = Boolean(
+        userSettings?.customModelEnabled && userSettings?.apiBaseUrl && userSettings?.apiKey
+      );
+      const client = createModelClient(
+        usesCustom ? userSettings?.apiBaseUrl : undefined,
+        usesCustom ? userSettings?.apiKey : undefined
+      );
+      const model = resolveModelName(usesCustom ? userSettings?.modelName : undefined);
+      const completion = await client.chat.completions.create({
+        model,
+        messages: modelMessages,
+        temperature: 0.1,
+        max_tokens: 400,
+      });
+      rawText = completion.choices[0]?.message?.content?.trim() || '';
+    }
 
-    const rawText = completion.choices[0]?.message?.content?.trim() || '';
     const cleaned = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
 
     let parsed: {

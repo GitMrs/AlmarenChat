@@ -77,31 +77,11 @@ export async function POST(request: Request) {
         .join('\n');
     }
 
-    const [userSettings, existingMemories] = await Promise.all([
-      prisma.user.findUnique({
-        where: { id: userId },
-        select: {
-          customModelEnabled: true,
-          apiBaseUrl: true,
-          apiKey: true,
-          modelName: true,
-        },
-      }),
-      prisma.assistantMemoryItem.findMany({
-        where: { userId, status: 'ACTIVE' },
-        select: { content: true },
-        take: 40,
-      }),
-    ]);
-
-    const usesCustomModel = Boolean(
-      userSettings?.customModelEnabled && userSettings.apiBaseUrl && userSettings.apiKey && userSettings.modelName
-    );
-    const client = createModelClient(
-      usesCustomModel ? userSettings.apiBaseUrl : undefined,
-      usesCustomModel ? userSettings.apiKey : undefined
-    );
-    const model = resolveModelName(usesCustomModel ? userSettings.modelName : undefined);
+    const existingMemories = await prisma.assistantMemoryItem.findMany({
+      where: { userId, status: 'ACTIVE' },
+      select: { content: true },
+      take: 40,
+    });
 
     const existingListStr = existingMemories.length > 0
       ? existingMemories.map((m) => `- ${m.content}`).join('\n')
@@ -133,13 +113,40 @@ ${dialogueContext}
   ]
 }`;
 
-    const completion = await client.chat.completions.create({
-      model,
-      messages: [{ role: 'user', content: prompt }],
-      temperature: 0.1,
-    });
+    const modelMessages = [{ role: 'user' as const, content: prompt }];
+    const hasLocalResponse = typeof body.localResponse === 'string';
+    let rawResponse = hasLocalResponse ? body.localResponse : '';
 
-    const rawResponse = completion.choices[0]?.message?.content || '';
+    if (!hasLocalResponse && body.localOnly === true) {
+      return NextResponse.json({ suggestions: [], modelMessages });
+    }
+
+    if (!hasLocalResponse) {
+      const userSettings = await prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          customModelEnabled: true,
+          apiBaseUrl: true,
+          apiKey: true,
+          modelName: true,
+        },
+      });
+      const usesCustomModel = Boolean(
+        userSettings?.customModelEnabled && userSettings.apiBaseUrl && userSettings.apiKey && userSettings.modelName
+      );
+      const client = createModelClient(
+        usesCustomModel ? userSettings?.apiBaseUrl : undefined,
+        usesCustomModel ? userSettings?.apiKey : undefined
+      );
+      const model = resolveModelName(usesCustomModel ? userSettings?.modelName : undefined);
+      const completion = await client.chat.completions.create({
+        model,
+        messages: modelMessages,
+        temperature: 0.1,
+      });
+      rawResponse = completion.choices[0]?.message?.content || '';
+    }
+
     const rawSuggestions = extractJsonArray(rawResponse);
 
     // Filter out items already recorded or similar

@@ -92,12 +92,17 @@ export const assistant = {
     userMessage?: string;
     assistantMessage?: string;
     conversationId?: string;
+    localOnly?: boolean;
+    localResponse?: string;
   }) =>
-    request<{ suggestions: Array<{ content: string; category: string }> }>('/assistant/memories/extract', {
+    request<{
+      suggestions: Array<{ content: string; category: string }>;
+      modelMessages?: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>;
+    }>('/assistant/memories/extract', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
-  getProactiveGreeting: () =>
+  getProactiveGreeting: (modelSource: 'ONLINE' | 'OLLAMA' = 'ONLINE') =>
     request<{
       shouldGreet: boolean;
       deliveryId?: string;
@@ -105,7 +110,7 @@ export const assistant = {
       assistantName?: string;
       assistantAvatar?: string;
       hour?: number;
-    }>('/assistant/proactive'),
+    }>(`/assistant/proactive?modelSource=${modelSource}`),
   acceptProactiveGreeting: (deliveryId: string) =>
     request<{ message: Message }>('/assistant/proactive', {
       method: 'POST',
@@ -133,11 +138,12 @@ export const assistant = {
       method: 'DELETE',
       body: JSON.stringify({ id }),
     }),
-  parseReminder: (data: { userMessage: string }) =>
+  parseReminder: (data: { userMessage: string; localOnly?: boolean; localResponse?: string }) =>
     request<{
       hasReminder: boolean;
       explicit?: boolean;
       candidates?: AssistantReminderCandidate[];
+      modelMessages?: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>;
     }>('/assistant/reminders/parse', {
       method: 'POST',
       body: JSON.stringify(data),
@@ -162,6 +168,31 @@ export const assistant = {
       signal: data.signal,
     });
   },
+  prepareLocalMessage: (data: {
+    message: string;
+    sharePage: boolean;
+    pageContext?: AssistantPageContext | null;
+    signal?: AbortSignal;
+  }) =>
+    request<{
+      messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>;
+      conversationId: string;
+    }>('/assistant/messages', {
+      method: 'POST',
+      body: JSON.stringify({
+        operation: 'prepare-local',
+        message: data.message,
+        webSearchEnabled: false,
+        sharePage: data.sharePage,
+        pageContext: data.pageContext,
+      }),
+      signal: data.signal,
+    }),
+  persistLocalMessage: (conversationId: string, content: string) =>
+    request<{ message: Message }>('/assistant/messages', {
+      method: 'POST',
+      body: JSON.stringify({ operation: 'persist-local', conversationId, content }),
+    }),
   clearMessages: () =>
     request<{ success: boolean }>('/assistant/messages', {
       method: 'DELETE',

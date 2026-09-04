@@ -14,10 +14,37 @@ export async function POST(request: Request) {
   try {
     const userId = requireAuth(request);
     const body = await request.json();
+    const operation = typeof body.operation === 'string' ? body.operation : 'online';
+
+    if (operation === 'persist-local') {
+      const content = typeof body.content === 'string' ? body.content.trim().slice(0, 50000) : '';
+      const conversationId = typeof body.conversationId === 'string' ? body.conversationId : '';
+      if (!content) return NextResponse.json({ error: '回复内容不能为空' }, { status: 400 });
+      const conversation = await prisma.conversation.findFirst({
+        where: { id: conversationId, userId, kind: 'PERSONAL_ASSISTANT' },
+        select: { id: true },
+      });
+      if (!conversation) return NextResponse.json({ error: '会话不存在' }, { status: 404 });
+      const [message] = await prisma.$transaction([
+        prisma.message.create({
+          data: { conversationId: conversation.id, role: 'assistant', content },
+        }),
+        prisma.conversation.update({
+          where: { id: conversation.id },
+          data: { updatedAt: new Date() },
+        }),
+      ]);
+      return NextResponse.json({ message });
+    }
+
+    const localMode = operation === 'prepare-local';
     const textMessage = typeof body.message === 'string' ? body.message.trim().slice(0, 50000) : '';
     const webSearchEnabled = body.webSearchEnabled === true;
     const sharePage = body.sharePage === true;
     if (!textMessage) return NextResponse.json({ error: '请输入消息' }, { status: 400 });
+    if (localMode && webSearchEnabled) {
+      return NextResponse.json({ error: '浏览器直连 Ollama 时不能使用服务端联网搜索' }, { status: 400 });
+    }
 
     const [profile, userSettings] = await Promise.all([
       ensurePersonalAssistant(userId),
@@ -41,7 +68,7 @@ export async function POST(request: Request) {
     const usesCustomModel = Boolean(
       userSettings.customModelEnabled && userSettings.apiBaseUrl && userSettings.apiKey && userSettings.modelName
     );
-    const quota = await reserveChatQuota({
+    const quota = localMode ? null : await reserveChatQuota({
       userId,
       email: userSettings.email,
       dailyChatLimit: userSettings.dailyChatLimit,
@@ -104,6 +131,10 @@ export async function POST(request: Request) {
           data: { title: generatedTitle },
         }).catch(() => {});
       }
+    }
+
+    if (localMode) {
+      return NextResponse.json({ messages, conversationId: profile.conversationId });
     }
 
     const client = createModelClient(

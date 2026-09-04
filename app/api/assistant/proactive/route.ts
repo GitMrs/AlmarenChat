@@ -73,8 +73,10 @@ const EVENT_PATTERNS: Array<{
 async function generateAiEventFollowUp(
   userId: string,
   userMessage: string,
-  fallback: string
+  fallback: string,
+  allowOnlineModel: boolean
 ): Promise<string> {
+  if (!allowOnlineModel) return fallback;
   try {
     const userSettings = await prisma.user.findUnique({
       where: { id: userId },
@@ -121,6 +123,7 @@ export async function GET(request: Request) {
   try {
     const userId = requireAuth(request);
     const profile = await ensurePersonalAssistant(userId);
+    const allowOnlineModel = new URL(request.url).searchParams.get('modelSource') !== 'OLLAMA';
 
     if (profile.proactiveEnabled === false) {
       return NextResponse.json({ shouldGreet: false, reason: 'disabled' });
@@ -163,7 +166,7 @@ export async function GET(request: Request) {
           });
           if (delivered) continue;
           const fallback = `关于便签里的「${rem.content}」，现在进展得还顺利吗？✨`;
-          const dynamicGreeting = await generateAiEventFollowUp(userId, `待办事项：${rem.content}`, fallback);
+          const dynamicGreeting = await generateAiEventFollowUp(userId, `待办事项：${rem.content}`, fallback, allowOnlineModel);
           const delivery = await claimGreeting(userId, sourceKey, dynamicGreeting);
           if (!delivery) continue;
           return NextResponse.json({
@@ -191,7 +194,7 @@ export async function GET(request: Request) {
             });
             if (delivered) continue;
             const fallback = pattern.generateFollowUp(uMsg.content);
-            const dynamicGreeting = await generateAiEventFollowUp(userId, uMsg.content, fallback);
+            const dynamicGreeting = await generateAiEventFollowUp(userId, uMsg.content, fallback, allowOnlineModel);
             const delivery = await claimGreeting(userId, sourceKey, dynamicGreeting);
             if (!delivery) continue;
             return NextResponse.json({
