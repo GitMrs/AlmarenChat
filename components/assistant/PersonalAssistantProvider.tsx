@@ -1,27 +1,19 @@
 'use client';
 
 import { usePathname, useRouter } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Bell, Check, CheckSquare, ChevronDown, ChevronUp, Clock, Cpu, Globe2, History, Loader2, Menu, MessageCircleHeart, PanelRightClose, Pin, Plus, Send, Settings2, Sparkles, Square, Trash2, X } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { ArrowLeft, Bell, Check, CheckSquare, ChevronDown, ChevronUp, Clock, Cpu, Globe2, History, Loader2, MessageCircleHeart, PanelRightClose, Pin, Plus, Send, Settings2, Sparkles, Square, Trash2, X } from 'lucide-react';
 import ComposerShell from '@/components/chat/ComposerShell';
 import MessageActions from '@/components/chat/MessageActions';
 import MessageBubbleFrame from '@/components/chat/MessageBubbleFrame';
 import MessageContent from '@/components/chat/MessageContent';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
-import { assistant, type AssistantPageContext } from '@/lib/api';
+import { assistant } from '@/lib/api';
 import { completeBrowserModel, readBrowserModelConfigForScope, streamBrowserModel } from '@/lib/browser-model';
 import { cn } from '@/lib/utils';
 import type { AssistantConversationSummary, AssistantReminder, AssistantReminderCandidate, Message, PersonalAssistantBootstrap } from '@/types';
 
 const HIDDEN_PATHS = ['/login'];
-
-function inferPageContext(pathname: string): AssistantPageContext | null {
-  const parts = pathname.split('/').filter(Boolean);
-  if (parts[0] === 'spaces' && parts[1]) return { type: 'space', spaceId: parts[1] };
-  if (parts[0] === 'conversations' && parts[1]) return { type: 'conversation', conversationId: parts[1] };
-  if ((parts[0] === 'agents' || parts[0] === 'chat') && parts[1]) return { type: 'agent', agentId: parts[1] };
-  return null;
-}
 
 function formatTime(dateStr: string) {
   const date = new Date(dateStr);
@@ -277,7 +269,6 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState('');
   const [webEnabled, setWebEnabled] = useState(false);
-  const [sharePage, setSharePage] = useState(false);
   const [loggedIn, setLoggedIn] = useState(false);
   const [mobile, setMobile] = useState(false);
   const [view, setView] = useState<'chat' | 'history'>('chat');
@@ -343,7 +334,6 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
   const listRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const toolsRef = useRef<HTMLDivElement>(null);
-  const pageContext = useMemo(() => inferPageContext(pathname), [pathname]);
   const hidden = HIDDEN_PATHS.some((path) => pathname.startsWith(path));
 
   useEffect(() => {
@@ -549,10 +539,6 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
   }, [data?.messages, streaming, open]);
-  useEffect(() => {
-    if (!pageContext) setSharePage(false);
-  }, [pageContext]);
-
   // 主动关怀：仅在网页前台且抽屉收起时检查，频率由服务端统一限制。
   useEffect(() => {
     if (!loggedIn || open || hidden || proactiveGreeting) return;
@@ -843,8 +829,6 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
         const prepared = await assistant.prepareLocalMessage({
           message: content,
           userMessageId: userMessage.id,
-          sharePage,
-          pageContext,
           signal: controller.signal,
         });
         localConversationId = prepared.conversationId;
@@ -860,8 +844,6 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
           userMessageId: userMessage.id,
           assistantMessageId: assistantMessage.id,
           webSearchEnabled: webEnabled,
-          sharePage,
-          pageContext,
           signal: controller.signal,
         });
         if (!response.ok) {
@@ -1515,7 +1497,7 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
                   {error && <p className="mb-2 px-1 text-xs font-bold text-rose-600">{error}</p>}
                   <ComposerShell
                     rowClassName="gap-2"
-                    toolbar={(webEnabled || sharePage || localModelActive) ? (
+                    toolbar={(webEnabled || localModelActive) ? (
                       <div className="flex flex-wrap items-center gap-1.5 pb-1 pt-0.5">
                         {localModelActive && (
                           <div className="inline-flex h-7 items-center gap-1.5 rounded-lg bg-slate-100 px-2 text-xs font-black text-slate-700 shadow-xs">
@@ -1532,20 +1514,6 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
                               onClick={() => setWebEnabled(false)}
                               aria-label="关闭联网"
                               className="flex h-4 w-4 shrink-0 items-center justify-center rounded text-emerald-500 hover:bg-emerald-100 hover:text-emerald-900"
-                            >
-                              <X size={11} />
-                            </button>
-                          </div>
-                        )}
-                        {sharePage && (
-                          <div className="inline-flex h-7 items-center gap-1.5 rounded-lg bg-blue-50 px-2 text-xs font-black text-blue-700 shadow-xs">
-                            <Menu size={12} className="shrink-0" />
-                            <span>结合当前页面</span>
-                            <button
-                              type="button"
-                              onClick={() => setSharePage(false)}
-                              aria-label="取消结合当前页面"
-                              className="flex h-4 w-4 shrink-0 items-center justify-center rounded text-blue-500 hover:bg-blue-100 hover:text-blue-900"
                             >
                               <X size={11} />
                             </button>
@@ -1575,25 +1543,6 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
                             <span className="min-w-0 flex-1">联网搜索</span>
                             {webEnabled && <Check size={14} />}
                           </button>
-                          <button
-                            type="button"
-                            role="switch"
-                            aria-checked={sharePage}
-                            disabled={!pageContext || streaming}
-                            onClick={() => {
-                              setSharePage((v) => !v);
-                              setToolsOpen(false);
-                            }}
-                            title={!pageContext ? '当前页面无法读取上下文' : undefined}
-                            className={cn(
-                              'flex min-h-10 w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-xs font-black transition disabled:opacity-40',
-                              sharePage ? 'bg-blue-50 text-blue-700 hover:bg-blue-100' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-950'
-                            )}
-                          >
-                            <Menu size={16} />
-                            <span className="min-w-0 flex-1">结合当前页面</span>
-                            {sharePage && <Check size={14} />}
-                          </button>
                           <div className="my-1 h-[1px] bg-black/[0.06]" />
                           <button
                             type="button"
@@ -1622,7 +1571,7 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
                         )}
                       >
                         <Plus size={18} className={cn('transition-transform duration-200', toolsOpen && 'rotate-45')} />
-                        {(webEnabled || sharePage) && (
+                        {webEnabled && (
                           <span className="absolute right-2 top-2 h-2 w-2 rounded-full ring-2 ring-white bg-emerald-500" />
                         )}
                       </button>

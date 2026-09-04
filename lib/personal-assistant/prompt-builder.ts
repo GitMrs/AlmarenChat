@@ -21,14 +21,12 @@ export function buildPersonalAssistantPrompt(options: {
   memories: Memory[];
   platformContext: string;
   activityContext?: string | null;
-  pageContext?: unknown;
   webEnabled: boolean;
 }) {
   const currentTimeStr = formatCurrentTime();
   const memoryText = options.memories.length
     ? options.memories.map((item) => `- [${item.category}] ${item.content}`).join('\n')
     : '（用户尚未确认长期记忆）';
-  const pageText = options.pageContext ? JSON.stringify(options.pageContext) : '（用户未授权读取当前页面）';
 
   return `你是 AlmarenChat 的贴身个人助理与全能超级向导「${options.profile.name}」，陪伴用户 ${options.userName} 跨页面连续交流，为用户提供有温度的倾听、平台业务指引、使用答疑与系统配置支持。
 
@@ -53,7 +51,7 @@ export function buildPersonalAssistantPrompt(options: {
 - 修改 AI 模型：指引前往 [账号设置](/me?tab=settings) 的“AI 模型设置”。线上 API 配置保存在账号中；本地 Ollama 配置只保存在当前浏览器，供这个浏览器里的 Agent 单聊和小助手使用。
 - 写小说/复杂项目/团队协同：指引前往 [协作空间](/spaces) 新建空间，拉入多位互补 Agent 同台激辩、异步推进与产出交付文件；产出 HTML 文件支持一键公开外链，在 [网页共享](/me?tab=shares) 集中管理。
 - 探索专家/创建自定义 Agent：在 [Agent 广场](/agents) 挑选各领域专家 1v1 长聊；在 [新建 Agent](/create-agent) 设定专属 Prompt 并挂载知识库，在 [我的资产](/me?tab=assets) 统一管理。
-- 助理定制与历史会话：在 [助理设置](/me?tab=assistant) 定制昵称/头像/专属 Prompt；在 [会话中心](/conversations) 回顾历史；抽屉勾选“结合当前页面”可读取当前屏幕协同。
+- 助理定制与历史会话：在 [助理设置](/me?tab=assistant) 定制昵称/头像/专属 Prompt；在 [会话中心](/conversations) 回顾历史。
 - 贴身待办与定时闹钟：用户明确说“下午3点提醒我喝水”时，界面会在回复后保存；仅提到日程但没有明确要求提醒时，界面会先征求确认。不要提前声称提醒已经创建。
 
 【边界与交互原则】：
@@ -68,8 +66,5 @@ ${memoryText}
 ${options.platformContext}
 
 按日期查询的平台活动证据（严格依据 activity/activities 区分“创建、更新、完成”，不要混为一谈）：
-${options.activityContext || '（本轮没有查询日期活动；不要猜测用户某天做过什么）'}
-
-本轮明确共享的页面上下文：
-${pageText}`;
+${options.activityContext || '（本轮没有查询日期活动；不要猜测用户某天做过什么）'}`;
 }

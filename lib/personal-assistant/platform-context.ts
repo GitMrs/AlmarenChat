@@ -1,14 +1,6 @@
 import prisma from '@/app/api/_lib/db';
 import { classifyActivityTimestamps, resolveActivityRange } from '@/lib/personal-assistant/activity-query.mjs';
 
-type SharedPageContext = {
-  type?: 'space' | 'run' | 'conversation' | 'agent';
-  spaceId?: string;
-  runId?: string;
-  conversationId?: string;
-  agentId?: string;
-};
-
 export type AssistantContextSources = {
   spaces: boolean;
   tasks: boolean;
@@ -118,33 +110,4 @@ export async function buildAssistantActivityContext(userId: string, message: str
     spaceMessages: spaceMessages.map((item) => ({ ...item, activity: '创建', content: item.content.slice(0, 300) })),
     files: files.map((item) => ({ ...item, activities: classifyActivityTimestamps(item, range) })),
   });
-}
-
-export async function resolveSharedPageContext(userId: string, context?: SharedPageContext | null) {
-  if (!context?.type) return null;
-  if (context.type === 'space' && context.spaceId) {
-    return prisma.space.findFirst({
-      where: { id: context.spaceId, userId },
-      select: { id: true, name: true, description: true, instructions: true, executionMode: true, updatedAt: true },
-    });
-  }
-  if (context.type === 'run' && context.runId) {
-    return prisma.agentRun.findFirst({
-      where: { id: context.runId, userId },
-      select: { id: true, spaceId: true, input: true, status: true, result: true, error: true, updatedAt: true },
-    });
-  }
-  if (context.type === 'conversation' && context.conversationId) {
-    return prisma.conversation.findFirst({
-      where: { id: context.conversationId, userId, kind: 'AGENT' },
-      select: { id: true, title: true, agentName: true, agentDescription: true, updatedAt: true },
-    });
-  }
-  if (context.type === 'agent' && context.agentId) {
-    return prisma.agent.findFirst({
-      where: { id: context.agentId, OR: [{ isPublic: true }, { creatorId: userId }] },
-      select: { id: true, name: true, description: true, category: true },
-    });
-  }
-  return null;
 }

@@ -7,7 +7,7 @@ import { createModelClient, resolveModelName } from '@/lib/model-client';
 import { buildWebSearchContext } from '@/lib/web-search';
 import { ensurePersonalAssistant } from '@/lib/personal-assistant/profile';
 import { buildPersonalAssistantPrompt } from '@/lib/personal-assistant/prompt-builder';
-import { buildAssistantActivityContext, buildAssistantPlatformContext, resolveSharedPageContext } from '@/lib/personal-assistant/platform-context';
+import { buildAssistantActivityContext, buildAssistantPlatformContext } from '@/lib/personal-assistant/platform-context';
 
 export const runtime = 'nodejs';
 
@@ -55,7 +55,6 @@ export async function POST(request: Request) {
     const localMode = operation === 'prepare-local';
     const textMessage = typeof body.message === 'string' ? body.message.trim().slice(0, 50000) : '';
     const webSearchEnabled = body.webSearchEnabled === true;
-    const sharePage = body.sharePage === true;
     if (!textMessage) return NextResponse.json({ error: '请输入消息' }, { status: 400 });
     if (localMode && webSearchEnabled) {
       return NextResponse.json({ error: '浏览器直连 Ollama 时不能使用服务端联网搜索' }, { status: 400 });
@@ -102,7 +101,7 @@ export async function POST(request: Request) {
       tasks: profile.includeTaskContext,
       chats: profile.includeChatContext,
     };
-    const [history, memories, platformContext, activityContext, pageContext, webContext] = await Promise.all([
+    const [history, memories, platformContext, activityContext, webContext] = await Promise.all([
       prisma.message.findMany({
         where: { conversationId: profile.conversationId },
         orderBy: { createdAt: 'desc' },
@@ -117,7 +116,6 @@ export async function POST(request: Request) {
       }),
       buildAssistantPlatformContext(userId, contextSources),
       buildAssistantActivityContext(userId, textMessage, contextSources),
-      sharePage ? resolveSharedPageContext(userId, body.pageContext) : Promise.resolve(null),
       webSearchEnabled ? buildWebSearchContext(textMessage, userSettings.tavilyApiKey) : Promise.resolve(null),
     ]);
 
@@ -127,7 +125,6 @@ export async function POST(request: Request) {
       memories,
       platformContext,
       activityContext,
-      pageContext,
       webEnabled: webSearchEnabled,
     });
     const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [

@@ -52,14 +52,6 @@ export const auth = {
   me: () => request<{ user: any }>('/auth/me'),
 };
 
-export type AssistantPageContext = {
-  type: 'space' | 'run' | 'conversation' | 'agent';
-  spaceId?: string;
-  runId?: string;
-  conversationId?: string;
-  agentId?: string;
-};
-
 export const assistant = {
   get: () => request<PersonalAssistantBootstrap>('/assistant'),
   getQQBinding: () => request<{ binding: AssistantQQBinding | null }>('/assistant/qq'),
@@ -190,8 +182,6 @@ export const assistant = {
     userMessageId: string;
     assistantMessageId: string;
     webSearchEnabled: boolean;
-    sharePage: boolean;
-    pageContext?: AssistantPageContext | null;
     signal?: AbortSignal;
   }) => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
@@ -203,8 +193,6 @@ export const assistant = {
         userMessageId: data.userMessageId,
         assistantMessageId: data.assistantMessageId,
         webSearchEnabled: data.webSearchEnabled,
-        sharePage: data.sharePage,
-        pageContext: data.pageContext,
       }),
       signal: data.signal,
     });
@@ -212,8 +200,6 @@ export const assistant = {
   prepareLocalMessage: (data: {
     message: string;
     userMessageId: string;
-    sharePage: boolean;
-    pageContext?: AssistantPageContext | null;
     signal?: AbortSignal;
   }) =>
     request<{
@@ -226,8 +212,6 @@ export const assistant = {
         message: data.message,
         userMessageId: data.userMessageId,
         webSearchEnabled: false,
-        sharePage: data.sharePage,
-        pageContext: data.pageContext,
       }),
       signal: data.signal,
     }),
