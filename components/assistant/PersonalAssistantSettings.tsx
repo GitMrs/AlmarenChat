@@ -1,12 +1,12 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Brain, Heart, Loader2, MessageCircleHeart, Plus, RotateCcw, Save, Sparkles, Trash2, Upload } from 'lucide-react';
+import { Bot, Brain, Eye, EyeOff, Heart, Loader2, MessageCircleHeart, Plus, RefreshCw, RotateCcw, Save, Sparkles, Trash2, Unplug, Upload } from 'lucide-react';
 import Avatar from '@/components/shared/Avatar';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import { assistant, uploads } from '@/lib/api';
 import { cn } from '@/lib/utils';
-import type { AssistantMemoryItem, PersonalAssistantProfile } from '@/types';
+import type { AssistantMemoryItem, AssistantQQBinding, PersonalAssistantProfile } from '@/types';
 
 const EMPTY_PROFILE: PersonalAssistantProfile = {
   name: '',
@@ -90,6 +90,11 @@ export default function PersonalAssistantSettings() {
     onConfirm: () => Promise<void> | void;
   } | null>(null);
   const [modalLoading, setModalLoading] = useState(false);
+  const [qqBinding, setQQBinding] = useState<AssistantQQBinding | null>(null);
+  const [qqAppId, setQQAppId] = useState('');
+  const [qqAppSecret, setQQAppSecret] = useState('');
+  const [qqSecretVisible, setQQSecretVisible] = useState(false);
+  const [qqBusy, setQQBusy] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -100,6 +105,12 @@ export default function PersonalAssistantSettings() {
       })
       .catch((reason: any) => setError(reason.message || '加载助理设置失败'))
       .finally(() => setLoading(false));
+    assistant.getQQBinding()
+      .then((result) => {
+        setQQBinding(result.binding);
+        setQQAppId(result.binding?.appId || '');
+      })
+      .catch((reason: any) => setError(reason.message || '读取 QQ Bot 状态失败'));
   }, []);
 
   useEffect(() => {
@@ -304,6 +315,100 @@ export default function PersonalAssistantSettings() {
         });
         setNotice('已重置为默认陪伴人设，点击右上角「保存设置」后生效');
         setConfirmModal(null);
+      },
+    });
+  };
+
+  const refreshQQBinding = async () => {
+    setQQBusy(true);
+    setError('');
+    try {
+      const result = await assistant.getQQBinding();
+      setQQBinding(result.binding);
+      setQQAppId(result.binding?.appId || '');
+    } catch (reason: any) {
+      setError(reason.message || '读取 QQ Bot 状态失败');
+    } finally {
+      setQQBusy(false);
+    }
+  };
+
+  const saveQQBinding = async () => {
+    if (!qqAppId.trim() || !qqAppSecret.trim() || qqBusy) return;
+    setQQBusy(true);
+    setError('');
+    setNotice('');
+    try {
+      const result = await assistant.saveQQBinding({
+        appId: qqAppId.trim(),
+        appSecret: qqAppSecret.trim(),
+      });
+      setQQBinding(result.binding);
+      setQQAppId(result.binding.appId);
+      setQQAppSecret('');
+      setNotice('QQ Bot 配置已保存，连接状态会在几秒内更新');
+    } catch (reason: any) {
+      setError(reason.message || '保存 QQ Bot 配置失败');
+    } finally {
+      setQQBusy(false);
+    }
+  };
+
+  const toggleQQBinding = async () => {
+    if (!qqBinding || qqBusy) return;
+    const previous = qqBinding;
+    setQQBinding({ ...previous, enabled: !previous.enabled, status: previous.enabled ? 'DISABLED' : 'PENDING' });
+    setQQBusy(true);
+    setError('');
+    try {
+      const result = await assistant.updateQQBinding({ enabled: !previous.enabled });
+      setQQBinding(result.binding);
+    } catch (reason: any) {
+      setQQBinding(previous);
+      setError(reason.message || '更新 QQ Bot 状态失败');
+    } finally {
+      setQQBusy(false);
+    }
+  };
+
+  const resetQQPeer = async () => {
+    if (!qqBinding || qqBusy) return;
+    setQQBusy(true);
+    setError('');
+    try {
+      const result = await assistant.updateQQBinding({ action: 'reset-peer' });
+      setQQBinding(result.binding);
+      setNotice('已清除 QQ 接收方，请从需要绑定的 QQ 重新私聊机器人');
+    } catch (reason: any) {
+      setError(reason.message || '清除 QQ 接收方失败');
+    } finally {
+      setQQBusy(false);
+    }
+  };
+
+  const requestDeleteQQBinding = () => {
+    if (!qqBinding) return;
+    setConfirmModal({
+      title: '解除 QQ Bot 配置？',
+      description: 'AppID、AppSecret 与 QQ 接收方将被删除；已有的 QQ 小伴聊天记录会保留。',
+      icon: <Unplug size={20} />,
+      confirmText: '确认解除',
+      destructive: true,
+      onConfirm: async () => {
+        setModalLoading(true);
+        setError('');
+        try {
+          await assistant.deleteQQBinding();
+          setQQBinding(null);
+          setQQAppId('');
+          setQQAppSecret('');
+          setNotice('已解除 QQ Bot 配置');
+        } catch (reason: any) {
+          setError(reason.message || '解除 QQ Bot 配置失败');
+        } finally {
+          setModalLoading(false);
+          setConfirmModal(null);
+        }
       },
     });
   };
@@ -618,7 +723,153 @@ export default function PersonalAssistantSettings() {
         </div>
       </section>
 
-      {/* 卡片 2：长期记忆 */}
+      {/* 卡片 2：QQ 私聊入口 */}
+      <section className="rounded-[28px] border border-black/[0.06] bg-white p-6 sm:p-7 shadow-sm space-y-5">
+        <div className="flex items-center justify-between gap-3 border-b border-black/[0.06] pb-4">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-sky-50 text-sky-600">
+              <Bot size={16} />
+            </div>
+            <div className="min-w-0">
+              <h3 className="text-base font-black text-slate-950">QQ 私聊</h3>
+              <p className="text-xs font-medium text-slate-400">连接你在 QQ 开放平台创建的机器人</p>
+            </div>
+          </div>
+          {qqBinding && (
+            <div className="flex shrink-0 items-center gap-1">
+              <button
+                type="button"
+                onClick={refreshQQBinding}
+                disabled={qqBusy}
+                aria-label="刷新 QQ Bot 状态"
+                title="刷新状态"
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:opacity-40"
+              >
+                <RefreshCw size={14} className={qqBusy ? 'animate-spin' : ''} />
+              </button>
+              <button
+                type="button"
+                onClick={requestDeleteQQBinding}
+                disabled={qqBusy}
+                aria-label="解除 QQ Bot 配置"
+                title="解除配置"
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-rose-50 hover:text-rose-600 disabled:opacity-40"
+              >
+                <Unplug size={14} />
+              </button>
+            </div>
+          )}
+        </div>
+
+        {qqBinding && (
+          <div className="flex flex-col gap-3 rounded-2xl border border-black/[0.06] bg-[#fbfaf7] p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className={cn(
+                  'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-black',
+                  qqBinding.status === 'READY' ? 'bg-emerald-100 text-emerald-700'
+                    : qqBinding.status === 'ERROR' ? 'bg-rose-100 text-rose-700'
+                      : qqBinding.status === 'DISABLED' ? 'bg-slate-200 text-slate-500'
+                        : 'bg-amber-100 text-amber-700'
+                )}>
+                  <span className={cn(
+                    'h-1.5 w-1.5 rounded-full',
+                    qqBinding.status === 'READY' ? 'bg-emerald-500' : qqBinding.status === 'ERROR' ? 'bg-rose-500' : 'bg-amber-500'
+                  )} />
+                  {{ READY: '已连接', ERROR: '连接异常', DISABLED: '已停用', CONNECTING: '连接中', PENDING: '等待连接' }[qqBinding.status]}
+                </span>
+                <span className="truncate text-xs font-bold text-slate-600">AppID {qqBinding.appId}</span>
+                <span className="text-[11px] font-semibold text-slate-400">
+                  {qqBinding.peerBound ? '已识别 QQ 接收方' : '等待首次私聊'}
+                </span>
+              </div>
+              {qqBinding.lastError && <p className="mt-2 text-xs font-semibold text-rose-600">{qqBinding.lastError}</p>}
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              {qqBinding.peerBound && (
+                <button
+                  type="button"
+                  onClick={resetQQPeer}
+                  disabled={qqBusy}
+                  className="h-9 rounded-xl border border-black/10 bg-white px-3 text-xs font-black text-slate-600 transition hover:bg-slate-50 disabled:opacity-40"
+                >
+                  更换接收方
+                </button>
+              )}
+              <button
+                type="button"
+                role="switch"
+                aria-checked={qqBinding.enabled}
+                onClick={toggleQQBinding}
+                disabled={qqBusy}
+                className={cn(
+                  'relative h-6 w-11 shrink-0 rounded-full transition disabled:opacity-40',
+                  qqBinding.enabled ? 'bg-emerald-600' : 'bg-slate-300'
+                )}
+              >
+                <span className={cn(
+                  'absolute top-1 h-4 w-4 rounded-full bg-white shadow-sm transition',
+                  qqBinding.enabled ? 'left-6' : 'left-1'
+                )} />
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label className="mb-1.5 block text-xs font-black text-slate-600">AppID</label>
+            <input
+              value={qqAppId}
+              onChange={(event) => setQQAppId(event.target.value)}
+              maxLength={100}
+              autoComplete="off"
+              className="h-11 w-full rounded-xl border border-black/10 bg-[#fbfaf7] px-3.5 text-sm font-semibold outline-none transition focus:border-slate-400 focus:bg-white"
+              placeholder="QQ Bot AppID"
+            />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-black text-slate-600">AppSecret</label>
+            <div className="relative">
+              <input
+                type={qqSecretVisible ? 'text' : 'password'}
+                value={qqAppSecret}
+                onChange={(event) => setQQAppSecret(event.target.value)}
+                maxLength={500}
+                autoComplete="new-password"
+                className="h-11 w-full rounded-xl border border-black/10 bg-[#fbfaf7] px-3.5 pr-11 text-sm font-semibold outline-none transition focus:border-slate-400 focus:bg-white"
+                placeholder={qqBinding ? '输入新 Secret 可重新配置' : 'QQ Bot AppSecret'}
+              />
+              <button
+                type="button"
+                onClick={() => setQQSecretVisible((visible) => !visible)}
+                aria-label={qqSecretVisible ? '隐藏 AppSecret' : '显示 AppSecret'}
+                title={qqSecretVisible ? '隐藏' : '显示'}
+                className="absolute right-1.5 top-1.5 flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+              >
+                {qqSecretVisible ? <EyeOff size={15} /> : <Eye size={15} />}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs font-medium leading-5 text-slate-500">
+            保存后请在 QQ 中给机器人发送第一条私聊；AppSecret 加密保存且不会再次显示。
+          </p>
+          <button
+            type="button"
+            onClick={saveQQBinding}
+            disabled={qqBusy || !qqAppId.trim() || !qqAppSecret.trim()}
+            className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 text-xs font-black text-white transition hover:bg-slate-800 disabled:opacity-40"
+          >
+            {qqBusy ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+            {qqBinding ? '重新配置' : '保存并连接'}
+          </button>
+        </div>
+      </section>
+
+      {/* 卡片 3：长期记忆 */}
       <section className="rounded-[28px] border border-black/[0.06] bg-white p-6 sm:p-7 shadow-sm space-y-5">
         <div className="flex items-center justify-between border-b border-black/[0.06] pb-4">
           <div className="flex items-center gap-2.5">

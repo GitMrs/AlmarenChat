@@ -111,12 +111,56 @@ try {
     if (!hasColumn('AssistantReminder', 'idempotencyKey')) {
       db.exec('ALTER TABLE "AssistantReminder" ADD COLUMN "idempotencyKey" TEXT');
     }
+    if (!hasColumn('AssistantReminder', 'qqDeliveredAt')) {
+      db.exec('ALTER TABLE "AssistantReminder" ADD COLUMN "qqDeliveredAt" DATETIME');
+    }
+    if (!hasColumn('AssistantReminder', 'qqMessageId')) {
+      db.exec('ALTER TABLE "AssistantReminder" ADD COLUMN "qqMessageId" TEXT');
+    }
+    if (!hasColumn('AssistantReminder', 'qqDeliveryAttempts')) {
+      db.exec('ALTER TABLE "AssistantReminder" ADD COLUMN "qqDeliveryAttempts" INTEGER NOT NULL DEFAULT 0');
+    }
+    if (!hasColumn('AssistantReminder', 'qqNextAttemptAt')) {
+      db.exec('ALTER TABLE "AssistantReminder" ADD COLUMN "qqNextAttemptAt" DATETIME');
+    }
+    if (!hasColumn('AssistantReminder', 'qqDeliveryError')) {
+      db.exec('ALTER TABLE "AssistantReminder" ADD COLUMN "qqDeliveryError" TEXT');
+    }
     if (!hasColumn('AssistantProactiveDelivery', 'activeKey')) {
       db.exec('ALTER TABLE "AssistantProactiveDelivery" ADD COLUMN "activeKey" TEXT');
     }
     db.exec(`
       CREATE UNIQUE INDEX IF NOT EXISTS "AssistantReminder_userId_idempotencyKey_key" ON "AssistantReminder"("userId", "idempotencyKey");
       CREATE UNIQUE INDEX IF NOT EXISTS "AssistantProactiveDelivery_userId_activeKey_key" ON "AssistantProactiveDelivery"("userId", "activeKey");
+    `);
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS "AssistantQQBinding" (
+        "userId" TEXT NOT NULL PRIMARY KEY,
+        "conversationId" TEXT NOT NULL,
+        "appId" TEXT NOT NULL,
+        "appSecretCiphertext" TEXT NOT NULL,
+        "enabled" BOOLEAN NOT NULL DEFAULT true,
+        "qqOpenId" TEXT,
+        "status" TEXT NOT NULL DEFAULT 'PENDING',
+        "lastError" TEXT,
+        "connectedAt" DATETIME,
+        "lastInboundAt" DATETIME,
+        "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" DATETIME NOT NULL,
+        CONSTRAINT "AssistantQQBinding_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+        CONSTRAINT "AssistantQQBinding_conversationId_fkey" FOREIGN KEY ("conversationId") REFERENCES "Conversation" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS "AssistantQQBinding_conversationId_key" ON "AssistantQQBinding"("conversationId");
+      CREATE UNIQUE INDEX IF NOT EXISTS "AssistantQQBinding_appId_key" ON "AssistantQQBinding"("appId");
+      CREATE INDEX IF NOT EXISTS "AssistantQQBinding_enabled_status_idx" ON "AssistantQQBinding"("enabled", "status");
+      CREATE TABLE IF NOT EXISTS "AssistantQQEvent" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "userId" TEXT NOT NULL,
+        "kind" TEXT NOT NULL,
+        "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "AssistantQQEvent_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS "AssistantQQEvent_userId_createdAt_idx" ON "AssistantQQEvent"("userId", "createdAt");
     `);
     db.exec(`
       CREATE TABLE IF NOT EXISTS "Space" (

@@ -38,6 +38,8 @@ model User {
   assistantMemories AssistantMemoryItem[]
   assistantReminders AssistantReminder[]
   assistantProactiveDeliveries AssistantProactiveDelivery[]
+  assistantQQBinding AssistantQQBinding?
+  assistantQQEvents AssistantQQEvent[]
 }
 
 model Agent {
@@ -196,6 +198,7 @@ model Conversation {
   updatedAt           DateTime  @updatedAt
   messages            Message[]
   personalAssistant   PersonalAssistantProfile?
+  assistantQQBinding  AssistantQQBinding?
 
   @@index([userId, kind, updatedAt])
 }
@@ -254,11 +257,45 @@ model AssistantReminder {
   status          String    @default("PENDING")
   sourceMessageId String?
   idempotencyKey  String?
+  qqDeliveredAt   DateTime?
+  qqMessageId     String?
+  qqDeliveryAttempts Int @default(0)
+  qqNextAttemptAt DateTime?
+  qqDeliveryError String?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
   @@unique([userId, idempotencyKey])
   @@index([userId, status, dueTime])
+}
+
+model AssistantQQBinding {
+  userId              String       @id
+  user                User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conversationId      String       @unique
+  conversation        Conversation @relation(fields: [conversationId], references: [id])
+  appId               String       @unique
+  appSecretCiphertext String
+  enabled             Boolean      @default(true)
+  qqOpenId            String?
+  status              String       @default("PENDING")
+  lastError           String?
+  connectedAt         DateTime?
+  lastInboundAt       DateTime?
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+
+  @@index([enabled, status])
+}
+
+model AssistantQQEvent {
+  id        String   @id
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind      String
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
 }
 
 model AssistantProactiveDelivery {

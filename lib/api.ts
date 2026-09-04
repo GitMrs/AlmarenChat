@@ -1,4 +1,4 @@
-import type { AgentRun, AssistantConversationSummary, AssistantMemoryItem, AssistantReminder, AssistantReminderCandidate, Message, PersonalAssistantBootstrap, PersonalAssistantProfile, SpaceDiscussion, SpaceFileShare, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal } from '@/types';
+import type { AgentRun, AssistantConversationSummary, AssistantMemoryItem, AssistantQQBinding, AssistantReminder, AssistantReminderCandidate, Message, PersonalAssistantBootstrap, PersonalAssistantProfile, SpaceDiscussion, SpaceFileShare, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal } from '@/types';
 
 const API_BASE = '/api';
 
@@ -62,6 +62,12 @@ export type AssistantPageContext = {
 
 export const assistant = {
   get: () => request<PersonalAssistantBootstrap>('/assistant'),
+  getQQBinding: () => request<{ binding: AssistantQQBinding | null }>('/assistant/qq'),
+  saveQQBinding: (data: { appId: string; appSecret: string }) =>
+    request<{ binding: AssistantQQBinding }>('/assistant/qq', { method: 'PUT', body: JSON.stringify(data) }),
+  updateQQBinding: (data: { enabled?: boolean; action?: 'reset-peer' }) =>
+    request<{ binding: AssistantQQBinding }>('/assistant/qq', { method: 'PATCH', body: JSON.stringify(data) }),
+  deleteQQBinding: () => request<{ success: true }>('/assistant/qq', { method: 'DELETE' }),
   listConversations: () =>
     request<{ conversations: AssistantConversationSummary[]; currentConversationId: string }>('/assistant/conversations'),
   newConversation: (title?: string) =>

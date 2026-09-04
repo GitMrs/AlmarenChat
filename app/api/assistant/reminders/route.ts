@@ -120,6 +120,11 @@ export async function PATCH(request: Request) {
       status?: string;
       dueTime?: Date | null;
       content?: string;
+      qqDeliveredAt?: null;
+      qqMessageId?: null;
+      qqDeliveryAttempts?: number;
+      qqNextAttemptAt?: null;
+      qqDeliveryError?: null;
     } = {};
 
     if (body.status && ['PENDING', 'COMPLETED', 'DISMISSED'].includes(body.status)) {
@@ -134,6 +139,13 @@ export async function PATCH(request: Request) {
     }
     if (typeof body.content === 'string' && body.content.trim()) {
       updateData.content = body.content.trim().slice(0, 300);
+    }
+    if (updateData.status === 'PENDING' || updateData.dueTime !== undefined) {
+      updateData.qqDeliveredAt = null;
+      updateData.qqMessageId = null;
+      updateData.qqDeliveryAttempts = 0;
+      updateData.qqNextAttemptAt = null;
+      updateData.qqDeliveryError = null;
     }
 
     const updated = await prisma.assistantReminder.update({

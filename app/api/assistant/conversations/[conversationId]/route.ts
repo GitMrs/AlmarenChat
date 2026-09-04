@@ -96,6 +96,17 @@ export async function DELETE(
       nextMessages = msgs.reverse();
     }
 
+    const qqBinding = await prisma.assistantQQBinding.findUnique({ where: { userId } });
+    if (qqBinding?.conversationId === conversationId) {
+      const fresh = await prisma.conversation.create({
+        data: { userId, kind: 'PERSONAL_ASSISTANT', title: 'QQ 小伴' },
+      });
+      await prisma.assistantQQBinding.update({
+        where: { userId },
+        data: { conversationId: fresh.id },
+      });
+    }
+
     await prisma.$transaction([
       prisma.message.deleteMany({ where: { conversationId } }),
       prisma.conversation.delete({ where: { id: conversationId } }),

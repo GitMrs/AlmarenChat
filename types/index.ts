@@ -84,6 +84,18 @@ export interface PersonalAssistantBootstrap {
   reminders?: AssistantReminder[];
 }
 
+export interface AssistantQQBinding {
+  configured: true;
+  appId: string;
+  enabled: boolean;
+  peerBound: boolean;
+  status: 'PENDING' | 'CONNECTING' | 'READY' | 'ERROR' | 'DISABLED';
+  lastError?: string | null;
+  connectedAt?: string | null;
+  lastInboundAt?: string | null;
+  conversationId: string;
+}
+
 export interface AssistantConversationSummary {
   id: string;
   title: string | null;

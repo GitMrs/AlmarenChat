@@ -13,6 +13,7 @@
     "v3:check": "node scripts/v3-check.mjs",
     "v3:report": "node scripts/v3-runtime-report.mjs",
     "worker": "node worker/agent-runtime.mjs",
+    "worker:qq": "node worker/qq-assistant.mjs",
     "lint": "next lint",
     "postinstall": "node scripts/postinstall.mjs"
   },
@@ -24,6 +25,7 @@
     "@tanstack/react-virtual": "^3.13.26",
     "@tavily/core": "^0.7.6",
     "adm-zip": "^0.5.18",
+    "@tencent-connect/qqbot-nodejs": "^1.0.4",
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "^13.0.3",
     "clsx": "^2.1.1",
