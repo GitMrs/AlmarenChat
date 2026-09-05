@@ -221,6 +221,9 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
             const { messages: existingMessages, hasMore } = await conversationsApi.getMessages(existingConversationId, {
               limit: MESSAGE_PAGE_SIZE,
             });
+            setShouldStickToBottom(true);
+            setShowJumpToBottom(false);
+            forceScrollToBottomRef.current = true;
             setHasMoreMessages(Boolean(hasMore));
             setMessages(
               existingMessages.map((msg: any) => ({

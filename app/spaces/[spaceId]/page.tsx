@@ -428,6 +428,7 @@ export default function SpaceDetailPage() {
   const [discussionError, setDiscussionError] = useState('');
   const [dismissedDiscussionIds, setDismissedDiscussionIds] = useState<string[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const forceScrollToBottomRef = useRef(true);
   const abortRef = useRef<AbortController | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const skillZipInputRef = useRef<HTMLInputElement>(null);
@@ -604,6 +605,7 @@ export default function SpaceDetailPage() {
       setSpace(spaceResult.space);
       setInstructionsDraft(spaceResult.space.instructions || '');
       setExecutionModeDraft(spaceResult.space.executionMode === 'AUTO' ? 'AUTO' : 'REVIEW_DISPATCH');
+      forceScrollToBottomRef.current = true;
       setMessages(messageResult.messages);
       setFiles(fileResult.files);
       setRuns(runResult.runs);
@@ -633,8 +635,15 @@ export default function SpaceDetailPage() {
   }, [spaceId]);
 
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: isStreaming ? 'auto' : 'smooth' });
-  }, [messages.length, streamingContent, isStreaming]);
+    const container = scrollRef.current;
+    if (!container) return;
+    const shouldJump = forceScrollToBottomRef.current;
+    container.scrollTo({
+      top: container.scrollHeight,
+      behavior: shouldJump || isStreaming ? 'auto' : 'smooth',
+    });
+    forceScrollToBottomRef.current = false;
+  }, [messages, streamingContent, isStreaming]);
 
   const openTaskRun = (runId: string, followRetries = false) => {
     const target = followRetries ? latestRunInRetryChain(runs, runId) : null;

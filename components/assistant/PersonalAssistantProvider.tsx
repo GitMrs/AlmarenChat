@@ -13,6 +13,7 @@ import { completeBrowserModel, readBrowserModelConfigForScope, streamBrowserMode
 import { cn } from '@/lib/utils';
 import { shouldExtractMemorySuggestion } from '@/lib/personal-assistant/memory-intent.mjs';
 import type { AssistantConversationSummary, AssistantReminder, AssistantReminderCandidate, Message, PersonalAssistantBootstrap } from '@/types';
+import { createClientId } from '@/lib/client-id';
 
 const HIDDEN_PATHS = ['/login'];
 
@@ -827,8 +828,8 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
     if (!content || streaming || !data) return;
     proactiveNextCheckAtRef.current = 0;
     const now = new Date().toISOString();
-    const userMessage: Message = { id: crypto.randomUUID(), conversationId: data.conversationId, role: 'user', content, createdAt: now };
-    const assistantMessage: Message = { id: crypto.randomUUID(), conversationId: data.conversationId, role: 'assistant', content: '', createdAt: now };
+    const userMessage: Message = { id: createClientId(), conversationId: data.conversationId, role: 'user', content, createdAt: now };
+    const assistantMessage: Message = { id: createClientId(), conversationId: data.conversationId, role: 'assistant', content: '', createdAt: now };
     setData({ ...data, messages: [...data.messages, userMessage, assistantMessage] });
     setInput('');
     setError('');
