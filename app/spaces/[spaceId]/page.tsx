@@ -21,7 +21,12 @@ import { CompressionStatusPanel } from '@/components/spaces/CompressionStatusPan
 import { agentRuns as agentRunsApi, agents as agentsApi, spaces as spacesApi, streamSpaceMessage } from '@/lib/api';
 import { getBuiltInAgents } from '@/lib/agents-data';
 import { latestRunInRetryChain } from '@/lib/agent-run-retry-chain.mjs';
-import { isExecutionBudgetWait } from '@/lib/agent-wait-policy.mjs';
+import {
+  DEFAULT_CONTINUATION_ITERATIONS,
+  isExecutionBudgetWait,
+  isRunBudgetWait,
+  MAX_CONTINUATION_ITERATIONS,
+} from '@/lib/agent-wait-policy.mjs';
 import { isEditableSpaceFile } from '@/lib/space-files';
 import type { Agent, AgentRun, AgentRunEvent, AgentTask, SpaceDiscussion, SpaceFile, SpaceLearning, SpaceLearningItem, SpaceMessage, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal } from '@/types';
 
@@ -85,6 +90,7 @@ type RunEventPayload = {
   taskId?: string;
   scope?: 'task' | 'run';
   iteration?: number;
+  totalIteration?: number;
   maxIterations?: number;
   durationMs?: number;
   requestChars?: number;
@@ -149,7 +155,9 @@ function formatActivityEvent(event: AgentRunEvent) {
   if (event.type === 'MODEL_WORKING' && payload.iteration) {
     return {
       title: event.message,
-      detail: `模型请求 ${payload.iteration}/${payload.maxIterations || 12}`,
+      detail: payload.totalIteration && payload.totalIteration !== payload.iteration
+        ? `模型请求总第 ${payload.totalIteration} 轮（本批 ${payload.iteration}/${payload.maxIterations || 12}）`
+        : `模型请求 ${payload.iteration}/${payload.maxIterations || 12}`,
       checked: false,
     };
   }
@@ -419,6 +427,7 @@ export default function SpaceDetailPage() {
   const [revisionTask, setRevisionTask] = useState<AgentTask | null>(null);
   const [reviewError, setReviewError] = useState('');
   const [resumeAnswer, setResumeAnswer] = useState('');
+  const [continuationIterations, setContinuationIterations] = useState(DEFAULT_CONTINUATION_ITERATIONS);
   const [resumeLoading, setResumeLoading] = useState(false);
   const [resumeError, setResumeError] = useState('');
   const [editingFile, setEditingFile] = useState<SpaceFile | null>(null);
@@ -500,6 +509,9 @@ export default function SpaceDetailPage() {
   const proposedTask = currentRun?.tasks.find((task) => task.status === 'PROPOSED') || null;
   const waitingTask = currentRun?.tasks.find((task) => task.status === 'WAITING') || null;
   const waitingForExecutionContinuation = Boolean(waitingTask && isExecutionBudgetWait(waitingTask.waitReason));
+  const waitingForRunContinuation = Boolean(
+    currentRun?.status === 'WAITING' && !waitingTask && isRunBudgetWait(currentRun.error)
+  );
   const reviewTask = currentRun?.tasks.find((task) => task.status === 'WAITING_APPROVAL') || null;
   const reviewAudit = reviewTask
     ? [...(currentRun?.events || [])].reverse().map((event) => ({ event, payload: eventPayload(event) }))
@@ -1331,13 +1343,21 @@ export default function SpaceDetailPage() {
   };
 
   const resumeRun = async () => {
-    if (!currentRun || !waitingTask || resumeLoading) return;
+    if (!currentRun || (!waitingTask && !waitingForRunContinuation) || resumeLoading) return;
     const answer = resumeAnswer.trim();
-    if (!waitingForExecutionContinuation && !answer) return setResumeError('请填写补充信息');
+    const continuingBudget = waitingForExecutionContinuation || waitingForRunContinuation;
+    if (!continuingBudget && !answer) return setResumeError('请填写补充信息');
+    if (continuingBudget && (!Number.isInteger(continuationIterations) || continuationIterations < 1 || continuationIterations > MAX_CONTINUATION_ITERATIONS)) {
+      return setResumeError(`请输入 1 到 ${MAX_CONTINUATION_ITERATIONS} 之间的整数`);
+    }
     setResumeLoading(true);
     setResumeError('');
     try {
-      const result = await agentRunsApi.resume(currentRun.id, answer);
+      const result = await agentRunsApi.resume(
+        currentRun.id,
+        answer,
+        continuingBudget ? continuationIterations : undefined
+      );
       setRuns((items) => items.map((item) => (item.id === result.run.id ? result.run : item)));
       setResumeAnswer('');
     } catch (err: any) {
@@ -1802,7 +1822,7 @@ export default function SpaceDetailPage() {
                           </div>
                           <div className="mt-4 rounded-lg bg-amber-50 px-4 py-3">
                             <div className="text-sm font-black text-amber-900">{waitingTask.waitQuestion}</div>
-                            {waitingTask.waitReason && <div className="mt-1 text-xs font-semibold leading-5 text-amber-700">{waitingForExecutionContinuation ? '已完成的文件和暂存结果都会保留。继续后将追加 10 个有效执行轮次，并产生新的模型调用费用。' : waitingTask.waitReason}</div>}
+                            {waitingTask.waitReason && <div className="mt-1 text-xs font-semibold leading-5 text-amber-700">{waitingForExecutionContinuation ? '完整执行上下文、工具结果和暂存文件都会保留。继续后将从下一轮直接处理，并产生新的模型调用费用。' : waitingTask.waitReason}</div>}
                           </div>
                           {!waitingForExecutionContinuation && (
                             <>
@@ -1818,10 +1838,62 @@ export default function SpaceDetailPage() {
                               />
                             </>
                           )}
+                          {waitingForExecutionContinuation && (
+                            <div className="mt-4 flex flex-wrap items-end gap-3">
+                              <div>
+                                <label htmlFor="task-continuation-iterations" className="block text-xs font-black text-slate-600">追加有效执行轮次</label>
+                                <input
+                                  id="task-continuation-iterations"
+                                  type="number"
+                                  min={1}
+                                  max={MAX_CONTINUATION_ITERATIONS}
+                                  step={1}
+                                  value={continuationIterations}
+                                  onChange={(event) => { setContinuationIterations(Number(event.target.value)); setResumeError(''); }}
+                                  className="mt-2 h-10 w-28 rounded-lg border border-black/[0.1] bg-white px-3 text-sm font-black text-slate-800 outline-none transition focus:border-slate-400"
+                                />
+                              </div>
+                              <div className="pb-2 text-xs font-semibold text-slate-400">范围 1–{MAX_CONTINUATION_ITERATIONS}，最多预留 {continuationIterations + 2} 次模型请求</div>
+                            </div>
+                          )}
                           {resumeError && <div className="mt-2 text-xs font-semibold text-rose-600">{resumeError}</div>}
                           <button type="button" onClick={resumeRun} disabled={resumeLoading || (!waitingForExecutionContinuation && !resumeAnswer.trim())} className="mt-3 inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-slate-950 px-4 text-xs font-black text-white transition hover:bg-slate-800 disabled:bg-slate-200 disabled:text-slate-400">
                             {resumeLoading ? <Loader2 className="animate-spin" size={15} /> : <Send size={15} />}
-                            {waitingForExecutionContinuation ? '继续执行（增加 10 轮）' : '提交并继续'}
+                            {waitingForExecutionContinuation ? `继续执行（增加 ${continuationIterations} 轮）` : '提交并继续'}
+                          </button>
+                        </section>
+                      )}
+
+                      {currentRun.status === 'WAITING' && waitingForRunContinuation && (
+                        <section className="border-y border-black/[0.08] py-5">
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                              <div className="text-xs font-black text-amber-600">整个任务等待继续</div>
+                              <h3 className="mt-1 text-base font-black text-slate-950">外层模型调用预算已用完</h3>
+                              <div className="mt-1 text-xs font-semibold text-slate-400">Coordinator 状态、已完成步骤和工作区成果均已保留</div>
+                            </div>
+                            <span className="rounded bg-amber-50 px-2 py-1 text-xs font-black text-amber-700">等待你的确认</span>
+                          </div>
+                          <div className="mt-4 flex flex-wrap items-end gap-3 rounded-lg bg-amber-50 px-4 py-3">
+                            <div>
+                              <label htmlFor="run-continuation-iterations" className="block text-xs font-black text-amber-900">追加任务模型调用次数</label>
+                              <input
+                                id="run-continuation-iterations"
+                                type="number"
+                                min={1}
+                                max={MAX_CONTINUATION_ITERATIONS}
+                                step={1}
+                                value={continuationIterations}
+                                onChange={(event) => { setContinuationIterations(Number(event.target.value)); setResumeError(''); }}
+                                className="mt-2 h-10 w-28 rounded-lg border border-amber-200 bg-white px-3 text-sm font-black text-slate-800 outline-none transition focus:border-amber-400"
+                              />
+                            </div>
+                            <div className="pb-2 text-xs font-semibold text-amber-700">范围 1–{MAX_CONTINUATION_ITERATIONS}，从当前阶段继续</div>
+                          </div>
+                          {resumeError && <div className="mt-2 text-xs font-semibold text-rose-600">{resumeError}</div>}
+                          <button type="button" onClick={resumeRun} disabled={resumeLoading} className="mt-3 inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-slate-950 px-4 text-xs font-black text-white transition hover:bg-slate-800 disabled:bg-slate-200 disabled:text-slate-400">
+                            {resumeLoading ? <Loader2 className="animate-spin" size={15} /> : <Send size={15} />}
+                            继续任务（增加 {continuationIterations} 次）
                           </button>
                         </section>
                       )}

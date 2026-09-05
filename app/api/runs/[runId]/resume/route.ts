@@ -2,7 +2,14 @@ import { NextResponse } from 'next/server';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { getAgentRunForUser } from '@/app/api/_lib/agent-runs';
-import { canResumeWaiting, isExecutionBudgetWait, validateWaitAnswer } from '@/lib/agent-wait-policy.mjs';
+import {
+  canResumeWaiting,
+  executionContinuationAnswer,
+  isExecutionBudgetWait,
+  isRunBudgetWait,
+  validateContinuationIterations,
+  validateWaitAnswer,
+} from '@/lib/agent-wait-policy.mjs';
 import { appendAgentRunEvent } from '@/app/api/_lib/agent-run-events';
 import { taskModelRequestLimit } from '@/lib/task-execution-plan.mjs';
 
@@ -14,19 +21,56 @@ export async function POST(request: Request, { params }: { params: Promise<{ run
     const existing = await getAgentRunForUser(runId, userId);
     if (!existing) return NextResponse.json({ error: 'Run not found' }, { status: 404 });
     const task = existing.tasks.find((item) => item.status === 'WAITING');
-    if (!task || !canResumeWaiting(existing.status, task.status)) {
+    const continuingExecution = Boolean(task && isExecutionBudgetWait(task.waitReason));
+    const continuingRun = existing.status === 'WAITING' && !task && isRunBudgetWait(existing.error);
+    if (!continuingRun && (!task || !canResumeWaiting(existing.status, task.status))) {
       return NextResponse.json({ error: '当前任务不在等待补充状态' }, { status: 409 });
     }
-    const continuingExecution = isExecutionBudgetWait(task.waitReason);
+    const iterationsValidation = continuingExecution || continuingRun
+      ? validateContinuationIterations(body.iterations)
+      : { iterations: 0, error: '' };
+    if (iterationsValidation.error) {
+      return NextResponse.json({ error: iterationsValidation.error }, { status: 400 });
+    }
+    const iterations = iterationsValidation.iterations;
     const answerValidation = continuingExecution
-      ? { answer: '用户已确认继续执行', error: '' }
+      ? { answer: executionContinuationAnswer(iterations), error: '' }
+      : continuingRun
+        ? { answer: '', error: '' }
       : validateWaitAnswer(body.answer);
     if (answerValidation.error) return NextResponse.json({ error: answerValidation.error }, { status: 400 });
     const answer = answerValidation.answer;
-    const addedModelRequests = taskModelRequestLimit(task.mode);
+    const addedModelRequests = continuingExecution
+      ? iterations + 2
+      : continuingRun
+        ? iterations
+        : taskModelRequestLimit(task.mode);
 
     const timestamp = new Date();
     await prisma.$transaction(async (transaction) => {
+      if (continuingRun) {
+        const changed = await transaction.agentRun.updateMany({
+          where: { id: runId, status: 'WAITING', error: existing.error },
+          data: {
+            status: 'QUEUED',
+            workerId: null,
+            heartbeatAt: null,
+            error: null,
+            completedAt: null,
+            updatedAt: timestamp,
+            modelRequestLimit: { increment: addedModelRequests },
+          },
+        });
+        if (changed.count !== 1) throw new Error('当前等待请求已经处理');
+        await appendAgentRunEvent(transaction, runId, {
+          type: 'RUN_EXECUTION_CONTINUED',
+          message: `已为整个任务增加 ${iterations} 次模型调用`,
+          payload: { scope: 'run', addedModelRequests, iterations },
+          actor: 'user',
+        });
+        return;
+      }
+      if (!task) throw new Error('当前任务不在等待补充状态');
       const changed = await transaction.agentTask.updateMany({
         where: { id: task.id, runId, status: 'WAITING' },
         data: {
@@ -54,8 +98,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ run
       });
       await appendAgentRunEvent(transaction, runId, {
           type: continuingExecution ? 'TASK_EXECUTION_CONTINUED' : 'TASK_INPUT_PROVIDED',
-          message: continuingExecution ? `已确认${task.agentName}继续执行` : `已补充${task.agentName}继续执行所需的信息`,
-          payload: { taskId: task.id, agentId: task.agentId, attempt: task.attempt, addedModelRequests },
+          message: continuingExecution ? `已为${task.agentName}增加 ${iterations} 轮执行额度` : `已补充${task.agentName}继续执行所需的信息`,
+          payload: { taskId: task.id, agentId: task.agentId, attempt: task.attempt, addedModelRequests, ...(continuingExecution ? { iterations } : {}) },
           taskId: task.id,
           agentId: task.agentId,
           attempt: task.attempt,

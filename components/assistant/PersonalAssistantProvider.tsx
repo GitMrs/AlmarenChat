@@ -342,6 +342,38 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
 
   useEffect(() => {
     if (!open) return;
+    const scrollY = window.scrollY;
+    const bodyStyle = document.body.style;
+    const rootStyle = document.documentElement.style;
+    const previous = {
+      bodyOverflow: bodyStyle.overflow,
+      bodyPosition: bodyStyle.position,
+      bodyTop: bodyStyle.top,
+      bodyWidth: bodyStyle.width,
+      rootOverflow: rootStyle.overflow,
+      rootOverscrollBehavior: rootStyle.overscrollBehavior,
+    };
+
+    rootStyle.overflow = 'hidden';
+    rootStyle.overscrollBehavior = 'none';
+    bodyStyle.overflow = 'hidden';
+    bodyStyle.position = 'fixed';
+    bodyStyle.top = `-${scrollY}px`;
+    bodyStyle.width = '100%';
+
+    return () => {
+      bodyStyle.overflow = previous.bodyOverflow;
+      bodyStyle.position = previous.bodyPosition;
+      bodyStyle.top = previous.bodyTop;
+      bodyStyle.width = previous.bodyWidth;
+      rootStyle.overflow = previous.rootOverflow;
+      rootStyle.overscrollBehavior = previous.rootOverscrollBehavior;
+      window.scrollTo(0, scrollY);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
     const local = readBrowserModelConfigForScope('GLOBAL').source === 'OLLAMA';
     setLocalModelActive(local);
     if (local) setWebEnabled(false);

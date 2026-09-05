@@ -1,5 +1,5 @@
 import { completionIdFor } from '../../lib/agent-completion-policy.mjs';
-import { EXECUTION_BUDGET_WAIT_REASON, normalizeWaitRequest } from '../../lib/agent-wait-policy.mjs';
+import { EXECUTION_BUDGET_WAIT_REASON, RUN_BUDGET_WAIT_ERROR, normalizeWaitRequest } from '../../lib/agent-wait-policy.mjs';
 import { cancelRunRecord } from './run-cancellation-store.mjs';
 import { executionFailureStatus } from '../policies/run-policy.mjs';
 
@@ -115,9 +115,9 @@ export function createTaskLifecycleRuntime({
     return { ok: true, pause: true };
   }
 
-  function waitTaskForExecutionContinuation(run, task) {
+  function waitTaskForExecutionContinuation(run, task, details = {}) {
     const timestamp = now();
-    const question = '当前步骤已用完本轮执行额度，是否再增加一轮额度继续处理？';
+    const question = '当前步骤已用完本轮执行额度，需要再增加多少轮继续处理？';
     db.transaction(() => {
       const changed = db.prepare(
         `UPDATE "AgentTask"
@@ -135,7 +135,29 @@ export function createTaskLifecycleRuntime({
         taskId: task.id,
         agentId: task.agentId,
         iterationLimitReached: true,
+        checkpointAvailable: true,
+        budgetScope: details.budgetScope || 'iterations',
+        modelRequestCount: details.modelRequestCount ?? null,
+        modelRequestLimit: details.modelRequestLimit ?? null,
         attempt: task.attempt,
+      });
+    })();
+    return true;
+  }
+
+  function waitRunForExecutionContinuation(run, error) {
+    const timestamp = now();
+    db.transaction(() => {
+      const changed = db.prepare(
+        `UPDATE "AgentRun"
+         SET "status" = 'WAITING', "error" = ?, "workerId" = NULL, "heartbeatAt" = NULL, "updatedAt" = ?
+         WHERE "id" = ? AND "status" NOT IN ('COMPLETED', 'PARTIAL', 'FAILED', 'FAILED_VALIDATION', 'BLOCKED', 'CANCELLED')`
+      ).run(RUN_BUDGET_WAIT_ERROR, timestamp, run.id);
+      if (changed.changes !== 1) throw new Error('当前任务已经停止');
+      addEvent(run.id, 'RUN_WAITING_FOR_CONTINUATION', '整个任务的模型调用预算已用完，等待用户确认继续', {
+        budgetScope: 'run',
+        modelRequestCount: error?.count ?? null,
+        modelRequestLimit: error?.limit ?? null,
       });
     })();
     return true;
@@ -197,6 +219,7 @@ export function createTaskLifecycleRuntime({
     failRun,
     isCancelRequested,
     isTaskCancelRequested,
+    waitRunForExecutionContinuation,
     waitTaskForExecutionContinuation,
     waitTaskForUserInput,
   };

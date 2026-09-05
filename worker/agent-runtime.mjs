@@ -27,7 +27,7 @@ import { completionIdFor } from '../lib/agent-completion-policy.mjs';
 import { isExecutionBudgetWait } from '../lib/agent-wait-policy.mjs';
 import { appendSpaceMemory, spaceMemoryContext } from '../lib/space-memory-policy.mjs';
 import { readSpaceLearningSync, spaceLearningContext } from '../lib/space-learning.mjs';
-import { prepareWorkspaceAttempt } from '../lib/workspace-staging.mjs';
+import { prepareWorkspaceAttempt, readExecutionCheckpoint, saveExecutionCheckpoint } from '../lib/workspace-staging.mjs';
 import { taskSkill, validateSkillArtifacts } from '../lib/agent-runtime/skill-registry.mjs';
 import {
   claimNextCompletion,
@@ -204,6 +204,7 @@ const {
   failRun,
   isCancelRequested,
   isTaskCancelRequested,
+  waitRunForExecutionContinuation,
   waitTaskForExecutionContinuation,
   waitTaskForUserInput,
 } = createTaskLifecycleRuntime({
@@ -903,7 +904,33 @@ async function executeTask(run, task, context, previousResults) {
   if (!agent) throw new Error(`找不到任务成员：${task.agentId}`);
   if (task.mode === 'advisor') return executeAdvisorTask(run, task, context, previousResults, agent);
   const artifactManifest = await ensureTaskArtifactManifest(run, task);
-  await prepareWorkspaceAttempt(taskWorkspaceOptions(run, task));
+  const workspaceOptions = taskWorkspaceOptions(run, task);
+  await prepareWorkspaceAttempt(workspaceOptions);
+  let resumeCheckpoint = null;
+  try {
+    resumeCheckpoint = await readExecutionCheckpoint(workspaceOptions);
+    if (resumeCheckpoint) {
+      addEvent(run.id, 'EXECUTION_CHECKPOINT_RESTORED', `${agent.name}已恢复上次执行上下文`, {
+        taskId: task.id,
+        agentId: task.agentId,
+        attempt: task.attempt,
+        completedIterations: resumeCheckpoint.totalIterations || resumeCheckpoint.completedIterations || 0,
+      });
+    } else if (task.waitAnswer) {
+      addEvent(run.id, 'EXECUTION_CHECKPOINT_UNAVAILABLE', `${agent.name}未找到历史执行检查点，将从现有文件恢复`, {
+        taskId: task.id,
+        agentId: task.agentId,
+        attempt: task.attempt,
+      });
+    }
+  } catch (error) {
+    addEvent(run.id, 'EXECUTION_CHECKPOINT_UNAVAILABLE', `${agent.name}无法读取历史执行检查点，将从现有文件恢复`, {
+      taskId: task.id,
+      agentId: task.agentId,
+      attempt: task.attempt,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
   const inheritedSnapshot = task.attempt > 1 || isExecutionBudgetWait(task.waitReason)
     ? await snapshotWorkspace(taskWorkspaceOptions(run, task))
     : { files: [] };
@@ -940,6 +967,14 @@ async function executeTask(run, task, context, previousResults) {
     isCancelled: () => isCancelRequested(run.id) || isTaskCancelRequested(task.id),
     pauseForInput: (args) => waitTaskForUserInput(run, task, args),
     pauseForContinuation: () => waitTaskForExecutionContinuation(run, task),
+    resumeCheckpoint,
+    saveCheckpoint: (checkpoint) => saveExecutionCheckpoint(workspaceOptions, {
+      ...checkpoint,
+      runId: run.id,
+      taskId: task.id,
+      attempt: task.attempt,
+      savedAt: now(),
+    }),
     registerWorkspaceFile: (relativePath) => registerWorkspaceFile(run, task, relativePath),
     validateSubmission: async () => {
       const manifest = await recordTaskArtifactManifest(run, task, context, { validate: true });
@@ -950,7 +985,7 @@ async function executeTask(run, task, context, previousResults) {
         manifest,
       };
     },
-    workspaceOptions: taskWorkspaceOptions(run, task),
+    workspaceOptions,
   });
   if (harnessResult.paused) {
     await recordTaskArtifactManifest(run, task, context);
@@ -1145,6 +1180,28 @@ async function summarizeRun(run, context, tasks) {
   ], { runId: run.id });
 }
 
+function pauseTaskForModelBudget(run, task, error) {
+  if (error?.code !== 'MODEL_REQUEST_BUDGET') return false;
+  const currentTask = db.prepare(
+    `SELECT "status", "modelRequestCount" FROM "AgentTask" WHERE "id" = ? AND "runId" = ?`
+  ).get(task.id, run.id);
+  if (currentTask?.status !== 'RUNNING') return false;
+  const message = error instanceof Error ? error.message : String(error);
+  addEvent(run.id, 'MODEL_REQUEST_BUDGET_EXHAUSTED', message, {
+    taskId: task.id,
+    agentId: task.agentId,
+    budgetScope: error.scope || 'task',
+    modelRequestCount: error.count ?? currentTask.modelRequestCount,
+    modelRequestLimit: error.limit ?? task.modelRequestLimit,
+  });
+  waitTaskForExecutionContinuation(run, task, {
+    budgetScope: error.scope,
+    modelRequestCount: error.count,
+    modelRequestLimit: error.limit,
+  });
+  return true;
+}
+
 async function processRun(run) {
   try {
     const context = loadRunContext(run);
@@ -1252,6 +1309,7 @@ async function processRun(run) {
                 });
               }
             }
+            if (pauseTaskForModelBudget(run, task, error)) return null;
             throw error;
           }
         }));
@@ -1277,6 +1335,10 @@ async function processRun(run) {
       }
       if (task.status === 'WAITING_APPROVAL') {
         db.prepare(`UPDATE "AgentRun" SET "status" = 'WAITING_APPROVAL', "updatedAt" = ? WHERE "id" = ?`).run(now(), run.id);
+        return;
+      }
+      if (task.status === 'WAITING') {
+        db.prepare(`UPDATE "AgentRun" SET "status" = 'WAITING', "workerId" = NULL, "heartbeatAt" = NULL, "updatedAt" = ? WHERE "id" = ?`).run(now(), run.id);
         return;
       }
       if (task.status === 'CANCEL_REQUESTED') {
@@ -1348,15 +1410,11 @@ async function processRun(run) {
           cancelTask(task.id, run.id, task.agentName);
           continue;
         }
-        const message = error instanceof Error ? error.message : String(error);
-        if (error?.code === 'MODEL_REQUEST_BUDGET') {
-          addEvent(run.id, 'MODEL_REQUEST_BUDGET_EXHAUSTED', message, {
-            taskId: task.id,
-            agentId: task.agentId,
-            modelRequestCount: db.prepare(`SELECT "modelRequestCount" FROM "AgentTask" WHERE "id" = ?`).get(task.id)?.modelRequestCount,
-            modelRequestLimit: task.modelRequestLimit,
-          });
+        if (error?.code === 'MODEL_REQUEST_BUDGET' && error.scope === 'run' && currentTaskStatus !== 'RUNNING') {
+          throw error;
         }
+        const message = error instanceof Error ? error.message : String(error);
+        if (pauseTaskForModelBudget(run, task, error)) return;
         const timestamp = now();
         db.prepare(
           `UPDATE "AgentTask" SET "status" = ?, "error" = ?, "completedAt" = ?, "updatedAt" = ? WHERE "id" = ?`
@@ -1507,6 +1565,7 @@ async function processRun(run) {
     })();
   } catch (error) {
     if (isCancelRequested(run.id)) cancelRun(run.id);
+    else if (error?.code === 'MODEL_REQUEST_BUDGET' && error.scope === 'run') waitRunForExecutionContinuation(run, error);
     else failRun(run.id, error);
   }
 }

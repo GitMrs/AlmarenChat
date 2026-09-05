@@ -13,6 +13,7 @@ import { skillAllowsTool, skillExecutionToolSchema, spaceSkillReferenceToolSchem
 import { readSpaceSkillFile } from '../../lib/space-skills.mjs';
 import { executeSkill } from '../runtime/builtin-skill-runtime.mjs';
 import { generateImageToolSchema, generateWorkspaceImage } from '../runtime/image-generation-runtime.mjs';
+import { continuationIterationsFromAnswer } from '../../lib/agent-wait-policy.mjs';
 
 const READ_TOOLS = new Set(['list_files', 'read_file', 'check_files']);
 export const EXECUTOR_TOOL_ITERATIONS = 10;
@@ -126,6 +127,8 @@ export async function runExecutorHarness({
   isCancelled,
   pauseForInput,
   pauseForContinuation,
+  resumeCheckpoint = null,
+  saveCheckpoint = undefined,
   registerWorkspaceFile,
   validateSubmission,
   workspaceOptions,
@@ -166,13 +169,17 @@ export async function runExecutorHarness({
   const reviewFeedback = task.reviewFeedback
     ? `\n\n本次返工要求（必须处理）：\n${task.reviewFeedback}`
     : '';
-  const waitAnswer = task.waitAnswer
-    ? `\n\n执行中曾暂停询问：${task.waitQuestion || '缺少必要信息'}\n用户补充：${task.waitAnswer}\n请基于这项补充继续原步骤。`
+  const continuationIterations = continuationIterationsFromAnswer(task.waitAnswer);
+  const displayedWaitAnswer = continuationIterations
+    ? `用户已允许增加 ${continuationIterations} 轮执行额度`
+    : task.waitAnswer;
+  const waitAnswer = displayedWaitAnswer
+    ? `\n\n执行中曾暂停询问：${task.waitQuestion || '缺少必要信息'}\n用户补充：${displayedWaitAnswer}\n请基于这项补充继续原步骤。`
     : '';
   const baselineGuidance = baselinePaths.size === 0
     ? '系统已确认任务开始时空间工作区为空。新建目标文件时不得先调用 list_files，直接完成必要写入。'
     : `系统已记录任务开始时的工作区文件：${[...baselinePaths].slice(0, 50).join('、')}${baselinePaths.size > 50 ? '等' : ''}。目标文件已明确且不在此清单时，按新文件处理，无需再调用 list_files；修改清单中的文件时直接读取目标文件。`;
-  const messages = [
+  const initialMessages = [
     {
       role: 'system',
       content:
@@ -203,6 +210,27 @@ export async function runExecutorHarness({
     },
     { role: 'user', content: `总目标：${run.input}\n\n当前步骤：${task.title}\n${task.instruction}${acceptance}${previousAttempt}${reviewFeedback}${waitAnswer}${prior}${research}${projectMemory}` },
   ];
+  const messages = resumeCheckpoint?.conversation?.length
+    ? [
+        ...resumeCheckpoint.conversation,
+        {
+          role: 'system',
+          content: displayedWaitAnswer
+            ? `用户已允许恢复当前步骤。此前问题：${task.waitQuestion || '执行已暂停'}\n用户回复：${displayedWaitAnswer}\n请直接承接上一条工具结果，从尚未完成的下一项开始，不要重新回顾或重复读取已经获得的信息。`
+            : 'Worker 曾在执行中断后恢复。请直接承接上一条工具结果，从尚未完成的下一项开始，不要重新回顾或重复读取已经获得的信息。',
+        },
+      ]
+    : initialMessages;
+  const totalIterationOffset = Number(resumeCheckpoint?.totalIterations || resumeCheckpoint?.completedIterations || 0);
+  const savedBatchLimit = Number(resumeCheckpoint?.batchLimit || EXECUTOR_TOOL_ITERATIONS);
+  const savedBatchProgress = Number(resumeCheckpoint?.batchCompletedIterations || 0);
+  const previousBatchComplete = savedBatchProgress >= savedBatchLimit;
+  const batchLimit = previousBatchComplete && continuationIterations
+    ? continuationIterations
+    : savedBatchLimit;
+  const batchIterationOffset = previousBatchComplete ? 0 : savedBatchProgress;
+  const remainingBatchIterations = Math.max(1, batchLimit - batchIterationOffset);
+  const initialToolCallCount = previousBatchComplete ? 0 : Number(resumeCheckpoint?.toolCallCount || 0);
   const abortController = new AbortController();
   let submittedManifest = null;
   let generatedImageCount = 0;
@@ -234,7 +262,7 @@ export async function runExecutorHarness({
           taskId: task.id,
           agentId: agent.id,
           attempt: task.attempt,
-          iteration: requestState.iteration,
+          iteration: requestState.totalIteration,
           signal: abortController.signal,
           onStreamStart: () => emit(run.id, 'MODEL_STREAMING', `${agent.name}的模型响应已开始传输`, {
             taskId: task.id,
@@ -415,11 +443,11 @@ export async function runExecutorHarness({
         }, name, args);
       },
       isCancelled,
-      onModelRequest: ({ iteration }) => emit(
+      onModelRequest: ({ batchIteration, totalIteration }) => emit(
         run.id,
         'MODEL_WORKING',
-        iteration === 1 ? `${agent.name}正在理解任务并准备执行` : `${agent.name}正在结合工具结果继续处理`,
-        { taskId: task.id, agentId: agent.id, iteration, maxIterations: EXECUTOR_TOOL_ITERATIONS }
+        totalIteration === 1 ? `${agent.name}正在理解任务并准备执行` : `${agent.name}正在结合工具结果继续处理`,
+        { taskId: task.id, agentId: agent.id, iteration: batchIteration, totalIteration, maxIterations: batchLimit }
       ),
       onEmptyResponse: ({ retry, maxRetries, diagnostics }) => emit(
         run.id,
@@ -434,16 +462,22 @@ export async function runExecutorHarness({
           providerManagedMaxTokens: true,
         }
       ),
-      deadlineAt: Date.now() + taskTimeoutMs,
+      deadlineAt: Date.now() + taskTimeoutMs * Math.max(1, batchLimit / EXECUTOR_TOOL_ITERATIONS),
       onLimit: (limit) => emit(run.id, 'EXECUTION_BUDGET_EXHAUSTED', `${agent.name}的执行预算已用尽`, {
         taskId: task.id,
         agentId: agent.id,
         ...limit,
       }),
       onIterationLimit: pauseForContinuation,
-      maxIterations: EXECUTOR_TOOL_ITERATIONS,
+      onCheckpoint: saveCheckpoint,
+      maxIterations: remainingBatchIterations,
+      maxToolCalls: Math.max(24, batchLimit * 3),
       maxEmptyResponseRetries: EXECUTOR_MAX_ATTEMPTS - 1,
       requiredFinalTool: 'submit_task_result',
+      iterationOffset: totalIterationOffset,
+      batchIterationOffset,
+      batchLimit,
+      initialToolCallCount,
     });
     return { result: loopResult.content, paused: Boolean(loopResult.paused), manifest: submittedManifest };
   } finally {

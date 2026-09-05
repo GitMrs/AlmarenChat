@@ -1,6 +1,9 @@
-function budgetError(message) {
+function budgetError(message, scope, count, limit) {
   const error = new Error(message);
   error.code = 'MODEL_REQUEST_BUDGET';
+  error.scope = scope;
+  error.count = count;
+  error.limit = limit;
   return error;
 }
 
@@ -11,7 +14,7 @@ export function reserveModelRequest(db, runId, taskId = null, timestamp = new Da
     ).get(runId);
     if (!run) throw new Error('任务不存在');
     if (run.modelRequestCount >= run.modelRequestLimit) {
-      throw budgetError(`任务模型调用已达到 ${run.modelRequestLimit} 次上限，需要用户明确重试后才能继续`);
+      throw budgetError(`任务模型调用已达到 ${run.modelRequestLimit} 次上限，需要用户明确继续后才能恢复`, 'run', run.modelRequestCount, run.modelRequestLimit);
     }
     let task = null;
     if (taskId) {
@@ -20,7 +23,7 @@ export function reserveModelRequest(db, runId, taskId = null, timestamp = new Da
       ).get(taskId, runId);
       if (!task) throw new Error('执行步骤不存在');
       if (task.modelRequestCount >= task.modelRequestLimit) {
-        throw budgetError(`当前步骤模型调用已达到 ${task.modelRequestLimit} 次上限，需要用户明确重试后才能继续`);
+        throw budgetError(`当前步骤模型调用已达到 ${task.modelRequestLimit} 次上限，需要用户明确继续后才能恢复`, 'task', task.modelRequestCount, task.modelRequestLimit);
       }
       db.prepare(
         `UPDATE "AgentTask" SET "modelRequestCount" = "modelRequestCount" + 1, "updatedAt" = ? WHERE "id" = ?`

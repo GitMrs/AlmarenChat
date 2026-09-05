@@ -570,10 +570,10 @@ export const agentRuns = {
       method: 'POST',
       body: JSON.stringify({ action, feedback }),
     }),
-  resume: (id: string, answer = '') =>
+  resume: (id: string, answer = '', iterations?: number) =>
     request<{ run: AgentRun }>(`/runs/${id}/resume`, {
       method: 'POST',
-      body: JSON.stringify({ answer }),
+      body: JSON.stringify({ answer, iterations }),
     }),
   retry: (id: string) =>
     request<{ run: AgentRun }>(`/runs/${id}/retry`, { method: 'POST' }),

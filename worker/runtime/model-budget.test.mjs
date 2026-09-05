@@ -30,7 +30,13 @@ test('reserves run and task budgets atomically for each provider attempt', () =>
 test('task exhaustion does not consume the remaining run budget', () => {
   const db = fixture(3, 1);
   reserveModelRequest(db, 'run-1', 'task-1');
-  assert.throws(() => reserveModelRequest(db, 'run-1', 'task-1'), (error) => error.code === 'MODEL_REQUEST_BUDGET');
+  assert.throws(() => reserveModelRequest(db, 'run-1', 'task-1'), (error) => {
+    assert.equal(error.code, 'MODEL_REQUEST_BUDGET');
+    assert.equal(error.scope, 'task');
+    assert.equal(error.count, 1);
+    assert.equal(error.limit, 1);
+    return true;
+  });
   assert.equal(db.prepare('SELECT modelRequestCount FROM AgentRun').get().modelRequestCount, 1);
   assert.equal(db.prepare('SELECT modelRequestCount FROM AgentTask').get().modelRequestCount, 1);
   db.close();
@@ -39,6 +45,13 @@ test('task exhaustion does not consume the remaining run budget', () => {
 test('run-only calls share the same durable limit', () => {
   const db = fixture(1, 2);
   reserveModelRequest(db, 'run-1');
-  assert.throws(() => reserveModelRequest(db, 'run-1'), /需要用户明确重试/);
+  assert.throws(() => reserveModelRequest(db, 'run-1'), (error) => {
+    assert.equal(error.code, 'MODEL_REQUEST_BUDGET');
+    assert.equal(error.scope, 'run');
+    assert.equal(error.count, 1);
+    assert.equal(error.limit, 1);
+    assert.match(error.message, /需要用户明确继续/);
+    return true;
+  });
   db.close();
 });

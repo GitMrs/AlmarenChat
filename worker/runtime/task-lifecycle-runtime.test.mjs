@@ -99,6 +99,48 @@ test('task lifecycle pauses at the productive iteration limit without failing th
   current.db.close();
 });
 
+test('task lifecycle records which model budget caused the continuation wait', () => {
+  const current = fixture();
+  insertRunningWork(current.db);
+  current.runtime.waitTaskForExecutionContinuation(
+    { id: 'run-1' },
+    { id: 'task-1', agentId: 'frontend', agentName: '前端', attempt: 1 },
+    { budgetScope: 'run', modelRequestCount: 48, modelRequestLimit: 48 }
+  );
+  assert.deepEqual(current.events[0][3], {
+    taskId: 'task-1',
+    agentId: 'frontend',
+    iterationLimitReached: true,
+    checkpointAvailable: true,
+    budgetScope: 'run',
+    modelRequestCount: 48,
+    modelRequestLimit: 48,
+    attempt: 1,
+  });
+  current.db.close();
+});
+
+test('run lifecycle pauses coordinator work when the outer model budget is exhausted', () => {
+  const current = fixture();
+  current.db.prepare(`
+    INSERT INTO "AgentRun" ("id", "spaceId", "input", "status", "workerId", "updatedAt")
+    VALUES ('run-1', 'space-1', '完成页面', 'SUMMARIZING', 'worker-1', 'before')
+  `).run();
+  current.runtime.waitRunForExecutionContinuation(
+    { id: 'run-1' },
+    { scope: 'run', count: 48, limit: 48 }
+  );
+  const run = current.db.prepare('SELECT * FROM "AgentRun"').get();
+  assert.equal(run.status, 'WAITING');
+  assert.equal(run.error, 'run_model_request_budget');
+  assert.equal(run.workerId, null);
+  assert.equal(current.events[0][1], 'RUN_WAITING_FOR_CONTINUATION');
+  assert.deepEqual(current.events[0][3], {
+    budgetScope: 'run', modelRequestCount: 48, modelRequestLimit: 48,
+  });
+  current.db.close();
+});
+
 test('task lifecycle cancels one task and releases its staged workspace', () => {
   const current = fixture();
   insertRunningWork(current.db);

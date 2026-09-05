@@ -95,6 +95,97 @@ test('executor harness owns prompts and the model tool loop', async () => {
   assert.equal(events.some((event) => event[1] === 'MODEL_WORKING'), true);
 });
 
+test('executor harness restores the persisted tool conversation without rebuilding the task prompt', async () => {
+  let observed = null;
+  const resumeCheckpoint = {
+    version: 1,
+    totalIterations: 10,
+    batchCompletedIterations: 10,
+    conversation: [
+      { role: 'system', content: '原执行规则' },
+      { role: 'user', content: '原始任务消息' },
+      { role: 'assistant', content: null, tool_calls: [{ id: 'read-1', function: { name: 'read_file', arguments: '{"path":"spec.md"}' } }] },
+      { role: 'tool', tool_call_id: 'read-1', content: '{"ok":true,"content":"已经读取的规格"}' },
+    ],
+  };
+  const result = await runExecutorHarness({
+    run,
+    task: { ...task, waitQuestion: '是否继续？', waitAnswer: '用户已确认继续执行' },
+    agent,
+    context: { ...context, touchedPaths: new Set() },
+    previousResults: [],
+    baselinePaths: new Set(['spec.md']),
+    fakeMode: false,
+    taskTimeoutMs: 30_000,
+    resumeCheckpoint,
+    completeMessage: async (_model, messages, _tools, options) => {
+      observed = { messages: structuredClone(messages), iteration: options.iteration };
+      return {
+        content: null,
+        tool_calls: [{
+          id: 'submit-resumed', type: 'function',
+          function: { name: 'submit_task_result', arguments: JSON.stringify({ summary: '续做完成。', remainingIssues: [] }) },
+        }],
+      };
+    },
+    emit: () => {},
+    isCancelled: () => false,
+    pauseForInput: () => ({ pause: true }),
+    registerWorkspaceFile: async () => {},
+    validateSubmission: async () => ({ ok: true, manifest: { validation: { valid: true } } }),
+    workspaceOptions: {},
+  });
+  assert.equal(result.result, '续做完成。');
+  assert.equal(observed.iteration, 11);
+  assert.equal(observed.messages[0].content, '原执行规则');
+  assert.equal(observed.messages.at(-2).role, 'tool');
+  assert.match(observed.messages.at(-1).content, /不要重新回顾或重复读取/);
+});
+
+test('executor continuation uses the user-approved batch size', async () => {
+  let observed = null;
+  const events = [];
+  const result = await runExecutorHarness({
+    run,
+    task: { ...task, waitQuestion: '是否继续？', waitAnswer: 'execution_continue:30' },
+    agent,
+    context: { ...context, touchedPaths: new Set() },
+    previousResults: [],
+    baselinePaths: new Set(),
+    fakeMode: false,
+    taskTimeoutMs: 30_000,
+    resumeCheckpoint: {
+      version: 1,
+      totalIterations: 10,
+      batchCompletedIterations: 10,
+      batchLimit: 10,
+      conversation: [{ role: 'system', content: '原执行规则' }, { role: 'user', content: '原始任务消息' }],
+    },
+    completeMessage: async (_model, messages, _tools, options) => {
+      observed = { messages: structuredClone(messages), options };
+      return {
+        content: null,
+        tool_calls: [{
+          id: 'submit-resumed-30', type: 'function',
+          function: { name: 'submit_task_result', arguments: JSON.stringify({ summary: '续做完成。', remainingIssues: [] }) },
+        }],
+      };
+    },
+    emit: (...args) => events.push(args),
+    isCancelled: () => false,
+    pauseForInput: () => ({ pause: true }),
+    registerWorkspaceFile: async () => {},
+    validateSubmission: async () => ({ ok: true, manifest: { validation: { valid: true } } }),
+    workspaceOptions: {},
+  });
+  assert.equal(result.result, '续做完成。');
+  assert.equal(observed.options.iteration, 11);
+  assert.match(observed.messages.at(-1).content, /增加 30 轮/);
+  assert.doesNotMatch(observed.messages.at(-1).content, /execution_continue/);
+  const workingEvent = events.find((event) => event[1] === 'MODEL_WORKING');
+  assert.equal(workingEvent[3].maxIterations, 30);
+});
+
 test('executor exposes executable Skill tools only inside the approved capability boundary', async () => {
   const executableTask = {
     ...task,
