@@ -21,6 +21,7 @@ import { CompressionStatusPanel } from '@/components/spaces/CompressionStatusPan
 import { agentRuns as agentRunsApi, agents as agentsApi, spaces as spacesApi, streamSpaceMessage } from '@/lib/api';
 import { getBuiltInAgents } from '@/lib/agents-data';
 import { latestRunInRetryChain } from '@/lib/agent-run-retry-chain.mjs';
+import { isExecutionBudgetWait } from '@/lib/agent-wait-policy.mjs';
 import { isEditableSpaceFile } from '@/lib/space-files';
 import type { Agent, AgentRun, AgentRunEvent, AgentTask, SpaceDiscussion, SpaceFile, SpaceLearning, SpaceLearningItem, SpaceMessage, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal } from '@/types';
 
@@ -39,7 +40,7 @@ const RUN_STATUS_LABELS: Record<string, string> = {
   QUEUED: '等待执行',
   PLANNING: '正在拆分任务',
   RUNNING: '正在执行',
-  WAITING: '等待补充信息',
+  WAITING: '等待用户',
   WAITING_APPROVAL: '等待审核',
   SUMMARIZING: '正在汇总',
   COMPLETED: '已完成',
@@ -55,7 +56,7 @@ const TASK_STATUS_LABELS: Record<string, string> = {
   PENDING: '等待中',
   QUEUED: '已派发',
   RUNNING: '执行中',
-  WAITING: '等待补充信息',
+  WAITING: '等待用户',
   WAITING_USER: '等待补充信息',
   WAITING_APPROVAL: '待审核',
   SUBMITTED: '已提交',
@@ -409,6 +410,7 @@ export default function SpaceDetailPage() {
   const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
   const [pendingCancelTask, setPendingCancelTask] = useState<AgentTask | null>(null);
   const [cancellingTaskId, setCancellingTaskId] = useState<string | null>(null);
+  const [retryingTaskId, setRetryingTaskId] = useState<string | null>(null);
   const [reviewAction, setReviewAction] = useState<'approve' | 'retry' | 'skip' | null>(null);
   const [dispatchAction, setDispatchAction] = useState<'approve' | 'reject' | null>(null);
   const [editingDispatchTask, setEditingDispatchTask] = useState<AgentTask | null>(null);
@@ -497,6 +499,7 @@ export default function SpaceDetailPage() {
   const activeTask = currentRun?.tasks.find((task) => ['PROPOSED', 'RUNNING', 'SUBMITTED', 'REVIEWING', 'WAITING', 'WAITING_USER', 'WAITING_APPROVAL', 'CANCEL_REQUESTED'].includes(task.status)) || null;
   const proposedTask = currentRun?.tasks.find((task) => task.status === 'PROPOSED') || null;
   const waitingTask = currentRun?.tasks.find((task) => task.status === 'WAITING') || null;
+  const waitingForExecutionContinuation = Boolean(waitingTask && isExecutionBudgetWait(waitingTask.waitReason));
   const reviewTask = currentRun?.tasks.find((task) => task.status === 'WAITING_APPROVAL') || null;
   const reviewAudit = reviewTask
     ? [...(currentRun?.events || [])].reverse().map((event) => ({ event, payload: eventPayload(event) }))
@@ -1312,10 +1315,25 @@ export default function SpaceDetailPage() {
     }
   };
 
+  const retryFailedTask = async (task: AgentTask) => {
+    if (!currentRun || isRunActive || retryingTaskId) return;
+    setRetryingTaskId(task.id);
+    setError('');
+    try {
+      const result = await agentRunsApi.retryTask(currentRun.id, task.id);
+      setRuns((items) => [result.run, ...items]);
+      setSelectedRunId(result.run.id);
+    } catch (err: any) {
+      setError(err.message || '从失败步骤继续失败');
+    } finally {
+      setRetryingTaskId(null);
+    }
+  };
+
   const resumeRun = async () => {
     if (!currentRun || !waitingTask || resumeLoading) return;
     const answer = resumeAnswer.trim();
-    if (!answer) return setResumeError('请填写补充信息');
+    if (!waitingForExecutionContinuation && !answer) return setResumeError('请填写补充信息');
     setResumeLoading(true);
     setResumeError('');
     try {
@@ -1735,7 +1753,7 @@ export default function SpaceDetailPage() {
                               className="ml-auto inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 font-black text-slate-500 transition hover:bg-white hover:text-slate-950 disabled:text-slate-300"
                             >
                               {runActionLoading ? <Loader2 className="animate-spin" size={13} /> : <RotateCcw size={13} />}
-                              重新执行
+                              重新执行整个任务
                             </button>
                           )}
                         </div>
@@ -1776,30 +1794,34 @@ export default function SpaceDetailPage() {
                         <section className="border-y border-black/[0.08] py-5">
                           <div className="flex flex-wrap items-start justify-between gap-3">
                             <div>
-                              <div className="text-xs font-black text-amber-600">第 {waitingTask.sortOrder + 1} 步等待补充</div>
+                              <div className="text-xs font-black text-amber-600">第 {waitingTask.sortOrder + 1} 步{waitingForExecutionContinuation ? '等待继续' : '等待补充'}</div>
                               <h3 className="mt-1 text-base font-black text-slate-950">{waitingTask.title}</h3>
                               <div className="mt-1 text-xs font-semibold text-slate-400">{waitingTask.agentName} · Worker 已暂停并释放</div>
                             </div>
-                            <span className="rounded bg-amber-50 px-2 py-1 text-xs font-black text-amber-700">等待你的回答</span>
+                            <span className="rounded bg-amber-50 px-2 py-1 text-xs font-black text-amber-700">{waitingForExecutionContinuation ? '等待你的确认' : '等待你的回答'}</span>
                           </div>
                           <div className="mt-4 rounded-lg bg-amber-50 px-4 py-3">
                             <div className="text-sm font-black text-amber-900">{waitingTask.waitQuestion}</div>
-                            {waitingTask.waitReason && <div className="mt-1 text-xs font-semibold leading-5 text-amber-700">{waitingTask.waitReason}</div>}
+                            {waitingTask.waitReason && <div className="mt-1 text-xs font-semibold leading-5 text-amber-700">{waitingForExecutionContinuation ? '已完成的文件和暂存结果都会保留。继续后将追加 10 个有效执行轮次，并产生新的模型调用费用。' : waitingTask.waitReason}</div>}
                           </div>
-                          <label htmlFor="task-wait-answer" className="mt-4 block text-xs font-black text-slate-600">补充信息</label>
-                          <textarea
-                            id="task-wait-answer"
-                            value={resumeAnswer}
-                            onChange={(event) => { setResumeAnswer(event.target.value); setResumeError(''); }}
-                            rows={4}
-                            maxLength={4_000}
-                            placeholder="回答这个问题后，原步骤会从当前任务链继续执行"
-                            className="mt-2 w-full resize-y rounded-lg border border-black/[0.1] bg-white px-3 py-3 text-sm font-semibold leading-6 text-slate-800 outline-none transition focus:border-slate-400"
-                          />
+                          {!waitingForExecutionContinuation && (
+                            <>
+                              <label htmlFor="task-wait-answer" className="mt-4 block text-xs font-black text-slate-600">补充信息</label>
+                              <textarea
+                                id="task-wait-answer"
+                                value={resumeAnswer}
+                                onChange={(event) => { setResumeAnswer(event.target.value); setResumeError(''); }}
+                                rows={4}
+                                maxLength={4_000}
+                                placeholder="回答这个问题后，原步骤会从当前任务链继续执行"
+                                className="mt-2 w-full resize-y rounded-lg border border-black/[0.1] bg-white px-3 py-3 text-sm font-semibold leading-6 text-slate-800 outline-none transition focus:border-slate-400"
+                              />
+                            </>
+                          )}
                           {resumeError && <div className="mt-2 text-xs font-semibold text-rose-600">{resumeError}</div>}
-                          <button type="button" onClick={resumeRun} disabled={resumeLoading || !resumeAnswer.trim()} className="mt-3 inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-slate-950 px-4 text-xs font-black text-white transition hover:bg-slate-800 disabled:bg-slate-200 disabled:text-slate-400">
+                          <button type="button" onClick={resumeRun} disabled={resumeLoading || (!waitingForExecutionContinuation && !resumeAnswer.trim())} className="mt-3 inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-slate-950 px-4 text-xs font-black text-white transition hover:bg-slate-800 disabled:bg-slate-200 disabled:text-slate-400">
                             {resumeLoading ? <Loader2 className="animate-spin" size={15} /> : <Send size={15} />}
-                            提交并继续
+                            {waitingForExecutionContinuation ? '继续执行（增加 10 轮）' : '提交并继续'}
                           </button>
                         </section>
                       )}
@@ -2097,6 +2119,17 @@ export default function SpaceDetailPage() {
                                     </div>
                                   )}
                                   {task.error && <div className={task.status === 'BLOCKED' ? 'mt-3 text-sm font-semibold text-amber-700' : 'mt-3 text-sm font-semibold text-rose-600'}>{task.error}</div>}
+                                  {task.status === 'FAILED' && !isRunActive && (
+                                    <button
+                                      type="button"
+                                      onClick={() => retryFailedTask(task)}
+                                      disabled={Boolean(retryingTaskId)}
+                                      className="mt-3 inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-black/[0.08] bg-white px-3 text-xs font-black text-slate-600 transition hover:bg-slate-50 hover:text-slate-950 disabled:text-slate-300"
+                                    >
+                                      {retryingTaskId === task.id ? <Loader2 className="animate-spin" size={14} /> : <RotateCcw size={14} />}
+                                      从此步骤重试
+                                    </button>
+                                  )}
                                 </div>
                               </details>
                             );

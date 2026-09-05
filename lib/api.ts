@@ -570,13 +570,15 @@ export const agentRuns = {
       method: 'POST',
       body: JSON.stringify({ action, feedback }),
     }),
-  resume: (id: string, answer: string) =>
+  resume: (id: string, answer = '') =>
     request<{ run: AgentRun }>(`/runs/${id}/resume`, {
       method: 'POST',
       body: JSON.stringify({ answer }),
     }),
   retry: (id: string) =>
     request<{ run: AgentRun }>(`/runs/${id}/retry`, { method: 'POST' }),
+  retryTask: (runId: string, taskId: string) =>
+    request<{ run: AgentRun; inheritedWorkspace: boolean }>(`/runs/${runId}/tasks/${taskId}/retry`, { method: 'POST' }),
 };
 
 // Favorites

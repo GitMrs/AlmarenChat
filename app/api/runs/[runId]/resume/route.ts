@@ -2,24 +2,28 @@ import { NextResponse } from 'next/server';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { getAgentRunForUser } from '@/app/api/_lib/agent-runs';
-import { canResumeWaiting, validateWaitAnswer } from '@/lib/agent-wait-policy.mjs';
+import { canResumeWaiting, isExecutionBudgetWait, validateWaitAnswer } from '@/lib/agent-wait-policy.mjs';
 import { appendAgentRunEvent } from '@/app/api/_lib/agent-run-events';
+import { taskModelRequestLimit } from '@/lib/task-execution-plan.mjs';
 
 export async function POST(request: Request, { params }: { params: Promise<{ runId: string }> }) {
   try {
     const userId = requireAuth(request);
     const { runId } = await params;
     const body = await request.json();
-    const answerValidation = validateWaitAnswer(body.answer);
-    if (answerValidation.error) return NextResponse.json({ error: answerValidation.error }, { status: 400 });
-    const answer = answerValidation.answer;
-
     const existing = await getAgentRunForUser(runId, userId);
     if (!existing) return NextResponse.json({ error: 'Run not found' }, { status: 404 });
     const task = existing.tasks.find((item) => item.status === 'WAITING');
     if (!task || !canResumeWaiting(existing.status, task.status)) {
       return NextResponse.json({ error: '当前任务不在等待补充状态' }, { status: 409 });
     }
+    const continuingExecution = isExecutionBudgetWait(task.waitReason);
+    const answerValidation = continuingExecution
+      ? { answer: '用户已确认继续执行', error: '' }
+      : validateWaitAnswer(body.answer);
+    if (answerValidation.error) return NextResponse.json({ error: answerValidation.error }, { status: 400 });
+    const answer = answerValidation.answer;
+    const addedModelRequests = taskModelRequestLimit(task.mode);
 
     const timestamp = new Date();
     await prisma.$transaction(async (transaction) => {
@@ -28,7 +32,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ run
         data: {
           status: 'PENDING',
           waitAnswer: answer,
-          attempt: { increment: 1 },
+          modelRequestLimit: { increment: addedModelRequests },
           startedAt: null,
           completedAt: null,
           error: null,
@@ -45,15 +49,16 @@ export async function POST(request: Request, { params }: { params: Promise<{ run
           error: null,
           completedAt: null,
           updatedAt: timestamp,
+          modelRequestLimit: { increment: addedModelRequests },
         },
       });
       await appendAgentRunEvent(transaction, runId, {
-          type: 'TASK_INPUT_PROVIDED',
-          message: `已补充${task.agentName}继续执行所需的信息`,
-          payload: { taskId: task.id, agentId: task.agentId, attempt: task.attempt + 1 },
+          type: continuingExecution ? 'TASK_EXECUTION_CONTINUED' : 'TASK_INPUT_PROVIDED',
+          message: continuingExecution ? `已确认${task.agentName}继续执行` : `已补充${task.agentName}继续执行所需的信息`,
+          payload: { taskId: task.id, agentId: task.agentId, attempt: task.attempt, addedModelRequests },
           taskId: task.id,
           agentId: task.agentId,
-          attempt: task.attempt + 1,
+          attempt: task.attempt,
           actor: 'user',
       });
     });

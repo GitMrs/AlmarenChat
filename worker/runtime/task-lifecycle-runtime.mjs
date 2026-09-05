@@ -1,5 +1,5 @@
 import { completionIdFor } from '../../lib/agent-completion-policy.mjs';
-import { normalizeWaitRequest } from '../../lib/agent-wait-policy.mjs';
+import { EXECUTION_BUDGET_WAIT_REASON, normalizeWaitRequest } from '../../lib/agent-wait-policy.mjs';
 import { cancelRunRecord } from './run-cancellation-store.mjs';
 import { executionFailureStatus } from '../policies/run-policy.mjs';
 
@@ -115,6 +115,32 @@ export function createTaskLifecycleRuntime({
     return { ok: true, pause: true };
   }
 
+  function waitTaskForExecutionContinuation(run, task) {
+    const timestamp = now();
+    const question = '当前步骤已用完本轮执行额度，是否再增加一轮额度继续处理？';
+    db.transaction(() => {
+      const changed = db.prepare(
+        `UPDATE "AgentTask"
+         SET "status" = 'WAITING', "waitQuestion" = ?, "waitReason" = ?, "waitAnswer" = NULL,
+             "waitingAt" = ?, "updatedAt" = ?
+         WHERE "id" = ? AND "runId" = ? AND "status" = 'RUNNING'`
+      ).run(question, EXECUTION_BUDGET_WAIT_REASON, timestamp, timestamp, task.id, run.id);
+      if (changed.changes !== 1) throw new Error('当前步骤已经停止');
+      db.prepare(
+        `UPDATE "AgentRun"
+         SET "status" = 'WAITING', "workerId" = NULL, "heartbeatAt" = NULL, "updatedAt" = ?
+         WHERE "id" = ?`
+      ).run(timestamp, run.id);
+      addEvent(run.id, 'TASK_WAITING_FOR_CONTINUATION', `${task.agentName}已用完本轮执行额度，等待用户确认继续`, {
+        taskId: task.id,
+        agentId: task.agentId,
+        iterationLimitReached: true,
+        attempt: task.attempt,
+      });
+    })();
+    return true;
+  }
+
   function failRun(runId, error) {
     const runRecord = db.prepare('SELECT "spaceId", "input" FROM "AgentRun" WHERE "id" = ?').get(runId);
     const taskIds = db.prepare('SELECT "id" FROM "AgentTask" WHERE "runId" = ?').all(runId).map((task) => task.id);
@@ -157,7 +183,12 @@ export function createTaskLifecycleRuntime({
         refId: runId,
       }], timestamp);
     })();
-    for (const taskId of taskIds) discardTaskWorkspace(runId, taskId);
+    const failedTaskIds = new Set(db.prepare(
+      `SELECT "id" FROM "AgentTask" WHERE "runId" = ? AND "status" = 'FAILED'`
+    ).all(runId).map((task) => task.id));
+    for (const taskId of taskIds) {
+      if (!failedTaskIds.has(taskId)) discardTaskWorkspace(runId, taskId);
+    }
   }
 
   return {
@@ -166,6 +197,7 @@ export function createTaskLifecycleRuntime({
     failRun,
     isCancelRequested,
     isTaskCancelRequested,
+    waitTaskForExecutionContinuation,
     waitTaskForUserInput,
   };
 }

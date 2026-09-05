@@ -24,6 +24,7 @@ import { taskModelRequestLimit } from '../lib/task-execution-plan.mjs';
 import { taskRequiresWorkspaceWrite } from '../lib/workspace-write-intent.mjs';
 import { COORDINATOR_ACTION_TOOL, COORDINATOR_ACTION_TOOL_NAME, COORDINATOR_REVIEW_TOOL, COORDINATOR_REVIEW_TOOL_NAME, authorizationAllowsCapability, authorizationRequirements, coordinatorDecisionTrigger, coordinatorTaskReviewInstructions, coordinatorTaskReviewRequest, dispatchConstraintFromFeedback, dispatchRequiresApproval, requestCoordinatorAction, requestCoordinatorReviewAction, structuredToolOutput } from '../lib/agent-runtime-v3-policy.mjs';
 import { completionIdFor } from '../lib/agent-completion-policy.mjs';
+import { isExecutionBudgetWait } from '../lib/agent-wait-policy.mjs';
 import { appendSpaceMemory, spaceMemoryContext } from '../lib/space-memory-policy.mjs';
 import { readSpaceLearningSync, spaceLearningContext } from '../lib/space-learning.mjs';
 import { prepareWorkspaceAttempt } from '../lib/workspace-staging.mjs';
@@ -203,6 +204,7 @@ const {
   failRun,
   isCancelRequested,
   isTaskCancelRequested,
+  waitTaskForExecutionContinuation,
   waitTaskForUserInput,
 } = createTaskLifecycleRuntime({
   db,
@@ -902,7 +904,7 @@ async function executeTask(run, task, context, previousResults) {
   if (task.mode === 'advisor') return executeAdvisorTask(run, task, context, previousResults, agent);
   const artifactManifest = await ensureTaskArtifactManifest(run, task);
   await prepareWorkspaceAttempt(taskWorkspaceOptions(run, task));
-  const inheritedSnapshot = task.attempt > 1
+  const inheritedSnapshot = task.attempt > 1 || isExecutionBudgetWait(task.waitReason)
     ? await snapshotWorkspace(taskWorkspaceOptions(run, task))
     : { files: [] };
   const baselinePaths = new Set([
@@ -937,6 +939,7 @@ async function executeTask(run, task, context, previousResults) {
     emit: addEvent,
     isCancelled: () => isCancelRequested(run.id) || isTaskCancelRequested(task.id),
     pauseForInput: (args) => waitTaskForUserInput(run, task, args),
+    pauseForContinuation: () => waitTaskForExecutionContinuation(run, task),
     registerWorkspaceFile: (relativePath) => registerWorkspaceFile(run, task, relativePath),
     validateSubmission: async () => {
       const manifest = await recordTaskArtifactManifest(run, task, context, { validate: true });

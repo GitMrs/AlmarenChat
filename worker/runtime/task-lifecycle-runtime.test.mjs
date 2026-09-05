@@ -81,6 +81,24 @@ test('task lifecycle pauses a running task for one validated user question', () 
   current.db.close();
 });
 
+test('task lifecycle pauses at the productive iteration limit without failing the run', () => {
+  const current = fixture();
+  insertRunningWork(current.db);
+  const result = current.runtime.waitTaskForExecutionContinuation(
+    { id: 'run-1' },
+    { id: 'task-1', agentId: 'frontend', agentName: '前端', attempt: 1 }
+  );
+  assert.equal(result, true);
+  const task = current.db.prepare('SELECT * FROM "AgentTask"').get();
+  assert.equal(task.status, 'WAITING');
+  assert.equal(task.waitReason, 'execution_iteration_budget');
+  assert.match(task.waitQuestion, /继续/);
+  assert.equal(current.db.prepare('SELECT "status" FROM "AgentRun"').get().status, 'WAITING');
+  assert.equal(current.events[0][1], 'TASK_WAITING_FOR_CONTINUATION');
+  assert.deepEqual(current.discarded, []);
+  current.db.close();
+});
+
 test('task lifecycle cancels one task and releases its staged workspace', () => {
   const current = fixture();
   insertRunningWork(current.db);
@@ -117,5 +135,17 @@ test('task lifecycle fails the run, stages completion and cleans every task work
   assert.match(current.memories[0][1][0].summary, /原工作区文件/);
   assert.deepEqual(current.discarded, [['run-1', 'task-1']]);
   assert.equal(current.memories.length, 1);
+  current.db.close();
+});
+
+test('task lifecycle preserves the failed task workspace for a targeted retry', () => {
+  const current = fixture();
+  insertRunningWork(current.db);
+  current.db.prepare(`UPDATE "AgentTask" SET "status" = 'FAILED' WHERE "id" = 'task-1'`).run();
+
+  current.runtime.failRun('run-1', new Error('tool loop limit'));
+
+  assert.equal(current.db.prepare('SELECT "status" FROM "AgentTask"').get().status, 'FAILED');
+  assert.deepEqual(current.discarded, []);
   current.db.close();
 });
