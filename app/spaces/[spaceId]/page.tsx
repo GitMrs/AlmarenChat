@@ -28,7 +28,7 @@ import {
   MAX_CONTINUATION_ITERATIONS,
 } from '@/lib/agent-wait-policy.mjs';
 import { isEditableSpaceFile } from '@/lib/space-files';
-import type { Agent, AgentRun, AgentRunEvent, AgentTask, SpaceDiscussion, SpaceFile, SpaceLearning, SpaceLearningItem, SpaceMessage, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal } from '@/types';
+import type { Agent, AgentRun, AgentRunEvent, AgentTask, SpaceDiscussion, SpaceFile, SpaceLearning, SpaceLearningItem, SpaceMessage, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal, SpaceWork } from '@/types';
 
 const FALLBACK_COLOR = '#4f46e5';
 const SPACE_COORDINATOR_ID = 'space-coordinator';
@@ -84,6 +84,16 @@ const LEARNING_CATEGORY_LABELS: Record<string, string> = {
   acceptance: '验收与返工',
   delivery: '交付可信度',
   execution: '执行方法',
+};
+const WORK_NOUNS: Record<string, string> = {
+  'wechat-article': '文章',
+  'short-video-script': '脚本',
+  'story-writing': '作品',
+  'research-report': '报告',
+  'project-proposal': '方案',
+  'product-requirements': '需求',
+  'course-training': '课程',
+  'simple-webpage': '页面',
 };
 
 type RunEventPayload = {
@@ -333,6 +343,11 @@ function taskProposalOf(message: SpaceMessage) {
   return message.attachments?.find((attachment): attachment is SpaceTaskProposal => attachment.type === 'task_proposal');
 }
 
+function compactWorkTitle(title: string, maxLength = 14) {
+  const value = title.trim();
+  return value.length > maxLength ? `${value.slice(0, maxLength)}...` : value;
+}
+
 function messageRunId(message: SpaceMessage) {
   const attachment = message.attachments?.find((item) => item.type === 'task_proposal' || item.type === 'run_result');
   return attachment && 'runId' in attachment ? attachment.runId : undefined;
@@ -369,6 +384,9 @@ export default function SpaceDetailPage() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [files, setFiles] = useState<SpaceFile[]>([]);
   const [runs, setRuns] = useState<AgentRun[]>([]);
+  const [works, setWorks] = useState<SpaceWork[]>([]);
+  const [selectedWorkId, setSelectedWorkId] = useState('all');
+  const [activeWorkId, setActiveWorkId] = useState('new');
   const [discussions, setDiscussions] = useState<SpaceDiscussion[]>([]);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [mode, setMode] = useState<'chat' | 'task'>('chat');
@@ -589,6 +607,16 @@ export default function SpaceDetailPage() {
     () => reviewTask ? files.filter((file) => file.taskId === reviewTask.id) : [],
     [files, reviewTask]
   );
+  const workById = useMemo(() => new Map(works.map((work) => [work.id, work])), [works]);
+  const visibleFiles = useMemo(() => {
+    if (selectedWorkId === 'all') return files;
+    if (selectedWorkId === 'legacy') return files.filter((file) => !file.workId);
+    return files.filter((file) => file.workId === selectedWorkId);
+  }, [files, selectedWorkId]);
+  const hasPendingTaskProposal = useMemo(
+    () => messages.some((message) => taskProposalOf(message)?.status === 'pending'),
+    [messages]
+  );
   const speakerById = useMemo(() => {
     const map = new Map<string, any>(agents.map((agent) => [agent.id, agent]));
     map.set(coordinatorAgent.id, coordinatorAgent);
@@ -605,11 +633,12 @@ export default function SpaceDetailPage() {
     setLoading(true);
     setError('');
     try {
-      const [spaceResult, messageResult, fileResult, runResult, discussionResult, skillResult, learningResult, builtIn, customResult] = await Promise.all([
+      const [spaceResult, messageResult, fileResult, runResult, workResult, discussionResult, skillResult, learningResult, builtIn, customResult] = await Promise.all([
         spacesApi.get(spaceId),
         spacesApi.messages(spaceId, { limit: 60 }),
         spacesApi.files(spaceId),
         spacesApi.runs(spaceId),
+        spacesApi.works(spaceId),
         spacesApi.discussions(spaceId),
         spacesApi.skills(spaceId),
         spacesApi.learning(spaceId),
@@ -622,8 +651,13 @@ export default function SpaceDetailPage() {
       setExecutionModeDraft(spaceResult.space.executionMode === 'AUTO' ? 'AUTO' : 'REVIEW_DISPATCH');
       forceScrollToBottomRef.current = true;
       setMessages(messageResult.messages);
+      const pendingWorkId = messageResult.messages
+        .map((message) => taskProposalOf(message))
+        .find((proposal) => proposal?.status === 'pending')?.workId;
+      setActiveWorkId(pendingWorkId || 'new');
       setFiles(fileResult.files);
       setRuns(runResult.runs);
+      setWorks(workResult.works);
       setDiscussions(discussionResult.discussions);
       setSkills(skillResult.skills);
       setLearning(learningResult.learning);
@@ -885,6 +919,7 @@ export default function SpaceDetailPage() {
           webSearchEnabled: targets.length <= 1 && webSearchEnabled,
           skipPersistUserMessage: Boolean(options?.reuseLastUserMessage || index > 0),
           skillId: activeSkillId || undefined,
+          workId: activeWorkId === 'new' ? undefined : activeWorkId,
           signal: controller.signal,
         });
         setStreamingSpeakerId(result.speakerAgentId || replyTargets[index]?.id || null);
@@ -1053,6 +1088,9 @@ export default function SpaceDetailPage() {
       setMessages([]);
       setFiles([]);
       setRuns([]);
+      setWorks([]);
+      setSelectedWorkId('all');
+      setActiveWorkId('new');
       setDiscussions([]);
       setLearning(null);
       setLearningReadme('');
@@ -1242,8 +1280,21 @@ export default function SpaceDetailPage() {
     setProposalActionMessageId(message.id);
     setError('');
     try {
-      const result = await spacesApi.createRun(spaceId, revision?.goal || proposal.goal, message.id, revision);
+      const result = await spacesApi.createRun(
+        spaceId,
+        revision?.goal || proposal.goal,
+        message.id,
+        revision,
+        activeWorkId === 'new' ? undefined : activeWorkId
+      );
       setRuns((items) => [result.run, ...items]);
+      if (result.run.work) {
+        setWorks((items) => items.some((work) => work.id === result.run.work!.id)
+          ? items
+          : [{ ...result.run.work!, _count: { files: 0, runs: 1 } }, ...items]);
+        setSelectedWorkId(result.run.work.id);
+        setActiveWorkId(result.run.work.id);
+      }
       setSelectedRunId(result.run.id);
       setMessages((items) => items.map((item) => item.id === message.id ? {
         ...item,
@@ -1367,12 +1418,12 @@ export default function SpaceDetailPage() {
     }
   };
 
-  const reviewCurrentTask = async (action: 'approve' | 'retry' | 'skip', feedback?: string) => {
-    if (!currentRun || !reviewTask || reviewAction) return;
+  const reviewCurrentTask = async (action: 'approve' | 'retry' | 'skip', feedback?: string, task = reviewTask) => {
+    if (!task || reviewAction) return;
     setReviewAction(action);
     setReviewError('');
     try {
-      const result = await agentRunsApi.reviewTask(currentRun.id, reviewTask.id, action, feedback);
+      const result = await agentRunsApi.reviewTask(task.runId, task.id, action, feedback);
       const fileResult = await spacesApi.files(spaceId);
       setRuns((items) => items.map((item) => (item.id === result.run.id ? result.run : item)));
       setFiles(fileResult.files);
@@ -1392,11 +1443,11 @@ export default function SpaceDetailPage() {
     revision?: TaskDispatchRevision,
     feedback?: string
   ) => {
-    if (!currentRun || !task || dispatchAction) return;
+    if (!task || dispatchAction) return;
     setDispatchAction(action);
     setDispatchError('');
     try {
-      const result = await agentRunsApi.reviewDispatch(currentRun.id, task.id, action, revision, feedback);
+      const result = await agentRunsApi.reviewDispatch(task.runId, task.id, action, revision, feedback);
       setRuns((items) => items.map((item) => (item.id === result.run.id ? result.run : item)));
       setEditingDispatchTask(null);
       setPendingRejectDispatch(null);
@@ -1560,7 +1611,7 @@ export default function SpaceDetailPage() {
                 <div className="mb-4 flex items-center justify-between">
                   <div className="flex items-center gap-2 text-xs font-black text-slate-500">
                     <FileText size={15} />
-                    空间资料
+                    资料与成果
                     <span className="text-slate-300">{files.length}</span>
                   </div>
                   <button
@@ -2222,11 +2273,30 @@ export default function SpaceDetailPage() {
                 )}
                 <div className="space-y-5">
                 {messages.length === 0 && !isStreaming && (
-                  <div className="rounded-[28px] border border-dashed border-slate-200 bg-white p-8 text-center">
+                  <div className="rounded-lg border border-dashed border-slate-200 bg-white p-8 text-center">
                     <h2 className="text-lg font-black text-slate-950">先把需求交给协调者</h2>
                     <p className="mt-2 text-sm leading-6 text-slate-500">
-                      有什么想法，直接说吧。
+                      {space.templateSnapshot?.name
+                        ? `${space.templateSnapshot.name}已经准备好，有什么目标直接说吧。`
+                        : '有什么想法，直接说吧。'}
                     </p>
+                    {space.templateSnapshot?.starterPrompts?.length > 0 && (
+                      <div className="mt-5 flex flex-wrap justify-center gap-2">
+                        {space.templateSnapshot.starterPrompts.slice(0, 3).map((prompt: string) => (
+                          <button
+                            key={prompt}
+                            type="button"
+                            onClick={() => {
+                              setInput(prompt);
+                              window.requestAnimationFrame(() => textareaRef.current?.focus());
+                            }}
+                            className="min-h-9 rounded-lg border border-black/[0.08] bg-white px-3 py-2 text-xs font-black text-slate-600 transition hover:border-slate-300 hover:text-slate-950"
+                          >
+                            {prompt}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
                 {messages.map((message) => (
@@ -2253,6 +2323,25 @@ export default function SpaceDetailPage() {
                       setEditingProposal({ message, proposal });
                     }}
                     onRejectProposal={() => rejectTaskProposal(message)}
+                    dispatchAction={dispatchAction}
+                    reviewAction={reviewAction}
+                    dispatchError={dispatchError}
+                    reviewError={reviewError}
+                    onApproveDispatch={(task) => reviewDispatch('approve', task)}
+                    onEditDispatch={(task) => {
+                      setDispatchError('');
+                      setEditingDispatchTask(task);
+                    }}
+                    onRejectDispatch={(task) => {
+                      setDispatchError('');
+                      setPendingRejectDispatch(task);
+                    }}
+                    onApproveTaskResult={(task) => reviewCurrentTask('approve', undefined, task)}
+                    onReviseTaskResult={(task) => {
+                      setReviewError('');
+                      setRevisionTask(task);
+                    }}
+                    onSkipTaskResult={(task) => reviewCurrentTask('skip', undefined, task)}
                     onOpenRun={() => {
                       const runId = messageRunId(message);
                       if (!runId) return;
@@ -2300,19 +2389,39 @@ export default function SpaceDetailPage() {
 
             <footer className="border-t border-black/[0.06] bg-white p-3 sm:p-4 lg:bg-[#fbfaf7] lg:px-10 lg:pb-4 lg:pt-3">
               <div className="mx-auto max-w-4xl">
-                <ComposerShell toolbar={selectedSkill ? (
-                  <div className="inline-flex h-8 max-w-full items-center gap-2 rounded-lg bg-white px-2.5 text-xs font-black text-slate-600 shadow-sm">
-                    <BookOpen size={13} className="shrink-0" />
-                    <span className="truncate">使用 {selectedSkill.name}</span>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedSkillId(null)}
-                      aria-label="取消使用 Skill"
-                      title="取消使用 Skill"
-                      className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-900"
-                    >
-                      <X size={12} />
-                    </button>
+                <ComposerShell toolbar={(works.length > 0 || selectedSkill) ? (
+                  <div className="flex max-w-full flex-wrap items-center gap-2">
+                    {works.length > 0 && (
+                      <select
+                        value={activeWorkId}
+                        onChange={(event) => setActiveWorkId(event.target.value)}
+                        aria-label="当前成果"
+                        disabled={isStreaming || isRunActive || hasPendingTaskProposal}
+                        className="h-8 max-w-[min(70vw,24rem)] rounded-lg border border-black/[0.08] bg-white px-2.5 text-xs font-black text-slate-600 outline-none disabled:text-slate-300"
+                      >
+                        <option value="new">新建{WORK_NOUNS[space.templateId] || '成果'}</option>
+                        {works.map((work, index) => (
+                          <option key={work.id} value={work.id}>
+                            {WORK_NOUNS[work.kind] || '成果'} {works.length - index} · {compactWorkTitle(work.title)}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                    {selectedSkill && (
+                      <div className="inline-flex h-8 max-w-full items-center gap-2 rounded-lg bg-white px-2.5 text-xs font-black text-slate-600 shadow-sm">
+                        <BookOpen size={13} className="shrink-0" />
+                        <span className="truncate">使用 {selectedSkill.name}</span>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedSkillId(null)}
+                          aria-label="取消使用 Skill"
+                          title="取消使用 Skill"
+                          className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-900"
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
+                    )}
                   </div>
                 ) : undefined}>
                 <div ref={composerToolsRef} className="relative mb-0.5 shrink-0">
@@ -2520,7 +2629,7 @@ export default function SpaceDetailPage() {
                 <div className="flex h-[65px] shrink-0 items-center justify-between border-b border-black/[0.06] px-5">
                   <div className="flex items-center gap-2 text-sm font-black text-slate-800">
                     {sidePanel === 'members' ? <UsersRound size={17} /> : sidePanel === 'files' ? <FileText size={17} /> : sidePanel === 'skills' ? <BookOpen size={17} /> : sidePanel === 'runs' ? <History size={17} /> : <Settings2 size={17} />}
-                    {sidePanel === 'members' ? '空间成员' : sidePanel === 'files' ? '空间资料' : sidePanel === 'skills' ? 'Space Skills' : sidePanel === 'runs' ? '历史任务' : '空间设置'}
+                    {sidePanel === 'members' ? '空间成员' : sidePanel === 'files' ? '资料与成果' : sidePanel === 'skills' ? 'Space Skills' : sidePanel === 'runs' ? '历史任务' : '空间设置'}
                   </div>
                   <button
                     type="button"
@@ -2615,24 +2724,40 @@ export default function SpaceDetailPage() {
                     </>
                   ) : sidePanel === 'files' ? (
                     <>
-                      <button
-                        type="button"
-                        onClick={() => fileInputRef.current?.click()}
-                        disabled={uploadingFile}
-                        className="inline-flex h-10 items-center gap-2 rounded-lg bg-slate-950 px-4 text-xs font-black text-white disabled:bg-slate-200 disabled:text-slate-400"
-                      >
-                        {uploadingFile ? <Loader2 className="animate-spin" size={15} /> : <UploadCloud size={15} />}
-                        上传资料
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <select
+                          value={selectedWorkId}
+                          onChange={(event) => setSelectedWorkId(event.target.value)}
+                          aria-label="筛选成果"
+                          className="h-10 min-w-0 flex-1 rounded-lg border border-black/[0.08] bg-white px-3 text-xs font-bold text-slate-700 outline-none"
+                        >
+                          <option value="all">全部</option>
+                          {works.map((work, index) => (
+                            <option key={work.id} value={work.id}>
+                              {WORK_NOUNS[work.kind] || '成果'} {works.length - index} · {compactWorkTitle(work.title, 14)}
+                            </option>
+                          ))}
+                          {files.some((file) => !file.workId) && <option value="legacy">公共 / 历史</option>}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          disabled={uploadingFile}
+                          title="上传资料"
+                          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-950 text-white disabled:bg-slate-200 disabled:text-slate-400"
+                        >
+                          {uploadingFile ? <Loader2 className="animate-spin" size={15} /> : <UploadCloud size={15} />}
+                        </button>
+                      </div>
                       <div className="mt-5 space-y-2">
-                        {files.length === 0 ? (
+                        {visibleFiles.length === 0 ? (
                           <div className="rounded-lg border border-dashed border-slate-200 px-5 py-10 text-center">
                             <FileText className="mx-auto text-slate-300" size={24} />
                             <div className="mt-3 text-sm font-black text-slate-500">暂无资料</div>
                             <div className="mt-1 text-xs font-semibold leading-5 text-slate-400">上传的资料会保存在当前空间。</div>
                           </div>
                         ) : (
-                          files.map((file) => (
+                          visibleFiles.map((file) => (
                             <div key={file.id} className="flex items-center gap-3 rounded-lg border border-black/[0.06] bg-white px-3 py-3">
                               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500">
                                 <FileText size={16} />
@@ -2642,7 +2767,10 @@ export default function SpaceDetailPage() {
                                   <div className="min-w-0 flex-1 truncate text-sm font-black text-slate-800">{file.fileName}</div>
                                   <FileStatus status={file.status} />
                                 </div>
-                                <div className="mt-0.5 text-xs font-semibold text-slate-400">{formatBytes(file.size)}</div>
+                                <div className="mt-0.5 truncate text-xs font-semibold text-slate-400">
+                                  {file.workId ? `${WORK_NOUNS[workById.get(file.workId)?.kind || ''] || '成果'} · ${workById.get(file.workId)?.title || '未命名'}` : '公共资料 / 历史成果'}
+                                  {file.size ? ` · ${formatBytes(file.size)}` : ''}
+                                </div>
                               </div>
                               <button
                                 type="button"
@@ -2792,6 +2920,7 @@ export default function SpaceDetailPage() {
                               <span>{formatRunDate(run.createdAt)}</span>
                               <span>·</span>
                               <span>{completed}/{run.tasks.length} 步</span>
+                              {run.work && <><span>·</span><span className="truncate">{WORK_NOUNS[run.work.kind] || '成果'}：{run.work.title}</span></>}
                             </div>
                           </button>
                         );
@@ -3066,7 +3195,7 @@ export default function SpaceDetailPage() {
           setReviewError('');
           setRevisionTask(null);
         }}
-        onConfirm={(feedback) => reviewCurrentTask('retry', feedback)}
+        onConfirm={(feedback) => reviewCurrentTask('retry', feedback, revisionTask)}
       />
       <TaskReviewDialog
         task={pendingRejectDispatch}
@@ -3086,6 +3215,7 @@ export default function SpaceDetailPage() {
       <SpaceFileEditorDialog
         spaceId={spaceId}
         file={editingFile}
+        publishTarget={space?.templateId === 'wechat-article' ? 'wechat' : undefined}
         onClose={() => setEditingFile(null)}
         onSaved={(updatedFile) => {
           setFiles((items) => [updatedFile, ...items.filter((item) => item.id !== updatedFile.id)]);

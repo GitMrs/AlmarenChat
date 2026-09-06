@@ -9,6 +9,7 @@ import {
   applyWorkspaceAttempt,
   discardWorkspaceAttempt,
 } from '../../lib/workspace-staging.mjs';
+import { storedWorkspaceRelativePath } from '../../lib/space-work-paths.mjs';
 
 export function createWorkspaceArtifactRuntime({
   db,
@@ -21,6 +22,7 @@ export function createWorkspaceArtifactRuntime({
       projectRoot,
       userId: run.userId,
       spaceId: run.spaceId,
+      workId: run.workId,
       taskId: task.id,
       attempt: task.attempt,
     };
@@ -38,11 +40,11 @@ export function createWorkspaceArtifactRuntime({
       ).get(run.spaceId, artifact.relativePath, run.id, task.id);
       if (existing) {
         db.prepare(
-          `UPDATE "SpaceFile" SET "fileName" = ?, "mimeType" = ?, "size" = ?, "runId" = ?, "taskId" = ?, "status" = 'GENERATING', "updatedAt" = ? WHERE "id" = ?`
-        ).run(artifact.fileName, artifact.mimeType, artifact.size, run.id, task.id, timestamp, existing.id);
+          `UPDATE "SpaceFile" SET "fileName" = ?, "mimeType" = ?, "size" = ?, "runId" = ?, "taskId" = ?, "workId" = ?, "status" = 'GENERATING', "updatedAt" = ? WHERE "id" = ?`
+        ).run(artifact.fileName, artifact.mimeType, artifact.size, run.id, task.id, run.workId || null, timestamp, existing.id);
       } else {
         db.prepare(
-          `INSERT INTO "SpaceFile" ("id", "spaceId", "fileName", "mimeType", "size", "relativePath", "runId", "taskId", "status", "createdAt", "updatedAt") VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'GENERATING', ?, ?)`
+          `INSERT INTO "SpaceFile" ("id", "spaceId", "fileName", "mimeType", "size", "relativePath", "runId", "taskId", "workId", "status", "createdAt", "updatedAt") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'GENERATING', ?, ?)`
         ).run(
           artifact.id,
           run.spaceId,
@@ -52,6 +54,7 @@ export function createWorkspaceArtifactRuntime({
           artifact.relativePath,
           run.id,
           task.id,
+          run.workId || null,
           timestamp,
           timestamp
         );
@@ -75,7 +78,7 @@ export function createWorkspaceArtifactRuntime({
       `SELECT * FROM "AgentArtifactManifest" WHERE "taskId" = ? AND "attempt" = ?`
     ).get(task.id, task.attempt);
     if (existing) return existing;
-    const baseline = await snapshotWorkspace({ projectRoot, userId: run.userId, spaceId: run.spaceId });
+    const baseline = await snapshotWorkspace({ projectRoot, userId: run.userId, spaceId: run.spaceId, workId: run.workId });
     const timestamp = now();
     db.prepare(
       `INSERT OR IGNORE INTO "AgentArtifactManifest"
@@ -153,7 +156,7 @@ export function createWorkspaceArtifactRuntime({
       const placeholders = changedPaths.map(() => '?').join(', ');
       db.prepare(
         `DELETE FROM "SpaceFile" WHERE "taskId" = ? AND "status" IN ('GENERATING', 'WAITING_APPROVAL') AND "relativePath" NOT IN (${placeholders})`
-      ).run(task.id, ...changedPaths.map((relativePath) => `workspace/${relativePath}`));
+      ).run(task.id, ...changedPaths.map((relativePath) => storedWorkspaceRelativePath(run.workId, relativePath)));
     } else {
       db.prepare(
         `DELETE FROM "SpaceFile" WHERE "taskId" = ? AND "status" IN ('GENERATING', 'WAITING_APPROVAL')`
@@ -200,11 +203,11 @@ export function createWorkspaceArtifactRuntime({
         const staged = db.prepare(`SELECT "id" FROM "SpaceFile" WHERE "spaceId" = ? AND "runId" = ? AND "taskId" = ?`).all(run.spaceId, run.id, task.id);
         const stagedIds = new Set(staged.map((file) => file.id));
         for (const entry of entries) {
-          const relativePath = `workspace/${entry.path}`;
+          const relativePath = storedWorkspaceRelativePath(run.workId, entry.path);
           if (entry.change === 'DELETED') {
-            db.prepare(`DELETE FROM "SpaceFile" WHERE "spaceId" = ? AND "relativePath" = ?`).run(run.spaceId, relativePath);
+            db.prepare(`DELETE FROM "SpaceFile" WHERE "spaceId" = ? AND "workId" IS ? AND "relativePath" = ?`).run(run.spaceId, run.workId || null, relativePath);
           } else {
-            for (const duplicate of db.prepare(`SELECT "id" FROM "SpaceFile" WHERE "spaceId" = ? AND "relativePath" = ?`).all(run.spaceId, relativePath)) {
+            for (const duplicate of db.prepare(`SELECT "id" FROM "SpaceFile" WHERE "spaceId" = ? AND "workId" IS ? AND "relativePath" = ?`).all(run.spaceId, run.workId || null, relativePath)) {
               if (!stagedIds.has(duplicate.id)) db.prepare(`DELETE FROM "SpaceFile" WHERE "id" = ?`).run(duplicate.id);
             }
           }

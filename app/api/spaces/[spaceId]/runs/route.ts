@@ -20,6 +20,7 @@ type TaskProposalAttachment = {
   runId?: string;
   skillSnapshot?: Record<string, unknown>;
   skillAgentId?: string;
+  workId?: string;
   [key: string]: unknown;
 };
 
@@ -125,7 +126,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
   try {
     const userId = requireAuth(request);
     const { spaceId } = await params;
-    const { input, proposalMessageId, revisedProposal } = await request.json();
+    const { input, proposalMessageId, revisedProposal, workId } = await request.json();
+    const requestedWorkId = typeof workId === 'string' && workId.trim() ? workId.trim() : null;
     const revision = parseRevision(revisedProposal);
     let goal = typeof input === 'string' ? input.trim() : '';
     const space = await getSpaceForUser(spaceId, userId);
@@ -171,6 +173,17 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
     }
     if (!goal) return NextResponse.json({ error: '任务目标不能为空' }, { status: 400 });
     if (goal.length > 12_000) return NextResponse.json({ error: '任务目标不能超过 12000 字' }, { status: 400 });
+    const proposalWorkId = typeof proposal?.workId === 'string' && proposal.workId ? proposal.workId : null;
+    if (proposalWorkId && requestedWorkId && proposalWorkId !== requestedWorkId) {
+      return NextResponse.json({ error: '任务方案所属成果与当前选择不一致，请刷新后重试' }, { status: 409 });
+    }
+    const effectiveWorkId = proposalWorkId || requestedWorkId;
+    const targetWork = effectiveWorkId
+      ? await prisma.spaceWork.findFirst({ where: { id: effectiveWorkId, spaceId } })
+      : null;
+    if (effectiveWorkId && !targetWork) {
+      return NextResponse.json({ error: '指定成果不存在' }, { status: 404 });
+    }
 
     const activeRun = await prisma.agentRun.findFirst({
       where: { spaceId, userId, status: { in: ACTIVE_AGENT_RUN_STATUSES } },
@@ -213,10 +226,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
         artifacts: [],
       });
       const modelRequestLimit = 48;
+      const workTitle = String(currentProposal?.goal || runInput).split('\n')[0].trim().slice(0, 120) || '未命名成果';
+      const work = targetWork
+        ? await tx.spaceWork.update({ where: { id: targetWork.id }, data: { updatedAt: new Date() } })
+        : await tx.spaceWork.create({ data: { spaceId, title: workTitle, kind: space.templateId || 'general' } });
 
       const created = await tx.agentRun.create({
         data: {
           spaceId,
+          workId: work.id,
           userId,
           input: runInput,
           runtimeVersion: 3,

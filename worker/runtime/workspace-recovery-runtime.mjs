@@ -14,7 +14,7 @@ export function createWorkspaceRecoveryRuntime({
   async function recoverInterruptedWorkspaceApplications() {
     const manifests = db.prepare(
       `SELECT manifest."id", manifest."runId", manifest."taskId", manifest."attempt", manifest."baseline", manifest."entries",
-              run."userId", run."spaceId"
+              run."userId", run."spaceId", run."workId"
        FROM "AgentArtifactManifest" manifest
        JOIN "AgentRun" run ON run."id" = manifest."runId"
        WHERE manifest."status" = 'APPLYING'`
@@ -26,6 +26,7 @@ export function createWorkspaceRecoveryRuntime({
             projectRoot,
             userId: manifest.userId,
             spaceId: manifest.spaceId,
+            workId: manifest.workId,
             taskId: manifest.taskId,
             attempt: manifest.attempt,
           },
@@ -51,7 +52,7 @@ export function createWorkspaceRecoveryRuntime({
 
   function cleanupClosedWorkspaceAttempts() {
     const manifests = db.prepare(
-      `SELECT manifest."runId", manifest."taskId", manifest."attempt", run."userId", run."spaceId"
+      `SELECT manifest."runId", manifest."taskId", manifest."attempt", run."userId", run."spaceId", run."workId"
        FROM "AgentArtifactManifest" manifest
        JOIN "AgentRun" run ON run."id" = manifest."runId"
        WHERE manifest."status" IN ('APPLIED', 'DISCARDED')`
@@ -62,6 +63,7 @@ export function createWorkspaceRecoveryRuntime({
           projectRoot,
           userId: manifest.userId,
           spaceId: manifest.spaceId,
+          workId: manifest.workId,
           taskId: manifest.taskId,
           attempt: manifest.attempt,
         });
@@ -77,7 +79,7 @@ export function createWorkspaceRecoveryRuntime({
 
   function discardTaskWorkspace(runId, taskId) {
     const task = db.prepare(
-      `SELECT task."id", task."attempt", run."userId", run."spaceId"
+      `SELECT task."id", task."attempt", run."userId", run."spaceId", run."workId"
        FROM "AgentTask" task JOIN "AgentRun" run ON run."id" = task."runId"
        WHERE task."id" = ? AND task."runId" = ?`
     ).get(taskId, runId);
@@ -87,6 +89,7 @@ export function createWorkspaceRecoveryRuntime({
         projectRoot,
         userId: task.userId,
         spaceId: task.spaceId,
+        workId: task.workId,
         taskId: task.id,
         attempt: task.attempt,
       });

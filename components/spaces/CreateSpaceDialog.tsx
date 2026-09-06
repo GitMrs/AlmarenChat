@@ -3,8 +3,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronRight, Loader2, Search, Trash2, UsersRound, X } from 'lucide-react';
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, BookOpen, Check, ChevronRight, ClipboardList, FileText, GraduationCap, LayoutGrid, Lightbulb, Loader2, PanelsTopLeft, Search, Trash2, UsersRound, Video, X } from 'lucide-react';
 import Avatar from '@/components/shared/Avatar';
+import { getSpaceTemplate, SPACE_TEMPLATES, spaceTemplateInstructions } from '@/lib/space-templates.mjs';
 import type { Agent } from '@/types';
 
 export type CreateSpaceInput = {
@@ -12,9 +13,21 @@ export type CreateSpaceInput = {
   description: string;
   instructions: string;
   agentIds: string[];
+  templateId: string | null;
 };
 
 const PROFESSIONAL_TEAM_IDS = ['professional-product', 'professional-ux', 'professional-frontend'];
+
+const TEMPLATE_ICONS = {
+  newspaper: FileText,
+  video: Video,
+  book: BookOpen,
+  search: Search,
+  lightbulb: Lightbulb,
+  clipboard: ClipboardList,
+  graduation: GraduationCap,
+  webpage: PanelsTopLeft,
+};
 
 export default function CreateSpaceDialog({
   agents,
@@ -34,6 +47,7 @@ export default function CreateSpaceDialog({
   const [description, setDescription] = useState('');
   const [instructions, setInstructions] = useState('');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [templateId, setTemplateId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState('全部');
   const [selectionError, setSelectionError] = useState('');
@@ -79,6 +93,7 @@ export default function CreateSpaceDialog({
   }, []);
 
   const agentById = useMemo(() => new Map(agents.map((agent) => [agent.id, agent])), [agents]);
+  const selectedTemplate = getSpaceTemplate(templateId);
   const selectedAgents = selectedIds.map((id) => agentById.get(id)).filter(Boolean) as Agent[];
   const categories = useMemo(
     () => ['全部', ...new Set(agents.map((agent) => agent.category || '其他'))],
@@ -115,6 +130,26 @@ export default function CreateSpaceDialog({
     });
   };
 
+  const applyTemplate = (nextTemplateId: string | null) => {
+    setTemplateId(nextTemplateId);
+    setSelectionError('');
+    setQuery('');
+    setCategory('全部');
+    if (!nextTemplateId) {
+      setName('');
+      setDescription('');
+      setInstructions('');
+      setSelectedIds([]);
+      return;
+    }
+    const item = getSpaceTemplate(nextTemplateId);
+    if (!item) return;
+    setName(item.defaultName);
+    setDescription(item.description);
+    setInstructions(spaceTemplateInstructions(item));
+    setSelectedIds(item.recommendedAgentIds.filter((id) => agentById.has(id)).slice(0, 6));
+  };
+
   const selectProfessionalTeam = () => {
     setSelectionError('');
     setSelectedIds((current) => {
@@ -141,6 +176,7 @@ export default function CreateSpaceDialog({
       description: description.trim(),
       instructions: instructions.trim(),
       agentIds: selectedIds,
+      templateId,
     });
   };
 
@@ -172,7 +208,7 @@ export default function CreateSpaceDialog({
           <div>
             <h2 id="create-space-dialog-title" className="text-base font-black text-slate-950">新建空间</h2>
             <div className="mt-1 flex items-center gap-2 text-[11px] font-black">
-              <span className={step === 1 ? 'text-slate-900' : 'text-slate-400'}>1 基本信息</span>
+              <span className={step === 1 ? 'text-slate-900' : 'text-slate-400'}>1 模板与信息</span>
               <ChevronRight size={12} className="text-slate-300" />
               <span className={step === 2 ? 'text-slate-900' : 'text-slate-400'}>2 空间成员</span>
             </div>
@@ -185,6 +221,42 @@ export default function CreateSpaceDialog({
         <div className="min-h-0 flex-1 overscroll-contain overflow-y-auto p-5 pb-8 sm:p-6">
           {step === 1 ? (
             <div className="space-y-5">
+              <div>
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <span className="text-xs font-black text-slate-600">从模板开始</span>
+                  <span className="text-[11px] font-semibold text-slate-400">成员和规则稍后仍可调整</span>
+                </div>
+                <div className="flex snap-x gap-2 overflow-x-auto pb-2 sm:grid sm:grid-cols-3 sm:overflow-visible sm:pb-0">
+                  <button
+                    type="button"
+                    onClick={() => applyTemplate(null)}
+                    aria-pressed={templateId === null}
+                    className={`min-h-20 w-40 shrink-0 snap-start rounded-lg border p-3 text-left transition sm:w-auto ${templateId === null ? 'border-slate-950 bg-slate-950 text-white' : 'border-black/[0.08] bg-white text-slate-700 hover:border-slate-300'}`}
+                  >
+                    <LayoutGrid size={17} />
+                    <div className="mt-2 text-xs font-black">空白空间</div>
+                    <div className={`mt-1 text-[11px] font-semibold ${templateId === null ? 'text-slate-300' : 'text-slate-400'}`}>自己配置成员和规则</div>
+                  </button>
+                  {SPACE_TEMPLATES.map((item) => {
+                    const Icon = TEMPLATE_ICONS[item.icon as keyof typeof TEMPLATE_ICONS] || FileText;
+                    const selected = templateId === item.id;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => applyTemplate(item.id)}
+                        aria-pressed={selected}
+                        className={`min-h-20 w-40 shrink-0 snap-start rounded-lg border p-3 text-left transition sm:w-auto ${selected ? 'border-slate-950 bg-slate-950 text-white' : 'border-black/[0.08] bg-white text-slate-700 hover:border-slate-300'}`}
+                      >
+                        <Icon size={17} />
+                        <div className="mt-2 truncate text-xs font-black">{item.name}</div>
+                        <div className={`mt-1 line-clamp-2 text-[11px] font-semibold leading-4 ${selected ? 'text-slate-300' : 'text-slate-400'}`}>{item.description}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
               <label className="block">
                 <span className="mb-2 block text-xs font-black text-slate-600">空间名称</span>
                 <input
@@ -215,6 +287,19 @@ export default function CreateSpaceDialog({
                 </div>
                 <Check size={16} className="text-emerald-600" />
               </div>
+
+              {selectedTemplate && (
+                <div className="grid grid-cols-2 gap-3 border-b border-black/[0.06] pb-4 text-xs">
+                  <div>
+                    <div className="font-black text-slate-400">推荐流程</div>
+                    <div className="mt-1 font-semibold leading-5 text-slate-600">{selectedTemplate.workflow.join(' → ')}</div>
+                  </div>
+                  <div>
+                    <div className="font-black text-slate-400">默认交付</div>
+                    <div className="mt-1 font-semibold leading-5 text-slate-600">{selectedTemplate.deliverables.join('、')}</div>
+                  </div>
+                </div>
+              )}
 
               <details className="group border-b border-black/[0.06]">
                 <summary className="flex cursor-pointer list-none items-center justify-between py-3 text-sm font-black text-slate-600 marker:hidden">

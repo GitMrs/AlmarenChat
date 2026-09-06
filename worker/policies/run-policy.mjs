@@ -10,14 +10,18 @@ function jsonValue(value, fallback) {
   }
 }
 
-function logicalWorkspacePath(value) {
+function logicalWorkspacePath(value, workId = null) {
   const normalized = String(value || '').trim().replaceAll('\\', '/').replace(/^\/+/, '');
-  return normalized.startsWith('workspace/') ? normalized.slice('workspace/'.length) : normalized;
+  const workspacePath = normalized.startsWith('workspace/') ? normalized.slice('workspace/'.length) : normalized;
+  const workPrefix = workId ? `works/${workId}/` : '';
+  return workPrefix && workspacePath.startsWith(workPrefix)
+    ? workspacePath.slice(workPrefix.length)
+    : workspacePath;
 }
 
-export function matchApprovedWorkspacePaths(touchedPaths, approvedFilePaths) {
-  const approved = new Set([...approvedFilePaths].map(logicalWorkspacePath).filter(Boolean));
-  return [...new Set([...touchedPaths].map(logicalWorkspacePath).filter(Boolean))]
+export function matchApprovedWorkspacePaths(touchedPaths, approvedFilePaths, workId = null) {
+  const approved = new Set([...approvedFilePaths].map((value) => logicalWorkspacePath(value, workId)).filter(Boolean));
+  return [...new Set([...touchedPaths].map((value) => logicalWorkspacePath(value, workId)).filter(Boolean))]
     .filter((relativePath) => approved.has(relativePath));
 }
 

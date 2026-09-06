@@ -94,6 +94,7 @@ type TaskProposal = {
   capabilities: Array<'workspace_read' | 'workspace_write' | 'web_research' | 'code_execute' | 'image_generate'>;
   networkPolicy: 'forbidden' | 'allowed' | 'required';
   status: 'pending';
+  workId?: string;
   skillSnapshot?: Record<string, unknown>;
   skillAgentId?: string;
 };
@@ -207,13 +208,17 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
   try {
     const userId = requireAuth(request);
     const { spaceId } = await params;
-    const { message, targetAgentId, history, skipPersistUserMessage, interactionMode, webSearchEnabled, skillId } = await request.json();
+    const { message, targetAgentId, history, skipPersistUserMessage, interactionMode, webSearchEnabled, skillId, workId } = await request.json();
     const textMessage = typeof message === 'string' ? message.trim() : '';
     const allowWebSearch = webSearchEnabled === true;
     if (!textMessage) return NextResponse.json({ error: '消息不能为空' }, { status: 400 });
 
     const space = await getSpaceForUser(spaceId, userId);
     if (!space) return NextResponse.json({ error: 'Space not found' }, { status: 404 });
+    const selectedWork = typeof workId === 'string' && workId
+      ? await prisma.spaceWork.findFirst({ where: { id: workId, spaceId } })
+      : null;
+    if (workId && !selectedWork) return NextResponse.json({ error: '指定成果不存在' }, { status: 404 });
 
     const memberAgents = await resolveManyAgents(space.members.map((member) => member.agentId), userId);
     const allAgents = [SPACE_COORDINATOR, ...memberAgents];
@@ -241,8 +246,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
     }
     const projectMemory = spaceMemoryContext(persistedMemory);
     const teamLearning = spaceLearningContext(await readSpaceLearning({ projectRoot: process.cwd(), userId, spaceId }));
-    const recentRuns = await prisma.agentRun.findMany({
-      where: { spaceId },
+    const recentRuns = selectedWork ? await prisma.agentRun.findMany({
+      where: { spaceId, workId: selectedWork.id },
       orderBy: { createdAt: 'desc' },
       take: 3,
       select: {
@@ -259,7 +264,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
           select: { type: true, payload: true },
         },
       },
-    });
+    }) : [];
     const runEvidence = recentRunEvidenceContext(recentRuns);
 
     let persistedUserMessage: { id: string; createdAt: Date } | null = null;
@@ -324,7 +329,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
       && professionalDeliverableNeedsTask(textMessage);
     const skillReferenceTool = selectedSkill ? spaceSkillReferenceToolSchema(selectedSkill) : null;
     const availableTools = [
-      ...workspaceToolSchemas.filter((tool: any) => READ_ONLY_WORKSPACE_TOOLS.has(tool.function.name)),
+      ...(selectedWork ? workspaceToolSchemas.filter((tool: any) => READ_ONLY_WORKSPACE_TOOLS.has(tool.function.name)) : []),
       ...(!isMultiReply && allowWebSearch ? [WEB_SEARCH_TOOL] : []),
       ...(!isMultiReply ? [TASK_PROPOSAL_TOOL] : []),
       ...(skillReferenceTool ? [skillReferenceTool] : []),
@@ -335,6 +340,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
       formatMembersContext(allAgents, targetAgent),
       space.description ? `当前空间说明：${space.description}` : '',
       space.instructions ? `当前空间规则：\n${space.instructions}` : '',
+      selectedWork ? `当前正在继续处理：${selectedWork.title}。只读取和修改该成果目录中的文件。` : '当前处于新成果模式，不继承已有成果目录中的文件。',
       projectMemory,
       teamLearning,
       runEvidence,
@@ -460,7 +466,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
               }
               if (!READ_ONLY_WORKSPACE_TOOLS.has(name)) throw new Error('空间助手只能读取和检查文件');
               return executeWorkspaceTool(
-                { projectRoot: process.cwd(), userId, spaceId, isCancelled: () => request.signal.aborted },
+                { projectRoot: process.cwd(), userId, spaceId, workId: selectedWork?.id, isCancelled: () => request.signal.aborted },
                 name,
                 args
               );
@@ -492,6 +498,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
               }
             }
 
+            if (taskProposal && selectedWork) taskProposal = { ...taskProposal, workId: selectedWork.id };
             const assistantContent = loopResult.content?.trim()
               || (taskProposal ? '已根据你的要求生成目标授权方案，确认后由协调者根据实时团队和成果动态推进。' : '');
             const assistantMessage = await tx.spaceMessage.create({

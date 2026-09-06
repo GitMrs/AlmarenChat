@@ -71,6 +71,17 @@ test('approved workspace paths match logical tool paths and stored workspace pat
     ),
     ['pelican-bike.html', 'assets/scene.css']
   );
+  assert.deepEqual(
+    matchApprovedWorkspacePaths(
+      new Set(['article.md', 'publish-info.md']),
+      new Set([
+        'workspace/works/work-1/article.md',
+        'workspace/works/work-1/publish-info.md',
+      ]),
+      'work-1'
+    ),
+    ['article.md', 'publish-info.md']
+  );
 });
 
 test('coordinator acceptance requires applied validated manifests and requested workspace output', () => {

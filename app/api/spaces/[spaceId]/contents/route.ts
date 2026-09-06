@@ -29,13 +29,14 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ s
     }
 
     const deleted = await resetSpaceContentsStorage(spaceRoot(userId, spaceId), async () => {
-      const [messages, files, memories, sessions, discussions, runs] = await prisma.$transaction([
+      const [messages, files, memories, sessions, discussions, runs, works] = await prisma.$transaction([
         prisma.spaceMessage.deleteMany({ where: { spaceId } }),
         prisma.spaceFile.deleteMany({ where: { spaceId } }),
         prisma.spaceMemory.deleteMany({ where: { spaceId } }),
         prisma.agentSession.deleteMany({ where: { spaceId } }),
         prisma.spaceDiscussion.deleteMany({ where: { spaceId } }),
         prisma.agentRun.deleteMany({ where: { spaceId } }),
+        prisma.spaceWork.deleteMany({ where: { spaceId } }),
       ]);
       return {
         messages: messages.count,
@@ -44,6 +45,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ s
         sessions: sessions.count,
         discussions: discussions.count,
         runs: runs.count,
+        works: works.count,
       };
     }, { preserveEntries: ['.space'] });
     await ensureSpaceRoot(userId, spaceId);

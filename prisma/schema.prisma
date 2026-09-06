@@ -71,6 +71,9 @@ model Space {
   instructions String?
   executionMode String @default("REVIEW_DISPATCH")
   hostAgentId String?
+  templateId String?
+  templateVersion Int?
+  templateSnapshot Json?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -78,10 +81,26 @@ model Space {
   messages SpaceMessage[]
   files    SpaceFile[]
   runs     AgentRun[]
+  works    SpaceWork[]
   discussions SpaceDiscussion[]
   memory      SpaceMemory?
 
   @@index([userId, updatedAt])
+}
+
+model SpaceWork {
+  id        String   @id @default(uuid())
+  spaceId   String
+  space     Space    @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  title     String
+  kind      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  runs  AgentRun[]
+  files SpaceFile[]
+
+  @@index([spaceId, updatedAt])
 }
 
 model SpaceMember {
@@ -140,6 +159,8 @@ model SpaceFile {
   relativePath String
   runId        String?
   taskId       String?
+  workId       String?
+  work         SpaceWork? @relation(fields: [workId], references: [id], onDelete: SetNull)
   status       String   @default("READY")
   shareId      String?  @unique
   shareEnabled Boolean  @default(false)
@@ -151,6 +172,7 @@ model SpaceFile {
   @@index([spaceId])
   @@index([runId])
   @@index([taskId])
+  @@index([workId])
 }
 
 model KnowledgeDocument {
@@ -415,6 +437,8 @@ model AgentRun {
   result      String?
   error       String?
   retryOfId   String?
+  workId      String?
+  work        SpaceWork? @relation(fields: [workId], references: [id], onDelete: SetNull)
   attempt     Int       @default(1)
   workerId    String?
   heartbeatAt DateTime?
@@ -441,6 +465,7 @@ model AgentRun {
   @@index([userId, createdAt])
   @@index([status, createdAt])
   @@index([workerId, heartbeatAt])
+  @@index([workId, createdAt])
 }
 
 model AgentTask {

@@ -20,6 +20,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ spac
 
     const files = await prisma.spaceFile.findMany({
       where: { spaceId },
+      include: { work: true },
       orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }],
     });
     const visibleFiles = files.filter((file, index) => (

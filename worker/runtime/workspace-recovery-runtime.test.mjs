@@ -7,7 +7,7 @@ function fixture(overrides = {}) {
   const db = new Database(':memory:');
   db.exec(`
     CREATE TABLE "AgentRun" (
-      "id" TEXT PRIMARY KEY, "retryOfId" TEXT, "userId" TEXT, "spaceId" TEXT
+      "id" TEXT PRIMARY KEY, "retryOfId" TEXT, "userId" TEXT, "spaceId" TEXT, "workId" TEXT
     );
     CREATE TABLE "AgentTask" (
       "id" TEXT PRIMARY KEY, "runId" TEXT, "attempt" INTEGER
@@ -38,7 +38,7 @@ function fixture(overrides = {}) {
 test('workspace recovery restores interrupted applications and closes the manifest', async () => {
   const current = fixture();
   current.db.exec(`
-    INSERT INTO "AgentRun" VALUES ('run-1', NULL, 'user-1', 'space-1');
+    INSERT INTO "AgentRun" VALUES ('run-1', NULL, 'user-1', 'space-1', 'work-1');
     INSERT INTO "AgentArtifactManifest" VALUES (
       'manifest-1', 'run-1', 'task-1', 2, 'APPLYING', '{"files":[]}',
       '[{"path":"index.html","change":"CREATED"}]', 'before', 'before'
@@ -47,6 +47,7 @@ test('workspace recovery restores interrupted applications and closes the manife
   await current.runtime.recoverInterruptedWorkspaceApplications();
   assert.equal(current.recovered.length, 1);
   assert.equal(current.recovered[0][0].attempt, 2);
+  assert.equal(current.recovered[0][0].workId, 'work-1');
   assert.equal(current.db.prepare('SELECT "status" FROM "AgentArtifactManifest"').get().status, 'VALIDATED');
   assert.equal(current.events[0][1], 'WORKSPACE_APPLICATION_RECOVERED');
   current.db.close();
@@ -55,7 +56,7 @@ test('workspace recovery restores interrupted applications and closes the manife
 test('workspace recovery cleans closed and task-scoped staging attempts', () => {
   const current = fixture();
   current.db.exec(`
-    INSERT INTO "AgentRun" VALUES ('run-1', NULL, 'user-1', 'space-1');
+    INSERT INTO "AgentRun" VALUES ('run-1', NULL, 'user-1', 'space-1', 'work-1');
     INSERT INTO "AgentTask" VALUES ('task-1', 'run-1', 3);
     INSERT INTO "AgentArtifactManifest" VALUES (
       'manifest-1', 'run-1', 'task-1', 2, 'APPLIED', '{}', '[]', 'before', 'before'
@@ -70,8 +71,8 @@ test('workspace recovery cleans closed and task-scoped staging attempts', () => 
 test('workspace recovery restores touched paths across retry lineage', () => {
   const current = fixture();
   current.db.exec(`
-    INSERT INTO "AgentRun" VALUES ('run-1', NULL, 'user-1', 'space-1');
-    INSERT INTO "AgentRun" VALUES ('run-2', 'run-1', 'user-1', 'space-1');
+    INSERT INTO "AgentRun" VALUES ('run-1', NULL, 'user-1', 'space-1', NULL);
+    INSERT INTO "AgentRun" VALUES ('run-2', 'run-1', 'user-1', 'space-1', NULL);
     INSERT INTO "AgentRunEvent" VALUES (
       'run-1', 'TOOL_COMPLETED', '{"tool":"write_file","path":"first.md"}', '1'
     );

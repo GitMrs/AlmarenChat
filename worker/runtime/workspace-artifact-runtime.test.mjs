@@ -18,7 +18,7 @@ async function fixture() {
     CREATE TABLE "SpaceFile" (
       "id" TEXT PRIMARY KEY, "spaceId" TEXT, "fileName" TEXT, "mimeType" TEXT,
       "size" INTEGER, "relativePath" TEXT, "runId" TEXT, "taskId" TEXT,
-      "status" TEXT, "createdAt" TEXT, "updatedAt" TEXT
+      "workId" TEXT, "status" TEXT, "createdAt" TEXT, "updatedAt" TEXT
     );
     CREATE TABLE "AgentArtifactManifest" (
       "id" TEXT PRIMARY KEY, "runId" TEXT, "taskId" TEXT, "attempt" INTEGER,

@@ -1,4 +1,4 @@
-import type { AgentRun, AssistantConversationSummary, AssistantExperienceMessage, AssistantMemoryItem, AssistantQQBinding, AssistantReminder, AssistantReminderCandidate, Message, PersonalAssistantBootstrap, PersonalAssistantProfile, SpaceDiscussion, SpaceFileShare, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal } from '@/types';
+import type { AgentRun, AssistantConversationSummary, AssistantExperienceMessage, AssistantMemoryItem, AssistantQQBinding, AssistantReminder, AssistantReminderCandidate, Message, PersonalAssistantBootstrap, PersonalAssistantProfile, SpaceDiscussion, SpaceFileShare, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal, SpaceWork } from '@/types';
 
 const API_BASE = '/api';
 
@@ -359,7 +359,7 @@ export const conversations = {
 // Spaces
 export const spaces = {
   list: () => request<{ spaces: any[] }>('/spaces'),
-  create: (data: { name: string; description?: string; instructions?: string; executionMode?: 'AUTO' | 'REVIEW_DISPATCH'; agentIds?: string[] }) =>
+  create: (data: { name: string; description?: string; instructions?: string; executionMode?: 'AUTO' | 'REVIEW_DISPATCH'; agentIds?: string[]; templateId?: string | null }) =>
     request<{ space: any }>('/spaces', {
       method: 'POST',
       body: JSON.stringify(data),
@@ -487,15 +487,17 @@ export const spaces = {
       body: JSON.stringify({ content, updatedAt }),
     }),
   runs: (id: string) => request<{ runs: AgentRun[] }>(`/spaces/${id}/runs`),
+  works: (id: string) => request<{ works: SpaceWork[] }>(`/spaces/${id}/works`),
   createRun: (
     id: string,
     input: string,
     proposalMessageId?: string,
-    revisedProposal?: { goal: string; steps: string[]; deliverables: string[]; networkPolicy: 'forbidden' | 'allowed' | 'required' }
+    revisedProposal?: { goal: string; steps: string[]; deliverables: string[]; networkPolicy: 'forbidden' | 'allowed' | 'required' },
+    workId?: string
   ) =>
     request<{ run: AgentRun; proposal?: SpaceTaskProposal }>(`/spaces/${id}/runs`, {
       method: 'POST',
-      body: JSON.stringify({ input, proposalMessageId, revisedProposal }),
+      body: JSON.stringify({ input, proposalMessageId, revisedProposal, workId }),
     }),
   rejectTaskProposal: (spaceId: string, messageId: string) =>
     request<{ message: any }>(`/spaces/${spaceId}/messages/${messageId}`, {
@@ -710,6 +712,7 @@ export async function streamSpaceMessage(data: {
   webSearchEnabled?: boolean;
   skipPersistUserMessage?: boolean;
   skillId?: string;
+  workId?: string;
   signal?: AbortSignal;
 }): Promise<{ stream: ReadableStream<Uint8Array>; speakerAgentId?: string; speakerAgentName?: string; workspaceFilesChanged: number }> {
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
@@ -728,6 +731,7 @@ export async function streamSpaceMessage(data: {
       webSearchEnabled: data.webSearchEnabled,
       skipPersistUserMessage: data.skipPersistUserMessage,
       skillId: data.skillId,
+      workId: data.workId,
     }),
     signal: data.signal,
   });

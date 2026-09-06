@@ -1,10 +1,10 @@
 'use client';
 
-import { Activity, BookOpen, Check, CheckCircle2, ChevronRight, Clock3, Code2, FileText, Globe2, Image as ImageIcon, ListTodo, Loader2, RotateCcw, X, Pencil } from 'lucide-react';
+import { Activity, BookOpen, Check, CheckCircle2, ChevronRight, Clock3, Code2, FileText, Globe2, Image as ImageIcon, ListTodo, Loader2, RotateCcw, Settings2, SkipForward, X, Pencil } from 'lucide-react';
 import MessageActions from '@/components/chat/MessageActions';
 import MessageBubbleFrame from '@/components/chat/MessageBubbleFrame';
 import MessageContent from '@/components/chat/MessageContent';
-import type { Agent, AgentRun, SpaceMessage, SpaceRunResultAttachment, SpaceTaskProposal } from '@/types';
+import type { Agent, AgentRun, AgentTask, SpaceMessage, SpaceRunResultAttachment, SpaceTaskProposal } from '@/types';
 
 const RUN_STATUS_LABELS: Record<string, string> = {
   QUEUED: '等待执行',
@@ -31,6 +31,16 @@ function TaskProposal({
   onRevise,
   onReject,
   onOpenRun,
+  dispatchAction,
+  reviewAction,
+  dispatchError,
+  reviewError,
+  onApproveDispatch,
+  onEditDispatch,
+  onRejectDispatch,
+  onApproveTaskResult,
+  onReviseTaskResult,
+  onSkipTaskResult,
 }: {
   proposal: SpaceTaskProposal;
   run?: AgentRun | null;
@@ -40,16 +50,57 @@ function TaskProposal({
   onRevise?: () => void;
   onReject?: () => void;
   onOpenRun?: () => void;
+  dispatchAction?: 'approve' | 'reject' | null;
+  reviewAction?: 'approve' | 'retry' | 'skip' | null;
+  dispatchError?: string;
+  reviewError?: string;
+  onApproveDispatch?: (task: AgentTask) => void;
+  onEditDispatch?: (task: AgentTask) => void;
+  onRejectDispatch?: (task: AgentTask) => void;
+  onApproveTaskResult?: (task: AgentTask) => void;
+  onReviseTaskResult?: (task: AgentTask) => void;
+  onSkipTaskResult?: (task: AgentTask) => void;
 }) {
   const completed = run?.tasks.filter((task) => task.status === 'COMPLETED').length || 0;
   const pending = proposal.status === 'pending';
   const capabilities = proposal.capabilities || ['workspace_read'];
-  const activeTask = run?.tasks.find((task) => ['RUNNING', 'SUBMITTED', 'REVIEWING', 'WAITING', 'WAITING_APPROVAL', 'PENDING'].includes(task.status));
+  const proposedTask = run?.tasks.find((task) => task.status === 'PROPOSED');
+  const reviewTask = run?.tasks.find((task) => task.status === 'WAITING_APPROVAL');
+  const activeTask = proposedTask || reviewTask || run?.tasks.find((task) => ['RUNNING', 'SUBMITTED', 'REVIEWING', 'WAITING', 'PENDING'].includes(task.status));
+  const proposedTaskReason = proposedTask
+    ? [...(run?.events || [])].reverse().find((event) => {
+      if (event.type !== 'COORDINATOR_TASK_PROPOSED') return false;
+      const payload = event.payload && typeof event.payload === 'object' ? event.payload as Record<string, unknown> : {};
+      return event.taskId === proposedTask.id || payload.taskId === proposedTask.id;
+    })?.payload
+    : null;
+  const dispatchReason = proposedTaskReason && typeof proposedTaskReason === 'object'
+    ? String((proposedTaskReason as Record<string, unknown>).reason || '')
+    : '';
+  const reviewAuditEvent = reviewTask
+    ? [...(run?.events || [])].reverse().find((event) => {
+      if (event.type !== 'RESEARCH_RESULT_AUDITED') return false;
+      const payload = event.payload && typeof event.payload === 'object' ? event.payload as Record<string, unknown> : {};
+      return event.taskId === reviewTask.id || payload.taskId === reviewTask.id;
+    })
+    : null;
+  const reviewAuditPayload = reviewAuditEvent?.payload && typeof reviewAuditEvent.payload === 'object'
+    ? reviewAuditEvent.payload as Record<string, unknown>
+    : null;
+  const reviewAudit = reviewAuditPayload?.audit && typeof reviewAuditPayload.audit === 'object'
+    ? reviewAuditPayload.audit as Record<string, unknown>
+    : null;
+  const reviewBlocked = reviewAudit?.accepted === false;
   const recentEvents = (run?.events || [])
     .filter((event) => !['MODEL_STREAMING', 'RUN_STARTED'].includes(event.type))
     .slice(-4);
   const isTerminal = Boolean(run && ['COMPLETED', 'PARTIAL', 'FAILED_VALIDATION', 'BLOCKED', 'FAILED', 'CANCELLED'].includes(run.status));
-  const stageLabel = activeTask?.status === 'REVIEWING' || activeTask?.status === 'SUBMITTED'
+  const needsUserApproval = Boolean(proposedTask || reviewTask);
+  const stageLabel = activeTask?.status === 'PROPOSED'
+    ? '等待你确认派发'
+    : activeTask?.status === 'WAITING_APPROVAL'
+      ? '等待你审核成员结果'
+      : activeTask?.status === 'REVIEWING' || activeTask?.status === 'SUBMITTED'
     ? '协调者正在验收'
     : activeTask?.status === 'WAITING'
       ? '等待你补充信息'
@@ -183,7 +234,9 @@ function TaskProposal({
                 {run && <span className="text-[11px] font-bold text-slate-400">已验收 {completed} 项</span>}
               </div>
               <div className="mt-1 flex items-center gap-2 text-sm font-black text-slate-800">
-                {!isTerminal && <Loader2 className="shrink-0 animate-spin text-sky-500" size={14} />}
+                {!isTerminal && (needsUserApproval
+                  ? <Clock3 className="shrink-0 text-amber-500" size={14} />
+                  : <Loader2 className="shrink-0 animate-spin text-sky-500" size={14} />)}
                 <span className="min-w-0 break-words">{stageLabel}</span>
               </div>
               {activeTask && <p className="mt-1 line-clamp-2 text-xs font-semibold leading-5 text-slate-500">{activeTask.title}</p>}
@@ -202,6 +255,57 @@ function TaskProposal({
                   <span className="min-w-0 break-words">{event.message}</span>
                 </div>
               ))}
+            </div>
+          )}
+          {proposedTask && (
+            <div className="mt-4 border-y border-black/[0.06] py-4">
+              <div className="text-[11px] font-black text-amber-600">开工前待确认</div>
+              <div className="mt-1 text-sm font-black text-slate-900">{proposedTask.title}</div>
+              <div className="mt-2 grid gap-2 text-xs leading-5 text-slate-500 sm:grid-cols-2">
+                <div><span className="font-black text-slate-700">准备交给：</span>{proposedTask.agentName}</div>
+                <div><span className="font-black text-slate-700">采用 Skill：</span>{proposedTask.skillSnapshot?.name || '通用任务执行'}</div>
+              </div>
+              <p className="mt-2 line-clamp-2 text-xs font-semibold leading-5 text-slate-500">
+                <span className="font-black text-slate-700">选择理由：</span>{dispatchReason || '协调者根据成员能力与当前工作状态作出选择。'}
+              </p>
+              {dispatchError && <div className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-600">{dispatchError}</div>}
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button type="button" onClick={() => onApproveDispatch?.(proposedTask)} disabled={Boolean(dispatchAction)} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-slate-950 px-3 text-xs font-black text-white transition hover:bg-slate-800 disabled:bg-slate-200 disabled:text-slate-400">
+                  {dispatchAction === 'approve' ? <Loader2 className="animate-spin" size={14} /> : <Check size={14} />}
+                  确认并开始
+                </button>
+                <button type="button" onClick={() => onEditDispatch?.(proposedTask)} disabled={Boolean(dispatchAction)} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-black/[0.08] bg-white px-3 text-xs font-black text-slate-600 transition hover:text-slate-950 disabled:text-slate-300">
+                  <Settings2 size={14} />
+                  调整派发
+                </button>
+                <button type="button" onClick={() => onRejectDispatch?.(proposedTask)} disabled={Boolean(dispatchAction)} className="inline-flex h-9 items-center px-3 text-xs font-black text-rose-500 transition hover:bg-rose-50 disabled:text-slate-300">
+                  退回重排
+                </button>
+              </div>
+            </div>
+          )}
+          {reviewTask && (
+            <div className="mt-4 border-y border-black/[0.06] py-4">
+              <div className="text-[11px] font-black text-sky-600">第 {reviewTask.sortOrder + 1} 步待审核</div>
+              <div className="mt-1 text-sm font-black text-slate-900">{reviewTask.title}</div>
+              <div className="mt-1 text-xs font-semibold text-slate-400">{reviewTask.agentName} · 第 {reviewTask.attempt} 次执行</div>
+              {reviewTask.result && <p className="mt-2 line-clamp-3 whitespace-pre-wrap text-xs font-semibold leading-5 text-slate-600">{reviewTask.result}</p>}
+              {reviewBlocked && <div className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">来源验收未通过，请补充要求后重做，或跳过此步骤。</div>}
+              {reviewError && <div className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-600">{reviewError}</div>}
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button type="button" onClick={() => onApproveTaskResult?.(reviewTask)} disabled={Boolean(reviewAction) || reviewBlocked} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-slate-950 px-3 text-xs font-black text-white transition hover:bg-slate-800 disabled:bg-slate-200 disabled:text-slate-400">
+                  {reviewAction === 'approve' ? <Loader2 className="animate-spin" size={14} /> : <Check size={14} />}
+                  确认并继续
+                </button>
+                <button type="button" onClick={() => onReviseTaskResult?.(reviewTask)} disabled={Boolean(reviewAction)} className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-black/[0.08] bg-white px-3 text-xs font-black text-slate-600 transition hover:text-slate-950 disabled:text-slate-300">
+                  <RotateCcw size={14} />
+                  补充要求并重做
+                </button>
+                <button type="button" onClick={() => onSkipTaskResult?.(reviewTask)} disabled={Boolean(reviewAction)} className="inline-flex h-9 items-center gap-1.5 px-3 text-xs font-black text-slate-500 transition hover:bg-slate-100 hover:text-slate-950 disabled:text-slate-300">
+                  {reviewAction === 'skip' ? <Loader2 className="animate-spin" size={14} /> : <SkipForward size={14} />}
+                  跳过此步骤
+                </button>
+              </div>
             </div>
           )}
           {isTerminal && run?.result && <p className="mt-3 line-clamp-3 text-xs font-semibold leading-5 text-slate-500">{run.result}</p>}
@@ -232,6 +336,16 @@ export default function SpaceMessageItem({
   onReviseProposal,
   onRejectProposal,
   onOpenRun,
+  dispatchAction,
+  reviewAction,
+  dispatchError,
+  reviewError,
+  onApproveDispatch,
+  onEditDispatch,
+  onRejectDispatch,
+  onApproveTaskResult,
+  onReviseTaskResult,
+  onSkipTaskResult,
 }: {
   message: SpaceMessage;
   speaker?: Agent | null;
@@ -250,6 +364,16 @@ export default function SpaceMessageItem({
   onReviseProposal?: (proposal: SpaceTaskProposal) => void;
   onRejectProposal?: () => void;
   onOpenRun?: () => void;
+  dispatchAction?: 'approve' | 'reject' | null;
+  reviewAction?: 'approve' | 'retry' | 'skip' | null;
+  dispatchError?: string;
+  reviewError?: string;
+  onApproveDispatch?: (task: AgentTask) => void;
+  onEditDispatch?: (task: AgentTask) => void;
+  onRejectDispatch?: (task: AgentTask) => void;
+  onApproveTaskResult?: (task: AgentTask) => void;
+  onReviseTaskResult?: (task: AgentTask) => void;
+  onSkipTaskResult?: (task: AgentTask) => void;
 }) {
   const isUser = message.role === 'user';
   const proposal = message.attachments?.find((attachment): attachment is SpaceTaskProposal => attachment.type === 'task_proposal');
@@ -299,6 +423,16 @@ export default function SpaceMessageItem({
           onRevise={() => onReviseProposal?.(proposal)}
           onReject={onRejectProposal}
           onOpenRun={onOpenRun}
+          dispatchAction={dispatchAction}
+          reviewAction={reviewAction}
+          dispatchError={dispatchError}
+          reviewError={reviewError}
+          onApproveDispatch={onApproveDispatch}
+          onEditDispatch={onEditDispatch}
+          onRejectDispatch={onRejectDispatch}
+          onApproveTaskResult={onApproveTaskResult}
+          onReviseTaskResult={onReviseTaskResult}
+          onSkipTaskResult={onSkipTaskResult}
         />
       )}
       {runResult && run && (

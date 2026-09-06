@@ -3,6 +3,7 @@ import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { getSpaceForUser } from '@/app/api/_lib/spaces';
 import { signSpacePreviewToken } from '@/lib/space-preview-token.mjs';
+import { logicalWorkspaceRelativePath } from '@/lib/space-work-paths.mjs';
 
 function encodedPath(value: string) {
   return value.split('/').map((part) => encodeURIComponent(part)).join('/');
@@ -35,7 +36,7 @@ export async function POST(
       : { userId, spaceId, root: 'space', externalImages, externalDependencies };
     const token = signSpacePreviewToken(scope);
     const relativePath = stagedTask && file.relativePath.startsWith('workspace/')
-      ? file.relativePath.slice('workspace/'.length)
+      ? logicalWorkspaceRelativePath(file.workId, file.relativePath)
       : file.relativePath;
     const rootUrl = `/api/space-previews/${token}/`;
     return NextResponse.json({

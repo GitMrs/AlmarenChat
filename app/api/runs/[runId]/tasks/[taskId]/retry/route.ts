@@ -35,6 +35,7 @@ export async function POST(
       projectRoot: process.cwd(),
       userId,
       spaceId: existing.spaceId,
+      workId: existing.workId,
       taskId: task.id,
       attempt: task.attempt,
     };
@@ -42,6 +43,7 @@ export async function POST(
       projectRoot: process.cwd(),
       userId,
       spaceId: existing.spaceId,
+      workId: existing.workId,
       taskId: continuationTaskId,
       attempt: nextTaskAttempt,
     };
@@ -78,6 +80,7 @@ export async function POST(
         data: {
           id: continuationRunId,
           spaceId: existing.spaceId,
+          workId: existing.workId,
           userId,
           input: existing.input,
           status: 'QUEUED',

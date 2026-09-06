@@ -146,6 +146,20 @@ export interface Space {
   instructions?: string | null;
   executionMode: 'AUTO' | 'REVIEW_DISPATCH';
   hostAgentId?: string | null;
+  templateId?: string | null;
+  templateVersion?: number | null;
+  templateSnapshot?: {
+    id: string;
+    version: number;
+    name: string;
+    icon: string;
+    workflow: string[];
+    deliverables: string[];
+    qualityRules?: string[];
+    recommendedSkillIds: string[];
+    configuredAgentIds: string[];
+    starterPrompts: string[];
+  } | null;
   hostAgent?: Agent | null;
   createdAt: string;
   updatedAt: string;
@@ -153,6 +167,17 @@ export interface Space {
   messages?: SpaceMessage[];
   files?: SpaceFile[];
   runs?: AgentRun[];
+  works?: SpaceWork[];
+}
+
+export interface SpaceWork {
+  id: string;
+  spaceId: string;
+  title: string;
+  kind: string;
+  createdAt: string;
+  updatedAt: string;
+  _count?: { files: number; runs: number };
 }
 
 export interface SpaceMember {
@@ -220,6 +245,8 @@ export interface SpaceFile {
   relativePath: string;
   runId?: string | null;
   taskId?: string | null;
+  workId?: string | null;
+  work?: SpaceWork | null;
   status?: 'GENERATING' | 'WAITING_APPROVAL' | 'READY' | 'INCOMPLETE';
   shareId?: string | null;
   shareEnabled?: boolean;
@@ -302,6 +329,7 @@ export interface SpaceTaskProposal {
   networkPolicy?: SpaceNetworkPolicy;
   status: 'pending' | 'approved' | 'rejected';
   runId?: string;
+  workId?: string;
   skillSnapshot?: {
     id: string;
     name: string;
@@ -360,6 +388,8 @@ export interface AgentRun {
   id: string;
   spaceId: string;
   userId: string;
+  workId?: string | null;
+  work?: SpaceWork | null;
   input: string;
   status: string;
   result?: string | null;

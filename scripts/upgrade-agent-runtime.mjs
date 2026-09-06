@@ -255,6 +255,9 @@ try {
         "instructions" TEXT,
         "executionMode" TEXT NOT NULL DEFAULT 'REVIEW_DISPATCH',
         "hostAgentId" TEXT,
+        "templateId" TEXT,
+        "templateVersion" INTEGER,
+        "templateSnapshot" JSONB,
         "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         "updatedAt" DATETIME NOT NULL,
         CONSTRAINT "Space_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE
@@ -263,6 +266,22 @@ try {
     if (!hasColumn('Space', 'hostAgentId')) db.exec('ALTER TABLE "Space" ADD COLUMN "hostAgentId" TEXT');
     if (!hasColumn('Space', 'instructions')) db.exec('ALTER TABLE "Space" ADD COLUMN "instructions" TEXT');
     if (!hasColumn('Space', 'executionMode')) db.exec(`ALTER TABLE "Space" ADD COLUMN "executionMode" TEXT NOT NULL DEFAULT 'REVIEW_DISPATCH'`);
+    if (!hasColumn('Space', 'templateId')) db.exec('ALTER TABLE "Space" ADD COLUMN "templateId" TEXT');
+    if (!hasColumn('Space', 'templateVersion')) db.exec('ALTER TABLE "Space" ADD COLUMN "templateVersion" INTEGER');
+    if (!hasColumn('Space', 'templateSnapshot')) db.exec('ALTER TABLE "Space" ADD COLUMN "templateSnapshot" JSONB');
+
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS "SpaceWork" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "spaceId" TEXT NOT NULL,
+        "title" TEXT NOT NULL,
+        "kind" TEXT NOT NULL,
+        "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" DATETIME NOT NULL,
+        CONSTRAINT "SpaceWork_spaceId_fkey" FOREIGN KEY ("spaceId") REFERENCES "Space" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS "SpaceWork_spaceId_updatedAt_idx" ON "SpaceWork"("spaceId", "updatedAt");
+    `);
 
     db.exec(`
       CREATE TABLE IF NOT EXISTS "SpaceMember" (
@@ -561,6 +580,8 @@ try {
     if (!hasColumn('AgentRun', 'runtimeVersion')) db.exec('ALTER TABLE "AgentRun" ADD COLUMN "runtimeVersion" INTEGER NOT NULL DEFAULT 1');
     if (!hasColumn('AgentRun', 'eventSequence')) db.exec('ALTER TABLE "AgentRun" ADD COLUMN "eventSequence" INTEGER NOT NULL DEFAULT 0');
     if (!hasColumn('AgentRun', 'coordinatorState')) db.exec('ALTER TABLE "AgentRun" ADD COLUMN "coordinatorState" JSONB');
+    if (!hasColumn('AgentRun', 'workId')) db.exec('ALTER TABLE "AgentRun" ADD COLUMN "workId" TEXT REFERENCES "SpaceWork"("id") ON DELETE SET NULL ON UPDATE CASCADE');
+    if (!hasColumn('SpaceFile', 'workId')) db.exec('ALTER TABLE "SpaceFile" ADD COLUMN "workId" TEXT REFERENCES "SpaceWork"("id") ON DELETE SET NULL ON UPDATE CASCADE');
     if (!hasColumn('AgentTask', 'acceptanceCriteria')) db.exec('ALTER TABLE "AgentTask" ADD COLUMN "acceptanceCriteria" TEXT');
     if (!hasColumn('AgentTask', 'origin')) db.exec(`ALTER TABLE "AgentTask" ADD COLUMN "origin" TEXT NOT NULL DEFAULT 'legacy_plan'`);
     if (!hasColumn('AgentTask', 'parentTaskId')) db.exec('ALTER TABLE "AgentTask" ADD COLUMN "parentTaskId" TEXT');
@@ -606,6 +627,8 @@ try {
     db.exec(`
       CREATE INDEX IF NOT EXISTS "SpaceFile_runId_idx" ON "SpaceFile"("runId");
       CREATE INDEX IF NOT EXISTS "SpaceFile_taskId_idx" ON "SpaceFile"("taskId");
+      CREATE INDEX IF NOT EXISTS "SpaceFile_workId_idx" ON "SpaceFile"("workId");
+      CREATE INDEX IF NOT EXISTS "AgentRun_workId_createdAt_idx" ON "AgentRun"("workId", "createdAt");
       CREATE UNIQUE INDEX IF NOT EXISTS "SpaceFile_shareId_key" ON "SpaceFile"("shareId");
       CREATE INDEX IF NOT EXISTS "AgentRun_workerId_heartbeatAt_idx" ON "AgentRun"("workerId", "heartbeatAt");
       CREATE UNIQUE INDEX IF NOT EXISTS "AgentRun_completionId_key" ON "AgentRun"("completionId");

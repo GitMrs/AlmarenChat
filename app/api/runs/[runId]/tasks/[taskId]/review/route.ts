@@ -5,6 +5,7 @@ import { getAgentRunForUser } from '@/app/api/_lib/agent-runs';
 import { applyWorkspaceAttempt, discardWorkspaceAttempt, recoverWorkspaceAttemptApplication } from '@/lib/workspace-staging.mjs';
 import { appendAgentRunEvent } from '@/app/api/_lib/agent-run-events';
 import { taskModelRequestLimit } from '@/lib/task-execution-plan.mjs';
+import { storedWorkspaceRelativePath } from '@/lib/space-work-paths.mjs';
 
 const REVIEW_ACTIONS = new Set(['approve', 'retry', 'skip']);
 
@@ -59,6 +60,7 @@ export async function POST(
       projectRoot: process.cwd(),
       userId,
       spaceId: existing.spaceId,
+      workId: existing.workId,
       taskId,
       attempt: task.attempt,
     };
@@ -117,10 +119,10 @@ export async function POST(
       if (action === 'approve' && usesWorkspace) {
         const changedPaths = entries
           .filter((entry) => entry.change !== 'DELETED')
-          .map((entry) => `workspace/${entry.path}`);
+          .map((entry) => storedWorkspaceRelativePath(existing.workId, entry.path));
         const deletedPaths = entries
           .filter((entry) => entry.change === 'DELETED')
-          .map((entry) => `workspace/${entry.path}`);
+          .map((entry) => storedWorkspaceRelativePath(existing.workId, entry.path));
         const stagedFiles = await transaction.spaceFile.findMany({
           where: { spaceId: existing.spaceId, runId, taskId },
           select: { id: true },
@@ -141,8 +143,11 @@ export async function POST(
         }
         await transaction.spaceFile.updateMany({
           where: { id: { in: stagedFiles.map((file) => file.id) } },
-          data: { status: 'READY', updatedAt: timestamp },
+          data: { status: 'READY', workId: existing.workId, updatedAt: timestamp },
         });
+        if (existing.workId) {
+          await transaction.spaceWork.update({ where: { id: existing.workId }, data: { updatedAt: timestamp } });
+        }
       } else {
         await transaction.spaceFile.deleteMany({ where: { spaceId: existing.spaceId, runId, taskId } });
       }

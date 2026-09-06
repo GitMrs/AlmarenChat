@@ -3,6 +3,7 @@ import prisma from '@/app/api/_lib/db';
 export const ACTIVE_AGENT_RUN_STATUSES = ['QUEUED', 'PLANNING', 'RUNNING', 'WAITING', 'WAITING_APPROVAL', 'SUMMARIZING', 'CANCEL_REQUESTED'];
 
 export const agentRunInclude = {
+  work: true,
   tasks: { orderBy: { sortOrder: 'asc' as const } },
   events: { orderBy: { sequence: 'asc' as const } },
 };

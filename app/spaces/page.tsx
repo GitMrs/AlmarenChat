@@ -97,10 +97,10 @@ export default function SpacesPage() {
                 空间
               </div>
               <h1 className="text-4xl font-black leading-tight text-slate-950 sm:text-5xl">
-                把相关 Agent 放进同一个上下文。
+                把想法变成可以继续使用的成果。
               </h1>
               <p className="mt-4 text-base leading-7 text-slate-500">
-                空间不是项目管理，它是一个轻量协作房间：成员、资料和对话在这里一起沉淀。
+                用一组 AI 成员完成文章、剧本、报告、需求文档和简单网页；过程可调整，结果沉淀在空间里。
               </p>
             </div>
 
@@ -190,7 +190,9 @@ export default function SpacesPage() {
                                   );
                                 })}
                               </div>
-                              <span className="text-xs font-bold text-slate-400">{members.length} 个 Agent</span>
+                              <span className="text-xs font-bold text-slate-400">
+                                {members.length} 个 Agent{space.templateSnapshot?.name ? ` · ${space.templateSnapshot.name}` : ''}
+                              </span>
                             </div>
                           </div>
                           <ArrowRight size={18} className="text-slate-300" />

@@ -1,20 +1,90 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Code2, Copy, ExternalLink, Eye, Globe2, Image as ImageIcon, Loader2, Maximize2, Minimize2, Package, Save, X } from 'lucide-react';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
+import MarkdownPublishingPreview from '@/components/spaces/MarkdownPublishingPreview';
 import StaticHtmlPreview from '@/components/spaces/StaticHtmlPreview';
 import { spaces as spacesApi } from '@/lib/api';
+import { isWechatPublishableMarkdownFile, splitWechatArticleMarkdown } from '@/lib/wechat-publishing.mjs';
+import { getWechatPublishingTheme, WECHAT_PUBLISHING_THEMES } from '@/lib/wechat-publishing-themes.mjs';
 import type { SpaceFile } from '@/types';
+
+const WECHAT_THEME_STORAGE_KEY = 'almaren:wechat-publishing-theme';
+
+function turnTablesIntoCards(root: HTMLElement, theme: ReturnType<typeof getWechatPublishingTheme>) {
+  for (const table of Array.from(root.querySelectorAll('table'))) {
+    const headers = Array.from(table.querySelectorAll('thead th')).map((cell) => cell.textContent?.trim() || '');
+    const rows = Array.from(table.querySelectorAll('tbody tr'));
+    if (headers.length === 0 || rows.length === 0) continue;
+
+    const list = document.createElement('section');
+    list.setAttribute('style', 'margin:20px 0;');
+    for (const row of rows) {
+      const values = Array.from(row.querySelectorAll('td')).map((cell) => cell.textContent?.trim() || '');
+      const card = document.createElement('section');
+      card.setAttribute('style', `margin:0 0 12px;padding:14px 16px;border:1px solid ${theme.border};background-color:${theme.cardBackground};`);
+      values.forEach((value, index) => {
+        if (!value) return;
+        const line = document.createElement('p');
+        line.setAttribute('style', `margin:${index === 0 ? '0 0 8px' : '4px 0'};color:#374151;font-size:${index === 0 ? '16px' : '14px'};line-height:1.7;`);
+        if (index === 0) {
+          const strong = document.createElement('strong');
+          strong.textContent = value;
+          line.appendChild(strong);
+        } else {
+          const label = document.createElement('strong');
+          label.textContent = `${headers[index] || `项目 ${index + 1}`}：`;
+          line.append(label, document.createTextNode(value));
+        }
+        card.appendChild(line);
+      });
+      list.appendChild(card);
+    }
+    table.replaceWith(list);
+  }
+}
+
+function legacyCopyHtml(html: string) {
+  const target = document.createElement('div');
+  target.contentEditable = 'true';
+  target.style.position = 'fixed';
+  target.style.left = '-10000px';
+  target.innerHTML = html;
+  document.body.appendChild(target);
+  const selection = window.getSelection();
+  const range = document.createRange();
+  range.selectNodeContents(target);
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+  const copied = document.execCommand('copy');
+  selection?.removeAllRanges();
+  target.remove();
+  if (!copied) throw new Error('copy failed');
+}
+
+function legacyCopyText(text: string) {
+  const target = document.createElement('textarea');
+  target.value = text;
+  target.style.position = 'fixed';
+  target.style.left = '-10000px';
+  document.body.appendChild(target);
+  target.select();
+  const copied = document.execCommand('copy');
+  target.remove();
+  if (!copied) throw new Error('copy failed');
+}
 
 export default function SpaceFileEditorDialog({
   spaceId,
   file,
+  publishTarget,
   onClose,
   onSaved,
 }: {
   spaceId: string;
   file: SpaceFile | null;
+  publishTarget?: 'wechat';
   onClose: () => void;
   onSaved: (file: SpaceFile) => void;
 }) {
@@ -38,8 +108,29 @@ export default function SpaceFileEditorDialog({
   const [shareBusy, setShareBusy] = useState(false);
   const [shareError, setShareError] = useState('');
   const [shareMessage, setShareMessage] = useState('');
+  const [copyMessage, setCopyMessage] = useState('');
+  const [copyError, setCopyError] = useState('');
+  const [wechatThemeId, setWechatThemeId] = useState('fresh-green');
+  const markdownPreviewRef = useRef<HTMLDivElement>(null);
   const dirty = content !== originalContent;
   const htmlPreview = /\.html?$/i.test(file?.fileName || '');
+  const markdownPreview = /\.(?:md|markdown)$/i.test(file?.fileName || '');
+  const previewable = htmlPreview || markdownPreview;
+  const wechatPublishing = publishTarget === 'wechat' && isWechatPublishableMarkdownFile(file?.fileName);
+  const article = useMemo(
+    () => (wechatPublishing ? splitWechatArticleMarkdown(content) : { title: '', body: content }),
+    [content, wechatPublishing]
+  );
+  const wechatTheme = useMemo(() => getWechatPublishingTheme(wechatThemeId), [wechatThemeId]);
+
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(WECHAT_THEME_STORAGE_KEY);
+      if (WECHAT_PUBLISHING_THEMES.some((item) => item.id === stored)) setWechatThemeId(stored!);
+    } catch {
+      // Browser privacy settings may disable local storage; the default theme still works.
+    }
+  }, []);
 
   useEffect(() => {
     if (!file) return;
@@ -49,7 +140,7 @@ export default function SpaceFileEditorDialog({
     setContent('');
     setOriginalContent('');
     setReadOnlyReason(null);
-    setMode(/\.html?$/i.test(file.fileName) ? 'preview' : 'source');
+    setMode(/\.(?:html?|md|markdown)$/i.test(file.fileName) ? 'preview' : 'source');
     setPreview(null);
     setPreviewError('');
     setExternalImages(true);
@@ -61,6 +152,8 @@ export default function SpaceFileEditorDialog({
     setShareBusy(false);
     setShareError('');
     setShareMessage('');
+    setCopyError('');
+    setCopyMessage('');
     spacesApi.readFileText(spaceId, file.id)
       .then((result) => {
         if (!active) return;
@@ -229,22 +322,85 @@ export default function SpaceFileEditorDialog({
     }
   };
 
+  const copyWechatTitle = async () => {
+    if (!article.title) {
+      setCopyError('正文缺少一级标题，请先在源码中补充');
+      return;
+    }
+    try {
+      if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(article.title);
+      else legacyCopyText(article.title);
+      setCopyError('');
+      setCopyMessage('标题已复制');
+    } catch {
+      try {
+        legacyCopyText(article.title);
+        setCopyError('');
+        setCopyMessage('标题已复制');
+      } catch {
+        setCopyError('复制标题失败');
+      }
+    }
+  };
+
+  const copyWechatBody = async () => {
+    if (!markdownPreviewRef.current || !article.body) {
+      setCopyError('没有可复制的公众号正文');
+      return;
+    }
+    const clone = markdownPreviewRef.current.cloneNode(true) as HTMLDivElement;
+    turnTablesIntoCards(clone, wechatTheme);
+    const html = `<section style="margin:0 auto;max-width:680px;color:#374151;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">${clone.innerHTML}</section>`;
+    const plainText = clone.textContent || '';
+    try {
+      if (navigator.clipboard?.write && typeof ClipboardItem !== 'undefined') {
+        await navigator.clipboard.write([new ClipboardItem({
+          'text/html': new Blob([html], { type: 'text/html' }),
+          'text/plain': new Blob([plainText], { type: 'text/plain' }),
+        })]);
+      } else {
+        legacyCopyHtml(html);
+      }
+      setCopyError('');
+      setCopyMessage('公众号正文已按富文本格式复制');
+    } catch {
+      try {
+        legacyCopyHtml(html);
+        setCopyError('');
+        setCopyMessage('公众号正文已按富文本格式复制');
+      } catch {
+        setCopyError('复制正文失败，请使用最新版浏览器重试');
+      }
+    }
+  };
+
+  const selectWechatTheme = (themeId: string) => {
+    setWechatThemeId(themeId);
+    setCopyError('');
+    setCopyMessage('');
+    try {
+      window.localStorage.setItem(WECHAT_THEME_STORAGE_KEY, themeId);
+    } catch {
+      // Keep the in-memory selection when storage is unavailable.
+    }
+  };
+
   return (
     <>
       <div className={`fixed inset-0 z-40 flex bg-slate-950/30 sm:items-center sm:justify-center ${fullscreen ? '' : 'sm:p-6'}`} role="dialog" aria-modal="true" aria-labelledby="space-file-editor-title">
         <div className={`flex h-full w-full flex-col overflow-hidden bg-white shadow-2xl ${fullscreen ? '' : 'sm:max-h-[90vh] sm:max-w-5xl sm:rounded-lg sm:border sm:border-black/[0.08]'}`}>
           <header className="flex shrink-0 items-center gap-3 border-b border-black/[0.06] px-4 py-3 sm:px-5">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600">
-              {htmlPreview && mode === 'preview' ? <Eye size={17} /> : <Code2 size={17} />}
+              {previewable && mode === 'preview' ? <Eye size={17} /> : <Code2 size={17} />}
             </div>
             <div className="min-w-0 flex-1">
               <div id="space-file-editor-title" className="truncate text-sm font-black text-slate-900">{file.fileName}</div>
               <div className="mt-0.5 flex items-center gap-2 text-xs font-semibold text-slate-400">
-                <span>{htmlPreview && mode === 'preview' ? 'HTML 预览' : '文本编辑'}</span>
+                <span>{mode === 'preview' && htmlPreview ? 'HTML 预览' : mode === 'preview' && markdownPreview ? (wechatPublishing ? '公众号发布预览' : 'Markdown 预览') : '文本编辑'}</span>
                 {dirty && <span className="text-amber-600">尚未保存</span>}
               </div>
             </div>
-            {htmlPreview && !loading && (
+            {previewable && !loading && (
               <div className="flex shrink-0 rounded-lg bg-slate-100 p-1" role="group" aria-label="文件查看方式">
                 <button
                   type="button"
@@ -290,6 +446,34 @@ export default function SpaceFileEditorDialog({
             ) : htmlPreview && mode === 'preview' ? (
               <div className="flex h-full items-center justify-center px-6 text-center text-sm font-semibold text-slate-400">
                 {previewError || <Loader2 className="animate-spin" size={22} />}
+              </div>
+            ) : markdownPreview && mode === 'preview' ? (
+              <div className="h-full overflow-y-auto px-4 py-6 sm:px-8 sm:py-8">
+                {wechatPublishing && (
+                  <div className="mx-auto mb-6 max-w-[680px] border-b border-black/[0.08] pb-5">
+                    <div className="mb-5 flex min-w-0 items-center gap-3 overflow-x-auto pb-1" role="group" aria-label="公众号排版主题">
+                      <span className="shrink-0 text-[11px] font-black text-slate-400">排版主题</span>
+                      {WECHAT_PUBLISHING_THEMES.map((theme) => {
+                        const selected = theme.id === wechatTheme.id;
+                        return (
+                          <button
+                            key={theme.id}
+                            type="button"
+                            onClick={() => selectWechatTheme(theme.id)}
+                            aria-pressed={selected}
+                            className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border px-2.5 text-xs font-black transition ${selected ? 'border-slate-900 bg-white text-slate-900 shadow-sm' : 'border-black/[0.06] bg-white/60 text-slate-500 hover:border-black/[0.14]'}`}
+                          >
+                            <span className="h-3 w-3 rounded-sm" style={{ backgroundColor: theme.accent }} aria-hidden="true" />
+                            {theme.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div className="text-[11px] font-black text-slate-400">公众号标题</div>
+                    <div className="mt-2 text-xl font-black leading-8 text-slate-900">{article.title || '尚未设置一级标题'}</div>
+                  </div>
+                )}
+                <MarkdownPublishingPreview ref={markdownPreviewRef} content={article.body} themeId={wechatTheme.id} />
               </div>
             ) : (
               <textarea
@@ -374,8 +558,23 @@ export default function SpaceFileEditorDialog({
                   )}
                 </div>
               )}
+              {wechatPublishing && mode === 'preview' && (copyError || copyMessage) && (
+                <div className={`mt-1 ${copyError ? 'text-rose-600' : 'text-emerald-600'}`}>{copyError || copyMessage}</div>
+              )}
             </div>
-            <div className="flex shrink-0 gap-2">
+            <div className="grid shrink-0 grid-cols-2 gap-2 sm:flex">
+              {wechatPublishing && mode === 'preview' && (
+                <>
+                  <button type="button" onClick={copyWechatTitle} disabled={!article.title} className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-lg border border-black/[0.08] px-3 text-xs font-black text-slate-600 transition hover:bg-slate-50 disabled:text-slate-300 sm:flex-none">
+                    <Copy size={14} />
+                    复制标题
+                  </button>
+                  <button type="button" onClick={copyWechatBody} disabled={!article.body} className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-lg bg-emerald-600 px-3 text-xs font-black text-white transition hover:bg-emerald-700 disabled:bg-slate-200 disabled:text-slate-400 sm:flex-none">
+                    <Copy size={14} />
+                    复制公众号正文
+                  </button>
+                </>
+              )}
               <button type="button" onClick={requestClose} disabled={saving} className="inline-flex h-10 flex-1 items-center justify-center rounded-lg px-4 text-xs font-black text-slate-500 transition hover:bg-slate-100 hover:text-slate-950 disabled:text-slate-300 sm:flex-none">
                 关闭
               </button>

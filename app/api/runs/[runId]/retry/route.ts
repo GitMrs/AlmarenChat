@@ -71,6 +71,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ run
     const run = await prisma.agentRun.create({
       data: {
         spaceId: existing.spaceId,
+        workId: existing.workId,
         userId,
         input: existing.input,
         retryOfId: existing.id,

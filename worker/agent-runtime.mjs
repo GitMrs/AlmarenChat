@@ -395,6 +395,7 @@ async function coordinateNextWork(run, context, triggerEventId) {
       projectRoot,
       userId: run.userId,
       spaceId: run.spaceId,
+      workId: run.workId,
     });
     workspace = {
       files: snapshot.files.slice(0, 200).map((file) => ({ path: file.path, size: file.size })),
@@ -1428,10 +1429,12 @@ async function processRun(run) {
 
     if (isCancelRequested(run.id)) return cancelRun(run.id);
     const approvedFilePaths = new Set(
-      db.prepare(`SELECT "relativePath" FROM "SpaceFile" WHERE "runId" = ? AND "status" = 'READY'`).all(run.id)
+      (run.workId
+        ? db.prepare(`SELECT "relativePath" FROM "SpaceFile" WHERE "workId" = ? AND "status" = 'READY'`).all(run.workId)
+        : db.prepare(`SELECT "relativePath" FROM "SpaceFile" WHERE "runId" = ? AND "status" = 'READY'`).all(run.id))
         .map((file) => file.relativePath)
     );
-    const touchedPaths = matchApprovedWorkspacePaths(context.touchedPaths, approvedFilePaths);
+    const touchedPaths = matchApprovedWorkspacePaths(context.touchedPaths, approvedFilePaths, run.workId);
     const intentionallySkippedFileStep = Boolean(db.prepare(
       `SELECT 1 FROM "AgentTask" WHERE "runId" = ? AND "status" IN ('SKIPPED', 'CANCELLED') LIMIT 1`
     ).get(run.id));
@@ -1444,7 +1447,7 @@ async function processRun(run) {
     }
     for (let index = 0; index < touchedPaths.length; index += 50) {
       const checked = await executeWorkspaceTool(
-        { projectRoot, userId: run.userId, spaceId: run.spaceId, isCancelled: () => isCancelRequested(run.id) },
+        { projectRoot, userId: run.userId, spaceId: run.spaceId, workId: run.workId, isCancelled: () => isCancelRequested(run.id) },
         'check_files',
         { paths: touchedPaths.slice(index, index + 50) }
       );
@@ -1485,7 +1488,7 @@ async function processRun(run) {
 
     const workspaceArtifacts = await Promise.all(
       touchedPaths.map((relativePath) =>
-        describeWorkspaceArtifact({ projectRoot, userId: run.userId, spaceId: run.spaceId }, relativePath)
+        describeWorkspaceArtifact({ projectRoot, userId: run.userId, spaceId: run.spaceId, workId: run.workId }, relativePath)
       )
     );
     if (isCancelRequested(run.id)) {
@@ -1509,11 +1512,11 @@ async function processRun(run) {
           ).get(run.spaceId, workspaceArtifact.relativePath);
           if (existing) {
             db.prepare(
-              `UPDATE "SpaceFile" SET "fileName" = ?, "mimeType" = ?, "size" = ?, "updatedAt" = ? WHERE "id" = ?`
-            ).run(workspaceArtifact.fileName, workspaceArtifact.mimeType, workspaceArtifact.size, timestamp, existing.id);
+              `UPDATE "SpaceFile" SET "fileName" = ?, "mimeType" = ?, "size" = ?, "workId" = ?, "updatedAt" = ? WHERE "id" = ?`
+            ).run(workspaceArtifact.fileName, workspaceArtifact.mimeType, workspaceArtifact.size, run.workId || null, timestamp, existing.id);
           } else {
             db.prepare(
-              `INSERT INTO "SpaceFile" ("id", "spaceId", "fileName", "mimeType", "size", "relativePath", "runId", "status", "createdAt", "updatedAt") VALUES (?, ?, ?, ?, ?, ?, ?, 'READY', ?, ?)`
+              `INSERT INTO "SpaceFile" ("id", "spaceId", "fileName", "mimeType", "size", "relativePath", "runId", "workId", "status", "createdAt", "updatedAt") VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'READY', ?, ?)`
             ).run(
               workspaceArtifact.id,
               run.spaceId,
@@ -1522,6 +1525,7 @@ async function processRun(run) {
               workspaceArtifact.size,
               workspaceArtifact.relativePath,
               run.id,
+              run.workId || null,
               timestamp,
               timestamp
             );
@@ -1529,6 +1533,7 @@ async function processRun(run) {
         }
         if (workspaceArtifacts.length > 0) {
           db.prepare(`UPDATE "Space" SET "updatedAt" = ? WHERE "id" = ?`).run(timestamp, run.spaceId);
+          if (run.workId) db.prepare(`UPDATE "SpaceWork" SET "updatedAt" = ? WHERE "id" = ?`).run(timestamp, run.workId);
           addEvent(run.id, 'WORKSPACE_ARTIFACTS_READY', `工作区已生成 ${workspaceArtifacts.length} 个文件`, {
             files: workspaceArtifacts.map((item) => ({
               fileName: item.fileName,

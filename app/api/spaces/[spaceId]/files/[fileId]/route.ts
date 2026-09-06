@@ -6,6 +6,7 @@ import { requireAuth } from '@/app/api/_lib/auth';
 import { ensureSpaceRoot, getSpaceForUser, resolveSpacePath } from '@/app/api/_lib/spaces';
 import { isEditableSpaceFile, MAX_EDITABLE_SPACE_FILE_BYTES } from '@/lib/space-files';
 import { workspaceAttemptFile } from '@/lib/workspace-staging.mjs';
+import { logicalWorkspaceRelativePath } from '@/lib/space-work-paths.mjs';
 
 const EDIT_BLOCKING_RUN_STATUSES = ['QUEUED', 'PLANNING', 'RUNNING', 'SUMMARIZING', 'CANCEL_REQUESTED'];
 
@@ -33,7 +34,7 @@ export async function GET(
       ? await prisma.agentTask.findUnique({ where: { id: file.taskId }, select: { attempt: true } })
       : null;
     const staged = stagedTask
-      ? workspaceAttemptFile({ projectRoot: process.cwd(), userId, spaceId, taskId: file.taskId, attempt: stagedTask.attempt }, file.relativePath)
+      ? workspaceAttemptFile({ projectRoot: process.cwd(), userId, spaceId, workId: file.workId, taskId: file.taskId, attempt: stagedTask.attempt }, logicalWorkspaceRelativePath(file.workId, file.relativePath))
       : null;
     const root = staged?.root || await ensureSpaceRoot(userId, spaceId);
     const target = staged?.target || resolveSpacePath(userId, spaceId, file.relativePath);
