@@ -24,7 +24,7 @@ import { taskModelRequestLimit } from '../lib/task-execution-plan.mjs';
 import { taskRequiresWorkspaceWrite } from '../lib/workspace-write-intent.mjs';
 import { COORDINATOR_ACTION_TOOL, COORDINATOR_ACTION_TOOL_NAME, COORDINATOR_REVIEW_TOOL, COORDINATOR_REVIEW_TOOL_NAME, authorizationAllowsCapability, authorizationRequirements, coordinatorDecisionTrigger, coordinatorTaskReviewInstructions, coordinatorTaskReviewRequest, dispatchConstraintFromFeedback, dispatchRequiresApproval, requestCoordinatorAction, requestCoordinatorReviewAction, structuredToolOutput } from '../lib/agent-runtime-v3-policy.mjs';
 import { completionIdFor } from '../lib/agent-completion-policy.mjs';
-import { isExecutionBudgetWait } from '../lib/agent-wait-policy.mjs';
+import { isExecutionBudgetWait, isResearchSourceWait } from '../lib/agent-wait-policy.mjs';
 import { appendSpaceMemory, spaceMemoryContext } from '../lib/space-memory-policy.mjs';
 import { readSpaceLearningSync, spaceLearningContext } from '../lib/space-learning.mjs';
 import { prepareWorkspaceAttempt, readExecutionCheckpoint, saveExecutionCheckpoint } from '../lib/workspace-staging.mjs';
@@ -139,10 +139,7 @@ function addEvent(runId, type, message, payload, idempotencyKey = null) {
 
 const {
   buildResearchContext,
-  restoreResearchAudit,
-  restoreResearchContext,
-  restoreResearchResultAudits,
-  restoreResearchSources,
+  restoreReusableResearch,
   taskNeedsResearchContext,
 } = createResearchRuntime({
   db,
@@ -204,6 +201,7 @@ const {
   failRun,
   isCancelRequested,
   isTaskCancelRequested,
+  waitPendingTaskForResearchInput,
   waitRunForExecutionContinuation,
   waitTaskForExecutionContinuation,
   waitTaskForUserInput,
@@ -1223,25 +1221,37 @@ async function processRun(run) {
       await coordinateNextWork(run, context, v3DecisionTrigger);
       tasks = db.prepare('SELECT * FROM "AgentTask" WHERE "runId" = ? ORDER BY "sortOrder" ASC').all(run.id);
     }
-    const existingResearchContext = restoreResearchContext(run.id);
+    const reusableResearch = restoreReusableResearch(run.id);
     const refreshTask = tasks.find(
       (task) => task.status === 'PENDING' && taskNeedsResearchContext(task, run.runtimeVersion) && shouldRefreshResearch(task.reviewFeedback)
+    );
+    const resumedResearchTask = tasks.find(
+      (task) => task.status === 'PENDING'
+        && taskNeedsResearchContext(task, run.runtimeVersion)
+        && isResearchSourceWait(task.waitReason)
+        && String(task.waitAnswer || '').trim()
     );
     const pendingResearchTask = tasks.find(
       (task) => task.status === 'PENDING' && taskNeedsResearchContext(task, run.runtimeVersion)
     );
-    if (existingResearchContext && !refreshTask) {
-      context.researchAudit = restoreResearchAudit(run.id);
-      context.researchResultAudits = restoreResearchResultAudits(run.id);
-      context.researchSources = restoreResearchSources(run.id);
+    if (reusableResearch && !refreshTask && !resumedResearchTask) {
+      context.researchAudit = reusableResearch.audit;
+      context.researchResultAudits = reusableResearch.resultAudits;
+      context.researchSources = reusableResearch.sources;
     }
-    context.researchContext = refreshTask
+    context.researchContext = resumedResearchTask
+      ? await buildResearchContext(run, context, {
+          task: resumedResearchTask,
+          researchInput: `${resumedResearchTask.title}\n${resumedResearchTask.instruction}\n${resumedResearchTask.acceptanceCriteria || ''}\n\n用户补充的检索信息：${resumedResearchTask.waitAnswer}`,
+          refreshed: true,
+        })
+      : refreshTask
       ? await buildResearchContext(run, context, {
           task: refreshTask,
           researchInput: `${refreshTask.title}\n${refreshTask.instruction}\n${refreshTask.acceptanceCriteria || ''}\n\n用户明确要求更新调研：${refreshTask.reviewFeedback}`,
           refreshed: true,
         })
-      : existingResearchContext || (
+      : reusableResearch?.context || (
           (run.runtimeVersion < 3 && tasks.length === 0) || pendingResearchTask
             ? await buildResearchContext(run, context, pendingResearchTask ? {
                 task: pendingResearchTask,
@@ -1251,9 +1261,11 @@ async function processRun(run) {
         );
     if (context.researchAudit?.accepted === false && ((run.runtimeVersion < 3 && tasks.length === 0) || pendingResearchTask)) {
       const issues = context.researchAudit.issues?.join('；') || '联网来源未达到任务要求';
-      addEvent(run.id, 'RESEARCH_BLOCKED_BEFORE_DISPATCH', '补查后来源仍未通过验收，已停止派发成员工作', {
-        issues: context.researchAudit.issues || [],
-      });
+      if (run.runtimeVersion >= 3 && pendingResearchTask) {
+        waitPendingTaskForResearchInput(run, pendingResearchTask, context.researchAudit.issues || []);
+        return;
+      }
+      addEvent(run.id, 'RESEARCH_BLOCKED_BEFORE_DISPATCH', '补查后来源仍未通过验收，已停止派发成员工作', { issues: context.researchAudit.issues || [] });
       throw Object.assign(new Error(`联网资料未通过验收：${issues}`), { code: 'TASK_BLOCKED' });
     }
     if (tasks.length === 0 && run.runtimeVersion === 2) {

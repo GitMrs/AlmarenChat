@@ -81,6 +81,30 @@ test('task lifecycle pauses a running task for one validated user question', () 
   current.db.close();
 });
 
+test('task lifecycle pauses a pending task when research sources are missing', () => {
+  const current = fixture();
+  insertRunningWork(current.db);
+  current.db.prepare(`UPDATE "AgentTask" SET "status" = 'PENDING' WHERE "id" = 'task-1'`).run();
+
+  const result = current.runtime.waitPendingTaskForResearchInput(
+    { id: 'run-1' },
+    { id: 'task-1', agentId: 'frontend', agentName: '前端', attempt: 1 },
+    ['候选来源与检索主题不相关']
+  );
+
+  const task = current.db.prepare('SELECT * FROM "AgentTask"').get();
+  const run = current.db.prepare('SELECT * FROM "AgentRun"').get();
+  assert.equal(result.pause, true);
+  assert.equal(task.status, 'WAITING');
+  assert.equal(task.waitReason, 'research_sources_missing');
+  assert.match(task.waitQuestion, /其他名称、官网或可信资料链接/);
+  assert.equal(run.status, 'WAITING');
+  assert.equal(run.workerId, null);
+  assert.equal(current.events[0][1], 'TASK_WAITING_FOR_RESEARCH_SOURCE');
+  assert.deepEqual(current.discarded, []);
+  current.db.close();
+});
+
 test('task lifecycle pauses at the productive iteration limit without failing the run', () => {
   const current = fixture();
   insertRunningWork(current.db);

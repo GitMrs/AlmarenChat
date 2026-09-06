@@ -1,5 +1,10 @@
 import { completionIdFor } from '../../lib/agent-completion-policy.mjs';
-import { EXECUTION_BUDGET_WAIT_REASON, RUN_BUDGET_WAIT_ERROR, normalizeWaitRequest } from '../../lib/agent-wait-policy.mjs';
+import {
+  EXECUTION_BUDGET_WAIT_REASON,
+  RESEARCH_SOURCE_WAIT_REASON,
+  RUN_BUDGET_WAIT_ERROR,
+  normalizeWaitRequest,
+} from '../../lib/agent-wait-policy.mjs';
 import { cancelRunRecord } from './run-cancellation-store.mjs';
 import { executionFailureStatus } from '../policies/run-policy.mjs';
 
@@ -115,6 +120,37 @@ export function createTaskLifecycleRuntime({
     return { ok: true, pause: true };
   }
 
+  function waitPendingTaskForResearchInput(run, task, issues = []) {
+    const timestamp = now();
+    const details = Array.isArray(issues) && issues.length > 0
+      ? `当前问题：${issues.join('；')}`
+      : '当前没有找到可核验且与主题直接相关的来源';
+    const question = '请补充目标对象或主题的其他名称、官网或可信资料链接，提交后将从当前任务重新检索。';
+    db.transaction(() => {
+      const changed = db.prepare(
+        `UPDATE "AgentTask"
+         SET "status" = 'WAITING', "waitQuestion" = ?, "waitReason" = ?, "waitAnswer" = NULL,
+             "waitingAt" = ?, "updatedAt" = ?
+         WHERE "id" = ? AND "runId" = ? AND "status" = 'PENDING'`
+      ).run(question, RESEARCH_SOURCE_WAIT_REASON, timestamp, timestamp, task.id, run.id);
+      if (changed.changes !== 1) throw new Error('当前步骤已经停止');
+      db.prepare(
+        `UPDATE "AgentRun"
+         SET "status" = 'WAITING', "workerId" = NULL, "heartbeatAt" = NULL, "error" = NULL, "updatedAt" = ?
+         WHERE "id" = ?`
+      ).run(timestamp, run.id);
+      addEvent(run.id, 'TASK_WAITING_FOR_RESEARCH_SOURCE', `${task.agentName}等待补充可核验资料`, {
+        taskId: task.id,
+        agentId: task.agentId,
+        question,
+        reason: RESEARCH_SOURCE_WAIT_REASON,
+        issues,
+        attempt: task.attempt,
+      });
+    })();
+    return { ok: true, pause: true, details };
+  }
+
   function waitTaskForExecutionContinuation(run, task, details = {}) {
     const timestamp = now();
     const question = '当前步骤已用完本轮执行额度，需要再增加多少轮继续处理？';
@@ -220,6 +256,7 @@ export function createTaskLifecycleRuntime({
     isCancelRequested,
     isTaskCancelRequested,
     waitRunForExecutionContinuation,
+    waitPendingTaskForResearchInput,
     waitTaskForExecutionContinuation,
     waitTaskForUserInput,
   };

@@ -113,7 +113,8 @@ function taskProposalFromArgs(
   allowWebSearch: boolean,
   imageModelAvailable: boolean,
   skillSnapshot?: Record<string, unknown> | null,
-  skillAgentId?: string
+  skillAgentId?: string,
+  userRequest = ''
 ): TaskProposal {
   const text = (value: unknown) => typeof value === 'string' ? value.trim() : '';
   const list = (value: unknown) => Array.isArray(value) ? value.map(text).filter(Boolean).slice(0, 8) : [];
@@ -149,7 +150,7 @@ function taskProposalFromArgs(
       : undefined,
     status: 'pending',
     ...(skillSnapshot ? { skillSnapshot, skillAgentId } : {}),
-  }, allowWebSearch) as TaskProposal;
+  }, allowWebSearch, userRequest) as TaskProposal;
 }
 
 async function userModelSettings(userId: string) {
@@ -450,7 +451,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
                   proposalSkill as Record<string, unknown> | null,
                   selectedSkill && targetAgent.id !== SPACE_COORDINATOR.id
                     ? targetAgent.id
-                    : currentPendingProposal?.skillAgentId
+                    : currentPendingProposal?.skillAgentId,
+                  textMessage
                 );
                 return { ok: true, pause: true, message: '任务方案已生成，等待用户确认' };
               }
@@ -473,6 +475,17 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
             },
             isCancelled: () => request.signal.aborted,
             onModelRequest: undefined,
+            maxEmptyResponseRetries: 2,
+            onEmptyResponse: ({ retry, maxRetries, diagnostics }) => {
+              console.warn('[space-message] empty model response', JSON.stringify({
+                spaceId,
+                agentId: targetAgent.id,
+                requestedModel: model,
+                retry,
+                maxRetries,
+                diagnostics,
+              }));
+            },
           });
 
           const result = await prisma.$transaction(async (tx) => {
@@ -531,7 +544,32 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
           ]);
           await prisma.space.update({ where: { id: spaceId }, data: { updatedAt: new Date() } });
           controller.close();
-        } catch (error) {
+        } catch (error: any) {
+          if (!request.signal.aborted && error?.code === 'EMPTY_MODEL_RESPONSE') {
+            const failureMessage = '模型连续 3 次没有返回有效内容，本次没有创建任务。请重新发送，或切换模型后再试。';
+            console.error('[space-message] model response exhausted', JSON.stringify({
+              spaceId,
+              agentId: targetAgent.id,
+              requestedModel: model,
+              diagnostics: error.diagnostics || null,
+            }));
+            try {
+              await prisma.spaceMessage.create({
+                data: {
+                  spaceId,
+                  role: 'assistant',
+                  speakerAgentId: targetAgent.id,
+                  content: failureMessage,
+                },
+              });
+              await prisma.space.update({ where: { id: spaceId }, data: { updatedAt: new Date() } });
+              controller.enqueue(encoder.encode(failureMessage));
+              controller.close();
+              return;
+            } catch (persistError) {
+              console.error('[space-message] failed to persist empty-response notice', persistError);
+            }
+          }
           controller.error(error);
           return;
         }

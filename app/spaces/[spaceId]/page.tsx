@@ -24,6 +24,7 @@ import { latestRunInRetryChain } from '@/lib/agent-run-retry-chain.mjs';
 import {
   DEFAULT_CONTINUATION_ITERATIONS,
   isExecutionBudgetWait,
+  isResearchSourceWait,
   isRunBudgetWait,
   MAX_CONTINUATION_ITERATIONS,
 } from '@/lib/agent-wait-policy.mjs';
@@ -527,6 +528,7 @@ export default function SpaceDetailPage() {
   const proposedTask = currentRun?.tasks.find((task) => task.status === 'PROPOSED') || null;
   const waitingTask = currentRun?.tasks.find((task) => task.status === 'WAITING') || null;
   const waitingForExecutionContinuation = Boolean(waitingTask && isExecutionBudgetWait(waitingTask.waitReason));
+  const waitingForResearchSource = Boolean(waitingTask && isResearchSourceWait(waitingTask.waitReason));
   const waitingForRunContinuation = Boolean(
     currentRun?.status === 'WAITING' && !waitingTask && isRunBudgetWait(currentRun.error)
   );
@@ -1873,7 +1875,11 @@ export default function SpaceDetailPage() {
                           </div>
                           <div className="mt-4 rounded-lg bg-amber-50 px-4 py-3">
                             <div className="text-sm font-black text-amber-900">{waitingTask.waitQuestion}</div>
-                            {waitingTask.waitReason && <div className="mt-1 text-xs font-semibold leading-5 text-amber-700">{waitingForExecutionContinuation ? '完整执行上下文、工具结果和暂存文件都会保留。继续后将从下一轮直接处理，并产生新的模型调用费用。' : waitingTask.waitReason}</div>}
+                            {waitingTask.waitReason && <div className="mt-1 text-xs font-semibold leading-5 text-amber-700">{waitingForExecutionContinuation
+                              ? '完整执行上下文、工具结果和暂存文件都会保留。继续后将从下一轮直接处理，并产生新的模型调用费用。'
+                              : waitingForResearchSource
+                                ? '当前候选资料未通过相关性验收。补充信息后会重新检索，不会重新创建或取消前端任务。'
+                                : waitingTask.waitReason}</div>}
                           </div>
                           {!waitingForExecutionContinuation && (
                             <>

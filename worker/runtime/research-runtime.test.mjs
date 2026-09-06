@@ -47,6 +47,21 @@ test('research recovery follows retry lineage and keeps the latest audit per tas
   assert.deepEqual(current.runtime.restoreResearchAudit('run-2'), { accepted: true });
   assert.deepEqual(current.runtime.restoreResearchSources('run-2'), [{ url: 'https://example.com' }]);
   assert.deepEqual(current.runtime.restoreResearchResultAudits('run-2'), [{ accepted: true, taskSortOrder: 0 }]);
+  assert.equal(current.runtime.restoreReusableResearch('run-2').context, '父运行资料');
+});
+
+test('research recovery never reuses a rejected audit from a parent run', () => {
+  const current = fixture();
+  current.db.exec(`INSERT INTO "AgentRun" VALUES ('run-1', NULL), ('run-2', 'run-1')`);
+  current.db.prepare('INSERT INTO "AgentRunEvent" VALUES (?, ?, ?, ?)').run(
+    'run-1',
+    'WEB_SEARCH_COMPLETED',
+    JSON.stringify({ audit: { accepted: false, issues: ['候选来源不相关'] }, context: '失败资料' }),
+    '2026-08-17T00:00:00.000Z'
+  );
+
+  assert.equal(current.runtime.restoreResearchContext('run-2'), '失败资料');
+  assert.equal(current.runtime.restoreReusableResearch('run-2'), null);
 });
 
 test('research execution respects V3 authorization and records successful source context', async () => {
@@ -120,7 +135,7 @@ test('research retries a failed source audit only once with a targeted query', a
       return calls.length === 1
         ? {
             provider: 'tavily', officialDomains: ['example.com'], timeRange: 'day', resultCount: 1,
-            audit: { accepted: false, issues: ['时效性任务缺少更新时间'] },
+            audit: { accepted: false, relevantCount: 1, issues: ['时效性任务缺少更新时间'] },
             context: '未通过', sources: [{ url: 'https://example.com/old' }],
           }
         : {
@@ -145,5 +160,53 @@ test('research retries a failed source audit only once with a targeted query', a
   assert.match(calls[1].join(' '), /实况 更新时间/);
   assert.deepEqual(current.events.map((event) => event[1]), [
     'WEB_SEARCH_STARTED', 'WEB_SEARCH_RETRYING', 'WEB_SEARCH_COMPLETED',
+  ]);
+});
+
+test('research uses one structured model call to review candidates rejected by deterministic matching', async () => {
+  const modelCalls = [];
+  const current = fixture({
+    complete: async (_model, messages) => {
+      modelCalls.push(messages);
+      return modelCalls.length === 1
+        ? '{"queries":["FX战士久留美 人物资料"],"officialDomains":[]}'
+        : '{"relevantSourceIndexes":[1],"reason":"日文标题和摘要描述的是同一作品"}';
+    },
+    search: async (_queries, _apiKey, options) => {
+      const sources = [{
+        title: 'くるみちゃんと外国為替の物語',
+        url: 'https://example.jp/story',
+        summary: '少女たちがFX取引に挑む漫画作品',
+      }];
+      const selected = await options.reviewRelevance({ queries: ['FX战士久留美 人物资料'], sources });
+      return {
+        provider: 'tavily', officialDomains: [], timeRange: null, resultCount: selected.length,
+        audit: { accepted: true, relevantCount: selected.length, semanticReviewUsed: true },
+        context: '[1] 日文作品资料', sources: selected.length > 0 ? sources : [],
+      };
+    },
+  });
+  const context = {
+    authorization: { capabilities: ['web_research'] }, model: {}, tavilyApiKey: 'key',
+    researchAudit: null, researchSources: [],
+  };
+
+  const result = await current.runtime.buildResearchContext(
+    { id: 'run-1', input: '先查《FX战士久留美》的资料', runtimeVersion: 3 },
+    context,
+    {
+      task: { title: '制作主题网页', instruction: '使用已核验资料制作网页', webResearchRequired: 1 },
+      researchInput: '搜索《FX战士久留美》的作品与人物资料',
+    }
+  );
+
+  assert.equal(result, '[1] 日文作品资料');
+  assert.equal(modelCalls.length, 2);
+  assert.match(modelCalls[1][0].content, /只能选择候选编号/);
+  assert.deepEqual(current.events.map((event) => event[1]), [
+    'WEB_SEARCH_STARTED',
+    'WEB_SEARCH_SEMANTIC_REVIEW_STARTED',
+    'WEB_SEARCH_SEMANTIC_REVIEW_COMPLETED',
+    'WEB_SEARCH_COMPLETED',
   ]);
 });
