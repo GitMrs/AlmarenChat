@@ -193,7 +193,7 @@ export async function runExecutorHarness({
         '修改现有文件时优先读取相关部分后使用 patch_file 精确修改；同一轮有多项相关替换时优先使用 patch_files 集中完成。除非用户明确要求重写，不得用 write_file 整体替换已有文件。' +
         '每次调用工具后继续处理都会消耗一次模型请求。完成必要写入后必须立即调用 submit_task_result 提交简短交付结果，不得继续读取、润色或重复检查；普通文本不能结束本步骤。' +
         'JavaScript 或 TypeScript 文件需要语法检查时，只能调用 run_check；它只支持平台白名单检查，不能运行脚本、构建项目或启动服务。' +
-        '读取较长文件时使用 offset 和 limit 分页，只读取当前步骤需要的部分；同一资料的 Markdown 和 JSON 版本不要重复读取。' +
+        '读取文件时先从 offset 0 开始；不超过 128000 字符的文件会一次返回全文，看到 hasMore=false 后不得重复读取。只有 hasMore=true 时才按 nextOffset 继续分页；同一资料的 Markdown 和 JSON 版本不要重复读取。' +
         baselineGuidance +
         (codeExecutionAllowed
           ? '当前 Skill 已获代码执行授权，只能调用 run_skill 的固定入口；不能提供命令、修改 Skill 脚本、安装依赖、启动服务或访问空间工作区以外的路径。'
