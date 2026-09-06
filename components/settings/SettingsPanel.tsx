@@ -21,6 +21,7 @@ import {
   User,
 } from 'lucide-react';
 import LoginRequired from '@/components/auth/LoginRequired';
+import SearchableSelect from '@/components/shared/SearchableSelect';
 import { auth, user as userApi } from '@/lib/api';
 import {
   DEFAULT_BROWSER_MODEL_CONFIG,
@@ -80,6 +81,8 @@ export default function SettingsPanel() {
   const [testing, setTesting] = useState(false);
   const [fetchingModels, setFetchingModels] = useState(false);
   const [availableModels, setAvailableModels] = useState<string[]>([]);
+  const [manualModelEntry, setManualModelEntry] = useState(false);
+  const [manualImageModelEntry, setManualImageModelEntry] = useState(false);
   const [modelListResult, setModelListResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [testResult, setTestResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [error, setError] = useState('');
@@ -287,6 +290,10 @@ export default function SettingsPanel() {
         apiKey: apiKey.trim(),
       });
       setAvailableModels(result.models);
+      if (result.models.length > 0) {
+        setManualModelEntry(false);
+        setManualImageModelEntry(false);
+      }
       setModelListResult({
         type: 'success',
         message: result.models.length > 0 ? `已获取 ${result.models.length} 个模型` : '服务返回的模型列表为空',
@@ -565,6 +572,8 @@ export default function SettingsPanel() {
                     onChange={(e) => {
                       setApiBaseUrl(e.target.value);
                       setAvailableModels([]);
+                      setManualModelEntry(false);
+                      setManualImageModelEntry(false);
                       setModelListResult(null);
                     }}
                     placeholder="https://api.example.com/v1"
@@ -578,6 +587,8 @@ export default function SettingsPanel() {
                     onChange={(e) => {
                       setApiKey(e.target.value);
                       setAvailableModels([]);
+                      setManualModelEntry(false);
+                      setManualImageModelEntry(false);
                       setModelListResult(null);
                     }}
                     placeholder="sk-..."
@@ -605,24 +616,45 @@ export default function SettingsPanel() {
                     获取
                   </button>
                 </div>
-                <input
-                  id="model-name"
-                  list="available-models"
-                  value={modelName}
-                  onChange={(e) => setModelName(e.target.value)}
-                  placeholder="例如 gpt-4o、deepseek-chat、claude-sonnet-4"
-                  className="h-12 w-full rounded-2xl border border-black/[0.08] bg-[#fbfaf7] px-4 text-sm font-medium text-slate-800 outline-none focus:border-slate-300 focus:ring-4 focus:ring-slate-200/70"
-                />
-                <datalist id="available-models">
-                  {availableModels.map((model) => <option key={model} value={model} />)}
-                </datalist>
+                {availableModels.length > 0 && !manualModelEntry ? (
+                  <SearchableSelect
+                    id="model-name"
+                    value={modelName}
+                    options={availableModels}
+                    placeholder="请选择模型"
+                    searchPlaceholder="搜索模型"
+                    emptyText="没有匹配的模型"
+                    actionText="手动填写其他模型"
+                    onChange={setModelName}
+                    onAction={() => setManualModelEntry(true)}
+                  />
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <input
+                      id="model-name"
+                      value={modelName}
+                      onChange={(event) => setModelName(event.target.value)}
+                      placeholder="例如 gpt-4o、deepseek-chat、claude-sonnet-4"
+                      className="h-12 min-w-0 flex-1 rounded-2xl border border-black/[0.08] bg-[#fbfaf7] px-4 text-sm font-medium text-slate-800 outline-none focus:border-slate-300 focus:ring-4 focus:ring-slate-200/70"
+                    />
+                    {availableModels.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setManualModelEntry(false)}
+                        className="h-12 shrink-0 rounded-xl bg-slate-100 px-3 text-xs font-black text-slate-600 transition hover:bg-slate-200"
+                      >
+                        选择列表
+                      </button>
+                    )}
+                  </div>
+                )}
                 {modelListResult && (
                   <p className={cn(
                     'mt-2 text-xs font-semibold leading-5',
                     modelListResult.type === 'success' ? 'text-emerald-600' : 'text-rose-600'
                   )}>
                     {modelListResult.message}
-                    {modelListResult.type === 'success' && availableModels.length > 0 ? '，点击输入框选择。' : ''}
+                    {modelListResult.type === 'success' && availableModels.length > 0 ? '，请从下拉列表选择。' : ''}
                   </p>
                 )}
               </div>
@@ -651,17 +683,43 @@ export default function SettingsPanel() {
                   </button>
                 </div>
                 <div className="mt-4 grid gap-4 sm:grid-cols-[minmax(0,1fr)_160px]">
-                  <label className="block min-w-0">
+                  <div className="block min-w-0">
                     <span className="mb-2 block text-xs font-bold text-slate-600">图片模型名称</span>
-                    <input
-                      list="available-models"
-                      value={imageModelName}
-                      onChange={(event) => setImageModelName(event.target.value)}
-                      placeholder="例如 gpt-image-1"
-                      disabled={!imageModelEnabled}
-                      className="h-11 w-full min-w-0 rounded-xl border border-black/[0.08] bg-white px-3 text-sm font-medium text-slate-800 outline-none disabled:bg-slate-100 disabled:text-slate-400"
-                    />
-                  </label>
+                    {availableModels.length > 0 && !manualImageModelEntry ? (
+                      <SearchableSelect
+                        value={imageModelName}
+                        options={availableModels}
+                        placeholder="请选择图片模型"
+                        searchPlaceholder="搜索模型"
+                        emptyText="没有匹配的模型"
+                        actionText="手动填写其他模型"
+                        disabled={!imageModelEnabled}
+                        compact
+                        onChange={setImageModelName}
+                        onAction={() => setManualImageModelEntry(true)}
+                      />
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <input
+                          value={imageModelName}
+                          onChange={(event) => setImageModelName(event.target.value)}
+                          placeholder="例如 gpt-image-1"
+                          disabled={!imageModelEnabled}
+                          className="h-11 min-w-0 flex-1 rounded-xl border border-black/[0.08] bg-white px-3 text-sm font-medium text-slate-800 outline-none disabled:bg-slate-100 disabled:text-slate-400"
+                        />
+                        {availableModels.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setManualImageModelEntry(false)}
+                            disabled={!imageModelEnabled}
+                            className="h-11 shrink-0 rounded-lg bg-slate-100 px-3 text-xs font-black text-slate-600 transition hover:bg-slate-200 disabled:text-slate-300"
+                          >
+                            选择列表
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
                   <label className="block">
                     <span className="mb-2 block text-xs font-bold text-slate-600">默认尺寸</span>
                     <select
