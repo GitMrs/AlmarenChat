@@ -428,6 +428,7 @@ export function createRelayRuntime({
               role: 'system',
               content: [
                 currentAgent.systemPrompt || currentAgent.description || `你是 ${currentAgent.name}。`,
+                currentAgent.memoryContext || '',
                 `你正在参加一个持久化接力协作，当前只以“${currentAgent.name}”身份完成自己这一轮。`,
                 '当前适配器是 15×15 五子棋。你执子的目标是形成横、竖或斜向连续五子，同时阻止对手。',
                 `你是${relay.currentIndex === 0 ? '黑方（●）' : '白方（○）'}。行列均从 1 开始。`,
@@ -449,6 +450,7 @@ export function createRelayRuntime({
               role: 'system',
               content: [
                 currentAgent.systemPrompt || currentAgent.description || `你是 ${currentAgent.name}。`,
+                currentAgent.memoryContext || '',
                 `你正在参加由空间协调者组织的接力协作。当前只以“${currentAgent.name}”身份完成自己这一轮。`,
                 '必须承接已有成果，增加新的判断、改进或收敛，不要从头重复问题。',
                 '完成后必须调用 submit_relay_turn。不得代替其他成员发言，不得读写文件、联网、运行命令或调用 Skill。',

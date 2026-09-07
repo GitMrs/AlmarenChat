@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import {
   AlertTriangle,
   Bot,
+  BrainCircuit,
   Check,
   CheckCircle2,
   Database,
@@ -24,6 +25,7 @@ import {
 } from 'lucide-react';
 import AppShell from '@/components/layout/AppShell';
 import LoginRequired from '@/components/auth/LoginRequired';
+import AgentGrowthPanel from '@/components/agent/AgentGrowthPanel';
 import KnowledgeManager from '@/components/agent/KnowledgeManager';
 import { cn } from '@/lib/utils';
 import { AGENT_CATEGORIES, AGENT_TONES, CATEGORY_COLORS } from '@/types';
@@ -43,6 +45,8 @@ interface InterviewQuestion {
   question: string;
   options: Array<{ id: string; label: string }>;
 }
+
+type AgentEditorTab = 'create' | 'knowledge' | 'growth';
 
 function parsePromptToDimensions(raw: string) {
   if (!raw) return { soul: '', rebuttal: '', sop: '', boundaries: '' };
@@ -74,7 +78,11 @@ function CreateAgentContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const editingAgentId = searchParams.get('agentId');
-  const activeTab = editingAgentId && searchParams.get('tab') === 'knowledge' ? 'knowledge' : 'create';
+  const requestedTab = searchParams.get('tab');
+  const activeTab: AgentEditorTab =
+    editingAgentId && (requestedTab === 'knowledge' || requestedTab === 'growth')
+      ? requestedTab
+      : 'create';
 
   // 模式切换：基础模式 vs 专业数字员工模式
   const [creationMode, setCreationMode] = useState<'basic' | 'pro'>('pro');
@@ -224,10 +232,10 @@ ${dims.boundaries.trim() || '- 严禁越权承诺，严禁未经验证盲目脑�
   const categoryColor = CATEGORY_COLORS[category] || '#6366f1';
   const canCreate = name.trim().length > 0 && description.trim().length > 0 && category && tone;
 
-  const switchTab = (tab: 'create' | 'knowledge') => {
+  const switchTab = (tab: AgentEditorTab) => {
     const params = new URLSearchParams();
     if (editingAgentId) params.set('agentId', editingAgentId);
-    if (tab === 'knowledge') params.set('tab', 'knowledge');
+    if (tab !== 'create') params.set('tab', tab);
 
     const query = params.toString();
     router.push(query ? `/create-agent?${query}` : '/create-agent');
@@ -498,20 +506,21 @@ ${dims.boundaries.trim() || '- 严禁越权承诺，严禁未经验证盲目脑�
           </div>
         </section>
 
-        {/* 知识库/基础 Tab */}
+        {/* Agent 管理 Tab */}
         <section className="mb-6 flex flex-wrap gap-2 rounded-[28px] border border-black/[0.06] bg-white p-2 shadow-sm">
           {[
             { id: 'create', label: '角色配置与架构', icon: Bot, disabled: false },
             { id: 'knowledge', label: '知识库向量维护', icon: Database, disabled: !editingAgentId },
+            { id: 'growth', label: '成长档案', icon: BrainCircuit, disabled: !editingAgentId },
           ].map((tab) => {
             const Icon = tab.icon;
             const active = activeTab === tab.id;
             return (
               <button
                 key={tab.id}
-                onClick={() => !tab.disabled && switchTab(tab.id as 'create' | 'knowledge')}
+                onClick={() => !tab.disabled && switchTab(tab.id as AgentEditorTab)}
                 disabled={tab.disabled}
-                title={tab.disabled ? '保存 Agent 后再维护向量数据' : tab.label}
+                title={tab.disabled ? '保存 Agent 后再维护' : tab.label}
                 className={cn(
                   'inline-flex cursor-pointer items-center gap-2 rounded-full px-4 py-2 text-sm font-black transition',
                   active ? 'bg-slate-950 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-950',
@@ -1274,8 +1283,12 @@ ${dims.boundaries.trim() || '- 严禁越权承诺，严禁未经验证盲目脑�
               </div>
             </aside>
           </div>
-        ) : (
+        ) : activeTab === 'knowledge' ? (
           <KnowledgeManager agentId={editingAgentId} agentName={name} />
+        ) : (
+          <section className="rounded-[28px] border border-black/[0.06] bg-white p-5 shadow-sm sm:p-7">
+            <AgentGrowthPanel agentId={editingAgentId!} />
+          </section>
         )}
       </div>
     </AppShell>

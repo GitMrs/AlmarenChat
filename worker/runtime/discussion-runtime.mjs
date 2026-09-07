@@ -189,6 +189,7 @@ export function createDiscussionRuntime({
               role: 'system',
               content: [
                 currentAgent.systemPrompt || currentAgent.description || `你是 ${currentAgent.name}。`,
+                currentAgent.memoryContext || '',
                 `你正在以“${currentAgent.name}”的身份参加空间多人讨论。${roundInstruction}`,
                 '当前只允许讨论、分析、读取必要的空间资料和申请受控联网搜索。',
                 '不得创建任务方案，不得调用或描述 propose_task，不得写文件、运行命令、操作浏览器或声称已经执行工作。',

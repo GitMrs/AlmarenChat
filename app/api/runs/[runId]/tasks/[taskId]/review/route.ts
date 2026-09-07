@@ -6,6 +6,7 @@ import { applyWorkspaceAttempt, discardWorkspaceAttempt, recoverWorkspaceAttempt
 import { appendAgentRunEvent } from '@/app/api/_lib/agent-run-events';
 import { taskModelRequestLimit } from '@/lib/task-execution-plan.mjs';
 import { storedWorkspaceRelativePath } from '@/lib/space-work-paths.mjs';
+import { recordAgentCorrection } from '@/lib/agent-memory-service';
 
 const REVIEW_ACTIONS = new Set(['approve', 'retry', 'skip']);
 
@@ -159,7 +160,7 @@ export async function POST(
           ...(action === 'retry' ? { modelRequestLimit: { increment: taskModelRequestLimit(task.mode) } } : {}),
         },
       });
-      await appendAgentRunEvent(transaction, runId, {
+      const reviewEvent = await appendAgentRunEvent(transaction, runId, {
           type: action === 'approve' ? 'TASK_APPROVED' : action === 'retry' ? 'TASK_REVISION_REQUESTED' : 'TASK_SKIPPED',
           message: action === 'approve'
             ? `已确认${task.agentName}的阶段结果`
@@ -177,6 +178,16 @@ export async function POST(
           attempt: action === 'retry' ? task.attempt + 1 : task.attempt,
           actor: 'user',
       });
+      if (action === 'retry' && task.agentId !== 'space-coordinator') {
+        await recordAgentCorrection(transaction, {
+          userId,
+          agentId: task.agentId,
+          taskId,
+          runId,
+          eventId: reviewEvent.id,
+          feedback,
+        });
+      }
       });
     } catch (error) {
       await application?.rollback();

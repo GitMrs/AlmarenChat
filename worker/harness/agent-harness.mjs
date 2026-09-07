@@ -184,6 +184,7 @@ export async function runExecutorHarness({
       role: 'system',
       content:
         `${agent.systemPrompt || agent.description || `你是${agent.name}。`}\n\n` +
+        `${agent.memoryContext ? `${agent.memoryContext}\n\n` : ''}` +
         (canProduceArtifacts
           ? '你正在执行用户已确认方案中的单个步骤。你可以使用当前 Skill 已授权的工具查看资料并生成当前空间内的任务产物。'
           : '你正在执行用户已确认方案中的只读步骤。你只能查看和读取当前空间工作区，不得创建或修改文件。') +
@@ -527,6 +528,7 @@ export async function runAdvisorHarness({
       {
         role: 'system',
         content: `${agent.systemPrompt || agent.description || `你是${agent.name}。`}\n\n` +
+          `${agent.memoryContext ? `${agent.memoryContext}\n\n` : ''}` +
           '你是本任务的专业顾问，负责产出当前步骤需要的判断、规则、约束和可供后续执行者直接采用的建议。' +
           '你可以使用只读工具查看和检查当前空间工作区，不要声称做过未实际执行的操作。' +
           (skillWorkspaceWriteAllowed

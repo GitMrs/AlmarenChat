@@ -7,6 +7,7 @@ import { buildWebSearchContext } from '@/lib/web-search';
 import { formatKnowledgeContext, getKnowledgeHits } from '@/lib/knowledge';
 import { createModelClient, resolveModelName } from '@/lib/model-client';
 import { reserveChatQuota } from '@/lib/chat-quota';
+import { loadAgentMemoryContext } from '@/lib/agent-memory';
 
 const TEXT_CHAT_COST = 1;
 const IMAGE_CHAT_COST = 3;
@@ -157,7 +158,8 @@ export async function POST(request: Request) {
     const client = createModelClient(apiBaseUrl, apiKey);
     const model = resolveModelName(modelName);
 
-    let finalContext = context;
+    const employeeMemory = await loadAgentMemoryContext({ userId, agentId, query: textMessage });
+    let finalContext = [context, employeeMemory].filter(Boolean).join('\n\n');
     if (knowledgeEnabled && agentId && textMessage.trim()) {
       const hits = await getKnowledgeHits(agentId, textMessage);
       if (hits.length > 0) {

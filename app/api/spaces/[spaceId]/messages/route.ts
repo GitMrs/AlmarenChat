@@ -27,6 +27,7 @@ import { spaceSkillReferenceToolSchema } from '@/lib/agent-runtime/skill-registr
 import { runPiSpaceTurn } from '@/lib/pi-runtime/space-session.mjs';
 import { createCollaborationState } from '@/lib/relay/collaboration.mjs';
 import { createGomokuState } from '@/lib/relay/gomoku.mjs';
+import { loadAgentMemoryContext } from '@/lib/agent-memory';
 
 const MESSAGE_PAGE_SIZE = 40;
 const READ_ONLY_WORKSPACE_TOOLS = new Set(['list_files', 'read_file', 'check_files']);
@@ -257,12 +258,13 @@ async function handlePiMessage(options: {
   textMessage: string;
   skipPersistUserMessage: boolean;
   allowWebSearch: boolean;
+  agentMemoryContext: string;
   interactionMode?: 'chat' | 'multi_reply' | 'coordinated_turn' | 'coordination_summary';
   multiReplyIndex: number;
 }) {
   const {
     userId, spaceId, space, targetAgent, memberAgents, selectedSkill, textMessage,
-    skipPersistUserMessage, allowWebSearch, interactionMode, multiReplyIndex,
+    skipPersistUserMessage, allowWebSearch, agentMemoryContext, interactionMode, multiReplyIndex,
   } = options;
   if (!skipPersistUserMessage) {
     await prisma.spaceMessage.create({
@@ -300,6 +302,7 @@ async function handlePiMessage(options: {
             spaceId,
             space,
             roleAgent: targetAgent,
+            agentMemoryContext,
             availableAgents: memberAgents,
             selectedSkill,
             message: textMessage,
@@ -437,6 +440,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
       coordinatorMention ||
       mentionedTarget ||
       fallbackTarget;
+    const agentMemory = await loadAgentMemoryContext({
+      userId,
+      agentId: targetAgent.id,
+      query: textMessage,
+    });
     const selectedSkill = skillId
       ? await getSpaceSkill({ projectRoot: process.cwd(), userId, spaceId, skillId: String(skillId) })
       : null;
@@ -455,6 +463,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
         textMessage,
         skipPersistUserMessage: Boolean(skipPersistUserMessage),
         allowWebSearch,
+        agentMemoryContext: agentMemory,
         interactionMode: ['multi_reply', 'coordinated_turn', 'coordination_summary'].includes(interactionMode)
           ? interactionMode
           : 'chat',
@@ -566,6 +575,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
 
     const systemPrompt = [
       targetAgent.systemPrompt || targetAgent.description || `你是 ${targetAgent.name}。`,
+      agentMemory,
       formatMembersContext(allAgents, targetAgent),
       space.description ? `当前空间说明：${space.description}` : '',
       space.instructions ? `当前空间规则：\n${space.instructions}` : '',

@@ -22,6 +22,38 @@ export interface Agent {
   updatedAt: string;
 }
 
+export interface AgentMemoryRule {
+  id: string;
+  agentId: string;
+  category: 'method' | 'correction' | 'capability';
+  title: string;
+  instruction: string;
+  status: 'PENDING' | 'ACTIVE' | 'DISABLED' | 'IGNORED';
+  evidenceCount: number;
+  sourceIds?: string[] | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AgentExperience {
+  id: string;
+  agentId: string;
+  spaceId?: string | null;
+  runId?: string | null;
+  taskId: string;
+  title: string;
+  summary: string;
+  outcome: 'ACCEPTED' | 'NEEDS_IMPROVEMENT' | 'REWORK' | 'FAILED';
+  tags?: string[] | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AgentGrowthProfile {
+  rules: AgentMemoryRule[];
+  experiences: AgentExperience[];
+}
+
 export interface Conversation {
   id: string;
   userId: string;

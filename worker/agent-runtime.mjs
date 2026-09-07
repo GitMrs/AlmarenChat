@@ -52,6 +52,7 @@ import { createDiscussionRuntime } from './runtime/discussion-runtime.mjs';
 import { createRelayRuntime } from './runtime/relay-runtime.mjs';
 import { createWorkspaceRecoveryRuntime } from './runtime/workspace-recovery-runtime.mjs';
 import { createTaskLifecycleRuntime } from './runtime/task-lifecycle-runtime.mjs';
+import { loadAgentMemoryContextSync, recordAcceptedAgentExperiences } from './runtime/agent-memory-store.mjs';
 import {
   loadCoordinatorAcceptanceEvidence,
   loadCoordinatorDecisionContext,
@@ -336,9 +337,18 @@ function loadRunContext(run) {
     for (const agent of rows) customAgents.set(agent.id, agent);
   }
 
+  const agentMemoryQuery = run.input || run.topic || run.goal || '';
   const agents = memberships
     .map((member) => builtInAgents.get(member.agentId) || customAgents.get(member.agentId))
-    .filter(Boolean);
+    .filter(Boolean)
+    .map((agent) => ({
+      ...agent,
+      memoryContext: loadAgentMemoryContextSync(db, {
+        userId: run.userId,
+        agentId: agent.id,
+        query: agentMemoryQuery,
+      }),
+    }));
   if (agents.length === 0) throw new Error('空间中没有可执行任务的 Agent');
   const usesCoordinatorAdvisor = Boolean(db.prepare(
     `SELECT 1 FROM "AgentTask" WHERE "runId" = ? AND "agentId" = ? AND "mode" = 'advisor' LIMIT 1`
@@ -1530,6 +1540,7 @@ async function processRun(run) {
           completedAt: timestamp,
         })
       : storedCoordinatorState || null;
+    const outcome = completionOutcome(completedTasks, context.researchAudit, context.researchResultAudits, acceptance);
     db.transaction(() => {
         for (const workspaceArtifact of workspaceArtifacts) {
           const existing = db.prepare(
@@ -1567,7 +1578,6 @@ async function processRun(run) {
             })),
           });
         }
-        const outcome = completionOutcome(completedTasks, context.researchAudit, context.researchResultAudits, acceptance);
         const completionId = completionIdFor(run.id);
         db.prepare(
           `UPDATE "AgentRun" SET "status" = ?, "workerId" = NULL, "heartbeatAt" = NULL,
@@ -1593,6 +1603,19 @@ async function processRun(run) {
           refId: run.id,
         }], timestamp);
     })();
+    try {
+      recordAcceptedAgentExperiences(db, {
+        run,
+        tasks: completedTasks,
+        accepted: acceptance.accepted && outcome.status === 'COMPLETED',
+        timestamp,
+      });
+    } catch (memoryError) {
+      console.warn('[agent-worker] failed to record agent experience', {
+        runId: run.id,
+        error: memoryError instanceof Error ? memoryError.message : String(memoryError),
+      });
+    }
   } catch (error) {
     if (isCancelRequested(run.id)) cancelRun(run.id);
     else if (error?.code === 'MODEL_REQUEST_BUDGET' && error.scope === 'run') waitRunForExecutionContinuation(run, error);

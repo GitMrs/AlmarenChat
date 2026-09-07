@@ -1,4 +1,4 @@
-import type { AgentRun, AssistantConversationSummary, AssistantExperienceMessage, AssistantMemoryItem, AssistantQQBinding, AssistantReminder, AssistantReminderCandidate, Message, PersonalAssistantBootstrap, PersonalAssistantProfile, SpaceDiscussion, SpaceFileShare, SpaceRelay, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal, SpaceWork } from '@/types';
+import type { AgentGrowthProfile, AgentRun, AssistantConversationSummary, AssistantExperienceMessage, AssistantMemoryItem, AssistantQQBinding, AssistantReminder, AssistantReminderCandidate, Message, PersonalAssistantBootstrap, PersonalAssistantProfile, SpaceDiscussion, SpaceFileShare, SpaceRelay, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal, SpaceWork } from '@/types';
 
 const API_BASE = '/api';
 
@@ -261,6 +261,19 @@ export const agents = {
     request<{ success: boolean }>(`/agents/${id}`, {
       method: 'DELETE',
     }),
+  growth: (id: string) => request<AgentGrowthProfile>(`/agents/${id}/memory`),
+  addGrowthRule: (id: string, data: { category: string; title: string; instruction: string }) =>
+    request<AgentGrowthProfile>(`/agents/${id}/memory`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  updateGrowthRule: (id: string, data: { id: string; action: string; category?: string; title?: string; instruction?: string }) =>
+    request<AgentGrowthProfile>(`/agents/${id}/memory`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+  deleteGrowthRule: (id: string, ruleId: string) =>
+    request<AgentGrowthProfile>(`/agents/${id}/memory?id=${encodeURIComponent(ruleId)}`, { method: 'DELETE' }),
   knowledge: (id: string) => request<{ documents: any[] }>(`/agents/${id}/knowledge`),
   knowledgeChunks: (id: string, documentId: string) =>
     request<{ document: any; chunks: any[] }>(`/agents/${id}/knowledge?documentId=${encodeURIComponent(documentId)}`),

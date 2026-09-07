@@ -33,6 +33,8 @@ model User {
   favorites     FavoriteAgent[]
   chatUsages    DailyChatUsage[]
   agentRuns     AgentRun[]
+  agentExperiences AgentExperience[]
+  agentMemoryRules AgentMemoryRule[]
   discussions   SpaceDiscussion[]
   relays        SpaceRelay[]
   personalAssistant PersonalAssistantProfile?
@@ -61,6 +63,44 @@ model Agent {
   updatedAt    DateTime       @updatedAt
 
   knowledgeDocuments KnowledgeDocument[]
+}
+
+model AgentExperience {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agentId   String
+  spaceId   String?
+  runId     String?
+  taskId    String
+  title     String
+  summary   String
+  outcome   String
+  tags      Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, agentId, taskId])
+  @@index([userId, agentId, createdAt])
+}
+
+model AgentMemoryRule {
+  id            String   @id @default(uuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agentId       String
+  key           String
+  category      String
+  title         String
+  instruction   String
+  status        String   @default("PENDING")
+  evidenceCount Int      @default(1)
+  sourceIds     Json?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([userId, agentId, key])
+  @@index([userId, agentId, status, updatedAt])
 }
 
 model Space {
