@@ -49,6 +49,7 @@ import { createResearchRuntime } from './runtime/research-runtime.mjs';
 import { createWorkspaceArtifactRuntime } from './runtime/workspace-artifact-runtime.mjs';
 import { createPlanRuntime } from './runtime/plan-runtime.mjs';
 import { createDiscussionRuntime } from './runtime/discussion-runtime.mjs';
+import { createRelayRuntime } from './runtime/relay-runtime.mjs';
 import { createWorkspaceRecoveryRuntime } from './runtime/workspace-recovery-runtime.mjs';
 import { createTaskLifecycleRuntime } from './runtime/task-lifecycle-runtime.mjs';
 import {
@@ -56,8 +57,8 @@ import {
   loadCoordinatorDecisionContext,
   readCoordinatorState,
 } from './runtime/coordinator-context.mjs';
-import { claimNextDiscussion as claimDiscussionLease, claimNextRun as claimRunLease, heartbeatRunLease, releaseRunLease as releaseLease } from './runtime/lease-store.mjs';
-import { cancellationRequests, recoverInterruptedDiscussions as recoverDiscussionRecords, recoverStaleRunLeases } from './runtime/recovery-store.mjs';
+import { claimNextDiscussion as claimDiscussionLease, claimNextRelay as claimRelayLease, claimNextRun as claimRunLease, heartbeatRunLease, releaseRunLease as releaseLease } from './runtime/lease-store.mjs';
+import { cancellationRequests, recoverInterruptedDiscussions as recoverDiscussionRecords, recoverInterruptedRelays as recoverRelayRecords, recoverStaleRunLeases } from './runtime/recovery-store.mjs';
 import { runAdvisorHarness, runExecutorHarness } from './harness/agent-harness.mjs';
 
 const workerDir = path.dirname(fileURLToPath(import.meta.url));
@@ -183,6 +184,14 @@ const { processDiscussion } = createDiscussionRuntime({
   now,
 });
 
+const { processRelay } = createRelayRuntime({
+  db,
+  projectRoot,
+  completeMessage,
+  loadRunContext,
+  now,
+});
+
 const {
   cleanupClosedWorkspaceAttempts,
   discardTaskWorkspace,
@@ -300,6 +309,10 @@ function releaseRunLease(runId) {
 
 function claimNextDiscussion() {
   return claimDiscussionLease(db, now());
+}
+
+function claimNextRelay() {
+  return claimRelayLease(db, now());
 }
 
 function loadRunContext(run) {
@@ -1596,6 +1609,7 @@ async function main() {
   cleanupClosedWorkspaceAttempts();
   recoverStaleRuns();
   recoverInterruptedDiscussions();
+  recoverRelayRecords(db, now());
   recoverStaleOutbox(db, leaseCutoffIso(Date.now(), leaseTimeoutMs));
   recoverRuntimeIntents(db, leaseCutoffIso(Date.now(), leaseTimeoutMs));
   recoverCoordinatorTurns(db, leaseCutoffIso(Date.now(), leaseTimeoutMs));
@@ -1617,6 +1631,8 @@ async function main() {
     releaseRun: releaseRunLease,
     claimDiscussion: claimNextDiscussion,
     processDiscussion,
+    claimRelay: claimNextRelay,
+    processRelay,
     heartbeatIntervalMs,
     delay: () => delay(pollIntervalMs),
   });

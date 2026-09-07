@@ -17,6 +17,8 @@ function harness(overrides = {}) {
       releaseRun: () => calls.push('release-run'),
       claimDiscussion: () => null,
       processDiscussion: async () => calls.push('process-discussion'),
+      claimRelay: () => null,
+      processRelay: async () => calls.push('process-relay'),
       heartbeatIntervalMs: 5_000,
       delay: async () => calls.push('delay'),
       setIntervalFn: () => ({ unref: () => calls.push('unref') }),
@@ -57,6 +59,14 @@ test('discussion runs only when no completion or task run is available', async (
   });
   assert.equal(await runWorkerIteration(state.options), 'discussion');
   assert.deepEqual(state.calls, ['recover', 'process-discussion']);
+});
+
+test('relay runs only when higher-priority work is unavailable', async () => {
+  const state = harness({
+    claimRelay: () => ({ id: 'relay-1' }),
+  });
+  assert.equal(await runWorkerIteration(state.options), 'relay');
+  assert.deepEqual(state.calls, ['recover', 'process-relay']);
 });
 
 test('idle iteration waits before polling again', async () => {

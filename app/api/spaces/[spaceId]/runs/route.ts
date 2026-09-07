@@ -9,6 +9,8 @@ import { coordinatorAuthorization } from '@/lib/agent-runtime-v3-policy.mjs';
 import { taskProposalWithServerCapabilities } from '@/lib/task-proposal-policy.mjs';
 import { getSpaceSkill } from '@/lib/space-skills.mjs';
 
+const ACTIVE_RELAY_STATUSES = ['QUEUED', 'RUNNING', 'WAITING_APPROVAL', 'CANCEL_REQUESTED'];
+
 type TaskProposalAttachment = {
   type: 'task_proposal';
   goal?: string;
@@ -189,12 +191,18 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
       return NextResponse.json({ error: '指定成果不存在' }, { status: 404 });
     }
 
-    const activeRun = await prisma.agentRun.findFirst({
-      where: { spaceId, userId, status: { in: ACTIVE_AGENT_RUN_STATUSES } },
-      select: { id: true },
-    });
-    if (activeRun) {
-      return NextResponse.json({ error: '空间中已有任务正在运行' }, { status: 409 });
+    const [activeRun, activeRelay] = await Promise.all([
+      prisma.agentRun.findFirst({
+        where: { spaceId, userId, status: { in: ACTIVE_AGENT_RUN_STATUSES } },
+        select: { id: true },
+      }),
+      prisma.spaceRelay.findFirst({
+        where: { spaceId, userId, status: { in: ACTIVE_RELAY_STATUSES } },
+        select: { id: true },
+      }),
+    ]);
+    if (activeRun || activeRelay) {
+      return NextResponse.json({ error: '空间中已有任务或接力正在运行' }, { status: 409 });
     }
 
     const run = await prisma.$transaction(async (tx) => {
@@ -203,6 +211,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
         select: { id: true },
       });
       if (concurrentActiveRun) throw new Error('空间中已有任务正在运行');
+      const concurrentActiveRelay = await tx.spaceRelay.findFirst({
+        where: { spaceId, userId, status: { in: ACTIVE_RELAY_STATUSES } },
+        select: { id: true },
+      });
+      if (concurrentActiveRelay) throw new Error('空间中已有接力正在运行');
 
       let currentProposalMessage = proposalMessage;
       let currentProposal = proposal;

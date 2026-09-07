@@ -6,6 +6,7 @@ import { ensureSpaceRoot, spaceRoot } from '@/app/api/_lib/spaces';
 import { resetSpaceContentsStorage } from '@/lib/space-content-reset.mjs';
 
 const ACTIVE_DISCUSSION_STATUSES = ['QUEUED', 'RUNNING', 'WAITING_RESEARCH', 'CANCEL_REQUESTED'];
+const ACTIVE_RELAY_STATUSES = ['QUEUED', 'RUNNING', 'WAITING_APPROVAL', 'CANCEL_REQUESTED'];
 
 export async function DELETE(request: Request, { params }: { params: Promise<{ spaceId: string }> }) {
   try {
@@ -14,7 +15,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ s
     const space = await prisma.space.findFirst({ where: { id: spaceId, userId }, select: { id: true } });
     if (!space) return NextResponse.json({ error: 'Space not found' }, { status: 404 });
 
-    const [activeRun, activeDiscussion] = await Promise.all([
+    const [activeRun, activeDiscussion, activeRelay] = await Promise.all([
       prisma.agentRun.findFirst({
         where: { spaceId, status: { in: ACTIVE_AGENT_RUN_STATUSES } },
         select: { id: true },
@@ -23,18 +24,23 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ s
         where: { spaceId, status: { in: ACTIVE_DISCUSSION_STATUSES } },
         select: { id: true },
       }),
+      prisma.spaceRelay.findFirst({
+        where: { spaceId, status: { in: ACTIVE_RELAY_STATUSES } },
+        select: { id: true },
+      }),
     ]);
-    if (activeRun || activeDiscussion) {
-      return NextResponse.json({ error: '空间仍有任务或讨论正在运行，请先停止后再清空' }, { status: 409 });
+    if (activeRun || activeDiscussion || activeRelay) {
+      return NextResponse.json({ error: '空间仍有任务、讨论或接力正在运行，请先停止后再清空' }, { status: 409 });
     }
 
     const deleted = await resetSpaceContentsStorage(spaceRoot(userId, spaceId), async () => {
-      const [messages, files, memories, sessions, discussions, runs, works] = await prisma.$transaction([
+      const [messages, files, memories, sessions, discussions, relays, runs, works] = await prisma.$transaction([
         prisma.spaceMessage.deleteMany({ where: { spaceId } }),
         prisma.spaceFile.deleteMany({ where: { spaceId } }),
         prisma.spaceMemory.deleteMany({ where: { spaceId } }),
         prisma.agentSession.deleteMany({ where: { spaceId } }),
         prisma.spaceDiscussion.deleteMany({ where: { spaceId } }),
+        prisma.spaceRelay.deleteMany({ where: { spaceId } }),
         prisma.agentRun.deleteMany({ where: { spaceId } }),
         prisma.spaceWork.deleteMany({ where: { spaceId } }),
       ]);
@@ -44,6 +50,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ s
         memories: memories.count,
         sessions: sessions.count,
         discussions: discussions.count,
+        relays: relays.count,
         runs: runs.count,
         works: works.count,
       };

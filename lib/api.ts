@@ -1,4 +1,4 @@
-import type { AgentRun, AssistantConversationSummary, AssistantExperienceMessage, AssistantMemoryItem, AssistantQQBinding, AssistantReminder, AssistantReminderCandidate, Message, PersonalAssistantBootstrap, PersonalAssistantProfile, SpaceDiscussion, SpaceFileShare, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal, SpaceWork } from '@/types';
+import type { AgentRun, AssistantConversationSummary, AssistantExperienceMessage, AssistantMemoryItem, AssistantQQBinding, AssistantReminder, AssistantReminderCandidate, Message, PersonalAssistantBootstrap, PersonalAssistantProfile, SpaceDiscussion, SpaceFileShare, SpaceRelay, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal, SpaceWork } from '@/types';
 
 const API_BASE = '/api';
 
@@ -377,7 +377,7 @@ export const spaces = {
   clearContents: (id: string) =>
     request<{
       success: boolean;
-      deleted: { messages: number; files: number; memories: number; sessions: number; discussions: number; runs: number };
+      deleted: { messages: number; files: number; memories: number; sessions: number; discussions: number; relays: number; runs: number };
     }>(`/spaces/${id}/contents`, { method: 'DELETE' }),
   learning: (id: string) =>
     request<{ learning: import('@/types').SpaceLearning; readme: string }>(`/spaces/${id}/learning`),
@@ -405,6 +405,11 @@ export const spaces = {
   },
   cancelPi: (id: string) =>
     request<{ cancelled: boolean }>(`/spaces/${id}/pi/cancel`, { method: 'POST' }),
+  resolvePiSkillApproval: (id: string, approvalId: string, approved: boolean) =>
+    request<{ resolved: boolean }>(`/spaces/${id}/pi/approval`, {
+      method: 'POST',
+      body: JSON.stringify({ approvalId, approved }),
+    }),
   skills: (id: string) => request<{ skills: SpaceSkill[] }>(`/spaces/${id}/skills`),
   previewSkill: (id: string, sourceUrl: string) =>
     request<{ preview: SpaceSkillPreview }>(`/spaces/${id}/skills`, {
@@ -451,6 +456,20 @@ export const spaces = {
     method: 'PATCH',
     body: JSON.stringify(data),
   }),
+  relays: (id: string) =>
+    request<{ relays: SpaceRelay[] }>(`/spaces/${id}/relays`),
+  createRelay: (
+    id: string,
+    data: { kind: 'collaboration' | 'gomoku'; goal: string; participantIds: string[]; approvalMode: 'AUTO' | 'EACH_TURN'; maxTurns: number; completionCriteria?: string[] }
+  ) => request<{ relay: SpaceRelay }>(`/spaces/${id}/relays`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  }),
+  updateRelay: (spaceId: string, relayId: string, action: 'cancel' | 'approve' | 'reject') =>
+    request<{ relay: SpaceRelay }>(`/spaces/${spaceId}/relays/${relayId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ action }),
+    }),
   deleteMessage: (spaceId: string, messageId: string) =>
     request<{ success: boolean }>(`/spaces/${spaceId}/messages/${messageId}`, { method: 'DELETE' }),
   files: (id: string) => request<{ files: any[] }>(`/spaces/${id}/files`),
@@ -713,6 +732,7 @@ export async function streamSpaceMessage(data: {
   history: { role: string; content: string; speakerAgentId?: string | null }[];
   targetAgentId?: string;
   interactionMode?: 'chat' | 'multi_reply';
+  multiReplyIndex?: number;
   webSearchEnabled?: boolean;
   skipPersistUserMessage?: boolean;
   skillId?: string;
@@ -732,6 +752,7 @@ export async function streamSpaceMessage(data: {
       history: data.history,
       targetAgentId: data.targetAgentId,
       interactionMode: data.interactionMode,
+      multiReplyIndex: data.multiReplyIndex,
       webSearchEnabled: data.webSearchEnabled,
       skipPersistUserMessage: data.skipPersistUserMessage,
       skillId: data.skillId,

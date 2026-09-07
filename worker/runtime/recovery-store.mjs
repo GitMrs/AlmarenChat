@@ -53,3 +53,14 @@ export function recoverInterruptedDiscussions(db, timestamp = new Date().toISOSt
   ).run(timestamp, timestamp).changes;
   return { queued, cancelled };
 }
+
+export function recoverInterruptedRelays(db, timestamp = new Date().toISOString()) {
+  const queued = db.prepare(
+    `UPDATE "SpaceRelay" SET "status" = 'QUEUED', "updatedAt" = ? WHERE "status" = 'RUNNING'`
+  ).run(timestamp).changes;
+  const cancelled = db.prepare(
+    `UPDATE "SpaceRelay" SET "status" = 'CANCELLED', "pendingAction" = NULL,
+     "completedAt" = ?, "updatedAt" = ? WHERE "status" = 'CANCEL_REQUESTED'`
+  ).run(timestamp, timestamp).changes;
+  return { queued, cancelled };
+}

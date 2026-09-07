@@ -17,6 +17,7 @@ import TaskReviewDialog from '@/components/spaces/TaskReviewDialog';
 import SpaceFileEditorDialog from '@/components/spaces/SpaceFileEditorDialog';
 import SpaceDiscussionDialog from '@/components/spaces/SpaceDiscussionDialog';
 import SpaceDiscussionStatus from '@/components/spaces/SpaceDiscussionStatus';
+import SpaceRelayStatus from '@/components/spaces/SpaceRelayStatus';
 import { CompressionStatusPanel } from '@/components/spaces/CompressionStatusPanel';
 import { agentRuns as agentRunsApi, agents as agentsApi, spaces as spacesApi, streamSpaceMessage } from '@/lib/api';
 import { getBuiltInAgents } from '@/lib/agents-data';
@@ -29,7 +30,7 @@ import {
   MAX_CONTINUATION_ITERATIONS,
 } from '@/lib/agent-wait-policy.mjs';
 import { isEditableSpaceFile } from '@/lib/space-files';
-import type { Agent, AgentRun, AgentRunEvent, AgentTask, SpaceDiscussion, SpaceFile, SpaceLearning, SpaceLearningItem, SpaceMessage, SpacePiExecutionActivity, SpacePiExecutionNote, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal, SpaceWork } from '@/types';
+import type { Agent, AgentRun, AgentRunEvent, AgentTask, SpaceDiscussion, SpaceFile, SpaceLearning, SpaceLearningItem, SpaceMessage, SpacePiExecutionActivity, SpacePiExecutionNote, SpacePiSkillApproval, SpaceRelay, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal, SpaceWork } from '@/types';
 
 const FALLBACK_COLOR = '#4f46e5';
 const SPACE_COORDINATOR_ID = 'space-coordinator';
@@ -389,6 +390,7 @@ export default function SpaceDetailPage() {
   const [selectedWorkId, setSelectedWorkId] = useState('all');
   const [activeWorkId, setActiveWorkId] = useState('new');
   const [discussions, setDiscussions] = useState<SpaceDiscussion[]>([]);
+  const [relays, setRelays] = useState<SpaceRelay[]>([]);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [mode, setMode] = useState<'chat' | 'task'>('chat');
   const [sidePanel, setSidePanel] = useState<'members' | 'files' | 'skills' | 'runs' | 'settings' | null>(null);
@@ -417,6 +419,8 @@ export default function SpaceDetailPage() {
   const [streamingPiActivity, setStreamingPiActivity] = useState<SpacePiExecutionActivity | null>(null);
   const [streamingPiStatus, setStreamingPiStatus] = useState('');
   const [streamingPiNotes, setStreamingPiNotes] = useState<SpacePiExecutionNote[]>([]);
+  const [pendingPiSkillApproval, setPendingPiSkillApproval] = useState<SpacePiSkillApproval | null>(null);
+  const [piSkillApprovalBusy, setPiSkillApprovalBusy] = useState(false);
   const [replyQueueAgentIds, setReplyQueueAgentIds] = useState<string[]>([]);
   const [replyQueueIndex, setReplyQueueIndex] = useState(0);
   const [addingAgentId, setAddingAgentId] = useState('');
@@ -462,6 +466,8 @@ export default function SpaceDetailPage() {
   const [discussionBusy, setDiscussionBusy] = useState(false);
   const [discussionError, setDiscussionError] = useState('');
   const [dismissedDiscussionIds, setDismissedDiscussionIds] = useState<string[]>([]);
+  const [relayBusy, setRelayBusy] = useState(false);
+  const [dismissedRelayIds, setDismissedRelayIds] = useState<string[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const forceScrollToBottomRef = useRef(true);
   const abortRef = useRef<AbortController | null>(null);
@@ -512,6 +518,16 @@ export default function SpaceDetailPage() {
   const visibleDiscussion = latestDiscussion
     && (activeDiscussion?.id === latestDiscussion.id || !dismissedDiscussionIds.includes(latestDiscussion.id))
     ? latestDiscussion
+    : null;
+  const latestRelay = relays[0] || null;
+  const activeRelay = relays.find((relay) => ['QUEUED', 'RUNNING', 'WAITING_APPROVAL', 'CANCEL_REQUESTED'].includes(relay.status)) || null;
+  const activeRelayState = activeRelay?.state && typeof activeRelay.state === 'object'
+    ? activeRelay.state as Record<string, unknown>
+    : null;
+  const relaySummarizing = activeRelayState?.phase === 'summarizing';
+  const visibleRelay = latestRelay
+    && (activeRelay?.id === latestRelay.id || !dismissedRelayIds.includes(latestRelay.id))
+    ? latestRelay
     : null;
   const currentRun = (selectedRunId ? runs.find((run) => run.id === selectedRunId) : null) || activeRun || runs[0] || null;
   const runModelMetrics = useMemo(
@@ -573,6 +589,22 @@ export default function SpaceDetailPage() {
     if (task?.status === 'WAITING_APPROVAL') return { label: '待审核', color: 'bg-sky-400', text: 'text-sky-600', task };
     if (task?.status === 'PROPOSED') return { label: '待确认', color: 'bg-amber-400', text: 'text-amber-600', task };
     if (task?.status === 'PENDING') return { label: '等待中', color: 'bg-amber-400', text: 'text-amber-600', task };
+    if (activeRelay?.participantIds.includes(agentId)) {
+      const currentRelayAgentId = activeRelay.participantIds[activeRelay.currentIndex];
+      if (agentId === currentRelayAgentId && activeRelay.status === 'CANCEL_REQUESTED') {
+        return { label: '正在停止', color: 'bg-rose-400', text: 'text-rose-500', task: null };
+      }
+      if (agentId === currentRelayAgentId && activeRelay.status === 'WAITING_APPROVAL') {
+        return { label: '等待确认', color: 'bg-sky-400', text: 'text-sky-600', task: null };
+      }
+      if (relaySummarizing) {
+        return { label: '等待验收', color: 'bg-sky-400', text: 'text-sky-600', task: null };
+      }
+      if (agentId === currentRelayAgentId) {
+        return { label: '接力中', color: 'bg-emerald-500', text: 'text-emerald-600', task: null };
+      }
+      return { label: '等待接力', color: 'bg-amber-400', text: 'text-amber-600', task: null };
+    }
     if (activeDiscussion?.participantIds.includes(agentId)) {
       if (agentId === currentDiscussionAgentId && activeDiscussion.status === 'CANCEL_REQUESTED') {
         return { label: '正在停止', color: 'bg-rose-400', text: 'text-rose-500', task: null };
@@ -595,6 +627,10 @@ export default function SpaceDetailPage() {
   };
   const coordinatorStatus = activeRun && (['PLANNING', 'SUMMARIZING'].includes(activeRun.status) || ['SUBMITTED', 'REVIEWING'].includes(activeTask?.status || ''))
     ? { label: '协调中', color: 'bg-emerald-500', text: 'text-emerald-600' }
+    : activeRelay
+      ? relaySummarizing
+        ? { label: '验收中', color: 'bg-emerald-500', text: 'text-emerald-600' }
+        : { label: '观察中', color: 'bg-sky-400', text: 'text-sky-600' }
     : activeDiscussion && activeDiscussion.currentRound > activeDiscussion.maxRounds
       ? { label: '汇总中', color: 'bg-emerald-500', text: 'text-emerald-600' }
       : isStreaming && streamingSpeakerId === coordinatorAgent.id
@@ -641,13 +677,14 @@ export default function SpaceDetailPage() {
     setLoading(true);
     setError('');
     try {
-      const [spaceResult, messageResult, fileResult, runResult, workResult, discussionResult, skillResult, learningResult, builtIn, customResult] = await Promise.all([
+      const [spaceResult, messageResult, fileResult, runResult, workResult, discussionResult, relayResult, skillResult, learningResult, builtIn, customResult] = await Promise.all([
         spacesApi.get(spaceId),
         spacesApi.messages(spaceId, { limit: 60 }),
         spacesApi.files(spaceId),
         spacesApi.runs(spaceId),
         spacesApi.works(spaceId),
         spacesApi.discussions(spaceId),
+        spacesApi.relays(spaceId),
         spacesApi.skills(spaceId),
         spacesApi.learning(spaceId),
         getBuiltInAgents(),
@@ -667,6 +704,7 @@ export default function SpaceDetailPage() {
       setRuns(runResult.runs);
       setWorks(workResult.works);
       setDiscussions(discussionResult.discussions);
+      setRelays(relayResult.relays);
       setSkills(skillResult.skills);
       setLearning(learningResult.learning);
       setLearningReadme(learningResult.readme);
@@ -680,6 +718,15 @@ export default function SpaceDetailPage() {
 
   useEffect(() => {
     load();
+  }, [spaceId]);
+
+  useEffect(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem(`space:${spaceId}:dismissed-relays`) || '[]');
+      setDismissedRelayIds(Array.isArray(stored) ? stored.filter((id) => typeof id === 'string') : []);
+    } catch {
+      setDismissedRelayIds([]);
+    }
   }, [spaceId]);
 
   useEffect(() => {
@@ -767,6 +814,25 @@ export default function SpaceDetailPage() {
     }, 1200);
     return () => window.clearInterval(timer);
   }, [activeDiscussion?.id, activeDiscussion?.status, activeDiscussion?.updatedAt, spaceId]);
+
+  useEffect(() => {
+    if (!activeRelay) return;
+    const timer = window.setInterval(async () => {
+      try {
+        const [relayResult, messageResult, fileResult] = await Promise.all([
+          spacesApi.relays(spaceId),
+          spacesApi.messages(spaceId, { limit: 60 }),
+          spacesApi.files(spaceId),
+        ]);
+        setRelays(relayResult.relays);
+        setMessages(messageResult.messages);
+        setFiles(fileResult.files);
+      } catch {
+        // Keep the latest persisted relay state; the next poll can recover.
+      }
+    }, 1200);
+    return () => window.clearInterval(timer);
+  }, [activeRelay?.id, activeRelay?.status, activeRelay?.updatedAt, spaceId]);
 
   useEffect(() => {
     if (sidePanel) {
@@ -869,7 +935,7 @@ export default function SpaceDetailPage() {
     content: string,
     options?: { reuseLastUserMessage?: boolean; historyOverride?: SpaceMessage[]; skillIdOverride?: string | null }
   ) => {
-    if (!content || isStreaming) return;
+    if (!content || isStreaming || activeRelay) return;
 
     if (!options?.reuseLastUserMessage && latestDiscussion && !activeDiscussion) {
       dismissDiscussion(latestDiscussion.id);
@@ -908,7 +974,8 @@ export default function SpaceDetailPage() {
     try {
       const controller = new AbortController();
       abortRef.current = controller;
-      const targets = mentionedAgents(content, memberAgents);
+      const coordinatorRequested = mentionedAgents(content, [coordinatorAgent as Agent]).length > 0;
+      const targets = coordinatorRequested ? [] : mentionedAgents(content, memberAgents);
       const replyTargets: Array<Agent | null> = targets.length > 1 ? targets : [null];
       setReplyQueueAgentIds(targets.length > 1 ? targets.map((agent) => agent.id) : []);
       let workspaceFilesChanged = 0;
@@ -929,6 +996,7 @@ export default function SpaceDetailPage() {
           })),
           targetAgentId: replyTargets[index]?.id,
           interactionMode: targets.length > 1 ? 'multi_reply' : 'chat',
+          multiReplyIndex: targets.length > 1 ? index : undefined,
           webSearchEnabled: targets.length <= 1 && webSearchEnabled,
           skipPersistUserMessage: Boolean(options?.reuseLastUserMessage || index > 0),
           skillId: activeSkillId || undefined,
@@ -959,17 +1027,28 @@ export default function SpaceDetailPage() {
                 label?: string;
                 activity?: SpacePiExecutionActivity;
                 note?: SpacePiExecutionNote;
+                approval?: SpacePiSkillApproval & { approved?: boolean };
               };
               if (event.type === 'text_delta' && typeof event.delta === 'string') {
                 fullContent += event.delta;
                 setStreamingContent(fullContent);
+              } else if (event.type === 'text_reset') {
+                fullContent = '';
+                setStreamingContent('');
               } else if (event.type === 'activity' && event.activity) {
                 setStreamingPiActivity(event.activity.status === 'running' ? event.activity : null);
               } else if (event.type === 'status' && event.label) {
                 setStreamingPiStatus(event.label);
               } else if (event.type === 'process_note' && event.note) {
                 setStreamingPiNotes((notes) => [...notes, event.note!]);
+              } else if (event.type === 'approval_required' && event.approval) {
+                setPendingPiSkillApproval(event.approval);
+                setStreamingPiStatus('等待确认 Skill 脚本');
+              } else if (event.type === 'approval_resolved' && event.approval) {
+                setPendingPiSkillApproval((current) => current?.id === event.approval?.id ? null : current);
+                setStreamingPiStatus(event.approval.approved ? '正在运行 Skill 脚本' : 'Skill 脚本未执行，正在继续处理');
               } else if (event.type === 'complete') {
+                setPendingPiSkillApproval(null);
                 setStreamingPiActivity(null);
                 setStreamingPiStatus('');
                 setStreamingPiNotes([]);
@@ -989,13 +1068,15 @@ export default function SpaceDetailPage() {
         }
       }
 
-      const [messageResult, fileResult] = await Promise.all([
+      const [messageResult, fileResult, relayResult] = await Promise.all([
         spacesApi.messages(spaceId, { limit: 60 }),
         (isPiSpace || workspaceFilesChanged > 0) ? spacesApi.files(spaceId) : Promise.resolve(null),
+        spacesApi.relays(spaceId),
         refreshSpace(),
       ]);
       setMessages(messageResult.messages);
       if (fileResult) setFiles(fileResult.files);
+      setRelays(relayResult.relays);
       if (streamFailure) setError(streamFailure);
     } catch (err: any) {
       if (err.name !== 'AbortError') {
@@ -1007,6 +1088,8 @@ export default function SpaceDetailPage() {
       setStreamingPiActivity(null);
       setStreamingPiStatus('');
       setStreamingPiNotes([]);
+      setPendingPiSkillApproval(null);
+      setPiSkillApprovalBusy(false);
       setReplyQueueAgentIds([]);
       setReplyQueueIndex(0);
     }
@@ -1019,6 +1102,7 @@ export default function SpaceDetailPage() {
     abortRef.current?.abort();
     setIsStreaming(false);
     setStreamingContent('');
+    setPendingPiSkillApproval(null);
     setReplyQueueAgentIds([]);
     setReplyQueueIndex(0);
   };
@@ -1083,6 +1167,33 @@ export default function SpaceDetailPage() {
     sendMessage(prompt);
   };
 
+  const updateRelay = async (relay: SpaceRelay, action: 'cancel' | 'approve' | 'reject') => {
+    if (relayBusy) return;
+    setRelayBusy(true);
+    setError('');
+    try {
+      const result = await spacesApi.updateRelay(spaceId, relay.id, action);
+      setRelays((items) => items.map((item) => item.id === result.relay.id ? result.relay : item));
+    } catch (err: any) {
+      setError(err.message || '处理接力失败');
+    } finally {
+      setRelayBusy(false);
+    }
+  };
+
+  const dismissRelay = (relayId: string) => {
+    if (dismissedRelayIds.includes(relayId)) return;
+    const next = [...dismissedRelayIds, relayId].slice(-20);
+    setDismissedRelayIds(next);
+    localStorage.setItem(`space:${spaceId}:dismissed-relays`, JSON.stringify(next));
+  };
+
+  const openRelayResult = (relay: SpaceRelay) => {
+    const preview = files.find((file) => file.relativePath.replaceAll('\\', '/') === `relays/${relay.id}/index.html`);
+    if (preview) setEditingFile(preview);
+    else setError('棋盘预览文件尚未生成');
+  };
+
   const saveInstructions = async () => {
     if (savingInstructions) return;
     setSavingInstructions(true);
@@ -1134,7 +1245,7 @@ export default function SpaceDetailPage() {
   };
 
   const clearSpaceContents = async () => {
-    if (clearingSpace || isStreaming || activeRun || activeDiscussion) return;
+    if (clearingSpace || isStreaming || activeRun || activeDiscussion || activeRelay) return;
     setClearingSpace(true);
     setError('');
     try {
@@ -1146,6 +1257,7 @@ export default function SpaceDetailPage() {
       setSelectedWorkId('all');
       setActiveWorkId('new');
       setDiscussions([]);
+      setRelays([]);
       setLearning(null);
       setLearningReadme('');
       setSelectedRunId(null);
@@ -1153,6 +1265,8 @@ export default function SpaceDetailPage() {
       setInput('');
       setDismissedDiscussionIds([]);
       localStorage.removeItem(`space:${spaceId}:dismissed-discussions`);
+      setDismissedRelayIds([]);
+      localStorage.removeItem(`space:${spaceId}:dismissed-relays`);
       setClearSpaceOpen(false);
     } catch (err: any) {
       setError(err.message || '清空空间失败');
@@ -1317,6 +1431,19 @@ export default function SpaceDetailPage() {
       setError(err.message || '下载资料失败');
     } finally {
       setDownloadingFileId('');
+    }
+  };
+
+  const resolvePiSkillApproval = async (approved: boolean) => {
+    if (!pendingPiSkillApproval || piSkillApprovalBusy) return;
+    setPiSkillApprovalBusy(true);
+    try {
+      await spacesApi.resolvePiSkillApproval(spaceId, pendingPiSkillApproval.id, approved);
+      setPendingPiSkillApproval(null);
+    } catch (err: any) {
+      setError(err.message || '处理 Skill 脚本确认失败');
+    } finally {
+      setPiSkillApprovalBusy(false);
     }
   };
 
@@ -2471,6 +2598,16 @@ export default function SpaceDetailPage() {
                     onDismiss={() => dismissDiscussion(visibleDiscussion.id)}
                   />
                 )}
+                {visibleRelay && (
+                  <SpaceRelayStatus
+                    relay={visibleRelay}
+                    agents={memberAgents}
+                    busy={relayBusy}
+                    onAction={(action) => updateRelay(visibleRelay, action)}
+                    onOpen={() => openRelayResult(visibleRelay)}
+                    onDismiss={() => dismissRelay(visibleRelay.id)}
+                  />
+                )}
                 </div>
               </div>
             </div>
@@ -2527,7 +2664,7 @@ export default function SpaceDetailPage() {
                         {uploadingFile ? <Loader2 className="animate-spin" size={16} /> : <Paperclip size={16} />}
                         <span className="min-w-0 flex-1 whitespace-nowrap">上传资料</span>
                       </button>
-                      {!isPiSpace && <button
+                      <button
                         type="button"
                         role="switch"
                         aria-checked={webSearchEnabled}
@@ -2539,14 +2676,14 @@ export default function SpaceDetailPage() {
                       >
                         <Globe2 size={16} />
                         <span className="min-w-0 flex-1 whitespace-nowrap">联网搜索</span>
-                      </button>}
+                      </button>
                       {!isPiSpace && <button
                         type="button"
                         onClick={() => {
                           setComposerToolsOpen(false);
                           openDiscussionDialog();
                         }}
-                        disabled={Boolean(activeDiscussion) || memberAgents.length < 2}
+                        disabled={Boolean(activeDiscussion || activeRelay) || memberAgents.length < 2}
                         className="flex h-10 w-full items-center gap-3 rounded-md px-3 text-left text-xs font-black text-slate-600 transition hover:bg-slate-50 hover:text-slate-950 disabled:text-slate-300"
                       >
                         <MessagesSquare size={16} />
@@ -2630,14 +2767,14 @@ export default function SpaceDetailPage() {
                       setMentionRange(null);
                       setComposerToolsOpen((open) => !open);
                     }}
-                    disabled={isStreaming}
+                    disabled={isStreaming || Boolean(activeRelay)}
                     aria-label={composerToolsOpen ? '关闭工具菜单' : '打开工具菜单'}
                     aria-expanded={composerToolsOpen}
                     title="工具"
                     className={`relative flex h-11 w-11 items-center justify-center rounded-xl transition disabled:text-slate-300 ${composerToolsOpen ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-500 hover:bg-white hover:text-slate-950'}`}
                   >
                     <Plus size={19} className={`transition-transform ${composerToolsOpen ? 'rotate-45' : ''}`} />
-                    {!isPiSpace && webSearchEnabled && <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-emerald-500 ring-2 ring-white" />}
+                    {webSearchEnabled && <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-emerald-500 ring-2 ring-white" />}
                   </button>
                 </div>
                 <textarea
@@ -2683,7 +2820,8 @@ export default function SpaceDetailPage() {
                       send();
                     }
                   }}
-                  placeholder={isPiSpace ? '让 Pi 读取、修改或检查项目文件...' : '提问或交代任务...'}
+                  disabled={Boolean(activeRelay)}
+                  placeholder={activeRelay ? '接力进行中，可在上方停止或确认当前动作' : isPiSpace ? '让 Pi 读取、修改或检查项目文件...' : '提问或交代任务...'}
                   rows={1}
                   className="max-h-36 min-h-11 flex-1 resize-none bg-transparent px-4 py-3 text-sm font-medium leading-6 text-slate-800 outline-none placeholder:text-slate-400"
                 />
@@ -2694,7 +2832,7 @@ export default function SpaceDetailPage() {
                 ) : (
                   <button
                     onClick={send}
-                    disabled={!input.trim()}
+                    disabled={!input.trim() || Boolean(activeRelay)}
                     className="mb-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-slate-950 text-white disabled:bg-slate-200 disabled:text-slate-400"
                   >
                     <Send size={17} />
@@ -3234,14 +3372,14 @@ export default function SpaceDetailPage() {
                         <button
                           type="button"
                           onClick={() => setClearSpaceOpen(true)}
-                          disabled={clearingSpace || isStreaming || Boolean(activeRun) || Boolean(activeDiscussion)}
+                          disabled={clearingSpace || isStreaming || Boolean(activeRun) || Boolean(activeDiscussion) || Boolean(activeRelay)}
                           className="mt-3 inline-flex h-10 items-center gap-2 rounded-lg border border-rose-200 px-4 text-xs font-black text-rose-600 transition hover:bg-rose-50 disabled:border-slate-200 disabled:text-slate-300"
                         >
                           <Trash2 size={15} />
                           清空聊天和文件
                         </button>
-                        {(isStreaming || activeRun || activeDiscussion) && (
-                          <p className="mt-2 text-xs font-semibold text-amber-600">请先停止正在进行的回答、任务或讨论。</p>
+                        {(isStreaming || activeRun || activeDiscussion || activeRelay) && (
+                          <p className="mt-2 text-xs font-semibold text-amber-600">请先停止正在进行的回答、任务、讨论或接力。</p>
                         )}
                       </div>
                     </div>
@@ -3324,6 +3462,27 @@ export default function SpaceDetailPage() {
         onSaved={(updatedFile) => {
           setFiles((items) => [updatedFile, ...items.filter((item) => item.id !== updatedFile.id)]);
         }}
+      />
+      <ConfirmDialog
+        open={Boolean(pendingPiSkillApproval)}
+        title={`运行 ${pendingPiSkillApproval?.skillName || 'Space Skill'} 脚本？`}
+        description={pendingPiSkillApproval ? (
+          <div className="space-y-3">
+            <p>该脚本将通过强制沙箱只读访问下列输入文件，不能联网、安装依赖或修改工作区。</p>
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">
+              <div className="break-all text-slate-900">脚本：{pendingPiSkillApproval.script}</div>
+              <div className="mt-2 space-y-1">
+                {pendingPiSkillApproval.paths.map((filePath) => <div key={filePath} className="break-all">{filePath}</div>)}
+              </div>
+            </div>
+          </div>
+        ) : null}
+        icon={<ShieldCheck size={20} />}
+        cancelText="拒绝执行"
+        confirmText="确认执行"
+        loading={piSkillApprovalBusy}
+        onCancel={() => resolvePiSkillApproval(false)}
+        onConfirm={() => resolvePiSkillApproval(true)}
       />
       <ConfirmDialog
         open={Boolean(skillPreview)}

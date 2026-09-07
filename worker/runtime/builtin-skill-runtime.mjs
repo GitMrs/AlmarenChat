@@ -1,4 +1,4 @@
-import { readFile, stat } from 'node:fs/promises';
+import { lstat, readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { builtinSkill } from '../../lib/agent-runtime/skill-registry.mjs';
 import { resolveSpaceSkillExecution } from '../../lib/space-skills.mjs';
@@ -14,7 +14,20 @@ function manifestPath(projectRoot, packagePath) {
 
 function workspaceArgument(workspaceOptions, value, contract, label) {
   const normalized = String(value || '').trim().replaceAll('\\', '/');
-  const file = workspaceAttemptFile(workspaceOptions, normalized);
+  let file;
+  if (workspaceOptions.workspaceRoot) {
+    if (!normalized || normalized.startsWith('/') || normalized.startsWith('~') || /^[a-z][a-z0-9+.-]*:/i.test(normalized)) {
+      throw new Error(`${label}只允许工作区相对路径`);
+    }
+    const parts = normalized.split('/');
+    if (parts.some((part) => !part || part === '.' || part === '..')) throw new Error(`${label}文件路径不安全`);
+    const root = path.resolve(workspaceOptions.workspaceRoot);
+    const target = path.resolve(root, normalized);
+    if (!target.startsWith(root + path.sep)) throw new Error(`${label}文件路径超出工作区`);
+    file = { root, target };
+  } else {
+    file = workspaceAttemptFile(workspaceOptions, normalized);
+  }
   const extension = path.extname(file.target).toLowerCase();
   const extensions = Array.isArray(contract?.extensions) ? contract.extensions.map((item) => String(item).toLowerCase()) : [];
   if (extensions.length > 0 && !extensions.includes(extension)) {
@@ -101,10 +114,15 @@ async function executeSpaceSkill({ projectRoot, skill, args, workspaceOptions, i
   if (!script || paths.length === 0) throw new Error('Space Skill 缺少脚本或输入文件');
   if (paths.length > 10) throw new Error('Space Skill 单次最多读取 10 个输入文件');
   const inputs = [];
+  const directRoot = workspaceOptions.workspaceRoot ? await realpath(path.resolve(workspaceOptions.workspaceRoot)) : null;
   for (const value of paths) {
     const input = workspaceArgument(workspaceOptions, value, { extensions: ['.md', '.txt', '.json'] }, '输入');
-    const info = await stat(input.target).catch(() => null);
-    if (!info?.isFile()) throw new Error(`Skill 输入文件不存在：${input.logical}`);
+    const info = await lstat(input.target).catch(() => null);
+    if (!info?.isFile() || info.isSymbolicLink()) throw new Error(`Skill 输入文件不存在或不安全：${input.logical}`);
+    if (directRoot) {
+      const actualInput = await realpath(input.target);
+      if (!actualInput.startsWith(directRoot + path.sep)) throw new Error(`Skill 输入文件超出工作区：${input.logical}`);
+    }
     inputs.push(input.logical);
   }
   const resolved = await resolveSpaceSkillExecution({
@@ -116,7 +134,7 @@ async function executeSpaceSkill({ projectRoot, skill, args, workspaceOptions, i
     script,
   });
   const result = await runSandboxedSkillProcess({
-    workspaceRoot: workspaceAttemptRoot(workspaceOptions),
+    workspaceRoot: workspaceOptions.workspaceRoot || workspaceAttemptRoot(workspaceOptions),
     skillRoot: resolved.skillRoot,
     command: 'python3',
     script: resolved.script,

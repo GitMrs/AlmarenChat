@@ -9,6 +9,8 @@ export async function runWorkerIteration({
   releaseRun,
   claimDiscussion,
   processDiscussion,
+  claimRelay,
+  processRelay,
   heartbeatIntervalMs,
   delay,
   setIntervalFn = setInterval,
@@ -43,6 +45,12 @@ export async function runWorkerIteration({
   if (discussion) {
     await processDiscussion(discussion);
     return 'discussion';
+  }
+
+  const relay = claimRelay();
+  if (relay) {
+    await processRelay(relay);
+    return 'relay';
   }
 
   await delay();

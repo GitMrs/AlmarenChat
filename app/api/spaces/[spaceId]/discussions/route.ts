@@ -4,6 +4,7 @@ import { requireAuth } from '@/app/api/_lib/auth';
 import { getSpaceForUser } from '@/app/api/_lib/spaces';
 
 const ACTIVE_STATUSES = ['QUEUED', 'RUNNING', 'WAITING_RESEARCH', 'CANCEL_REQUESTED'];
+const ACTIVE_RELAY_STATUSES = ['QUEUED', 'RUNNING', 'WAITING_APPROVAL', 'CANCEL_REQUESTED'];
 
 export async function GET(request: Request, { params }: { params: Promise<{ spaceId: string }> }) {
   try {
@@ -48,11 +49,17 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
     if (!topic) return NextResponse.json({ error: '请输入讨论主题' }, { status: 400 });
     if (participantIds.length < 2) return NextResponse.json({ error: '至少选择两位空间成员' }, { status: 400 });
 
-    const active = await prisma.spaceDiscussion.findFirst({
-      where: { spaceId, userId, status: { in: ACTIVE_STATUSES } },
-      select: { id: true },
-    });
-    if (active) return NextResponse.json({ error: '当前已有讨论正在进行' }, { status: 409 });
+    const [active, activeRelay] = await Promise.all([
+      prisma.spaceDiscussion.findFirst({
+        where: { spaceId, userId, status: { in: ACTIVE_STATUSES } },
+        select: { id: true },
+      }),
+      prisma.spaceRelay.findFirst({
+        where: { spaceId, userId, status: { in: ACTIVE_RELAY_STATUSES } },
+        select: { id: true },
+      }),
+    ]);
+    if (active || activeRelay) return NextResponse.json({ error: '当前已有讨论或接力正在进行' }, { status: 409 });
 
     const result = await prisma.$transaction(async (tx) => {
       await tx.spaceMessage.create({ data: { spaceId, role: 'user', content: topic } });

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import Database from 'better-sqlite3';
-import { cancellationRequests, recoverInterruptedDiscussions, recoverStaleRunLeases } from './recovery-store.mjs';
+import { cancellationRequests, recoverInterruptedDiscussions, recoverInterruptedRelays, recoverStaleRunLeases } from './recovery-store.mjs';
 
 function database() {
   const db = new Database(':memory:');
@@ -19,6 +19,10 @@ function database() {
     );
     CREATE TABLE "SpaceDiscussion" (
       "id" TEXT PRIMARY KEY, "status" TEXT NOT NULL, "completedAt" TEXT, "updatedAt" TEXT NOT NULL
+    );
+    CREATE TABLE "SpaceRelay" (
+      "id" TEXT PRIMARY KEY, "status" TEXT NOT NULL, "pendingAction" TEXT,
+      "completedAt" TEXT, "updatedAt" TEXT NOT NULL
     );
   `);
   return db;
@@ -58,5 +62,21 @@ test('recovery exposes cancellation requests and resets interrupted discussions'
   assert.deepEqual(requests.tasks.map((task) => task.id), ['task-1']);
   assert.deepEqual(requests.runs.map((run) => run.id), ['run-1']);
   assert.deepEqual(recoverInterruptedDiscussions(db, '2026-08-16'), { queued: 1, cancelled: 1 });
+  db.close();
+});
+
+test('recovery requeues interrupted relays and finalizes cancellation requests', () => {
+  const db = database();
+  db.exec(`
+    INSERT INTO "SpaceRelay" ("id", "status", "pendingAction", "updatedAt")
+      VALUES ('relay-1', 'RUNNING', NULL, 'now');
+    INSERT INTO "SpaceRelay" ("id", "status", "pendingAction", "updatedAt")
+      VALUES ('relay-2', 'CANCEL_REQUESTED', '{"row":8}', 'now');
+  `);
+  assert.deepEqual(recoverInterruptedRelays(db, '2026-09-07'), { queued: 1, cancelled: 1 });
+  assert.equal(db.prepare(`SELECT "status" FROM "SpaceRelay" WHERE "id" = 'relay-1'`).get().status, 'QUEUED');
+  const cancelled = db.prepare(`SELECT "status", "pendingAction" FROM "SpaceRelay" WHERE "id" = 'relay-2'`).get();
+  assert.equal(cancelled.status, 'CANCELLED');
+  assert.equal(cancelled.pendingAction, null);
   db.close();
 });

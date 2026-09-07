@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import Database from 'better-sqlite3';
-import { claimNextDiscussion, claimNextRun, heartbeatRunLease, releaseRunLease } from './lease-store.mjs';
+import { claimNextDiscussion, claimNextRelay, claimNextRun, heartbeatRunLease, releaseRunLease } from './lease-store.mjs';
 
 function database() {
   const db = new Database(':memory:');
@@ -11,6 +11,10 @@ function database() {
       "startedAt" TEXT, "createdAt" TEXT NOT NULL, "updatedAt" TEXT NOT NULL
     );
     CREATE TABLE "SpaceDiscussion" (
+      "id" TEXT PRIMARY KEY, "status" TEXT NOT NULL, "startedAt" TEXT,
+      "createdAt" TEXT NOT NULL, "updatedAt" TEXT NOT NULL
+    );
+    CREATE TABLE "SpaceRelay" (
       "id" TEXT PRIMARY KEY, "status" TEXT NOT NULL, "startedAt" TEXT,
       "createdAt" TEXT NOT NULL, "updatedAt" TEXT NOT NULL
     );
@@ -42,5 +46,15 @@ test('discussion claiming preserves its first start time', () => {
   assert.equal(discussion.status, 'RUNNING');
   assert.equal(discussion.startedAt, '2026-08-16T00:00:00.000Z');
   assert.equal(claimNextDiscussion(db), null);
+  db.close();
+});
+
+test('relay claiming preserves its first start time and cannot be claimed twice', () => {
+  const db = database();
+  db.exec(`INSERT INTO "SpaceRelay" ("id", "status", "createdAt", "updatedAt") VALUES ('relay-1', 'QUEUED', 'now', 'now')`);
+  const relay = claimNextRelay(db, '2026-09-07T00:00:00.000Z');
+  assert.equal(relay.status, 'RUNNING');
+  assert.equal(relay.startedAt, '2026-09-07T00:00:00.000Z');
+  assert.equal(claimNextRelay(db), null);
   db.close();
 });

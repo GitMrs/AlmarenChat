@@ -34,6 +34,7 @@ model User {
   chatUsages    DailyChatUsage[]
   agentRuns     AgentRun[]
   discussions   SpaceDiscussion[]
+  relays        SpaceRelay[]
   personalAssistant PersonalAssistantProfile?
   assistantMemories AssistantMemoryItem[]
   assistantExperiences AssistantExperience[]
@@ -84,6 +85,7 @@ model Space {
   runs     AgentRun[]
   works    SpaceWork[]
   discussions SpaceDiscussion[]
+  relays      SpaceRelay[]
   memory      SpaceMemory?
 
   @@index([userId, updatedAt])
@@ -421,6 +423,35 @@ model SpaceDiscussion {
   updatedAt         DateTime  @updatedAt
   startedAt         DateTime?
   completedAt       DateTime?
+
+  @@index([spaceId, createdAt])
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+}
+
+model SpaceRelay {
+  id              String    @id @default(uuid())
+  spaceId         String
+  space           Space     @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  userId          String
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind             String
+  goal             String
+  participantIds   Json
+  approvalMode     String    @default("AUTO")
+  status           String    @default("QUEUED")
+  currentIndex     Int       @default(0)
+  turnCount        Int       @default(0)
+  maxTurns         Int       @default(60)
+  state            Json
+  transcript       Json?
+  pendingAction    Json?
+  result           String?
+  error            String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  startedAt        DateTime?
+  completedAt      DateTime?
 
   @@index([spaceId, createdAt])
   @@index([userId, createdAt])

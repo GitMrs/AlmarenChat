@@ -354,6 +354,14 @@ export interface SpaceRunResultAttachment {
   status: string;
 }
 
+export interface SpacePiSkillApproval {
+  id: string;
+  skillName: string;
+  script: string;
+  paths: string[];
+  expiresAt: string;
+}
+
 export interface SpacePiExecutionActivity {
   id: string;
   name: string;
@@ -419,7 +427,90 @@ export interface SpaceDiscussion {
   completedAt?: string | null;
 }
 
-export type SpaceMessageAttachment = MessageAttachment | SpaceTaskProposal | SpaceDiscussionAttachment | SpaceRunResultAttachment | SpaceSkillInvocationAttachment | SpacePiExecutionAttachment;
+export interface SpaceRelayBoardAction {
+  row: number;
+  column: number;
+  comment?: string;
+}
+
+export interface SpaceRelayCollaborationAction {
+  content: string;
+  status: 'CONTINUE' | 'COMPLETE';
+}
+
+export type SpaceRelayAction = SpaceRelayBoardAction | SpaceRelayCollaborationAction;
+
+export interface SpaceRelayTranscriptEntry {
+  turn: number;
+  agentId: string;
+  agentName: string;
+  action: SpaceRelayAction;
+  createdAt: string;
+}
+
+export interface SpaceRelayPendingAction {
+  type?: 'coordinator_continue';
+  agentId?: string;
+  agentName?: string;
+  expectedVersion?: number;
+  action?: SpaceRelayAction;
+  approved: boolean;
+  rejected?: boolean;
+  decision?: 'continue' | 'stop';
+  summary?: string;
+  instruction?: string;
+}
+
+export interface SpaceRelay {
+  id: string;
+  spaceId: string;
+  userId: string;
+  kind: 'collaboration' | 'gomoku';
+  goal: string;
+  participantIds: string[];
+  approvalMode: 'AUTO' | 'EACH_TURN';
+  status: 'QUEUED' | 'RUNNING' | 'WAITING_APPROVAL' | 'CANCEL_REQUESTED' | 'CANCELLED' | 'COMPLETED' | 'FAILED';
+  currentIndex: number;
+  turnCount: number;
+  maxTurns: number;
+  state: unknown;
+  transcript?: SpaceRelayTranscriptEntry[] | null;
+  pendingAction?: SpaceRelayPendingAction | null;
+  result?: string | null;
+  error?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  startedAt?: string | null;
+  completedAt?: string | null;
+}
+
+export interface SpaceRelayAttachment {
+  type: 'relay_summary';
+  relayId: string;
+}
+
+export interface SpaceRelayStartedAttachment {
+  type: 'relay_started';
+  relayId: string;
+  title: string;
+  participantIds: string[];
+  participantNames: string[];
+  completionCriteria: string[];
+}
+
+export interface SpaceRelayTurnAttachment {
+  type: 'relay_turn';
+  relayId: string;
+  turn: number;
+}
+
+export interface SpaceRelayReviewAttachment {
+  type: 'relay_review';
+  relayId: string;
+  decision: 'CONTINUE';
+}
+
+export type SpaceMessageAttachment = MessageAttachment | SpaceTaskProposal | SpaceDiscussionAttachment | SpaceRunResultAttachment | SpaceSkillInvocationAttachment | SpacePiExecutionAttachment | SpaceRelayAttachment | SpaceRelayStartedAttachment | SpaceRelayTurnAttachment | SpaceRelayReviewAttachment;
 
 export interface AgentRun {
   id: string;

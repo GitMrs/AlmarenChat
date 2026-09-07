@@ -1,10 +1,10 @@
 'use client';
 
-import { Activity, BookOpen, Check, CheckCircle2, ChevronRight, Clock3, Code2, FileText, Globe2, Image as ImageIcon, ListTodo, Loader2, RotateCcw, Settings2, SkipForward, X, Pencil } from 'lucide-react';
+import { Activity, BookOpen, Check, CheckCircle2, ChevronRight, Clock3, Code2, FileText, Globe2, Image as ImageIcon, ListTodo, Loader2, Repeat2, RotateCcw, Settings2, SkipForward, X, Pencil } from 'lucide-react';
 import MessageActions from '@/components/chat/MessageActions';
 import MessageBubbleFrame from '@/components/chat/MessageBubbleFrame';
 import MessageContent from '@/components/chat/MessageContent';
-import type { Agent, AgentRun, AgentTask, SpaceMessage, SpacePiExecutionAttachment, SpaceRunResultAttachment, SpaceTaskProposal } from '@/types';
+import type { Agent, AgentRun, AgentTask, SpaceMessage, SpacePiExecutionAttachment, SpaceRelayStartedAttachment, SpaceRunResultAttachment, SpaceTaskProposal } from '@/types';
 
 const RUN_STATUS_LABELS: Record<string, string> = {
   QUEUED: '等待执行',
@@ -439,6 +439,7 @@ export default function SpaceMessageItem({
   const proposal = message.attachments?.find((attachment): attachment is SpaceTaskProposal => attachment.type === 'task_proposal');
   const runResult = message.attachments?.find((attachment): attachment is SpaceRunResultAttachment => attachment.type === 'run_result');
   const piExecution = message.attachments?.find((attachment): attachment is SpacePiExecutionAttachment => attachment.type === 'pi_execution');
+  const relayStarted = message.attachments?.find((attachment): attachment is SpaceRelayStartedAttachment => attachment.type === 'relay_started');
   const skillInvocation = message.attachments?.find((attachment) => attachment.type === 'skill_invocation');
   return (
     <MessageBubbleFrame
@@ -474,6 +475,17 @@ export default function SpaceMessageItem({
         attachments={message.attachments}
         shouldAutoCollapse={message.id !== latestAssistantMessageId}
       />
+      {relayStarted && (
+        <div className="mt-4 border-t border-black/[0.08] pt-4">
+          <div className="flex items-center gap-2 text-xs font-black text-slate-400"><Repeat2 size={14} />接力安排</div>
+          <div className="mt-1 text-sm font-black text-slate-900">{relayStarted.title}</div>
+          <div className="mt-2 text-xs font-semibold text-slate-600">{relayStarted.participantNames.join(' → ')}</div>
+          <div className="mt-3 text-[11px] font-black text-slate-400">完成条件</div>
+          <ul className="mt-1 space-y-1 text-xs font-semibold leading-5 text-slate-500">
+            {relayStarted.completionCriteria.map((item) => <li key={item}>· {item}</li>)}
+          </ul>
+        </div>
+      )}
       {piExecution && <PiExecutionTrace execution={piExecution} />}
       {proposal && (
         <TaskProposal
