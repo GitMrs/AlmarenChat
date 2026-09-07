@@ -29,7 +29,7 @@ import {
   MAX_CONTINUATION_ITERATIONS,
 } from '@/lib/agent-wait-policy.mjs';
 import { isEditableSpaceFile } from '@/lib/space-files';
-import type { Agent, AgentRun, AgentRunEvent, AgentTask, SpaceDiscussion, SpaceFile, SpaceLearning, SpaceLearningItem, SpaceMessage, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal, SpaceWork } from '@/types';
+import type { Agent, AgentRun, AgentRunEvent, AgentTask, SpaceDiscussion, SpaceFile, SpaceLearning, SpaceLearningItem, SpaceMessage, SpacePiExecutionActivity, SpacePiExecutionNote, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal, SpaceWork } from '@/types';
 
 const FALLBACK_COLOR = '#4f46e5';
 const SPACE_COORDINATOR_ID = 'space-coordinator';
@@ -414,6 +414,9 @@ export default function SpaceDetailPage() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingContent, setStreamingContent] = useState('');
   const [streamingSpeakerId, setStreamingSpeakerId] = useState<string | null>(null);
+  const [streamingPiActivity, setStreamingPiActivity] = useState<SpacePiExecutionActivity | null>(null);
+  const [streamingPiStatus, setStreamingPiStatus] = useState('');
+  const [streamingPiNotes, setStreamingPiNotes] = useState<SpacePiExecutionNote[]>([]);
   const [replyQueueAgentIds, setReplyQueueAgentIds] = useState<string[]>([]);
   const [replyQueueIndex, setReplyQueueIndex] = useState(0);
   const [addingAgentId, setAddingAgentId] = useState('');
@@ -450,6 +453,8 @@ export default function SpaceDetailPage() {
   const [resumeLoading, setResumeLoading] = useState(false);
   const [resumeError, setResumeError] = useState('');
   const [editingFile, setEditingFile] = useState<SpaceFile | null>(null);
+  const [pendingDeleteFile, setPendingDeleteFile] = useState<SpaceFile | null>(null);
+  const [deletingFileId, setDeletingFileId] = useState('');
   const [discussionDialogOpen, setDiscussionDialogOpen] = useState(false);
   const [discussionTopic, setDiscussionTopic] = useState('');
   const [discussionParticipantIds, setDiscussionParticipantIds] = useState<string[]>([]);
@@ -474,15 +479,16 @@ export default function SpaceDetailPage() {
     () => agents.filter((agent) => !(space?.members || []).some((member: any) => member.agentId === agent.id)),
     [agents, space]
   );
+  const isPiSpace = space?.runtimeType === 'PI_CODING';
   const coordinatorAgent = useMemo(() => space?.hostAgent || DEFAULT_COORDINATOR, [space]);
   const mentionAgents = useMemo(() => {
     const seen = new Set<string>();
-    return [coordinatorAgent as Agent, ...memberAgents].filter((agent) => {
+    return (isPiSpace ? memberAgents : [coordinatorAgent as Agent, ...memberAgents]).filter((agent) => {
       if (seen.has(agent.id)) return false;
       seen.add(agent.id);
       return true;
     });
-  }, [coordinatorAgent, memberAgents]);
+  }, [coordinatorAgent, isPiSpace, memberAgents]);
   const duplicateMentionNames = useMemo(() => {
     const counts = new Map<string, number>();
     for (const agent of mentionAgents) {
@@ -580,7 +586,7 @@ export default function SpaceDetailPage() {
       return { label: '等待讨论', color: 'bg-amber-400', text: 'text-amber-600', task: null };
     }
     if (isStreaming && streamingSpeakerId === agentId) {
-      return { label: '回答中', color: 'bg-emerald-500', text: 'text-emerald-600', task: null };
+      return { label: isPiSpace ? 'Pi 执行中' : '回答中', color: 'bg-emerald-500', text: 'text-emerald-600', task: null };
     }
     if (replyQueueAgentIds.slice(replyQueueIndex + 1).includes(agentId)) {
       return { label: '等待回答', color: 'bg-amber-400', text: 'text-amber-600', task: null };
@@ -893,6 +899,9 @@ export default function SpaceDetailPage() {
     setIsStreaming(true);
     setStreamingContent('');
     setStreamingSpeakerId(null);
+    setStreamingPiActivity(null);
+    setStreamingPiStatus('');
+    setStreamingPiNotes([]);
     setReplyQueueAgentIds([]);
     setReplyQueueIndex(0);
 
@@ -903,11 +912,13 @@ export default function SpaceDetailPage() {
       const replyTargets: Array<Agent | null> = targets.length > 1 ? targets : [null];
       setReplyQueueAgentIds(targets.length > 1 ? targets.map((agent) => agent.id) : []);
       let workspaceFilesChanged = 0;
+      let streamFailure = '';
 
       for (let index = 0; index < replyTargets.length; index += 1) {
         setReplyQueueIndex(index);
         setStreamingContent('');
         setStreamingSpeakerId(replyTargets[index]?.id || null);
+        setStreamingPiNotes([]);
         const result = await streamSpaceMessage({
           spaceId,
           message: content,
@@ -930,12 +941,46 @@ export default function SpaceDetailPage() {
         const reader = result.stream.getReader();
         const decoder = new TextDecoder();
         let fullContent = '';
+        let ndjsonBuffer = '';
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
           const chunk = decoder.decode(value, { stream: true });
-          fullContent += chunk;
-          setStreamingContent(fullContent);
+          if (result.streamFormat === 'pi-ndjson') {
+            ndjsonBuffer += chunk;
+            const lines = ndjsonBuffer.split('\n');
+            ndjsonBuffer = lines.pop() || '';
+            for (const line of lines) {
+              if (!line.trim()) continue;
+              const event = JSON.parse(line) as {
+                type?: string;
+                delta?: string;
+                message?: string;
+                label?: string;
+                activity?: SpacePiExecutionActivity;
+                note?: SpacePiExecutionNote;
+              };
+              if (event.type === 'text_delta' && typeof event.delta === 'string') {
+                fullContent += event.delta;
+                setStreamingContent(fullContent);
+              } else if (event.type === 'activity' && event.activity) {
+                setStreamingPiActivity(event.activity.status === 'running' ? event.activity : null);
+              } else if (event.type === 'status' && event.label) {
+                setStreamingPiStatus(event.label);
+              } else if (event.type === 'process_note' && event.note) {
+                setStreamingPiNotes((notes) => [...notes, event.note!]);
+              } else if (event.type === 'complete') {
+                setStreamingPiActivity(null);
+                setStreamingPiStatus('');
+                setStreamingPiNotes([]);
+              } else if (event.type === 'error' && event.message) {
+                streamFailure = event.message;
+              }
+            }
+          } else {
+            fullContent += chunk;
+            setStreamingContent(fullContent);
+          }
         }
 
         if (index < replyTargets.length - 1) {
@@ -946,11 +991,12 @@ export default function SpaceDetailPage() {
 
       const [messageResult, fileResult] = await Promise.all([
         spacesApi.messages(spaceId, { limit: 60 }),
-        workspaceFilesChanged > 0 ? spacesApi.files(spaceId) : Promise.resolve(null),
+        (isPiSpace || workspaceFilesChanged > 0) ? spacesApi.files(spaceId) : Promise.resolve(null),
         refreshSpace(),
       ]);
       setMessages(messageResult.messages);
       if (fileResult) setFiles(fileResult.files);
+      if (streamFailure) setError(streamFailure);
     } catch (err: any) {
       if (err.name !== 'AbortError') {
         setError(err.message || '发送失败');
@@ -958,12 +1004,18 @@ export default function SpaceDetailPage() {
     } finally {
       setIsStreaming(false);
       setStreamingContent('');
+      setStreamingPiActivity(null);
+      setStreamingPiStatus('');
+      setStreamingPiNotes([]);
       setReplyQueueAgentIds([]);
       setReplyQueueIndex(0);
     }
   };
 
-  const stop = () => {
+  const stop = async () => {
+    if (isPiSpace) {
+      try { await spacesApi.cancelPi(spaceId); } catch { /* the local request is still stopped below */ }
+    }
     abortRef.current?.abort();
     setIsStreaming(false);
     setStreamingContent('');
@@ -1038,7 +1090,7 @@ export default function SpaceDetailPage() {
     try {
       const result = await spacesApi.update(spaceId, {
         instructions: instructionsDraft.trim() || null,
-        executionMode: executionModeDraft,
+        ...(!isPiSpace ? { executionMode: executionModeDraft } : {}),
       });
       setSpace((current: any) => ({ ...current, ...result.space }));
       setInstructionsDraft(result.space.instructions || '');
@@ -1265,6 +1317,22 @@ export default function SpaceDetailPage() {
       setError(err.message || '下载资料失败');
     } finally {
       setDownloadingFileId('');
+    }
+  };
+
+  const deleteFile = async () => {
+    if (!pendingDeleteFile || deletingFileId) return;
+    setDeletingFileId(pendingDeleteFile.id);
+    setError('');
+    try {
+      await spacesApi.deleteFile(spaceId, pendingDeleteFile.id);
+      setFiles((items) => items.filter((file) => file.id !== pendingDeleteFile.id));
+      if (editingFile?.id === pendingDeleteFile.id) setEditingFile(null);
+      setPendingDeleteFile(null);
+    } catch (err: any) {
+      setError(err.message || '删除文件失败');
+    } finally {
+      setDeletingFileId('');
     }
   };
 
@@ -1531,13 +1599,13 @@ export default function SpaceDetailPage() {
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto">
-              <CompressionStatusPanel spaceId={spaceId} compact />
+              {!isPiSpace && <CompressionStatusPanel spaceId={spaceId} compact />}
               <section className="border-b border-black/[0.06] px-6 py-5">
                 <div className="mb-4 flex items-center justify-between">
                   <div className="flex items-center gap-2 text-xs font-black text-slate-500">
                     <UsersRound size={15} />
                     空间成员
-                    <span className="text-slate-300">{memberAgents.length + 1}</span>
+                    <span className="text-slate-300">{memberAgents.length + (isPiSpace ? 0 : 1)}</span>
                   </div>
                   <button
                     type="button"
@@ -1548,7 +1616,7 @@ export default function SpaceDetailPage() {
                   </button>
                 </div>
                 <div className="space-y-1">
-                  <div className="flex w-full items-center gap-3 rounded-lg px-2 py-2">
+                  {!isPiSpace && <div className="flex w-full items-center gap-3 rounded-lg px-2 py-2">
                     <Avatar src={coordinatorAgent.avatar || '🧭'} alt={coordinatorAgent.name} size="sm" />
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-sm font-black text-slate-800">{coordinatorAgent.name}</div>
@@ -1558,7 +1626,7 @@ export default function SpaceDetailPage() {
                       <span className={`h-2 w-2 rounded-full ${coordinatorStatus.color}`} />
                       {coordinatorStatus.label}
                     </span>
-                  </div>
+                  </div>}
                   {memberAgents.slice(0, 5).map((agent) => {
                     const status = memberStatus(agent.id);
                     return (
@@ -1695,7 +1763,7 @@ export default function SpaceDetailPage() {
               <div className="min-w-0 flex-1">
                 <h1 className="truncate text-base font-black text-slate-950 sm:text-lg">{space.name}</h1>
                 <p className="truncate text-xs font-semibold text-slate-400">
-                  {space.description || `${memberAgents.length + 1} 位成员`}
+                  {space.description || `${memberAgents.length + (isPiSpace ? 0 : 1)} 位成员`}
                 </p>
               </div>
 
@@ -1703,13 +1771,13 @@ export default function SpaceDetailPage() {
                 type="button"
                 onClick={() => setSidePanel('members')}
                 aria-expanded={sidePanel === 'members'}
-                aria-label={`空间成员，共 ${memberAgents.length + 1} 位`}
+                aria-label={`空间成员，共 ${memberAgents.length + (isPiSpace ? 0 : 1)} 位`}
                 title="空间成员"
                 className="inline-flex h-10 items-center gap-2 rounded-lg px-3 text-sm font-black text-slate-600 transition hover:bg-slate-100 hover:text-slate-950"
               >
                 <UsersRound size={17} />
                 <span className="hidden md:inline">成员</span>
-                <span className="text-xs text-slate-400">{memberAgents.length + 1}</span>
+                <span className="text-xs text-slate-400">{memberAgents.length + (isPiSpace ? 0 : 1)}</span>
               </button>
               <button
                 type="button"
@@ -1723,7 +1791,7 @@ export default function SpaceDetailPage() {
                 <span className="hidden md:inline">资料</span>
                 {files.length > 0 && <span className="text-xs text-slate-400">{files.length}</span>}
               </button>
-              <button
+              {!isPiSpace && <button
                 type="button"
                 onClick={() => setSidePanel('runs')}
                 aria-expanded={sidePanel === 'runs'}
@@ -1732,7 +1800,7 @@ export default function SpaceDetailPage() {
                 className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-950"
               >
                 <History size={17} />
-              </button>
+              </button>}
               <button
                 type="button"
                 onClick={() => {
@@ -1751,7 +1819,7 @@ export default function SpaceDetailPage() {
             <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-[#fbfaf7] px-4 py-5 sm:px-6 lg:px-10 lg:py-6">
               <div className="mx-auto max-w-4xl space-y-5">
                 {error && <div className="rounded-2xl bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-600">{error}</div>}
-                {mode === 'task' && (
+                {!isPiSpace && mode === 'task' && (
                   <>
                     <button
                       type="button"
@@ -2316,8 +2384,8 @@ export default function SpaceDetailPage() {
                     active={activeActionMessageId === message.id}
                     onActivate={() => setActiveActionMessageId((current) => (current === message.id ? null : message.id))}
                     onCopy={() => copyMessage(message)}
-                    onRegenerate={regenerateMessage}
-                    onDelete={() => setPendingDeleteMessage(message)}
+                    onRegenerate={isPiSpace ? undefined : regenerateMessage}
+                    onDelete={isPiSpace ? undefined : () => setPendingDeleteMessage(message)}
                     run={messageRunId(message)
                       ? latestRunInRetryChain(runs, messageRunId(message))
                       : null}
@@ -2355,18 +2423,32 @@ export default function SpaceDetailPage() {
                     }}
                   />
                 ))}
-                {isStreaming && streamingContent && (
+                {isStreaming && (streamingContent || (isPiSpace && (streamingPiActivity || streamingPiStatus || streamingPiNotes.length > 0))) && (
                   <div className="flex justify-start gap-3">
                     <Avatar src={streamingSpeaker?.avatar || '🤖'} alt={streamingSpeaker?.name || 'Agent'} size="sm" className="mt-1 shrink-0" />
                     <div className="min-w-0 max-w-[84%] rounded-[24px] rounded-bl-md border border-black/[0.06] bg-white px-5 py-4 text-slate-800 shadow-sm">
                       <div className="mb-1 text-xs font-black text-slate-400">{streamingSpeaker?.name || '空间 Agent'}</div>
+                      {isPiSpace && (streamingPiActivity || streamingPiStatus) && (
+                        <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-slate-500">
+                          <Activity size={13} className="animate-pulse" />
+                          <span>{streamingPiActivity ? `正在${streamingPiActivity.label}${streamingPiActivity.target ? ` ${streamingPiActivity.target}` : ''}` : streamingPiStatus}</span>
+                        </div>
+                      )}
+                      {isPiSpace && streamingPiNotes.length > 0 && (
+                        <div className="mb-3 max-h-48 overflow-y-auto border-l-2 border-slate-200 pl-3">
+                          <div className="mb-1 text-[11px] font-black text-slate-400">过程说明 · 非最终答复</div>
+                          <div className="markdown-body min-w-0 text-xs leading-6 text-slate-600">
+                            <ReactMarkdown remarkPlugins={[remarkGfm]}>{streamingPiNotes[streamingPiNotes.length - 1].content}</ReactMarkdown>
+                          </div>
+                        </div>
+                      )}
                       <div className="markdown-body min-w-0 max-w-full overflow-hidden text-sm leading-7">
                         <ReactMarkdown remarkPlugins={[remarkGfm]}>{streamingContent}</ReactMarkdown>
                       </div>
                     </div>
                   </div>
                 )}
-                {isStreaming && !streamingContent && (
+                {isStreaming && !streamingContent && !(isPiSpace && (streamingPiActivity || streamingPiStatus || streamingPiNotes.length > 0)) && (
                   <div className="flex justify-start gap-3">
                     <Avatar src={streamingSpeaker?.avatar || '🤖'} alt={streamingSpeaker?.name || 'Agent'} size="sm" className="mt-1 shrink-0" />
                     <div className="rounded-[24px] rounded-bl-md border border-black/[0.06] bg-white px-5 py-4 shadow-sm">
@@ -2378,7 +2460,7 @@ export default function SpaceDetailPage() {
                     </div>
                   </div>
                 )}
-                {visibleDiscussion && (
+                {!isPiSpace && visibleDiscussion && (
                   <SpaceDiscussionStatus
                     discussion={visibleDiscussion}
                     agents={memberAgents}
@@ -2395,9 +2477,9 @@ export default function SpaceDetailPage() {
 
             <footer className="border-t border-black/[0.06] bg-white p-3 sm:p-4 lg:bg-[#fbfaf7] lg:px-10 lg:pb-4 lg:pt-3">
               <div className="mx-auto max-w-4xl">
-                <ComposerShell toolbar={(works.length > 0 || selectedSkill) ? (
+                <ComposerShell toolbar={((!isPiSpace && works.length > 0) || selectedSkill) ? (
                   <div className="flex max-w-full flex-wrap items-center gap-2">
-                    {works.length > 0 && (
+                    {!isPiSpace && works.length > 0 && (
                       <select
                         value={activeWorkId}
                         onChange={(event) => setActiveWorkId(event.target.value)}
@@ -2445,7 +2527,7 @@ export default function SpaceDetailPage() {
                         {uploadingFile ? <Loader2 className="animate-spin" size={16} /> : <Paperclip size={16} />}
                         <span className="min-w-0 flex-1 whitespace-nowrap">上传资料</span>
                       </button>
-                      <button
+                      {!isPiSpace && <button
                         type="button"
                         role="switch"
                         aria-checked={webSearchEnabled}
@@ -2457,8 +2539,8 @@ export default function SpaceDetailPage() {
                       >
                         <Globe2 size={16} />
                         <span className="min-w-0 flex-1 whitespace-nowrap">联网搜索</span>
-                      </button>
-                      <button
+                      </button>}
+                      {!isPiSpace && <button
                         type="button"
                         onClick={() => {
                           setComposerToolsOpen(false);
@@ -2469,7 +2551,7 @@ export default function SpaceDetailPage() {
                       >
                         <MessagesSquare size={16} />
                         <span className="min-w-0 flex-1 whitespace-nowrap">发起讨论</span>
-                      </button>
+                      </button>}
                       <div className="my-1 border-t border-black/[0.06]" />
                       <button
                         type="button"
@@ -2555,7 +2637,7 @@ export default function SpaceDetailPage() {
                     className={`relative flex h-11 w-11 items-center justify-center rounded-xl transition disabled:text-slate-300 ${composerToolsOpen ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-500 hover:bg-white hover:text-slate-950'}`}
                   >
                     <Plus size={19} className={`transition-transform ${composerToolsOpen ? 'rotate-45' : ''}`} />
-                    {webSearchEnabled && <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-emerald-500 ring-2 ring-white" />}
+                    {!isPiSpace && webSearchEnabled && <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-emerald-500 ring-2 ring-white" />}
                   </button>
                 </div>
                 <textarea
@@ -2601,7 +2683,7 @@ export default function SpaceDetailPage() {
                       send();
                     }
                   }}
-                  placeholder="提问或交代任务..."
+                  placeholder={isPiSpace ? '让 Pi 读取、修改或检查项目文件...' : '提问或交代任务...'}
                   rows={1}
                   className="max-h-36 min-h-11 flex-1 resize-none bg-transparent px-4 py-3 text-sm font-medium leading-6 text-slate-800 outline-none placeholder:text-slate-400"
                 />
@@ -2651,7 +2733,7 @@ export default function SpaceDetailPage() {
                   {sidePanel === 'members' ? (
                     <>
                       <div className="space-y-2">
-                        <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-[#fbfaf7] px-3 py-3">
+                        {!isPiSpace && <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-[#fbfaf7] px-3 py-3">
                           <Avatar src={coordinatorAgent.avatar || '🧭'} alt={coordinatorAgent.name} size="sm" />
                           <div className="min-w-0 flex-1">
                             <div className="flex min-w-0 items-center gap-2">
@@ -2664,7 +2746,7 @@ export default function SpaceDetailPage() {
                             <span className={`h-2 w-2 rounded-full ${coordinatorStatus.color}`} />
                             {coordinatorStatus.label}
                           </span>
-                        </div>
+                        </div>}
 
                         {(space.members || []).map((member: any) => {
                           const agent = agentById.get(member.agentId);
@@ -2795,6 +2877,15 @@ export default function SpaceDetailPage() {
                                 className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-950 disabled:text-slate-200"
                               >
                                 {downloadingFileId === file.id ? <Loader2 className="animate-spin" size={16} /> : <Download size={16} />}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setPendingDeleteFile(file)}
+                                disabled={isStreaming || isRunActive}
+                                title="删除文件"
+                                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-rose-50 hover:text-rose-500 disabled:text-slate-200"
+                              >
+                                <Trash2 size={16} />
                               </button>
                             </div>
                           ))
@@ -2934,7 +3025,13 @@ export default function SpaceDetailPage() {
                     </div>
                   ) : (
                     <div className="space-y-4">
-                      <div>
+                      {isPiSpace ? (
+                        <div className="rounded-lg border border-black/[0.08] bg-[#fbfaf7] px-4 py-3">
+                          <div className="text-sm font-black text-slate-700">运行方式</div>
+                          <div className="mt-1 text-xs font-semibold leading-5 text-slate-400">Pi 编程 · 创建后不可更改</div>
+                        </div>
+                      ) : (
+                        <div>
                         <div className="mb-2 text-sm font-black text-slate-700">执行模式</div>
                         <div className="grid grid-cols-2 overflow-hidden rounded-lg border border-black/[0.08] bg-[#fbfaf7] p-1">
                           <button
@@ -2957,7 +3054,8 @@ export default function SpaceDetailPage() {
                         <p className="mt-2 text-xs font-semibold leading-5 text-slate-400">
                           {executionModeDraft === 'REVIEW_DISPATCH' ? 'Coordinator 提出成员和任务边界，确认后成员才开始。' : '目标确认后由 Coordinator 自主派发并立即执行。'}
                         </p>
-                      </div>
+                        </div>
+                      )}
                       <div>
                         <label htmlFor="space-rules" className="mb-2 block text-sm font-black text-slate-700">
                           空间规则
@@ -2984,7 +3082,7 @@ export default function SpaceDetailPage() {
                         {savingInstructions ? <Loader2 className="animate-spin" size={15} /> : <Save size={15} />}
                         保存设置
                       </button>
-                      <section className="border-t border-black/[0.06] pt-5">
+                      {!isPiSpace && <section className="border-t border-black/[0.06] pt-5">
                         <div className="flex items-start justify-between gap-3">
                           <div>
                             <div className="flex items-center gap-2 text-sm font-black text-slate-700">
@@ -3127,7 +3225,7 @@ export default function SpaceDetailPage() {
                             <pre className="mt-3 max-h-64 overflow-auto whitespace-pre-wrap rounded-lg bg-slate-950 p-3 text-[11px] font-medium leading-5 text-slate-200">{learningReadme}</pre>
                           </details>
                         )}
-                      </section>
+                      </section>}
                       <div className="border-t border-black/[0.06] pt-5">
                         <div className="text-sm font-black text-slate-700">清空空间内容</div>
                         <p className="mt-1 text-xs font-semibold leading-5 text-slate-400">
@@ -3324,6 +3422,18 @@ export default function SpaceDetailPage() {
         loading={Boolean(pendingCancelTask && cancellingTaskId === pendingCancelTask.id)}
         onCancel={() => setPendingCancelTask(null)}
         onConfirm={cancelAgentTask}
+      />
+      <ConfirmDialog
+        open={Boolean(pendingDeleteFile)}
+        title={`删除 ${pendingDeleteFile?.fileName || '这个文件'}？`}
+        description="文件将从当前空间和资料列表中永久删除；已经开启的网页分享也会同时失效。"
+        icon={<Trash2 size={20} />}
+        cancelText="先保留"
+        confirmText="确认删除"
+        destructive
+        loading={Boolean(pendingDeleteFile && deletingFileId === pendingDeleteFile.id)}
+        onCancel={() => setPendingDeleteFile(null)}
+        onConfirm={deleteFile}
       />
       <ConfirmDialog
         open={Boolean(pendingDeleteMessage)}

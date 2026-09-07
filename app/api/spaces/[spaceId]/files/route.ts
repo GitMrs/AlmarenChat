@@ -1,4 +1,4 @@
-import { writeFile } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { NextResponse } from 'next/server';
 import prisma from '@/app/api/_lib/db';
@@ -51,9 +51,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
 
     await ensureSpaceRoot(userId, spaceId);
     const fileName = `${Date.now()}-${safeFileName(file.name)}`;
-    const relativePath = `files/${fileName}`;
+    const relativePath = space.runtimeType === 'PI_CODING'
+      ? `workspace/uploads/${fileName}`
+      : `files/${fileName}`;
     const target = resolveSpacePath(userId, spaceId, relativePath);
     const bytes = Buffer.from(await file.arrayBuffer());
+    await mkdir(path.dirname(target), { recursive: true });
     await writeFile(target, bytes);
 
     const record = await prisma.spaceFile.create({

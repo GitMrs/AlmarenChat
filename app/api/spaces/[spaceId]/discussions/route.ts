@@ -9,9 +9,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ spac
   try {
     const userId = requireAuth(request);
     const { spaceId } = await params;
-    if (!await getSpaceForUser(spaceId, userId)) {
+    const space = await getSpaceForUser(spaceId, userId);
+    if (!space) {
       return NextResponse.json({ error: 'Space not found' }, { status: 404 });
     }
+    if (space.runtimeType === 'PI_CODING') return NextResponse.json({ discussions: [] });
 
     const discussions = await prisma.spaceDiscussion.findMany({
       where: { spaceId, userId },
@@ -31,6 +33,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
     const { spaceId } = await params;
     const space = await getSpaceForUser(spaceId, userId);
     if (!space) return NextResponse.json({ error: 'Space not found' }, { status: 404 });
+    if (space.runtimeType === 'PI_CODING') {
+      return NextResponse.json({ error: 'Pi 空间不使用原生多人讨论流程' }, { status: 409 });
+    }
 
     const body = await request.json();
     const topic = typeof body.topic === 'string' ? body.topic.trim().slice(0, 4000) : '';

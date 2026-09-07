@@ -69,6 +69,7 @@ model Space {
   name        String
   description String?
   instructions String?
+  runtimeType String @default("NATIVE")
   executionMode String @default("REVIEW_DISPATCH")
   hostAgentId String?
   templateId String?

@@ -4,7 +4,7 @@ import { Activity, BookOpen, Check, CheckCircle2, ChevronRight, Clock3, Code2, F
 import MessageActions from '@/components/chat/MessageActions';
 import MessageBubbleFrame from '@/components/chat/MessageBubbleFrame';
 import MessageContent from '@/components/chat/MessageContent';
-import type { Agent, AgentRun, AgentTask, SpaceMessage, SpaceRunResultAttachment, SpaceTaskProposal } from '@/types';
+import type { Agent, AgentRun, AgentTask, SpaceMessage, SpacePiExecutionAttachment, SpaceRunResultAttachment, SpaceTaskProposal } from '@/types';
 
 const RUN_STATUS_LABELS: Record<string, string> = {
   QUEUED: '等待执行',
@@ -21,6 +21,66 @@ const RUN_STATUS_LABELS: Record<string, string> = {
   CANCEL_REQUESTED: '正在取消',
   CANCELLED: '已取消',
 };
+
+function compactMetric(value: number) {
+  if (value < 1000) return String(value);
+  if (value < 1000000) return `${(value / 1000).toFixed(value < 10000 ? 1 : 0)}k`;
+  return `${(value / 1000000).toFixed(1)}m`;
+}
+
+function compactDuration(durationMs: number) {
+  const seconds = Math.max(0, Math.round(durationMs / 1000));
+  const minutes = Math.floor(seconds / 60);
+  const remainder = seconds % 60;
+  return minutes > 0 ? `${minutes}分${remainder.toString().padStart(2, '0')}秒` : `${remainder}秒`;
+}
+
+function PiExecutionTrace({ execution }: { execution: SpacePiExecutionAttachment }) {
+  const statusLabel = execution.status === 'completed' ? '执行完成' : execution.status === 'cancelled' ? '已取消' : '执行失败';
+  const statusClass = execution.status === 'completed' ? 'text-emerald-600' : execution.status === 'cancelled' ? 'text-slate-500' : 'text-red-600';
+  return (
+    <details className="group mt-3 border-t border-black/[0.07] pt-3 text-xs">
+      <summary className="flex cursor-pointer list-none items-center gap-2 text-slate-500">
+        <Activity size={14} className={statusClass} />
+        <span className={`font-black ${statusClass}`}>{statusLabel}</span>
+        <span className="min-w-0 flex-1 truncate font-semibold">
+          {execution.modelRequestCount} 次模型调用 · {execution.toolCallCount} 次工具调用 · {compactDuration(execution.durationMs)}{execution.tokens.total > 0 ? ` · ${compactMetric(execution.tokens.total)} Token` : ''}
+        </span>
+        <ChevronRight size={14} className="shrink-0 transition-transform group-open:rotate-90" />
+      </summary>
+      {execution.activities.length > 0 ? (
+        <ol className="mt-3 space-y-2 border-l border-slate-200 pl-3">
+          {execution.activities.map((activity) => (
+            <li key={activity.id} className="flex min-w-0 items-center gap-2 text-slate-500">
+              {activity.status === 'completed'
+                ? <CheckCircle2 size={13} className="shrink-0 text-emerald-500" />
+                : activity.status === 'failed'
+                  ? <X size={13} className="shrink-0 text-red-500" />
+                  : <Clock3 size={13} className="shrink-0" />}
+              <span className="font-semibold">{activity.label}</span>
+              {activity.target && <span className="min-w-0 truncate text-slate-400">{activity.target}</span>}
+              <time className="ml-auto shrink-0 text-slate-400">
+                {new Date(activity.startedAt).toLocaleTimeString('zh-CN', { hour12: false })}
+              </time>
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <p className="mt-3 text-slate-400">本轮没有调用工作区工具</p>
+      )}
+      {(execution.notes || []).length > 0 && (
+        <div className="mt-4 border-t border-black/[0.06] pt-3">
+          <div className="mb-2 font-black text-slate-400">过程说明</div>
+          <div className="space-y-3 text-xs font-medium leading-6 text-slate-600">
+            {(execution.notes || []).map((note) => (
+              <p key={note.id} className="whitespace-pre-wrap">{note.content}</p>
+            ))}
+          </div>
+        </div>
+      )}
+    </details>
+  );
+}
 
 function TaskProposal({
   proposal,
@@ -378,6 +438,7 @@ export default function SpaceMessageItem({
   const isUser = message.role === 'user';
   const proposal = message.attachments?.find((attachment): attachment is SpaceTaskProposal => attachment.type === 'task_proposal');
   const runResult = message.attachments?.find((attachment): attachment is SpaceRunResultAttachment => attachment.type === 'run_result');
+  const piExecution = message.attachments?.find((attachment): attachment is SpacePiExecutionAttachment => attachment.type === 'pi_execution');
   const skillInvocation = message.attachments?.find((attachment) => attachment.type === 'skill_invocation');
   return (
     <MessageBubbleFrame
@@ -413,6 +474,7 @@ export default function SpaceMessageItem({
         attachments={message.attachments}
         shouldAutoCollapse={message.id !== latestAssistantMessageId}
       />
+      {piExecution && <PiExecutionTrace execution={piExecution} />}
       {proposal && (
         <TaskProposal
           proposal={proposal}

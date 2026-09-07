@@ -1,4 +1,4 @@
-import { readFile, realpath, stat, writeFile } from 'node:fs/promises';
+import { lstat, readFile, realpath, stat, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { NextResponse } from 'next/server';
 import prisma from '@/app/api/_lib/db';
@@ -7,6 +7,7 @@ import { ensureSpaceRoot, getSpaceForUser, resolveSpacePath } from '@/app/api/_l
 import { isEditableSpaceFile, MAX_EDITABLE_SPACE_FILE_BYTES } from '@/lib/space-files';
 import { workspaceAttemptFile } from '@/lib/workspace-staging.mjs';
 import { logicalWorkspaceRelativePath } from '@/lib/space-work-paths.mjs';
+import { isPiSpaceTurnActive } from '@/lib/pi-runtime/space-session.mjs';
 
 const EDIT_BLOCKING_RUN_STATUSES = ['QUEUED', 'PLANNING', 'RUNNING', 'SUMMARIZING', 'CANCEL_REQUESTED'];
 
@@ -158,6 +159,54 @@ export async function PUT(
   } catch (error: any) {
     if (error.message === 'Unauthorized') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     if (error.code === 'ENOENT') return NextResponse.json({ error: 'File not found' }, { status: 404 });
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ spaceId: string; fileId: string }> }
+) {
+  try {
+    const userId = requireAuth(request);
+    const { spaceId, fileId } = await params;
+    const space = await getSpaceForUser(spaceId, userId);
+    if (!space) return NextResponse.json({ error: 'Space not found' }, { status: 404 });
+
+    const file = await prisma.spaceFile.findFirst({ where: { id: fileId, spaceId } });
+    if (!file) return NextResponse.json({ error: 'File not found' }, { status: 404 });
+
+    const activeRun = await prisma.agentRun.findFirst({
+      where: { spaceId, status: { in: EDIT_BLOCKING_RUN_STATUSES } },
+      select: { id: true },
+    });
+    if (activeRun || isPiSpaceTurnActive(spaceId)) {
+      return NextResponse.json({ error: '空间正在执行任务，请停止后再删除文件' }, { status: 409 });
+    }
+
+    const root = await ensureSpaceRoot(userId, spaceId);
+    const target = resolveSpacePath(userId, spaceId, file.relativePath);
+    try {
+      const targetStat = await lstat(target);
+      if (targetStat.isSymbolicLink() || !targetStat.isFile()) {
+        return NextResponse.json({ error: 'Invalid file path' }, { status: 400 });
+      }
+      const [actualRoot, actualTarget] = await Promise.all([realpath(root), realpath(target)]);
+      if (actualTarget !== actualRoot && !actualTarget.startsWith(actualRoot + path.sep)) {
+        return NextResponse.json({ error: 'Invalid file path' }, { status: 400 });
+      }
+      await unlink(actualTarget);
+    } catch (error: any) {
+      if (error?.code !== 'ENOENT') throw error;
+    }
+
+    await prisma.$transaction([
+      prisma.spaceFile.delete({ where: { id: file.id } }),
+      prisma.space.update({ where: { id: spaceId }, data: { updatedAt: new Date() } }),
+    ]);
+    return NextResponse.json({ success: true });
+  } catch (error: any) {
+    if (error.message === 'Unauthorized') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

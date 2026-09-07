@@ -359,7 +359,7 @@ export const conversations = {
 // Spaces
 export const spaces = {
   list: () => request<{ spaces: any[] }>('/spaces'),
-  create: (data: { name: string; description?: string; instructions?: string; executionMode?: 'AUTO' | 'REVIEW_DISPATCH'; agentIds?: string[]; templateId?: string | null }) =>
+  create: (data: { name: string; description?: string; instructions?: string; runtimeType?: 'NATIVE' | 'PI_CODING'; executionMode?: 'AUTO' | 'REVIEW_DISPATCH'; agentIds?: string[]; templateId?: string | null }) =>
     request<{ space: any }>('/spaces', {
       method: 'POST',
       body: JSON.stringify(data),
@@ -403,6 +403,8 @@ export const spaces = {
     const query = params.toString();
     return request<{ messages: any[]; hasMore?: boolean }>(`/spaces/${id}/messages${query ? `?${query}` : ''}`);
   },
+  cancelPi: (id: string) =>
+    request<{ cancelled: boolean }>(`/spaces/${id}/pi/cancel`, { method: 'POST' }),
   skills: (id: string) => request<{ skills: SpaceSkill[] }>(`/spaces/${id}/skills`),
   previewSkill: (id: string, sourceUrl: string) =>
     request<{ preview: SpaceSkillPreview }>(`/spaces/${id}/skills`, {
@@ -467,6 +469,8 @@ export const spaces = {
     request<{ content: string; updatedAt: string | null; readOnlyReason: string | null }>(
       `/spaces/${spaceId}/files/${fileId}?mode=edit`
     ),
+  deleteFile: (spaceId: string, fileId: string) =>
+    request<{ success: boolean }>(`/spaces/${spaceId}/files/${fileId}`, { method: 'DELETE' }),
   createFilePreview: (spaceId: string, fileId: string, options?: { externalImages?: boolean; externalDependencies?: boolean }) =>
     request<{ url: string; rootUrl: string }>(`/spaces/${spaceId}/files/${fileId}/preview`, {
       method: 'POST',
@@ -714,7 +718,7 @@ export async function streamSpaceMessage(data: {
   skillId?: string;
   workId?: string;
   signal?: AbortSignal;
-}): Promise<{ stream: ReadableStream<Uint8Array>; speakerAgentId?: string; speakerAgentName?: string; workspaceFilesChanged: number }> {
+}): Promise<{ stream: ReadableStream<Uint8Array>; speakerAgentId?: string; speakerAgentName?: string; workspaceFilesChanged: number; streamFormat?: 'pi-ndjson' }> {
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
 
   const res = await fetch(`${API_BASE}/spaces/${data.spaceId}/messages`, {
@@ -746,6 +750,7 @@ export async function streamSpaceMessage(data: {
     speakerAgentId: res.headers.get('x-speaker-agent-id') || undefined,
     speakerAgentName: decodeURIComponent(res.headers.get('x-speaker-agent-name') || ''),
     workspaceFilesChanged: Number.parseInt(res.headers.get('x-workspace-files-changed') || '0', 10) || 0,
+    streamFormat: res.headers.get('x-space-stream-format') === 'pi-ndjson' ? 'pi-ndjson' : undefined,
   };
 }
 

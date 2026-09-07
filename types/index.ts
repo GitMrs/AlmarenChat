@@ -144,6 +144,7 @@ export interface Space {
   name: string;
   description?: string | null;
   instructions?: string | null;
+  runtimeType: 'NATIVE' | 'PI_CODING';
   executionMode: 'AUTO' | 'REVIEW_DISPATCH';
   hostAgentId?: string | null;
   templateId?: string | null;
@@ -353,6 +354,42 @@ export interface SpaceRunResultAttachment {
   status: string;
 }
 
+export interface SpacePiExecutionActivity {
+  id: string;
+  name: string;
+  label: string;
+  target?: string;
+  status: 'running' | 'completed' | 'failed' | 'cancelled';
+  startedAt: string;
+  completedAt?: string;
+  durationMs?: number;
+}
+
+export interface SpacePiExecutionNote {
+  id: string;
+  content: string;
+  createdAt: string;
+}
+
+export interface SpacePiExecutionAttachment {
+  type: 'pi_execution';
+  status: 'completed' | 'failed' | 'cancelled';
+  startedAt: string;
+  completedAt: string;
+  durationMs: number;
+  modelRequestCount: number;
+  toolCallCount: number;
+  tokens: {
+    input: number;
+    output: number;
+    cacheRead: number;
+    cacheWrite: number;
+    total: number;
+  };
+  notes?: SpacePiExecutionNote[];
+  activities: SpacePiExecutionActivity[];
+}
+
 export interface SpaceDiscussionResearchRequest {
   query: string;
   reason: string;
@@ -382,7 +419,7 @@ export interface SpaceDiscussion {
   completedAt?: string | null;
 }
 
-export type SpaceMessageAttachment = MessageAttachment | SpaceTaskProposal | SpaceDiscussionAttachment | SpaceRunResultAttachment | SpaceSkillInvocationAttachment;
+export type SpaceMessageAttachment = MessageAttachment | SpaceTaskProposal | SpaceDiscussionAttachment | SpaceRunResultAttachment | SpaceSkillInvocationAttachment | SpacePiExecutionAttachment;
 
 export interface AgentRun {
   id: string;

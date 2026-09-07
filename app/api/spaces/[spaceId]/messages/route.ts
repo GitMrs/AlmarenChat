@@ -10,7 +10,7 @@ import {
   resolveManyAgents,
   resolveMentionTarget,
 } from '@/app/api/_lib/spaces';
-import { executeWorkspaceTool, workspaceToolSchemas } from '@/lib/agent-runtime/runtime-tools.mjs';
+import { describeWorkspaceArtifact, executeWorkspaceTool, workspaceToolSchemas } from '@/lib/agent-runtime/runtime-tools.mjs';
 import { collectChatCompletionStream, runToolLoop } from '@/lib/agent-runtime/tool-loop.mjs';
 import { normalizeTaskProposalSteps, taskProposalCapabilities, taskProposalNeedsClarification, taskProposalWithTurnNetworkAuthorization } from '@/lib/task-proposals';
 import { professionalDeliverableNeedsTask } from '@/lib/task-proposal-policy.mjs';
@@ -20,9 +20,10 @@ import { persistSpaceMemory, rebuildSpaceMemory, spaceMemoryNeedsTrustedRebuild 
 import { recentRunEvidenceContext } from '@/lib/agent-run-evidence.mjs';
 import { readSpaceLearning, spaceLearningContext } from '@/lib/space-learning.mjs';
 import { buildWebSearchContext } from '@/lib/web-search';
-import { createModelClient, resolveModelName } from '@/lib/model-client';
+import { createModelClient, DEFAULT_BASE_URL, DEFAULT_MODEL, resolveModelName } from '@/lib/model-client';
 import { getSpaceSkill, readSpaceSkillFile } from '@/lib/space-skills.mjs';
 import { spaceSkillReferenceToolSchema } from '@/lib/agent-runtime/skill-registry.mjs';
+import { runPiSpaceTurn } from '@/lib/pi-runtime/space-session.mjs';
 
 const MESSAGE_PAGE_SIZE = 40;
 const READ_ONLY_WORKSPACE_TOOLS = new Set(['list_files', 'read_file', 'check_files']);
@@ -179,6 +180,142 @@ async function userModelSettings(userId: string) {
   };
 }
 
+async function syncPiWorkspaceFiles(userId: string, spaceId: string, paths: Iterable<string>) {
+  let changed = 0;
+  for (const logicalPath of new Set(paths)) {
+    const artifact = await describeWorkspaceArtifact({ projectRoot: process.cwd(), userId, spaceId }, logicalPath);
+    const existing = await prisma.spaceFile.findFirst({
+      where: { spaceId, relativePath: artifact.relativePath },
+      orderBy: { createdAt: 'desc' },
+    });
+    const data = {
+      fileName: artifact.fileName,
+      mimeType: artifact.mimeType,
+      size: artifact.size,
+      status: 'READY',
+      runId: null,
+      taskId: null,
+      workId: null,
+    };
+    if (existing) await prisma.spaceFile.update({ where: { id: existing.id }, data });
+    else await prisma.spaceFile.create({ data: { id: artifact.id, spaceId, relativePath: artifact.relativePath, ...data } });
+    changed += 1;
+  }
+  return changed;
+}
+
+async function handlePiMessage(options: {
+  userId: string;
+  spaceId: string;
+  space: Awaited<ReturnType<typeof getSpaceForUser>> & object;
+  targetAgent: NonNullable<Awaited<ReturnType<typeof resolveAgent>>>;
+  selectedSkill: Awaited<ReturnType<typeof getSpaceSkill>>;
+  textMessage: string;
+  skipPersistUserMessage: boolean;
+}) {
+  const { userId, spaceId, space, targetAgent, selectedSkill, textMessage, skipPersistUserMessage } = options;
+  if (!skipPersistUserMessage) {
+    await prisma.spaceMessage.create({
+      data: {
+        spaceId,
+        role: 'user',
+        content: textMessage,
+        ...(selectedSkill ? { attachments: [{
+          type: 'skill_invocation',
+          skillId: selectedSkill.id,
+          name: selectedSkill.name,
+          version: selectedSkill.version,
+          digest: selectedSkill.digest,
+        }] as Prisma.InputJsonValue } : {}),
+      },
+    });
+  }
+
+  const settings = await userModelSettings(userId);
+  const changedPaths = new Set<string>();
+  const encoder = new TextEncoder();
+  const readable = new ReadableStream({
+    async start(controller) {
+      const send = (event: Record<string, unknown>) => {
+        try { controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`)); } catch { /* Pi continues and persists after a client disconnect */ }
+      };
+      try {
+        let result;
+        try {
+          send({ type: 'status', label: '正在理解需求并准备执行' });
+          result = await runPiSpaceTurn({
+            projectRoot: process.cwd(),
+            userId,
+            spaceId,
+            space,
+            roleAgent: targetAgent,
+            selectedSkill,
+            message: textMessage,
+            apiBaseUrl: settings.apiBaseUrl || DEFAULT_BASE_URL,
+            apiKey: settings.apiKey || process.env.apiKey,
+            modelName: settings.modelName || DEFAULT_MODEL,
+            onMutation: (relativePath: string) => changedPaths.add(relativePath),
+            onTextDelta: (delta: string) => send({ type: 'text_delta', delta }),
+            onProcessNote: (note: Record<string, unknown>) => send({ type: 'process_note', note }),
+            onToolPreparation: (tool: { label: string }) => send({ type: 'status', label: `正在准备${tool.label}` }),
+            onActivity: (activity: Record<string, unknown>) => {
+              send({ type: 'activity', activity });
+              if (activity.status !== 'running') send({ type: 'status', label: '正在结合工具结果继续处理' });
+            },
+          });
+        } catch (error: any) {
+          const execution = error?.piExecution;
+          const content = execution?.status === 'cancelled'
+            ? 'Pi 已取消本轮处理。'
+            : 'Pi 执行失败，请稍后重试或检查模型配置。';
+          if (execution) {
+            await prisma.spaceMessage.create({
+              data: {
+                spaceId,
+                role: 'assistant',
+                speakerAgentId: targetAgent.id,
+                content,
+                attachments: [execution] as Prisma.InputJsonValue,
+              },
+            });
+            send({ type: 'complete', execution });
+          }
+          send({ type: 'error', message: content });
+          try { controller.close(); } catch { /* client disconnected */ }
+          return;
+        }
+        await syncPiWorkspaceFiles(userId, spaceId, changedPaths);
+        await prisma.$transaction([
+          prisma.spaceMessage.create({
+            data: {
+              spaceId,
+              role: 'assistant',
+              speakerAgentId: targetAgent.id,
+              content: result.content,
+              attachments: [result.execution] as Prisma.InputJsonValue,
+            },
+          }),
+          prisma.space.update({ where: { id: spaceId }, data: { updatedAt: new Date() } }),
+        ]);
+        send({ type: 'complete', execution: result.execution });
+        try { controller.close(); } catch { /* client disconnected */ }
+      } catch (error) {
+        try { controller.error(error); } catch { /* client disconnected */ }
+      }
+    },
+  });
+
+  return new Response(readable, {
+    headers: {
+      'Content-Type': 'application/x-ndjson; charset=utf-8',
+      'x-space-stream-format': 'pi-ndjson',
+      'x-speaker-agent-id': targetAgent.id,
+      'x-speaker-agent-name': encodeURIComponent(targetAgent.name),
+      'x-workspace-files-changed': '0',
+    },
+  });
+}
+
 export async function GET(request: Request, { params }: { params: Promise<{ spaceId: string }> }) {
   try {
     const userId = requireAuth(request);
@@ -227,7 +364,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
     const explicitTarget = targetAgentId ? await resolveAgent(String(targetAgentId), userId) : null;
     const mentionedTarget = resolveMentionTarget(textMessage, memberAgents);
     const coordinatorMention = resolveMentionTarget(textMessage, [SPACE_COORDINATOR]);
-    const fallbackTarget = SPACE_COORDINATOR;
+    const fallbackTarget = space.runtimeType === 'PI_CODING' ? (memberAgents[0] || SPACE_COORDINATOR) : SPACE_COORDINATOR;
     const targetAgent =
       (explicitTarget && allAgents.some((agent) => agent.id === explicitTarget.id) ? explicitTarget : null) ||
       mentionedTarget ||
@@ -238,6 +375,18 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
       : null;
     if (skillId && !selectedSkill) {
       return NextResponse.json({ error: '指定的空间 Skill 不存在或已停用' }, { status: 400 });
+    }
+
+    if (space.runtimeType === 'PI_CODING') {
+      return handlePiMessage({
+        userId,
+        spaceId,
+        space,
+        targetAgent,
+        selectedSkill,
+        textMessage,
+        skipPersistUserMessage: Boolean(skipPersistUserMessage),
+      });
     }
 
     let persistedMemory = await prisma.spaceMemory.findUnique({ where: { spaceId } });

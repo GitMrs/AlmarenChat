@@ -20,10 +20,14 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ sp
   try {
     const userId = requireAuth(request);
     const { spaceId } = await params;
-    const { name, description, instructions, executionMode, hostAgentId } = await request.json();
+    const body = await request.json();
+    const { name, description, instructions, executionMode, hostAgentId } = body;
 
     const space = await prisma.space.findFirst({ where: { id: spaceId, userId } });
     if (!space) return NextResponse.json({ error: 'Space not found' }, { status: 404 });
+    if (Object.prototype.hasOwnProperty.call(body, 'runtimeType')) {
+      return NextResponse.json({ error: '空间运行时创建后不可更改' }, { status: 400 });
+    }
 
     const data: { name?: string; description?: string | null; instructions?: string | null; executionMode?: string; hostAgentId?: string | null } = {};
     if (name !== undefined) {

@@ -108,6 +108,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ spac
     const { spaceId } = await params;
     const space = await getSpaceForUser(spaceId, userId);
     if (!space) return NextResponse.json({ error: 'Space not found' }, { status: 404 });
+    if (space.runtimeType === 'PI_CODING') return NextResponse.json({ runs: [] });
 
     const runs = await prisma.agentRun.findMany({
       where: { spaceId, userId },
@@ -132,6 +133,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
     let goal = typeof input === 'string' ? input.trim() : '';
     const space = await getSpaceForUser(spaceId, userId);
     if (!space) return NextResponse.json({ error: 'Space not found' }, { status: 404 });
+    if (space.runtimeType === 'PI_CODING') {
+      return NextResponse.json({ error: 'Pi 空间不使用原生任务与审核流程' }, { status: 409 });
+    }
     if (space.members.length === 0) {
       return NextResponse.json({ error: '请先向空间添加至少一个 Agent' }, { status: 400 });
     }
