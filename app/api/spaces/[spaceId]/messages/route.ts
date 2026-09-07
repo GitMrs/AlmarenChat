@@ -252,15 +252,16 @@ async function handlePiMessage(options: {
   spaceId: string;
   space: Awaited<ReturnType<typeof getSpaceForUser>> & object;
   targetAgent: NonNullable<Awaited<ReturnType<typeof resolveAgent>>>;
+  memberAgents: Array<NonNullable<Awaited<ReturnType<typeof resolveAgent>>>>;
   selectedSkill: Awaited<ReturnType<typeof getSpaceSkill>>;
   textMessage: string;
   skipPersistUserMessage: boolean;
   allowWebSearch: boolean;
-  interactionMode?: 'chat' | 'multi_reply';
+  interactionMode?: 'chat' | 'multi_reply' | 'coordinated_turn' | 'coordination_summary';
   multiReplyIndex: number;
 }) {
   const {
-    userId, spaceId, space, targetAgent, selectedSkill, textMessage,
+    userId, spaceId, space, targetAgent, memberAgents, selectedSkill, textMessage,
     skipPersistUserMessage, allowWebSearch, interactionMode, multiReplyIndex,
   } = options;
   if (!skipPersistUserMessage) {
@@ -290,6 +291,7 @@ async function handlePiMessage(options: {
       };
       try {
         let result;
+        let coordinationRequest: Record<string, unknown> | null = null;
         try {
           send({ type: 'status', label: '正在理解需求并准备执行' });
           result = await runPiSpaceTurn({
@@ -298,6 +300,7 @@ async function handlePiMessage(options: {
             spaceId,
             space,
             roleAgent: targetAgent,
+            availableAgents: memberAgents,
             selectedSkill,
             message: textMessage,
             interactionMode,
@@ -306,6 +309,11 @@ async function handlePiMessage(options: {
             apiKey: settings.apiKey || process.env.apiKey,
             modelName: settings.modelName || DEFAULT_MODEL,
             allowWebSearch,
+            onCoordinationRequest: (request: Record<string, unknown>) => {
+              if (coordinationRequest) return false;
+              coordinationRequest = request;
+              return true;
+            },
             webSearch: (query: string) => buildWebSearchContext(query, settings.tavilyApiKey),
             onMutation: (relativePath: string) => changedPaths.add(relativePath),
             onTextDelta: (delta: string) => send({ type: 'text_delta', delta }),
@@ -353,7 +361,7 @@ async function handlePiMessage(options: {
           }),
           prisma.space.update({ where: { id: spaceId }, data: { updatedAt: new Date() } }),
         ]);
-        send({ type: 'complete', execution: result.execution });
+        send({ type: 'complete', execution: result.execution, ...(coordinationRequest ? { coordination: coordinationRequest } : {}) });
         try { controller.close(); } catch { /* client disconnected */ }
       } catch (error) {
         try { controller.error(error); } catch { /* client disconnected */ }
@@ -423,7 +431,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
     const explicitTarget = targetAgentId ? await resolveAgent(String(targetAgentId), userId) : null;
     const mentionedTarget = resolveMentionTarget(textMessage, memberAgents);
     const coordinatorMention = resolveMentionTarget(textMessage, [SPACE_COORDINATOR]);
-    const fallbackTarget = space.runtimeType === 'PI_CODING' ? (memberAgents[0] || SPACE_COORDINATOR) : SPACE_COORDINATOR;
+    const fallbackTarget = SPACE_COORDINATOR;
     const targetAgent =
       (explicitTarget && allAgents.some((agent) => agent.id === explicitTarget.id) ? explicitTarget : null) ||
       coordinatorMention ||
@@ -442,11 +450,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
         spaceId,
         space,
         targetAgent,
+        memberAgents,
         selectedSkill,
         textMessage,
         skipPersistUserMessage: Boolean(skipPersistUserMessage),
         allowWebSearch,
-        interactionMode: interactionMode === 'multi_reply' ? 'multi_reply' : 'chat',
+        interactionMode: ['multi_reply', 'coordinated_turn', 'coordination_summary'].includes(interactionMode)
+          ? interactionMode
+          : 'chat',
         multiReplyIndex: Number.isInteger(multiReplyIndex) && multiReplyIndex > 0
           ? Math.min(multiReplyIndex, 20)
           : 0,

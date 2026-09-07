@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowRight, Loader2, PanelsTopLeft, Plus, Search, Trash2 } from 'lucide-react';
+import { ArrowRight, Code2, Loader2, PanelsTopLeft, Plus, Search, Trash2, UsersRound } from 'lucide-react';
 import AppShell from '@/components/layout/AppShell';
 import LoginRequired from '@/components/auth/LoginRequired';
 import Avatar from '@/components/shared/Avatar';
@@ -191,7 +191,11 @@ export default function SpacesPage() {
                                 })}
                               </div>
                               <span className="text-xs font-bold text-slate-400">
-                                {members.length} 个 Agent{space.templateSnapshot?.name ? ` · ${space.templateSnapshot.name}` : ''}
+                                {members.length + 1} 位成员{space.templateSnapshot?.name ? ` · ${space.templateSnapshot.name}` : ''}
+                              </span>
+                              <span className="inline-flex shrink-0 items-center gap-1 text-xs font-bold text-slate-400">
+                                {space.runtimeType === 'PI_CODING' ? <Code2 size={12} /> : <UsersRound size={12} />}
+                                {space.runtimeType === 'PI_CODING' ? '项目执行' : '团队协作'}
                               </span>
                             </div>
                           </div>

@@ -731,7 +731,7 @@ export async function streamSpaceMessage(data: {
   message: string;
   history: { role: string; content: string; speakerAgentId?: string | null }[];
   targetAgentId?: string;
-  interactionMode?: 'chat' | 'multi_reply';
+  interactionMode?: 'chat' | 'multi_reply' | 'coordinated_turn' | 'coordination_summary';
   multiReplyIndex?: number;
   webSearchEnabled?: boolean;
   skipPersistUserMessage?: boolean;

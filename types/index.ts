@@ -379,6 +379,13 @@ export interface SpacePiExecutionNote {
   createdAt: string;
 }
 
+export interface SpacePiCoordinationRequest {
+  mode: 'broadcast' | 'discussion' | 'review' | 'decision' | 'relay';
+  topic: string;
+  participantIds: string[];
+  rounds: number;
+}
+
 export interface SpacePiExecutionAttachment {
   type: 'pi_execution';
   status: 'completed' | 'failed' | 'cancelled';

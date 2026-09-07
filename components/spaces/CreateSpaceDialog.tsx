@@ -52,6 +52,7 @@ export default function CreateSpaceDialog({
   const [templateId, setTemplateId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState('全部');
+  const [showAllTemplates, setShowAllTemplates] = useState(false);
   const [selectionError, setSelectionError] = useState('');
   const [viewport, setViewport] = useState<{ height: number; offsetTop: number } | null>(null);
   const [memberColumnCount, setMemberColumnCount] = useState(1);
@@ -96,6 +97,15 @@ export default function CreateSpaceDialog({
 
   const agentById = useMemo(() => new Map(agents.map((agent) => [agent.id, agent])), [agents]);
   const selectedTemplate = getSpaceTemplate(templateId);
+  const visibleTemplates = useMemo(() => {
+    if (showAllTemplates) return SPACE_TEMPLATES;
+    const limit = memberColumnCount === 2 ? 3 : 2;
+    const visible = SPACE_TEMPLATES.slice(0, limit);
+    if (templateId && !visible.some((item) => item.id === templateId)) {
+      visible[visible.length - 1] = getSpaceTemplate(templateId) || visible[visible.length - 1];
+    }
+    return visible;
+  }, [memberColumnCount, showAllTemplates, templateId]);
   const selectedAgents = selectedIds.map((id) => agentById.get(id)).filter(Boolean) as Agent[];
   const categories = useMemo(
     () => ['全部', ...new Set(agents.map((agent) => agent.category || '其他'))],
@@ -223,24 +233,30 @@ export default function CreateSpaceDialog({
 
         <div className="min-h-0 flex-1 overscroll-contain overflow-y-auto p-5 pb-8 sm:p-6">
           {step === 1 ? (
-            <div className="space-y-5">
+            <div className="space-y-3">
               <div>
-                <div className="mb-2 flex items-center justify-between gap-3">
+                <div className="mb-1 flex items-center justify-between gap-3">
                   <span className="text-xs font-black text-slate-600">从模板开始</span>
-                  <span className="text-[11px] font-semibold text-slate-400">成员和规则稍后仍可调整</span>
+                  <button
+                    type="button"
+                    onClick={() => setShowAllTemplates((current) => !current)}
+                    className="inline-flex h-7 items-center gap-1 px-1 text-[11px] font-black text-slate-500 hover:text-slate-900"
+                  >
+                    {showAllTemplates ? '收起' : '全部模板'}
+                    <ChevronRight size={13} className={`transition-transform ${showAllTemplates ? '-rotate-90' : 'rotate-90'}`} />
+                  </button>
                 </div>
-                <div className="flex snap-x gap-2 overflow-x-auto pb-2 sm:grid sm:grid-cols-3 sm:overflow-visible sm:pb-0">
+                <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4">
                   <button
                     type="button"
                     onClick={() => applyTemplate(null)}
                     aria-pressed={templateId === null}
-                    className={`min-h-20 w-40 shrink-0 snap-start rounded-lg border p-3 text-left transition sm:w-auto ${templateId === null ? 'border-slate-950 bg-slate-950 text-white' : 'border-black/[0.08] bg-white text-slate-700 hover:border-slate-300'}`}
+                    className={`flex h-11 min-w-0 items-center justify-center gap-2 rounded-lg border px-2 text-left transition ${templateId === null ? 'border-slate-950 bg-slate-950 text-white' : 'border-black/[0.08] bg-white text-slate-700 hover:border-slate-300'}`}
                   >
-                    <LayoutGrid size={17} />
-                    <div className="mt-2 text-xs font-black">空白空间</div>
-                    <div className={`mt-1 text-[11px] font-semibold ${templateId === null ? 'text-slate-300' : 'text-slate-400'}`}>自己配置成员和规则</div>
+                    <LayoutGrid size={17} className="shrink-0" />
+                    <div className="truncate text-xs font-black">空白空间</div>
                   </button>
-                  {SPACE_TEMPLATES.map((item) => {
+                  {visibleTemplates.map((item) => {
                     const Icon = TEMPLATE_ICONS[item.icon as keyof typeof TEMPLATE_ICONS] || FileText;
                     const selected = templateId === item.id;
                     return (
@@ -249,92 +265,80 @@ export default function CreateSpaceDialog({
                         type="button"
                         onClick={() => applyTemplate(item.id)}
                         aria-pressed={selected}
-                        className={`min-h-20 w-40 shrink-0 snap-start rounded-lg border p-3 text-left transition sm:w-auto ${selected ? 'border-slate-950 bg-slate-950 text-white' : 'border-black/[0.08] bg-white text-slate-700 hover:border-slate-300'}`}
+                        className={`flex h-11 min-w-0 items-center justify-center gap-2 rounded-lg border px-2 text-left transition ${selected ? 'border-slate-950 bg-slate-950 text-white' : 'border-black/[0.08] bg-white text-slate-700 hover:border-slate-300'}`}
                       >
-                        <Icon size={17} />
-                        <div className="mt-2 truncate text-xs font-black">{item.name}</div>
-                        <div className={`mt-1 line-clamp-2 text-[11px] font-semibold leading-4 ${selected ? 'text-slate-300' : 'text-slate-400'}`}>{item.description}</div>
+                        <Icon size={17} className="shrink-0" />
+                        <div className="truncate text-xs font-black">{item.name}</div>
                       </button>
                     );
                   })}
                 </div>
               </div>
 
-              <label className="block">
-                <span className="mb-2 block text-xs font-black text-slate-600">空间名称</span>
-                <input
-                  value={name}
-                  onChange={(event) => setName(event.target.value)}
-                  maxLength={80}
-                  placeholder="例如：产品体验优化"
-                  className="h-11 w-full rounded-lg border border-black/[0.08] bg-[#fbfaf7] px-3 text-sm font-bold text-slate-800 outline-none focus:border-slate-300"
-                />
-              </label>
+              <div className="grid gap-3 sm:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
+                <label className="block">
+                  <span className="mb-1 block text-xs font-black text-slate-600">空间名称</span>
+                  <input
+                    value={name}
+                    onChange={(event) => setName(event.target.value)}
+                    maxLength={80}
+                    placeholder="例如：产品体验优化"
+                    className="h-10 w-full rounded-lg border border-black/[0.08] bg-[#fbfaf7] px-3 text-sm font-bold text-slate-800 outline-none focus:border-slate-300"
+                  />
+                </label>
 
-              <label className="block">
-                <span className="mb-2 block text-xs font-black text-slate-600">空间描述</span>
-                <textarea
-                  value={description}
-                  onChange={(event) => setDescription(event.target.value)}
-                  rows={3}
-                  placeholder="这个空间主要讨论和推进什么？"
-                  className="w-full resize-none rounded-lg border border-black/[0.08] bg-[#fbfaf7] px-3 py-3 text-sm font-medium leading-6 text-slate-800 outline-none focus:border-slate-300"
-                />
-              </label>
+                <label className="block">
+                  <span className="mb-1 block text-xs font-black text-slate-600">空间描述</span>
+                  <input
+                    value={description}
+                    onChange={(event) => setDescription(event.target.value)}
+                    placeholder="这个空间主要讨论和推进什么？"
+                    className="h-10 w-full rounded-lg border border-black/[0.08] bg-[#fbfaf7] px-3 text-sm font-medium text-slate-800 outline-none focus:border-slate-300"
+                  />
+                </label>
+              </div>
 
               <div>
-                <div className="mb-2 flex items-center justify-between gap-3">
+                <div className="mb-1 flex items-center justify-between gap-3">
                   <span className="text-xs font-black text-slate-600">运行方式</span>
                   <span className="text-[11px] font-semibold text-amber-600">创建后不可更改</span>
                 </div>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-2 gap-1.5">
                   <button
                     type="button"
                     onClick={() => setRuntimeType('NATIVE')}
                     aria-pressed={runtimeType === 'NATIVE'}
-                    className={`min-h-24 rounded-lg border p-3 text-left transition ${runtimeType === 'NATIVE' ? 'border-slate-950 bg-slate-950 text-white' : 'border-black/[0.08] bg-white text-slate-700 hover:border-slate-300'}`}
+                    className={`min-h-16 rounded-lg border p-2.5 text-left transition ${runtimeType === 'NATIVE' ? 'border-slate-950 bg-slate-950 text-white' : 'border-black/[0.08] bg-white text-slate-700 hover:border-slate-300'}`}
                   >
-                    <UsersRound size={17} />
-                    <div className="mt-2 text-xs font-black">团队协作</div>
-                    <div className={`mt-1 text-[11px] font-semibold leading-4 ${runtimeType === 'NATIVE' ? 'text-slate-300' : 'text-slate-400'}`}>协调者拆解任务，成员协作并按流程验收</div>
+                    <div className="flex items-center gap-2"><UsersRound size={17} /><span className="text-xs font-black">团队协作</span></div>
+                    <div className={`mt-1 line-clamp-2 text-[11px] font-semibold leading-4 ${runtimeType === 'NATIVE' ? 'text-slate-300' : 'text-slate-400'}`}>协调者拆解任务，成员协作并按流程验收</div>
                   </button>
                   <button
                     type="button"
                     onClick={() => setRuntimeType('PI_CODING')}
                     aria-pressed={runtimeType === 'PI_CODING'}
-                    className={`min-h-24 rounded-lg border p-3 text-left transition ${runtimeType === 'PI_CODING' ? 'border-slate-950 bg-slate-950 text-white' : 'border-black/[0.08] bg-white text-slate-700 hover:border-slate-300'}`}
+                    className={`min-h-16 rounded-lg border p-2.5 text-left transition ${runtimeType === 'PI_CODING' ? 'border-slate-950 bg-slate-950 text-white' : 'border-black/[0.08] bg-white text-slate-700 hover:border-slate-300'}`}
                   >
-                    <Code2 size={17} />
-                    <div className="mt-2 text-xs font-black">Pi 编程</div>
-                    <div className={`mt-1 text-[11px] font-semibold leading-4 ${runtimeType === 'PI_CODING' ? 'text-slate-300' : 'text-slate-400'}`}>角色保持可见，由 Pi 在项目目录中持续执行</div>
+                    <div className="flex items-center gap-2"><Code2 size={17} /><span className="text-xs font-black">项目执行</span></div>
+                    <div className={`mt-1 line-clamp-2 text-[11px] font-semibold leading-4 ${runtimeType === 'PI_CODING' ? 'text-slate-300' : 'text-slate-400'}`}>角色保持可见，由 Pi 在项目目录中持续执行</div>
                   </button>
                 </div>
               </div>
 
-              <div className="flex items-center gap-3 border-y border-black/[0.06] py-3">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-950 text-white">🧭</div>
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm font-black text-slate-800">{runtimeType === 'NATIVE' ? '空间协调者' : 'Pi 执行引擎'}</div>
-                  <div className="text-xs font-semibold text-slate-400">{runtimeType === 'NATIVE' ? '自动加入' : '共享一个持久会话'}</div>
-                </div>
-                <Check size={16} className="text-emerald-600" />
-              </div>
-
               {selectedTemplate && (
-                <div className="grid grid-cols-2 gap-3 border-b border-black/[0.06] pb-4 text-xs">
-                  <div>
-                    <div className="font-black text-slate-400">推荐流程</div>
-                    <div className="mt-1 font-semibold leading-5 text-slate-600">{selectedTemplate.workflow.join(' → ')}</div>
-                  </div>
-                  <div>
-                    <div className="font-black text-slate-400">默认交付</div>
-                    <div className="mt-1 font-semibold leading-5 text-slate-600">{selectedTemplate.deliverables.join('、')}</div>
-                  </div>
+                <div
+                  className="flex min-w-0 items-center gap-2 border-b border-black/[0.06] pb-2 text-[11px]"
+                  title={`推荐流程：${selectedTemplate.workflow.join(' → ')}；默认交付：${selectedTemplate.deliverables.join('、')}`}
+                >
+                  <span className="shrink-0 font-black text-slate-400">模板内容</span>
+                  <span className="truncate font-semibold text-slate-600">
+                    {selectedTemplate.workflow.join(' → ')} · {selectedTemplate.deliverables.join('、')}
+                  </span>
                 </div>
               )}
 
               <details className="group border-b border-black/[0.06]">
-                <summary className="flex cursor-pointer list-none items-center justify-between py-3 text-sm font-black text-slate-600 marker:hidden">
+                  <summary className="flex cursor-pointer list-none items-center justify-between py-2 text-sm font-black text-slate-600 marker:hidden">
                   <span>高级设置</span>
                   <ChevronRight className="text-slate-300 transition-transform group-open:rotate-90" size={16} />
                 </summary>

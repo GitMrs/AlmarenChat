@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Activity, ArrowLeft, BookOpen, Check, CheckCircle2, ChevronRight, Download, FilePenLine, FileText, Globe2, History, ListTodo, Loader2, MessagesSquare, PackagePlus, Paperclip, Plus, RotateCcw, Save, Send, Settings2, ShieldCheck, SkipForward, Square, Trash2, UploadCloud, UsersRound, X } from 'lucide-react';
+import { Activity, ArrowLeft, BookOpen, Check, CheckCircle2, ChevronRight, Code2, Download, FilePenLine, FileText, Globe2, History, ListTodo, Loader2, MessagesSquare, PackagePlus, Paperclip, Plus, RotateCcw, Save, Send, Settings2, ShieldCheck, SkipForward, Square, Trash2, UploadCloud, UsersRound, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import AppShell from '@/components/layout/AppShell';
@@ -30,7 +30,7 @@ import {
   MAX_CONTINUATION_ITERATIONS,
 } from '@/lib/agent-wait-policy.mjs';
 import { isEditableSpaceFile } from '@/lib/space-files';
-import type { Agent, AgentRun, AgentRunEvent, AgentTask, SpaceDiscussion, SpaceFile, SpaceLearning, SpaceLearningItem, SpaceMessage, SpacePiExecutionActivity, SpacePiExecutionNote, SpacePiSkillApproval, SpaceRelay, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal, SpaceWork } from '@/types';
+import type { Agent, AgentRun, AgentRunEvent, AgentTask, SpaceDiscussion, SpaceFile, SpaceLearning, SpaceLearningItem, SpaceMessage, SpacePiCoordinationRequest, SpacePiExecutionActivity, SpacePiExecutionNote, SpacePiSkillApproval, SpaceRelay, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal, SpaceWork } from '@/types';
 
 const FALLBACK_COLOR = '#4f46e5';
 const SPACE_COORDINATOR_ID = 'space-coordinator';
@@ -97,6 +97,31 @@ const WORK_NOUNS: Record<string, string> = {
   'course-training': '课程',
   'simple-webpage': '页面',
 };
+
+const PI_COORDINATION_LABELS: Record<SpacePiCoordinationRequest['mode'], string> = {
+  broadcast: '全员回应',
+  discussion: '圆桌讨论',
+  review: '协作评审',
+  decision: '集体决策',
+  relay: '接力协作',
+};
+
+function piCoordinationTurnPrompt(request: SpacePiCoordinationRequest, agentName: string) {
+  const modeInstruction = request.mode === 'broadcast'
+    ? '独立给出自己的回答，不要代替其他成员发言。'
+    : request.mode === 'decision'
+      ? '明确给出自己的选择和关键理由。'
+      : request.mode === 'review'
+        ? '从自己的专业视角提出评审意见，并结合会话中已有意见指出认同、异议和修正建议。'
+        : request.mode === 'relay'
+          ? '承接会话中已有内容继续推进，不要从头重写。'
+          : '给出自己的立场和理由，并针对会话中已有观点推进讨论。';
+  return `你是“${agentName}”。空间协调者正在组织${PI_COORDINATION_LABELS[request.mode]}。\n主题：${request.topic}\n${modeInstruction}`;
+}
+
+function piCoordinationSummaryPrompt(request: SpacePiCoordinationRequest) {
+  return `请作为空间协调者总结刚刚完成的${PI_COORDINATION_LABELS[request.mode]}。\n主题：${request.topic}\n忠实归纳成员的主要观点、分歧和已经形成的结论；保持简洁，不再邀请成员。`;
+}
 
 type RunEventPayload = {
   taskId?: string;
@@ -489,12 +514,12 @@ export default function SpaceDetailPage() {
   const coordinatorAgent = useMemo(() => space?.hostAgent || DEFAULT_COORDINATOR, [space]);
   const mentionAgents = useMemo(() => {
     const seen = new Set<string>();
-    return (isPiSpace ? memberAgents : [coordinatorAgent as Agent, ...memberAgents]).filter((agent) => {
+    return [coordinatorAgent as Agent, ...memberAgents].filter((agent) => {
       if (seen.has(agent.id)) return false;
       seen.add(agent.id);
       return true;
     });
-  }, [coordinatorAgent, isPiSpace, memberAgents]);
+  }, [coordinatorAgent, memberAgents]);
   const duplicateMentionNames = useMemo(() => {
     const counts = new Map<string, number>();
     for (const agent of mentionAgents) {
@@ -976,40 +1001,65 @@ export default function SpaceDetailPage() {
       abortRef.current = controller;
       const coordinatorRequested = mentionedAgents(content, [coordinatorAgent as Agent]).length > 0;
       const targets = coordinatorRequested ? [] : mentionedAgents(content, memberAgents);
-      const replyTargets: Array<Agent | null> = targets.length > 1 ? targets : [null];
+      const replyRequests: Array<{
+        target: Agent | null;
+        message: string;
+        interactionMode: 'chat' | 'multi_reply' | 'coordinated_turn' | 'coordination_summary';
+        multiReplyIndex?: number;
+        skipPersistUserMessage: boolean;
+        allowWebSearch: boolean;
+      }> = targets.length > 1
+        ? targets.map((target, index) => ({
+            target,
+            message: content,
+            interactionMode: 'multi_reply',
+            multiReplyIndex: index,
+            skipPersistUserMessage: Boolean(options?.reuseLastUserMessage || index > 0),
+            allowWebSearch: false,
+          }))
+        : [{
+            target: null,
+            message: content,
+            interactionMode: 'chat',
+            skipPersistUserMessage: Boolean(options?.reuseLastUserMessage),
+            allowWebSearch: webSearchEnabled,
+          }];
       setReplyQueueAgentIds(targets.length > 1 ? targets.map((agent) => agent.id) : []);
       let workspaceFilesChanged = 0;
       let streamFailure = '';
+      let coordinationQueued = false;
 
-      for (let index = 0; index < replyTargets.length; index += 1) {
+      for (let index = 0; index < replyRequests.length; index += 1) {
+        const replyRequest = replyRequests[index];
         setReplyQueueIndex(index);
         setStreamingContent('');
-        setStreamingSpeakerId(replyTargets[index]?.id || null);
+        setStreamingSpeakerId(replyRequest.target?.id || null);
         setStreamingPiNotes([]);
         const result = await streamSpaceMessage({
           spaceId,
-          message: content,
+          message: replyRequest.message,
           history: nextMessages.map((message) => ({
             role: message.role,
             content: message.content,
             speakerAgentId: message.speakerAgentId,
           })),
-          targetAgentId: replyTargets[index]?.id,
-          interactionMode: targets.length > 1 ? 'multi_reply' : 'chat',
-          multiReplyIndex: targets.length > 1 ? index : undefined,
-          webSearchEnabled: targets.length <= 1 && webSearchEnabled,
-          skipPersistUserMessage: Boolean(options?.reuseLastUserMessage || index > 0),
-          skillId: activeSkillId || undefined,
+          targetAgentId: replyRequest.target?.id,
+          interactionMode: replyRequest.interactionMode,
+          multiReplyIndex: replyRequest.multiReplyIndex,
+          webSearchEnabled: replyRequest.allowWebSearch,
+          skipPersistUserMessage: replyRequest.skipPersistUserMessage,
+          skillId: replyRequest.interactionMode === 'chat' ? activeSkillId || undefined : undefined,
           workId: activeWorkId === 'new' ? undefined : activeWorkId,
           signal: controller.signal,
         });
-        setStreamingSpeakerId(result.speakerAgentId || replyTargets[index]?.id || null);
+        setStreamingSpeakerId(result.speakerAgentId || replyRequest.target?.id || null);
         workspaceFilesChanged += result.workspaceFilesChanged;
 
         const reader = result.stream.getReader();
         const decoder = new TextDecoder();
         let fullContent = '';
         let ndjsonBuffer = '';
+        let coordinationRequest: SpacePiCoordinationRequest | null = null;
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
@@ -1028,6 +1078,7 @@ export default function SpaceDetailPage() {
                 activity?: SpacePiExecutionActivity;
                 note?: SpacePiExecutionNote;
                 approval?: SpacePiSkillApproval & { approved?: boolean };
+                coordination?: SpacePiCoordinationRequest;
               };
               if (event.type === 'text_delta' && typeof event.delta === 'string') {
                 fullContent += event.delta;
@@ -1048,6 +1099,7 @@ export default function SpaceDetailPage() {
                 setPendingPiSkillApproval((current) => current?.id === event.approval?.id ? null : current);
                 setStreamingPiStatus(event.approval.approved ? '正在运行 Skill 脚本' : 'Skill 脚本未执行，正在继续处理');
               } else if (event.type === 'complete') {
+                if (event.coordination) coordinationRequest = event.coordination;
                 setPendingPiSkillApproval(null);
                 setStreamingPiActivity(null);
                 setStreamingPiStatus('');
@@ -1062,7 +1114,38 @@ export default function SpaceDetailPage() {
           }
         }
 
-        if (index < replyTargets.length - 1) {
+        if (isPiSpace && coordinationRequest && !coordinationQueued && replyRequest.interactionMode === 'chat') {
+          const request = coordinationRequest as SpacePiCoordinationRequest;
+          const participants = request.participantIds
+            .map((id) => memberAgents.find((agent) => agent.id === id))
+            .filter(Boolean) as Agent[];
+          if (participants.length > 0) {
+            coordinationQueued = true;
+            for (const participant of participants) {
+              replyRequests.push({
+                target: participant,
+                message: piCoordinationTurnPrompt(request, participant.name),
+                interactionMode: 'coordinated_turn',
+                skipPersistUserMessage: true,
+                allowWebSearch: false,
+              });
+            }
+            replyRequests.push({
+              target: coordinatorAgent as Agent,
+              message: piCoordinationSummaryPrompt(request),
+              interactionMode: 'coordination_summary',
+              skipPersistUserMessage: true,
+              allowWebSearch: false,
+            });
+            setReplyQueueAgentIds([
+              coordinatorAgent.id,
+              ...participants.map((participant) => participant.id),
+              coordinatorAgent.id,
+            ]);
+          }
+        }
+
+        if (index < replyRequests.length - 1) {
           const messageResult = await spacesApi.messages(spaceId, { limit: 60 });
           setMessages(messageResult.messages);
         }
@@ -1717,7 +1800,13 @@ export default function SpaceDetailPage() {
                   {coordinatorAgent.avatar || '🧭'}
                 </div>
                 <div className="min-w-0">
-                  <h1 className="truncate text-lg font-black text-slate-950">{space.name}</h1>
+                  <div className="flex min-w-0 items-center gap-2">
+                    <h1 className="truncate text-lg font-black text-slate-950">{space.name}</h1>
+                    <span className="inline-flex shrink-0 items-center gap-1 text-[11px] font-bold text-slate-400">
+                      {isPiSpace ? <Code2 size={12} /> : <UsersRound size={12} />}
+                      {isPiSpace ? '项目执行' : '团队协作'}
+                    </span>
+                  </div>
                   <p className="mt-1 line-clamp-2 text-xs font-semibold leading-5 text-slate-400">
                     {space.description || `${memberAgents.length + 1} 位成员协作空间`}
                   </p>
@@ -1732,7 +1821,7 @@ export default function SpaceDetailPage() {
                   <div className="flex items-center gap-2 text-xs font-black text-slate-500">
                     <UsersRound size={15} />
                     空间成员
-                    <span className="text-slate-300">{memberAgents.length + (isPiSpace ? 0 : 1)}</span>
+                    <span className="text-slate-300">{memberAgents.length + 1}</span>
                   </div>
                   <button
                     type="button"
@@ -1743,7 +1832,7 @@ export default function SpaceDetailPage() {
                   </button>
                 </div>
                 <div className="space-y-1">
-                  {!isPiSpace && <div className="flex w-full items-center gap-3 rounded-lg px-2 py-2">
+                  <div className="flex w-full items-center gap-3 rounded-lg px-2 py-2">
                     <Avatar src={coordinatorAgent.avatar || '🧭'} alt={coordinatorAgent.name} size="sm" />
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-sm font-black text-slate-800">{coordinatorAgent.name}</div>
@@ -1753,7 +1842,7 @@ export default function SpaceDetailPage() {
                       <span className={`h-2 w-2 rounded-full ${coordinatorStatus.color}`} />
                       {coordinatorStatus.label}
                     </span>
-                  </div>}
+                  </div>
                   {memberAgents.slice(0, 5).map((agent) => {
                     const status = memberStatus(agent.id);
                     return (
@@ -1888,9 +1977,15 @@ export default function SpaceDetailPage() {
                 <ArrowLeft size={18} />
               </button>
               <div className="min-w-0 flex-1">
-                <h1 className="truncate text-base font-black text-slate-950 sm:text-lg">{space.name}</h1>
+                <div className="flex min-w-0 items-center gap-2">
+                  <h1 className="truncate text-base font-black text-slate-950 sm:text-lg">{space.name}</h1>
+                  <span className="inline-flex shrink-0 items-center gap-1 text-[11px] font-bold text-slate-400">
+                    {isPiSpace ? <Code2 size={12} /> : <UsersRound size={12} />}
+                    {isPiSpace ? '项目执行' : '团队协作'}
+                  </span>
+                </div>
                 <p className="truncate text-xs font-semibold text-slate-400">
-                  {space.description || `${memberAgents.length + (isPiSpace ? 0 : 1)} 位成员`}
+                  {space.description || `${memberAgents.length + 1} 位成员`}
                 </p>
               </div>
 
@@ -1898,13 +1993,13 @@ export default function SpaceDetailPage() {
                 type="button"
                 onClick={() => setSidePanel('members')}
                 aria-expanded={sidePanel === 'members'}
-                aria-label={`空间成员，共 ${memberAgents.length + (isPiSpace ? 0 : 1)} 位`}
+                aria-label={`空间成员，共 ${memberAgents.length + 1} 位`}
                 title="空间成员"
                 className="inline-flex h-10 items-center gap-2 rounded-lg px-3 text-sm font-black text-slate-600 transition hover:bg-slate-100 hover:text-slate-950"
               >
                 <UsersRound size={17} />
                 <span className="hidden md:inline">成员</span>
-                <span className="text-xs text-slate-400">{memberAgents.length + (isPiSpace ? 0 : 1)}</span>
+                <span className="text-xs text-slate-400">{memberAgents.length + 1}</span>
               </button>
               <button
                 type="button"
@@ -2871,7 +2966,7 @@ export default function SpaceDetailPage() {
                   {sidePanel === 'members' ? (
                     <>
                       <div className="space-y-2">
-                        {!isPiSpace && <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-[#fbfaf7] px-3 py-3">
+                        <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-[#fbfaf7] px-3 py-3">
                           <Avatar src={coordinatorAgent.avatar || '🧭'} alt={coordinatorAgent.name} size="sm" />
                           <div className="min-w-0 flex-1">
                             <div className="flex min-w-0 items-center gap-2">
@@ -2884,7 +2979,7 @@ export default function SpaceDetailPage() {
                             <span className={`h-2 w-2 rounded-full ${coordinatorStatus.color}`} />
                             {coordinatorStatus.label}
                           </span>
-                        </div>}
+                        </div>
 
                         {(space.members || []).map((member: any) => {
                           const agent = agentById.get(member.agentId);
@@ -3163,12 +3258,14 @@ export default function SpaceDetailPage() {
                     </div>
                   ) : (
                     <div className="space-y-4">
-                      {isPiSpace ? (
-                        <div className="rounded-lg border border-black/[0.08] bg-[#fbfaf7] px-4 py-3">
-                          <div className="text-sm font-black text-slate-700">运行方式</div>
-                          <div className="mt-1 text-xs font-semibold leading-5 text-slate-400">Pi 编程 · 创建后不可更改</div>
+                      <div className="rounded-lg border border-black/[0.08] bg-[#fbfaf7] px-4 py-3">
+                        <div className="text-sm font-black text-slate-700">运行方式</div>
+                        <div className="mt-1 flex items-center gap-1.5 text-xs font-semibold leading-5 text-slate-400">
+                          {isPiSpace ? <Code2 size={13} /> : <UsersRound size={13} />}
+                          {isPiSpace ? '项目执行 · 由 Pi 驱动' : '团队协作'} · 创建后不可更改
                         </div>
-                      ) : (
+                      </div>
+                      {!isPiSpace && (
                         <div>
                         <div className="mb-2 text-sm font-black text-slate-700">执行模式</div>
                         <div className="grid grid-cols-2 overflow-hidden rounded-lg border border-black/[0.08] bg-[#fbfaf7] p-1">
