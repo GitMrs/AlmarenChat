@@ -28,6 +28,7 @@ import AppShell from '@/components/layout/AppShell';
 import LoginRequired from '@/components/auth/LoginRequired';
 import SettingsPanel from '@/components/settings/SettingsPanel';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
+import Avatar from '@/components/shared/Avatar';
 import PersonalAssistantSettings from '@/components/assistant/PersonalAssistantSettings';
 import { agents as agentsApi, auth, conversations as conversationsApi, favorites as favoritesApi, spaceShares as spaceSharesApi, spaces as spacesApi } from '@/lib/api';
 import type { Agent, SpaceFileShare } from '@/types';
@@ -390,9 +391,7 @@ function MeContent() {
                       className="cursor-default overflow-hidden rounded-[28px] border border-black/[0.06] bg-white shadow-sm"
                     >
                       <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center">
-                        <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-3xl bg-[#fbfaf7] text-3xl shadow-sm">
-                          {agent.avatar || '🤖'}
-                        </div>
+                        <Avatar src={agent.avatar} alt={agent.name} size="lg" />
                         <div className="min-w-0 flex-1">
                           <div className="mb-2 flex flex-wrap items-center gap-2">
                             <h3 className="text-lg font-black text-slate-950">{agent.name}</h3>
@@ -513,9 +512,7 @@ function MeContent() {
                       onClick={() => router.push(`/chat/${agent.id}`)}
                       className="flex w-full cursor-pointer items-center gap-3 rounded-2xl bg-[#fbfaf7] p-3 text-left transition hover:bg-slate-100"
                     >
-                      <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white text-xl">
-                        {agent.avatar || '🤖'}
-                      </div>
+                      <Avatar src={agent.avatar} alt={agent.name} size="md" />
                       <div className="min-w-0 flex-1">
                         <div className="truncate text-sm font-black text-slate-950">{agent.name}</div>
                         <div className="truncate text-xs text-slate-500">{agent.description}</div>

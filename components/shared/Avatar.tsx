@@ -1,6 +1,7 @@
 'use client';
 
 import { cn } from '@/lib/utils';
+import { resolveAgentAvatar } from '@/lib/agent-avatar';
 
 interface AvatarProps {
   src?: string;
@@ -10,7 +11,7 @@ interface AvatarProps {
 }
 
 const sizeClasses = {
-  sm: 'w-8 h-8 text-sm',
+  sm: 'w-5 h-5 text-sm',
   md: 'w-10 h-10 text-base',
   lg: 'w-14 h-14 text-xl',
   xl: 'w-20 h-20 text-3xl',
@@ -22,6 +23,7 @@ function isUrl(str: string): boolean {
 
 export default function Avatar({ src, alt, size = 'md', className }: AvatarProps) {
   const initials = alt.charAt(0).toUpperCase();
+  const generatedSrc = src ? resolveAgentAvatar(src) : null;
 
   // No src — show initials
   if (!src) {
@@ -39,10 +41,10 @@ export default function Avatar({ src, alt, size = 'md', className }: AvatarProps
   }
 
   // URL — render as image
-  if (isUrl(src)) {
+  if (generatedSrc || isUrl(src)) {
     return (
       <img
-        src={src}
+        src={generatedSrc || src}
         alt={alt}
         className={cn(
           'rounded-full object-cover ring-2 ring-white shadow-sm',

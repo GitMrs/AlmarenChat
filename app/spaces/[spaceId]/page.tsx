@@ -1796,9 +1796,7 @@ export default function SpaceDetailPage() {
                 返回
               </button>
               <div className="flex items-start gap-3">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-slate-950 text-lg text-white">
-                  {coordinatorAgent.avatar || '🧭'}
-                </div>
+                <Avatar src={coordinatorAgent.avatar || '🧭'} alt={coordinatorAgent.name} size="md" />
                 <div className="min-w-0">
                   <div className="flex min-w-0 items-center gap-2">
                     <h1 className="truncate text-lg font-black text-slate-950">{space.name}</h1>
