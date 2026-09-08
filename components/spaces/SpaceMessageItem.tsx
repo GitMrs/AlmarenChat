@@ -211,7 +211,7 @@ function TaskProposal({
             {capabilities.includes('image_generate') && (
               <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-50 px-2.5 py-1 text-[11px] font-black text-sky-700">
                 <ImageIcon size={12} />
-                最多生成 2 张图片
+                每个任务生成 1 张图片
               </span>
             )}
             {(proposal.networkPolicy || (capabilities.includes('web_research') ? 'required' : 'forbidden')) !== 'forbidden' && (

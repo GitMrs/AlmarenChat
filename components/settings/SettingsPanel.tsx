@@ -58,6 +58,7 @@ type ModelSnapshot = {
   imageModelEnabled: boolean;
   imageModelName: string;
   imageModelSize: string;
+  imageModelProtocol: 'OPENAI_IMAGES' | 'OPENAI_CHAT';
   contextMessageLimit: number;
 };
 
@@ -78,6 +79,7 @@ export default function SettingsPanel() {
   const [imageModelEnabled, setImageModelEnabled] = useState(false);
   const [imageModelName, setImageModelName] = useState('');
   const [imageModelSize, setImageModelSize] = useState('1024x1024');
+  const [imageModelProtocol, setImageModelProtocol] = useState<'OPENAI_IMAGES' | 'OPENAI_CHAT'>('OPENAI_IMAGES');
   const [contextMessageLimit, setContextMessageLimit] = useState(40);
   const [tavilyApiKey, setTavilyApiKey] = useState('');
   const [initialAccount, setInitialAccount] = useState<AccountSnapshot | null>(null);
@@ -121,9 +123,10 @@ export default function SettingsPanel() {
       imageModelEnabled,
       imageModelName: imageModelName.trim(),
       imageModelSize,
+      imageModelProtocol,
       contextMessageLimit,
     }),
-    [apiBaseUrl, apiKey, contextMessageLimit, customModelEnabled, imageModelEnabled, imageModelName, imageModelSize, modelContextWindow, modelName]
+    [apiBaseUrl, apiKey, contextMessageLimit, customModelEnabled, imageModelEnabled, imageModelName, imageModelProtocol, imageModelSize, modelContextWindow, modelName]
   );
   const hasAccountChanges = initialAccount ? JSON.stringify(currentAccount) !== JSON.stringify(initialAccount) : false;
   const hasModelChanges = initialModel ? JSON.stringify(currentModel) !== JSON.stringify(initialModel) : false;
@@ -171,6 +174,7 @@ export default function SettingsPanel() {
         setImageModelEnabled(Boolean(u.imageModelEnabled));
         setImageModelName(u.imageModelName || '');
         setImageModelSize(u.imageModelSize || '1024x1024');
+        setImageModelProtocol(u.imageModelProtocol === 'OPENAI_CHAT' ? 'OPENAI_CHAT' : 'OPENAI_IMAGES');
         setTavilyApiKey(u.tavilyApiKey || '');
         setContextMessageLimit(u.contextMessageLimit || 40);
         setInitialAccount({ name: u.name || '' });
@@ -183,6 +187,7 @@ export default function SettingsPanel() {
           imageModelEnabled: Boolean(u.imageModelEnabled),
           imageModelName: u.imageModelName || '',
           imageModelSize: u.imageModelSize || '1024x1024',
+          imageModelProtocol: u.imageModelProtocol === 'OPENAI_CHAT' ? 'OPENAI_CHAT' : 'OPENAI_IMAGES',
           contextMessageLimit: u.contextMessageLimit || 40,
         });
         setInitialSearch({ tavilyApiKey: u.tavilyApiKey || '' });
@@ -235,6 +240,7 @@ export default function SettingsPanel() {
         imageModelEnabled: currentModel.imageModelEnabled,
         imageModelName: currentModel.imageModelName || null,
         imageModelSize: currentModel.imageModelSize,
+        imageModelProtocol: currentModel.imageModelProtocol,
         contextMessageLimit: currentModel.contextMessageLimit,
       });
       setApiBaseUrl(currentModel.apiBaseUrl);
@@ -244,6 +250,7 @@ export default function SettingsPanel() {
       setImageModelEnabled(currentModel.imageModelEnabled);
       setImageModelName(currentModel.imageModelName);
       setImageModelSize(currentModel.imageModelSize);
+      setImageModelProtocol(currentModel.imageModelProtocol);
       setContextMessageLimit(currentModel.contextMessageLimit);
       setInitialModel(currentModel);
       setModelSaved(true);
@@ -737,7 +744,7 @@ export default function SettingsPanel() {
                     {imageModelEnabled ? <ToggleRight size={18} /> : <ToggleLeft size={18} />}
                   </button>
                 </div>
-                <div className="mt-4 grid gap-4 sm:grid-cols-[minmax(0,1fr)_160px]">
+                <div className="mt-4 grid gap-4 sm:grid-cols-[minmax(0,1fr)_180px_160px]">
                   <div className="block min-w-0">
                     <span className="mb-2 block text-xs font-bold text-slate-600">图片模型名称</span>
                     {availableModels.length > 0 && !manualImageModelEntry ? (
@@ -776,6 +783,18 @@ export default function SettingsPanel() {
                     )}
                   </div>
                   <label className="block">
+                    <span className="mb-2 block text-xs font-bold text-slate-600">接口协议</span>
+                    <select
+                      value={imageModelProtocol}
+                      onChange={(event) => setImageModelProtocol(event.target.value as 'OPENAI_IMAGES' | 'OPENAI_CHAT')}
+                      disabled={!imageModelEnabled}
+                      className="h-11 w-full rounded-xl border border-black/[0.08] bg-white px-3 text-sm font-bold text-slate-700 outline-none disabled:bg-slate-100 disabled:text-slate-400"
+                    >
+                      <option value="OPENAI_IMAGES">Images 接口</option>
+                      <option value="OPENAI_CHAT">Chat 图片输出</option>
+                    </select>
+                  </label>
+                  <label className="block">
                     <span className="mb-2 block text-xs font-bold text-slate-600">默认尺寸</span>
                     <select
                       value={imageModelSize}
@@ -792,6 +811,9 @@ export default function SettingsPanel() {
                 {imageModelConfigIncomplete && (
                   <p className="mt-3 text-xs font-semibold text-amber-700">开启图片生成前，请填写 Base URL、API Key 和图片模型名称。</p>
                 )}
+                <p className="mt-3 text-xs leading-5 text-slate-400">
+                  Gemini 图片模型通常选择 Chat 图片输出；Imagen、GPT Image 等 OpenAI 兼容模型通常选择 Images 接口。
+                </p>
               </div>
 
               <label className="block">

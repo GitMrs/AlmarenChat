@@ -320,7 +320,7 @@ function loadRunContext(run) {
   const space = db.prepare('SELECT * FROM "Space" WHERE "id" = ? AND "userId" = ?').get(run.spaceId, run.userId);
   if (!space) throw new Error('任务所属空间不存在');
   const user = db.prepare(
-    'SELECT "customModelEnabled", "apiBaseUrl", "apiKey", "modelName", "modelContextWindow", "imageModelEnabled", "imageModelName", "imageModelSize", "tavilyApiKey" FROM "User" WHERE "id" = ?'
+    'SELECT "customModelEnabled", "apiBaseUrl", "apiKey", "modelName", "modelContextWindow", "imageModelEnabled", "imageModelName", "imageModelSize", "imageModelProtocol", "tavilyApiKey" FROM "User" WHERE "id" = ?'
   ).get(run.userId);
   if (!user) throw new Error('任务所属用户不存在');
 
@@ -378,6 +378,7 @@ function loadRunContext(run) {
           baseURL: user.apiBaseUrl,
           name: user.imageModelName,
           size: user.imageModelSize || '1024x1024',
+          protocol: user.imageModelProtocol || 'OPENAI_IMAGES',
         }
       : null,
     tavilyApiKey: user.tavilyApiKey?.trim() || null,
@@ -517,6 +518,7 @@ async function coordinateNextWork(run, context, triggerEventId) {
               '用户退回派发时填写的 lastDispatchFeedback 是最新的明确纠正，优先于你对需求是否已明确的判断。' +
               '当 requiredNextMember 非空时，本轮 tasks 的第一项必须派给该成员；若用户要求其先明确、梳理或分析规则，mode 应为 advisor。' +
               '默认一次只派一项；只有两项成果真正独立且成员不同才可并行派两项。' +
+              '当 authorization 包含 image_generate 时，Coordinator 只负责规划和验收，不亲自生成：优先把配图工作交给最了解来源内容的成员，其次才是视觉或前端成员；每个任务只能生成 1 张图片，需要多张时必须拆成分别由用户确认的任务，不要额外拆出纯提示词规划步骤。' +
               '不得重复已有任务，不得给 WORKING 成员派活，不得扩大已授权能力。' +
               '每个成员的 availableSkills 是本轮可选工作方法。authorization.selectedSkill 非空时，这是用户本轮明确指定的工作方法，第一项任务必须采用它；否则优先选择与任务产物匹配的专用 Skill，没有匹配项时才使用 general-task。Skill 不能扩大 authorization 的能力。可执行 Skill 必须使用 executor 模式，并且 authorization 必须包含 code_execute。' +
               '每个子任务必须设置 webResearchRequired。只有该子任务确实依赖外部公开资料且 authorization.networkPolicy 不是 forbidden 时才能为 true；任务指令明确不联网时必须为 false。' +

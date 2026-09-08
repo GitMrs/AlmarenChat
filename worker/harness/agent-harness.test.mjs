@@ -142,6 +142,75 @@ test('executor harness restores the persisted tool conversation without rebuildi
   assert.match(observed.messages.at(-1).content, /不要重新回顾或重复读取/);
 });
 
+test('executor resume after image configuration refresh requires a new image tool call', async () => {
+  let observedSystemMessage = '';
+  let requestCount = 0;
+  const result = await runExecutorHarness({
+    run: { ...run, runtimeVersion: 3 },
+    task: {
+      ...task,
+      waitQuestion: '请确认图片模型配置是否保存？',
+      waitReason: '图片生成接口未成功写入图片文件',
+      waitAnswer: '继续',
+      skillId: 'image-generator',
+      skillSnapshot: {
+        id: 'image-generator', name: '图片生成', version: '1.1.0',
+        allowedTools: ['generate_images'], artifactExtensions: ['.png'],
+        requiredArtifactExtensions: [], instructions: '生成图片。', execution: null,
+      },
+    },
+    agent,
+    context: {
+      ...context,
+      authorization: { capabilities: ['workspace_read', 'workspace_write', 'image_generate'] },
+      imageModel: { apiKey: 'key', baseURL: 'https://example.com/v1', name: 'image-model', size: '1024x1024' },
+      touchedPaths: new Set(),
+    },
+    previousResults: [], baselinePaths: new Set(), fakeMode: false, taskTimeoutMs: 30_000,
+    resumeCheckpoint: {
+      version: 1,
+      totalIterations: 3,
+      batchCompletedIterations: 3,
+      batchLimit: 10,
+      conversation: [{ role: 'system', content: '原执行规则' }, { role: 'user', content: '原始图片任务' }],
+    },
+    completeMessage: async (_model, messages) => {
+      requestCount += 1;
+      if (requestCount === 1) observedSystemMessage = messages.at(-1).content;
+      return requestCount === 1
+        ? {
+            content: null,
+            tool_calls: [{
+              id: 'retry-image', type: 'function',
+              function: {
+                name: 'generate_images',
+                arguments: JSON.stringify({ images: [{ prompt: 'team', fileName: 'team', purpose: '群像' }] }),
+              },
+            }],
+          }
+        : {
+            content: null,
+            tool_calls: [{
+              id: 'submit-image', type: 'function',
+              function: { name: 'submit_task_result', arguments: JSON.stringify({ summary: '图片已生成。', remainingIssues: [] }) },
+            }],
+          };
+    },
+    emit: () => {}, isCancelled: () => false, pauseForInput: () => ({ pause: true }),
+    registerWorkspaceFile: async () => {},
+    validateSubmission: async () => ({ ok: true, manifest: { validation: { valid: true } } }),
+    workspaceOptions: {},
+    generateImages: async () => ({
+      ok: true,
+      images: [{ ok: true, path: 'assets/team.png', purpose: '群像', mimeType: 'image/png', size: 12 }],
+      failures: [],
+    }),
+  });
+  assert.match(observedSystemMessage, /必须立即重新调用 generate_images/);
+  assert.equal(requestCount, 2);
+  assert.equal(result.result, '图片已生成。');
+});
+
 test('executor continuation uses the user-approved batch size', async () => {
   let observed = null;
   const events = [];
@@ -251,7 +320,7 @@ test('executor exposes executable Skill tools only inside the approved capabilit
   assert.equal(observed[1].includes('run_skill'), true);
 });
 
-test('executor exposes image generation only when authorized and limits it to two calls', async () => {
+test('executor exposes one image generation request per execution batch', async () => {
   const calls = [];
   let requestCount = 0;
   const result = await runExecutorHarness({
@@ -260,8 +329,8 @@ test('executor exposes image generation only when authorized and limits it to tw
       ...task,
       skillId: 'image-generator',
       skillSnapshot: {
-        id: 'image-generator', name: '图片生成', version: '1.0.0',
-        allowedTools: ['list_files', 'read_file', 'check_files', 'generate_image'],
+        id: 'image-generator', name: '图片生成', version: '1.1.0',
+        allowedTools: ['list_files', 'read_file', 'check_files', 'generate_images'],
         artifactExtensions: ['.png'], requiredArtifactExtensions: [], instructions: '生成图片。', execution: null,
       },
     },
@@ -274,15 +343,22 @@ test('executor exposes image generation only when authorized and limits it to tw
     },
     previousResults: [], baselinePaths: new Set(), fakeMode: false, taskTimeoutMs: 30_000,
     completeMessage: async (_model, _messages, tools) => {
-      assert.equal(tools.some((tool) => tool.function.name === 'generate_image'), true);
+      assert.equal(tools.some((tool) => tool.function.name === 'generate_images'), true);
+      assert.equal(tools.some((tool) => tool.function.name === 'generate_image'), false);
+      assert.equal(tools.find((tool) => tool.function.name === 'generate_images').function.parameters.properties.images.maxItems, 1);
       requestCount += 1;
       if (requestCount === 1) {
         return {
           content: null,
-          tool_calls: ['one', 'two', 'three'].map((fileName) => ({
-            id: fileName, type: 'function',
-            function: { name: 'generate_image', arguments: JSON.stringify({ prompt: fileName, fileName }) },
-          })),
+          tool_calls: [{
+            id: 'image-batch', type: 'function',
+            function: {
+              name: 'generate_images',
+              arguments: JSON.stringify({ images: ['one'].map((fileName) => ({
+                prompt: fileName, fileName, purpose: `${fileName}用途`,
+              })) }),
+            },
+          }],
         };
       }
       return {
@@ -297,13 +373,76 @@ test('executor exposes image generation only when authorized and limits it to tw
     registerWorkspaceFile: async () => {},
     validateSubmission: async () => ({ ok: true, manifest: { validation: { valid: true } } }),
     workspaceOptions: {},
-    generateImage: async ({ fileName }) => {
-      calls.push(fileName);
-      return { ok: true, path: `assets/${fileName}.png`, mimeType: 'image/png', size: 12, imageSize: '1024x1024', model: 'image-model' };
+    generateImages: async ({ images }) => {
+      calls.push(...images.map((image) => image.fileName));
+      return {
+        ok: true,
+        images: images.map((image) => ({
+          ok: true, path: `assets/${image.fileName}.png`, purpose: image.purpose,
+          mimeType: 'image/png', size: 12, imageSize: '1024x1024', model: 'image-model',
+        })),
+        failures: [],
+      };
     },
   });
-  assert.deepEqual(calls, ['one', 'two']);
+  assert.deepEqual(calls, ['one']);
   assert.equal(result.result, '图片已生成。');
+});
+
+test('executor pauses immediately after any image generation failure', async () => {
+  let requestCount = 0;
+  let waitRequest;
+  let savedCheckpoint;
+  const result = await runExecutorHarness({
+    run: { ...run, runtimeVersion: 3 },
+    task: {
+      ...task,
+      skillId: 'image-generator',
+      skillSnapshot: {
+        id: 'image-generator', name: '图片生成', version: '1.1.0',
+        allowedTools: ['generate_images'], artifactExtensions: ['.png'],
+        requiredArtifactExtensions: [], instructions: '生成图片。', execution: null,
+      },
+    },
+    agent,
+    context: {
+      ...context,
+      authorization: { capabilities: ['workspace_read', 'workspace_write', 'image_generate'] },
+      imageModel: { apiKey: 'key', baseURL: 'https://example.com/v1', name: 'bad-model', size: '1024x1024' },
+      touchedPaths: new Set(),
+    },
+    previousResults: [], baselinePaths: new Set(), fakeMode: false, taskTimeoutMs: 30_000,
+    completeMessage: async () => {
+      requestCount += 1;
+      return {
+        content: null,
+        tool_calls: [{
+          id: 'image-batch', type: 'function',
+          function: {
+            name: 'generate_images',
+            arguments: JSON.stringify({ images: [{ prompt: 'cover', fileName: 'cover', purpose: '封面' }] }),
+          },
+        }],
+      };
+    },
+    emit: () => {}, isCancelled: () => false,
+    pauseForInput: (args) => {
+      waitRequest = args;
+      return { ok: true, pause: true };
+    },
+    saveCheckpoint: async (checkpoint) => { savedCheckpoint = checkpoint; },
+    registerWorkspaceFile: async () => {}, validateSubmission: async () => ({ ok: true }),
+    workspaceOptions: {},
+    generateImages: async () => ({
+      ok: false, images: [],
+      failures: [{ fileName: 'cover', purpose: '封面', error: 'temporary provider failure', nonRetryable: false }],
+    }),
+  });
+  assert.equal(requestCount, 1);
+  assert.equal(result.paused, true);
+  assert.match(waitRequest.reason, /temporary provider failure/);
+  assert.match(savedCheckpoint.conversation.at(-1).content, /"retryAfterConfirmation":true/);
+  assert.match(savedCheckpoint.conversation.at(-1).content, /temporary provider failure/);
 });
 
 test('executor retries two empty reasoning responses before accepting the third response', async () => {

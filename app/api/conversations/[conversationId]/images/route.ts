@@ -29,7 +29,7 @@ export async function POST(
       prisma.conversation.findFirst({ where: { id: conversationId, userId, kind: 'AGENT' }, select: { id: true } }),
       prisma.user.findUnique({
         where: { id: userId },
-        select: { imageModelEnabled: true, imageModelName: true, imageModelSize: true, apiBaseUrl: true, apiKey: true },
+        select: { imageModelEnabled: true, imageModelName: true, imageModelSize: true, imageModelProtocol: true, apiBaseUrl: true, apiKey: true },
       }),
     ]);
     if (!conversation) return NextResponse.json({ error: 'Conversation not found' }, { status: 404 });
@@ -50,6 +50,7 @@ export async function POST(
         baseURL: user.apiBaseUrl,
         name: user.imageModelName,
         size: user.imageModelSize || '1024x1024',
+        protocol: user.imageModelProtocol,
       },
       prompt,
       size: requestedSize || undefined,

@@ -235,6 +235,7 @@ async function userModelSettings(userId: string) {
       imageModelEnabled: true,
       imageModelName: true,
       imageModelSize: true,
+      imageModelProtocol: true,
       tavilyApiKey: true,
       contextMessageLimit: true,
     },
@@ -246,6 +247,13 @@ async function userModelSettings(userId: string) {
     modelName: user.customModelEnabled ? user.modelName : null,
     modelContextWindow: user.modelContextWindow,
     imageModelAvailable: Boolean(user.imageModelEnabled && user.apiBaseUrl && user.apiKey && user.imageModelName),
+    imageModel: user.imageModelEnabled && user.apiBaseUrl && user.apiKey && user.imageModelName ? {
+      baseURL: user.apiBaseUrl,
+      apiKey: user.apiKey,
+      name: user.imageModelName,
+      size: user.imageModelSize,
+      protocol: user.imageModelProtocol,
+    } : null,
     tavilyApiKey: user.tavilyApiKey,
     contextMessageLimit: user.contextMessageLimit || 40,
   };
@@ -285,6 +293,7 @@ async function handlePiMessage(options: {
   textMessage: string;
   skipPersistUserMessage: boolean;
   allowWebSearch: boolean;
+  imageGenerationRequested: boolean;
   agentMemoryContext: string;
   interactionMode?: 'chat' | 'multi_reply' | 'coordinated_turn' | 'coordination_summary';
   coordinationScope?: PiCoordinationScope | null;
@@ -292,7 +301,7 @@ async function handlePiMessage(options: {
 }) {
   const {
     userId, spaceId, space, targetAgent, memberAgents, selectedSkill, textMessage,
-    skipPersistUserMessage, allowWebSearch, agentMemoryContext, interactionMode, coordinationScope, multiReplyIndex,
+    skipPersistUserMessage, allowWebSearch, imageGenerationRequested, agentMemoryContext, interactionMode, coordinationScope, multiReplyIndex,
   } = options;
   let persistedMemory = await prisma.spaceMemory.findUnique({ where: { spaceId } });
   if (!persistedMemory || spaceMemoryNeedsTrustedRebuild(persistedMemory)) {
@@ -358,6 +367,8 @@ async function handlePiMessage(options: {
             modelName: settings.modelName || DEFAULT_MODEL,
             modelContextWindow: settings.modelContextWindow,
             allowWebSearch,
+            imageGenerationRequested,
+            imageModel: settings.imageModel,
             coordinationScope,
             projectMemoryContext,
             onCoordinationRequest: (request: Record<string, unknown>) => {
@@ -482,14 +493,24 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
     const { spaceId } = await params;
     const {
       message, targetAgentId, history, skipPersistUserMessage, interactionMode, coordinationScope,
-      multiReplyIndex, webSearchEnabled, skillId, workId,
+      multiReplyIndex, webSearchEnabled, imageGenerationRequested, skillId, workId,
     } = await request.json();
     const textMessage = typeof message === 'string' ? message.trim() : '';
     const allowWebSearch = webSearchEnabled === true;
+    const explicitImageRequest = imageGenerationRequested === true;
     if (!textMessage) return NextResponse.json({ error: '消息不能为空' }, { status: 400 });
 
     const space = await getSpaceForUser(spaceId, userId);
     if (!space) return NextResponse.json({ error: 'Space not found' }, { status: 404 });
+    if (explicitImageRequest) {
+      const imageSettings = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { imageModelEnabled: true, imageModelName: true, apiBaseUrl: true, apiKey: true },
+      });
+      if (!imageSettings?.imageModelEnabled || !imageSettings.imageModelName || !imageSettings.apiBaseUrl || !imageSettings.apiKey) {
+        return NextResponse.json({ error: '请先在账号设置中启用并完整配置图片生成模型' }, { status: 409 });
+      }
+    }
     const selectedWork = typeof workId === 'string' && workId
       ? await prisma.spaceWork.findFirst({ where: { id: workId, spaceId } })
       : null;
@@ -502,11 +523,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
     const mentionedTarget = resolveMentionTarget(textMessage, memberAgents);
     const coordinatorMention = resolveMentionTarget(textMessage, [SPACE_COORDINATOR]);
     const fallbackTarget = SPACE_COORDINATOR;
-    const targetAgent =
-      (explicitTarget && allAgents.some((agent) => agent.id === explicitTarget.id) ? explicitTarget : null) ||
-      coordinatorMention ||
-      mentionedTarget ||
-      fallbackTarget;
+    const targetAgent = explicitImageRequest
+      ? SPACE_COORDINATOR
+      : (explicitTarget && allAgents.some((agent) => agent.id === explicitTarget.id) ? explicitTarget : null) ||
+        coordinatorMention ||
+        mentionedTarget ||
+        fallbackTarget;
     const agentMemory = await loadAgentMemoryContext({
       userId,
       agentId: targetAgent.id,
@@ -539,6 +561,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
         textMessage,
         skipPersistUserMessage: Boolean(skipPersistUserMessage),
         allowWebSearch,
+        imageGenerationRequested: explicitImageRequest,
         agentMemoryContext: agentMemory,
         interactionMode: normalizedInteractionMode,
         coordinationScope: normalizedCoordinationScope,
@@ -635,7 +658,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
       && !currentPendingProposal
       && targetAgent.id === SPACE_COORDINATOR.id
       && memberAgents.length > 0
-      && professionalDeliverableNeedsTask(textMessage);
+      && (explicitImageRequest || professionalDeliverableNeedsTask(textMessage));
     const skillReferenceTool = selectedSkill ? spaceSkillReferenceToolSchema(selectedSkill) : null;
     const relayTool = !isMultiReply && targetAgent.id === SPACE_COORDINATOR.id && memberAgents.length >= 2
       ? relayStartTool(memberAgents)
@@ -693,10 +716,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
         !isMultiReply && !allowWebSearch ? '本轮联网搜索未开启。需要外部公开资料或实时事实时，请简短提示用户开启输入框的联网开关；不得仅为获得联网能力而生成任务方案。' : '',
         !isMultiReply ? '仅在用户明确要求创建或修改文件、网页、代码或文档时，才把写入工作区列入任务。只有任务确实需要运行已注册 Skill 的 Python/Node 入口时才申请 code_execute；普通文件编辑和静态检查不得申请。' : '',
         !isMultiReply && settings.imageModelAvailable
-          ? '账号已配置图片生成模型。用户明确要求生成图片，或交付物确实需要新图片且方案明确列出图片产物时，可以申请 image_generate；方案必须同时包含 workspace_write，并说明预计图片数量，最多 2 张。不要把使用已有图片误写为图片生成。'
+          ? '账号已配置图片生成模型。用户明确要求生成图片，或交付物确实需要新图片且方案明确列出图片产物时，可以申请 image_generate；方案必须同时包含 workspace_write，并说明图片来源内容和用途。每个任务只能生成 1 张图片，需要多张时分别生成并由用户逐次确认。执行时由协调者选择最了解来源内容的成员，不要拆出独立的提示词规划步骤。不要把使用已有图片误写为图片生成。'
           : !isMultiReply
             ? '账号没有可用的图片生成模型，任务方案不得申请 image_generate；需要配图时只能使用现有工作区图片或采用无需新图片的方案。'
             : '',
+        explicitImageRequest ? '用户已在输入框明确选择“生成图片”。必须调用 propose_task，方案必须包含 workspace_read、workspace_write 和 image_generate，并说明需要读取的来源内容、每张图片的用途及预计数量；不得作为普通聊天直接回答。' : '',
         !isMultiReply ? '打招呼、事实问答、概念解释、讨论想法、没有明确交付约束的简单分析，以及几次只读或联网调用可以完成的查看，都直接在当前对话回答。用户明确要求专业分析、评估、审查、方案或清单，并同时给出数量、格式、标准或交付物约束时，应生成任务方案；用户明确要求直接回答或不要创建任务时除外。' : '',
         forceTaskProposal ? '系统已确认当前请求需要形成可验收的专业交付：通常必须调用 propose_task；但用户明确要求成员轮流、接力或相互审阅同一份文字成果时，应改用 start_relay。不要直接用正文代替结构化工具调用。' : '',
       ].join('\n'),
@@ -759,7 +783,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
               if (name === 'propose_task') {
                 if (taskProposal) return { ok: false, error: '本轮已经生成任务方案' };
                 const proposalSkill = selectedSkill || currentPendingProposal?.skillSnapshot || null;
-                taskProposal = taskProposalFromArgs(
+                const candidate = taskProposalFromArgs(
                   args,
                   allowWebSearch,
                   settings.imageModelAvailable,
@@ -769,6 +793,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
                     : currentPendingProposal?.skillAgentId,
                   textMessage
                 );
+                if (explicitImageRequest && !candidate.capabilities.includes('image_generate')) {
+                  return { ok: false, error: '生图模式的任务方案必须包含 image_generate 能力' };
+                }
+                taskProposal = candidate;
                 return { ok: true, pause: true, message: '任务方案已生成，等待用户确认' };
               }
               if (name === 'start_relay') {

@@ -21,6 +21,7 @@ model User {
   imageModelEnabled Boolean @default(false)
   imageModelName String?
   imageModelSize String? @default("1024x1024")
+  imageModelProtocol String @default("OPENAI_IMAGES")
   tavilyApiKey String?
   defaultStyle String?
   contextMessageLimit Int @default(40)

@@ -22,6 +22,7 @@ export async function GET(request: Request) {
         imageModelEnabled: true,
         imageModelName: true,
         imageModelSize: true,
+        imageModelProtocol: true,
         tavilyApiKey: true,
         defaultStyle: true,
         contextMessageLimit: true,
@@ -47,7 +48,7 @@ export async function PATCH(request: Request) {
     const userId = requireAuth(request);
     const body = await request.json();
 
-    const allowedFields = ['name', 'avatar', 'apiBaseUrl', 'apiKey', 'modelName', 'modelContextWindow', 'customModelEnabled', 'imageModelEnabled', 'imageModelName', 'imageModelSize', 'tavilyApiKey', 'defaultStyle', 'contextMessageLimit'] as const;
+    const allowedFields = ['name', 'avatar', 'apiBaseUrl', 'apiKey', 'modelName', 'modelContextWindow', 'customModelEnabled', 'imageModelEnabled', 'imageModelName', 'imageModelSize', 'imageModelProtocol', 'tavilyApiKey', 'defaultStyle', 'contextMessageLimit'] as const;
     const data: Record<string, any> = {};
     for (const field of allowedFields) {
       if (body[field] !== undefined) {
@@ -66,6 +67,9 @@ export async function PATCH(request: Request) {
     if (data.imageModelSize !== undefined && !['1024x1024', '1536x1024', '1024x1536'].includes(data.imageModelSize)) {
       return NextResponse.json({ error: '不支持的默认图片尺寸' }, { status: 400 });
     }
+    if (data.imageModelProtocol !== undefined && !['OPENAI_IMAGES', 'OPENAI_CHAT'].includes(data.imageModelProtocol)) {
+      return NextResponse.json({ error: '不支持的图片模型接口协议' }, { status: 400 });
+    }
 
     const user = await prisma.user.update({
       where: { id: userId },
@@ -83,6 +87,7 @@ export async function PATCH(request: Request) {
         imageModelEnabled: true,
         imageModelName: true,
         imageModelSize: true,
+        imageModelProtocol: true,
         tavilyApiKey: true,
         defaultStyle: true,
         contextMessageLimit: true,

@@ -7,9 +7,22 @@ export async function GET(request: Request, { params }: { params: Promise<{ spac
   try {
     const userId = requireAuth(request);
     const { spaceId } = await params;
-    const space = await getSpaceForUser(spaceId, userId);
+    const [space, imageSettings] = await Promise.all([
+      getSpaceForUser(spaceId, userId),
+      prisma.user.findUnique({
+        where: { id: userId },
+        select: { imageModelEnabled: true, imageModelName: true, apiBaseUrl: true, apiKey: true },
+      }),
+    ]);
     if (!space) return NextResponse.json({ error: 'Space not found' }, { status: 404 });
-    return NextResponse.json({ space });
+    return NextResponse.json({
+      space: {
+        ...space,
+        imageGenerationAvailable: Boolean(
+          imageSettings?.imageModelEnabled && imageSettings.imageModelName && imageSettings.apiBaseUrl && imageSettings.apiKey
+        ),
+      },
+    });
   } catch (e: any) {
     if (e.message === 'Unauthorized') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     return NextResponse.json({ error: e.message }, { status: 500 });

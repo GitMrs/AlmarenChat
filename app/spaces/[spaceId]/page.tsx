@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Activity, ArrowLeft, BookOpen, Check, CheckCircle2, ChevronRight, Code2, Download, FilePenLine, FileText, Globe2, History, ListTodo, Loader2, MessagesSquare, PackagePlus, Paperclip, Plus, RotateCcw, Save, Send, Settings2, ShieldCheck, SkipForward, Square, Trash2, UploadCloud, UsersRound, X } from 'lucide-react';
+import { Activity, ArrowLeft, BookOpen, Check, CheckCircle2, ChevronRight, Code2, Download, FilePenLine, FileText, Globe2, History, Image as ImageIcon, ListTodo, Loader2, MessagesSquare, PackagePlus, Paperclip, Plus, RotateCcw, Save, Send, Settings2, ShieldCheck, SkipForward, Square, Trash2, UploadCloud, UsersRound, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import AppShell from '@/components/layout/AppShell';
@@ -424,6 +424,7 @@ export default function SpaceDetailPage() {
   const [error, setError] = useState('');
   const [input, setInput] = useState('');
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
+  const [imageGenerationMode, setImageGenerationMode] = useState(false);
   const [skills, setSkills] = useState<SpaceSkill[]>([]);
   const [selectedSkillId, setSelectedSkillId] = useState<string | null>(null);
   const [skillSourceUrl, setSkillSourceUrl] = useState('');
@@ -511,6 +512,7 @@ export default function SpaceDetailPage() {
     [agents, space]
   );
   const isPiSpace = space?.runtimeType === 'PI_CODING';
+  const imageGenerationAvailable = Boolean(space?.imageGenerationAvailable);
   const coordinatorAgent = useMemo(() => space?.hostAgent || DEFAULT_COORDINATOR, [space]);
   const mentionAgents = useMemo(() => {
     const seen = new Set<string>();
@@ -958,7 +960,12 @@ export default function SpaceDetailPage() {
 
   const sendMessage = async (
     content: string,
-    options?: { reuseLastUserMessage?: boolean; historyOverride?: SpaceMessage[]; skillIdOverride?: string | null }
+    options?: {
+      reuseLastUserMessage?: boolean;
+      historyOverride?: SpaceMessage[];
+      skillIdOverride?: string | null;
+      imageGenerationRequested?: boolean;
+    }
   ) => {
     if (!content || isStreaming || activeRelay) return;
 
@@ -967,6 +974,7 @@ export default function SpaceDetailPage() {
     }
 
     const activeSkillId = options?.skillIdOverride === undefined ? selectedSkillId : options.skillIdOverride;
+    const requestImageGeneration = options?.imageGenerationRequested ?? imageGenerationMode;
     const activeSkill = skills.find((skill) => skill.id === activeSkillId) || null;
     const userMessage: SpaceMessage = {
       id: `user-${Date.now()}`,
@@ -999,7 +1007,7 @@ export default function SpaceDetailPage() {
     try {
       const controller = new AbortController();
       abortRef.current = controller;
-      const coordinatorRequested = mentionedAgents(content, [coordinatorAgent as Agent]).length > 0;
+      const coordinatorRequested = requestImageGeneration || mentionedAgents(content, [coordinatorAgent as Agent]).length > 0;
       const targets = coordinatorRequested ? [] : mentionedAgents(content, memberAgents);
       const replyRequests: Array<{
         target: Agent | null;
@@ -1009,6 +1017,7 @@ export default function SpaceDetailPage() {
         multiReplyIndex?: number;
         skipPersistUserMessage: boolean;
         allowWebSearch: boolean;
+        imageGenerationRequested?: boolean;
       }> = targets.length > 1
         ? targets.map((target, index) => ({
             target,
@@ -1017,6 +1026,7 @@ export default function SpaceDetailPage() {
             multiReplyIndex: index,
             skipPersistUserMessage: Boolean(options?.reuseLastUserMessage || index > 0),
             allowWebSearch: false,
+            imageGenerationRequested: false,
           }))
         : [{
             target: null,
@@ -1024,6 +1034,7 @@ export default function SpaceDetailPage() {
             interactionMode: 'chat',
             skipPersistUserMessage: Boolean(options?.reuseLastUserMessage),
             allowWebSearch: webSearchEnabled,
+            imageGenerationRequested: requestImageGeneration,
           }];
       setReplyQueueAgentIds(targets.length > 1 ? targets.map((agent) => agent.id) : []);
       let workspaceFilesChanged = 0;
@@ -1049,6 +1060,7 @@ export default function SpaceDetailPage() {
           coordinationScope: replyRequest.coordinationScope,
           multiReplyIndex: replyRequest.multiReplyIndex,
           webSearchEnabled: replyRequest.allowWebSearch,
+          imageGenerationRequested: replyRequest.imageGenerationRequested,
           skipPersistUserMessage: replyRequest.skipPersistUserMessage,
           skillId: replyRequest.interactionMode === 'chat' ? activeSkillId || undefined : undefined,
           workId: activeWorkId === 'new' ? undefined : activeWorkId,
@@ -1164,6 +1176,7 @@ export default function SpaceDetailPage() {
       setMessages(messageResult.messages);
       if (fileResult) setFiles(fileResult.files);
       setRelays(relayResult.relays);
+      if (requestImageGeneration) setImageGenerationMode(false);
       if (streamFailure) setError(streamFailure);
     } catch (err: any) {
       if (err.name !== 'AbortError') {
@@ -2711,7 +2724,7 @@ export default function SpaceDetailPage() {
 
             <footer className="border-t border-black/[0.06] bg-white p-3 sm:p-4 lg:bg-[#fbfaf7] lg:px-10 lg:pb-4 lg:pt-3">
               <div className="mx-auto max-w-4xl">
-                <ComposerShell toolbar={((!isPiSpace && works.length > 0) || selectedSkill) ? (
+                <ComposerShell toolbar={((!isPiSpace && works.length > 0) || selectedSkill || imageGenerationMode) ? (
                   <div className="flex max-w-full flex-wrap items-center gap-2">
                     {!isPiSpace && works.length > 0 && (
                       <select
@@ -2744,6 +2757,21 @@ export default function SpaceDetailPage() {
                         </button>
                       </div>
                     )}
+                    {imageGenerationMode && (
+                      <div className="inline-flex h-8 max-w-full items-center gap-2 rounded-lg bg-rose-50 px-2.5 text-xs font-black text-rose-700">
+                        <ImageIcon size={13} className="shrink-0" />
+                        <span className="truncate">由空间协调者安排生图</span>
+                        <button
+                          type="button"
+                          onClick={() => setImageGenerationMode(false)}
+                          aria-label="退出生图模式"
+                          title="退出生图模式"
+                          className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-rose-400 hover:bg-rose-100 hover:text-rose-800"
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
+                    )}
                   </div>
                 ) : undefined}>
                 <div ref={composerToolsRef} className="relative mb-0.5 shrink-0">
@@ -2753,6 +2781,7 @@ export default function SpaceDetailPage() {
                         type="button"
                         onClick={() => {
                           setComposerToolsOpen(false);
+                          setImageGenerationMode(false);
                           window.requestAnimationFrame(() => fileInputRef.current?.click());
                         }}
                         disabled={uploadingFile}
@@ -2773,6 +2802,22 @@ export default function SpaceDetailPage() {
                       >
                         <Globe2 size={16} />
                         <span className="min-w-0 flex-1 whitespace-nowrap">联网搜索</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setImageGenerationMode((enabled) => !enabled);
+                          setComposerToolsOpen(false);
+                        }}
+                        disabled={!imageGenerationAvailable || isStreaming || isRunActive || hasPendingTaskProposal}
+                        title={!space?.imageGenerationAvailable
+                            ? '请先在账号设置中配置图片生成模型'
+                            : undefined}
+                        className={`flex h-10 w-full items-center gap-3 rounded-md px-3 text-left text-xs font-black transition disabled:text-slate-300 ${imageGenerationMode ? 'bg-rose-50 text-rose-700 hover:bg-rose-100' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-950'}`}
+                      >
+                        <ImageIcon size={16} />
+                        <span className="min-w-0 flex-1 whitespace-nowrap">生成图片</span>
+                        {imageGenerationMode && <Check size={14} />}
                       </button>
                       {!isPiSpace && <button
                         type="button"
@@ -2871,7 +2916,9 @@ export default function SpaceDetailPage() {
                     className={`relative flex h-11 w-11 items-center justify-center rounded-xl transition disabled:text-slate-300 ${composerToolsOpen ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-500 hover:bg-white hover:text-slate-950'}`}
                   >
                     <Plus size={19} className={`transition-transform ${composerToolsOpen ? 'rotate-45' : ''}`} />
-                    {webSearchEnabled && <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-emerald-500 ring-2 ring-white" />}
+                    {(webSearchEnabled || imageGenerationMode) && (
+                      <span className={`absolute right-2 top-2 h-2 w-2 rounded-full ring-2 ring-white ${imageGenerationMode ? 'bg-rose-500' : 'bg-emerald-500'}`} />
+                    )}
                   </button>
                 </div>
                 <textarea
@@ -2918,7 +2965,13 @@ export default function SpaceDetailPage() {
                     }
                   }}
                   disabled={Boolean(activeRelay)}
-                  placeholder={activeRelay ? '接力进行中，可在上方停止或确认当前动作' : isPiSpace ? '让 Pi 读取、修改或检查项目文件...' : '提问或交代任务...'}
+                  placeholder={activeRelay
+                    ? '接力进行中，可在上方停止或确认当前动作'
+                    : imageGenerationMode
+                      ? '描述要生成的图片，或指定需要读取后配图的内容...'
+                      : isPiSpace
+                        ? '让 Pi 读取、修改或检查项目文件...'
+                        : '提问或交代任务...'}
                   rows={1}
                   className="max-h-36 min-h-11 flex-1 resize-none bg-transparent px-4 py-3 text-sm font-medium leading-6 text-slate-800 outline-none placeholder:text-slate-400"
                 />

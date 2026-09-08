@@ -30,8 +30,8 @@ export function CompressionStatusPanel({
     refreshInterval: 60000, // 每分钟刷新一次
   });
 
-  const [showDetails, setShowDetails] = useState(false);
-  const [showHistory, setShowHistory] = useState(false);
+  const [showDetails, setShowDetails] = useState(true);
+  const [showHistory, setShowHistory] = useState(true);
 
   if (isLoading && !stats) {
     if (compact) return null;

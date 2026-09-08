@@ -170,7 +170,7 @@ export default function TaskProposalDialog({
               {capabilities.includes('image_generate') && (
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-50 px-3 py-1.5 text-xs font-black text-sky-700">
                   <ImageIcon size={13} />
-                  最多生成 2 张图片
+                  每个任务生成 1 张图片
                 </span>
               )}
               {networkPolicy !== 'forbidden' && (

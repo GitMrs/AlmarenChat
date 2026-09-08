@@ -753,6 +753,7 @@ export async function streamSpaceMessage(data: {
   };
   multiReplyIndex?: number;
   webSearchEnabled?: boolean;
+  imageGenerationRequested?: boolean;
   skipPersistUserMessage?: boolean;
   skillId?: string;
   workId?: string;
@@ -774,6 +775,7 @@ export async function streamSpaceMessage(data: {
       coordinationScope: data.coordinationScope,
       multiReplyIndex: data.multiReplyIndex,
       webSearchEnabled: data.webSearchEnabled,
+      imageGenerationRequested: data.imageGenerationRequested,
       skipPersistUserMessage: data.skipPersistUserMessage,
       skillId: data.skillId,
       workId: data.workId,
@@ -809,6 +811,7 @@ export const user = {
     imageModelEnabled?: boolean;
     imageModelName?: string | null;
     imageModelSize?: string | null;
+    imageModelProtocol?: 'OPENAI_IMAGES' | 'OPENAI_CHAT';
     tavilyApiKey?: string | null;
     defaultStyle?: string | null;
     contextMessageLimit?: number;

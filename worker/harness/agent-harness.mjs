@@ -12,7 +12,7 @@ import { authorizationAllowsCapability } from '../../lib/agent-runtime-v3-policy
 import { skillAllowsTool, skillExecutionToolSchema, spaceSkillReferenceToolSchema, taskSkill } from '../../lib/agent-runtime/skill-registry.mjs';
 import { readSpaceSkillFile } from '../../lib/space-skills.mjs';
 import { executeSkill } from '../runtime/builtin-skill-runtime.mjs';
-import { generateImageToolSchema, generateWorkspaceImage } from '../runtime/image-generation-runtime.mjs';
+import { generateImageToolSchema, generateImagesToolSchema, generateWorkspaceImages } from '../runtime/image-generation-runtime.mjs';
 import { continuationIterationsFromAnswer } from '../../lib/agent-wait-policy.mjs';
 import { taskContextTargetTokens } from '../../lib/model-limits.mjs';
 
@@ -133,7 +133,7 @@ export async function runExecutorHarness({
   registerWorkspaceFile,
   validateSubmission,
   workspaceOptions,
-  generateImage = generateWorkspaceImage,
+  generateImages = generateWorkspaceImages,
 }) {
   if (fakeMode) {
     return { result: `[测试结果] ${agent.name}已完成“${task.title}”，目标是：${run.input}`, paused: false };
@@ -142,7 +142,8 @@ export async function runExecutorHarness({
   const skill = taskSkill(task);
   const workspaceWriteAllowed = run.runtimeVersion >= 3
     ? authorizationAllowsCapability(context.authorization, 'workspace_write')
-      && (skillAllowsTool(skill, 'write_file') || skillAllowsTool(skill, 'patch_file') || skillAllowsTool(skill, 'generate_image'))
+      && (skillAllowsTool(skill, 'write_file') || skillAllowsTool(skill, 'patch_file')
+        || skillAllowsTool(skill, 'generate_images') || skillAllowsTool(skill, 'generate_image'))
     : wantsWorkspaceWrite(run.input)
       && (skillAllowsTool(skill, 'write_file') || skillAllowsTool(skill, 'patch_file'));
   const codeExecutionAllowed = run.runtimeVersion >= 3
@@ -155,7 +156,7 @@ export async function runExecutorHarness({
   const imageGenerationAllowed = run.runtimeVersion >= 3
     && workspaceWriteAllowed
     && authorizationAllowsCapability(context.authorization, 'image_generate')
-    && skillAllowsTool(skill, 'generate_image')
+    && (skillAllowsTool(skill, 'generate_images') || skillAllowsTool(skill, 'generate_image'))
     && Boolean(context.imageModel);
   const canProduceArtifacts = workspaceWriteAllowed || codeExecutionAllowed || imageGenerationAllowed;
   const priorContent = previousResultContext(run.id, previousResults, emit, context.model);
@@ -174,8 +175,11 @@ export async function runExecutorHarness({
   const displayedWaitAnswer = continuationIterations
     ? `用户已允许增加 ${continuationIterations} 轮执行额度`
     : task.waitAnswer;
+  const retryImageGeneration = Boolean(displayedWaitAnswer && imageGenerationAllowed && /图片模型|图片生成|接口协议|base64/i.test(
+    `${task.waitQuestion || ''}\n${task.waitReason || ''}`
+  ));
   const waitAnswer = displayedWaitAnswer
-    ? `\n\n执行中曾暂停询问：${task.waitQuestion || '缺少必要信息'}\n用户补充：${displayedWaitAnswer}\n请基于这项补充继续原步骤。`
+    ? `\n\n执行中曾暂停询问：${task.waitQuestion || '缺少必要信息'}\n用户补充：${displayedWaitAnswer}\n请基于这项补充继续原步骤。${retryImageGeneration ? '用户已明确允许再尝试一次图片生成；下一步必须重新调用 generate_images，不得先检查目标文件，也不得重复询问。' : ''}`
     : '';
   const baselineGuidance = baselinePaths.size === 0
     ? '系统已确认任务开始时空间工作区为空。新建目标文件时不得先调用 list_files，直接完成必要写入。'
@@ -218,7 +222,7 @@ export async function runExecutorHarness({
         {
           role: 'system',
           content: displayedWaitAnswer
-            ? `用户已允许恢复当前步骤。此前问题：${task.waitQuestion || '执行已暂停'}\n用户回复：${displayedWaitAnswer}\n请直接承接上一条工具结果，从尚未完成的下一项开始，不要重新回顾或重复读取已经获得的信息。`
+            ? `用户已允许恢复当前步骤。此前问题：${task.waitQuestion || '执行已暂停'}\n用户回复：${displayedWaitAnswer}\n请直接承接上一条工具结果，从尚未完成的下一项开始，不要重新回顾或重复读取已经获得的信息。${retryImageGeneration ? '\n用户已明确允许再尝试一次图片生成。必须立即重新调用 generate_images；不要先调用 check_files，也不要重复询问。' : ''}`
             : 'Worker 曾在执行中断后恢复。请直接承接上一条工具结果，从尚未完成的下一项开始，不要重新回顾或重复读取已经获得的信息。',
         },
       ]
@@ -236,6 +240,7 @@ export async function runExecutorHarness({
   const abortController = new AbortController();
   let submittedManifest = null;
   let generatedImageCount = 0;
+  let imageGenerationAttempted = false;
   const cancellationTimer = setInterval(() => {
     if (isCancelled()) abortController.abort();
   }, 250);
@@ -250,7 +255,8 @@ export async function runExecutorHarness({
           ? [safeCommandToolSchema]
           : []),
         ...(skillToolSchema ? [skillToolSchema] : []),
-        ...(imageGenerationAllowed ? [generateImageToolSchema] : []),
+        ...(imageGenerationAllowed && skillAllowsTool(skill, 'generate_images') ? [generateImagesToolSchema] : []),
+        ...(imageGenerationAllowed && skillAllowsTool(skill, 'generate_image') ? [generateImageToolSchema] : []),
         ...(skillReferenceTool ? [skillReferenceTool] : []),
         REQUEST_USER_INPUT_TOOL,
         SUBMIT_TASK_RESULT_TOOL,
@@ -359,39 +365,65 @@ export async function runExecutorHarness({
             return toolResult;
           });
         }
-        if (name === 'generate_image') {
-          if (generatedImageCount >= 2) {
-            return { ok: false, error: '当前步骤最多生成 2 张图片，请使用已经生成的图片完成交付。' };
+        if (name === 'generate_images' || name === 'generate_image') {
+          const legacySingleImage = name === 'generate_image';
+          const requestedImages = legacySingleImage
+            ? [{ prompt: args.prompt, fileName: args.fileName, size: args.size, purpose: '当前步骤图片' }]
+            : Array.isArray(args.images) ? args.images : [];
+          const imageLimit = 1;
+          if (requestedImages.length === 0 || generatedImageCount + requestedImages.length > imageLimit) {
+            return { ok: false, error: '当前执行批次只能生成 1 张图片。需要生成下一张时，请等待用户明确继续。' };
           }
-          generatedImageCount += 1;
-          emit(run.id, 'IMAGE_GENERATION_STARTED', `${agent.name}正在生成图片`, {
+          if (imageGenerationAttempted) {
+            return pauseForInput({
+              question: '本次图片生成已经尝试过一次，平台不会自动重试。请检查错误后回复“继续”再尝试。',
+              reason: '同一执行批次只允许调用一次图片生成接口。',
+            });
+          }
+          imageGenerationAttempted = true;
+          generatedImageCount += requestedImages.length;
+          emit(run.id, 'IMAGE_GENERATION_STARTED', `${agent.name}正在批量生成 ${requestedImages.length} 张图片`, {
             taskId: task.id,
             agentId: agent.id,
-            fileName: String(args.fileName || '').slice(0, 80),
-            imageNumber: generatedImageCount,
+            fileNames: requestedImages.map((image) => String(image?.fileName || '').slice(0, 80)),
+            imageCount: requestedImages.length,
           });
-          return generateImage({
+          return generateImages({
             model: context.imageModel,
-            prompt: args.prompt,
-            fileName: args.fileName,
-            size: args.size,
+            images: requestedImages,
             workspaceOptions,
             isCancelled,
           }).then(async (toolResult) => {
-            context.touchedPaths.add(toolResult.path);
-            await registerWorkspaceFile(toolResult.path);
-            emit(run.id, 'IMAGE_GENERATION_COMPLETED', `${agent.name}已生成图片`, {
-              taskId: task.id,
-              agentId: agent.id,
-              path: toolResult.path,
-              mimeType: toolResult.mimeType,
-              size: toolResult.size,
-              imageSize: toolResult.imageSize,
-              model: toolResult.model,
-            });
+            for (const image of toolResult.images || []) {
+              context.touchedPaths.add(image.path);
+              await registerWorkspaceFile(image.path);
+              emit(run.id, 'IMAGE_GENERATION_COMPLETED', `${agent.name}已生成图片`, {
+                taskId: task.id, agentId: agent.id, path: image.path, purpose: image.purpose,
+                mimeType: image.mimeType, size: image.size, imageSize: image.imageSize, model: image.model,
+              });
+            }
+            for (const failure of toolResult.failures || []) {
+              emit(run.id, 'IMAGE_GENERATION_FAILED', `${agent.name}生成图片失败`, {
+                taskId: task.id, agentId: agent.id, fileName: failure.fileName,
+                purpose: failure.purpose, error: failure.error,
+              });
+            }
+            const firstFailure = (toolResult.failures || [])[0];
+            if (firstFailure) {
+              const paused = pauseForInput({
+                question: '本次图片生成未全部成功，平台不会自动重试。请检查错误或模型配置，准备好后回复“继续”再尝试。',
+                reason: firstFailure.error,
+              });
+              return {
+                ...paused,
+                ok: false,
+                error: firstFailure.error,
+                retryAfterConfirmation: true,
+              };
+            }
             return toolResult;
           }).catch((error) => {
-            emit(run.id, 'IMAGE_GENERATION_FAILED', `${agent.name}生成图片失败`, {
+            emit(run.id, 'IMAGE_GENERATION_FAILED', `${agent.name}批量生成图片失败`, {
               taskId: task.id,
               agentId: agent.id,
               error: String(error?.message || error).slice(0, 500),
