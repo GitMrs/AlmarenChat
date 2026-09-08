@@ -1978,9 +1978,9 @@ export default function SpaceDetailPage() {
                   <p className="mt-1 line-clamp-2 text-xs font-semibold leading-5 text-slate-400">
                     {space.description || `${memberAgents.length + 1} 位成员协作空间`}
                   </p>
-                  {!isPiSpace && renderWorkSelector()}
                 </div>
               </div>
+              {!isPiSpace && renderWorkSelector()}
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto">
@@ -2138,7 +2138,8 @@ export default function SpaceDetailPage() {
           </aside>
 
           <main className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-            <header className="flex shrink-0 items-center gap-3 border-b border-black/[0.06] bg-white px-3 py-3 sm:px-5 lg:hidden">
+            <header className="shrink-0 border-b border-black/[0.06] bg-white px-3 py-3 sm:px-5 lg:hidden">
+              <div className="flex items-center gap-3">
               <button
                 type="button"
                 onClick={() => router.push('/spaces')}
@@ -2158,7 +2159,6 @@ export default function SpaceDetailPage() {
                 <p className="truncate text-xs font-semibold text-slate-400">
                   {space.description || `${memberAgents.length + 1} 位成员`}
                 </p>
-                {!isPiSpace && renderWorkSelector(true)}
               </div>
 
               <button
@@ -2209,6 +2209,8 @@ export default function SpaceDetailPage() {
               >
                 <Settings2 size={17} />
               </button>
+              </div>
+              {!isPiSpace && renderWorkSelector()}
             </header>
             <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-[#fbfaf7] px-4 py-5 sm:px-6 lg:px-10 lg:py-6">
               <div className="mx-auto max-w-4xl space-y-5">
