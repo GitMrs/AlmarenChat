@@ -144,7 +144,7 @@ export async function POST(request: Request) {
         webEnabled: false,
         experienceContext: memoryContext.experienceContext,
       }),
-      '【当前渠道】：你正在 QQ 私聊中回复用户。QQ 与网页共用同一个主聊天上下文；不要提供站内相对链接，回答保持适合即时消息阅读。长期记忆、任务和提醒也与网页共享。用户要求提醒时不要声称已经创建，系统会在回复末尾附加真实创建结果。',
+      '【当前渠道】：你正在 QQ 私聊中回复用户。QQ 与网页共用同一个主聊天上下文；不要提供站内相对链接，可以使用 QQ 支持的标准 Markdown，但避免 HTML 和复杂表格，回答保持适合即时消息阅读。长期记忆、任务和提醒也与网页共享。用户要求提醒时不要声称已经创建，系统会在回复末尾附加真实创建结果。',
     ].join('\n\n');
     const compressedHistory = compressConversationContext(
       memoryContext.history
@@ -174,72 +174,121 @@ export async function POST(request: Request) {
       { role: 'user', content: message },
     ];
 
-    const completion = await client.chat.completions.create({ model, messages: modelMessages });
-    const modelContent = completion.choices[0]?.message?.content?.trim();
-    if (!modelContent) throw new Error('模型没有返回可展示的正文');
-
     const userMessageId = eventMessageId('user', binding.appId, eventId);
-    let reminderCandidates: Array<{ content: string; dueTime: Date | null }> = [];
-    if (classifyReminderRequest(message).explicit) {
+    const finalizeResponse = async (modelContent: string) => {
+      const normalizedModelContent = modelContent.trim();
+      if (!normalizedModelContent) throw new Error('模型没有返回可展示的正文');
+
+      let reminderCandidates: Array<{ content: string; dueTime: Date | null }> = [];
+      if (classifyReminderRequest(message).explicit) {
+        try {
+          const reminderCompletion = await client.chat.completions.create({
+            model,
+            messages: [{ role: 'user', content: buildReminderExtractionPrompt(message) }],
+            temperature: 0.1,
+            max_tokens: 400,
+          });
+          reminderCandidates = parseReminderExtraction(reminderCompletion.choices[0]?.message?.content).slice(0, 10);
+        } catch {
+          reminderCandidates = [];
+        }
+      }
+      const reminderSummary = reminderCandidates.length
+        ? `\n\n已记录${reminderCandidates.length > 1 ? ` ${reminderCandidates.length} 条` : ''}提醒：${reminderCandidates.map((item) => item.content).join('、')}`
+        : '';
+      const content = `${normalizedModelContent}${reminderSummary}`;
+
       try {
-        const reminderCompletion = await client.chat.completions.create({
-          model,
-          messages: [{ role: 'user', content: buildReminderExtractionPrompt(message) }],
-          temperature: 0.1,
-          max_tokens: 400,
-        });
-        reminderCandidates = parseReminderExtraction(reminderCompletion.choices[0]?.message?.content).slice(0, 10);
-      } catch {
-        reminderCandidates = [];
-      }
-    }
-    const reminderSummary = reminderCandidates.length
-      ? `\n\n已记录${reminderCandidates.length > 1 ? ` ${reminderCandidates.length} 条` : ''}提醒：${reminderCandidates.map((item) => item.content).join('、')}`
-      : '';
-    const content = `${modelContent}${reminderSummary}`;
-
-    try {
-      await prisma.$transaction([
-        ...reminderCandidates.map((item, index) => prisma.assistantReminder.upsert({
-          where: {
-            userId_idempotencyKey: {
-              userId,
-              idempotencyKey: `qq-reminders:${userMessageId}:${index}`,
+        await prisma.$transaction([
+          ...reminderCandidates.map((item, index) => prisma.assistantReminder.upsert({
+            where: {
+              userId_idempotencyKey: {
+                userId,
+                idempotencyKey: `qq-reminders:${userMessageId}:${index}`,
+              },
             },
-          },
-          update: {},
-          create: {
-            userId,
-            content: item.content,
-            dueTime: item.dueTime,
-            sourceMessageId: userMessageId,
-            idempotencyKey: `qq-reminders:${userMessageId}:${index}`,
-            status: 'PENDING',
-          },
-        })),
-        prisma.message.create({
-          data: { id: userMessageId, conversationId: binding.conversationId, role: 'user', source: 'QQ', content: message },
-        }),
-        prisma.message.create({
-          data: { id: assistantMessageId, conversationId: binding.conversationId, role: 'assistant', source: 'QQ', content },
-        }),
-        prisma.conversation.update({
-          where: { id: binding.conversationId },
-          data: {
-            updatedAt: new Date(),
-          },
-        }),
-      ]);
-    } catch (error: any) {
-      if (error.code !== 'P2002') throw error;
-      const racedReply = await prisma.message.findUnique({ where: { id: assistantMessageId } });
-      if (racedReply?.content) {
-        return NextResponse.json({ content: racedReply.content, conversationId: binding.conversationId, replayed: true });
+            update: {},
+            create: {
+              userId,
+              content: item.content,
+              dueTime: item.dueTime,
+              sourceMessageId: userMessageId,
+              idempotencyKey: `qq-reminders:${userMessageId}:${index}`,
+              status: 'PENDING',
+            },
+          })),
+          prisma.message.create({
+            data: { id: userMessageId, conversationId: binding.conversationId, role: 'user', source: 'QQ', content: message },
+          }),
+          prisma.message.create({
+            data: { id: assistantMessageId, conversationId: binding.conversationId, role: 'assistant', source: 'QQ', content },
+          }),
+          prisma.conversation.update({
+            where: { id: binding.conversationId },
+            data: { updatedAt: new Date() },
+          }),
+        ]);
+      } catch (error: any) {
+        if (error.code !== 'P2002') throw error;
+        const racedReply = await prisma.message.findUnique({ where: { id: assistantMessageId } });
+        if (racedReply?.content) {
+          return { content: racedReply.content, streamContent: racedReply.content };
+        }
+        throw error;
       }
-      throw error;
+
+      return {
+        content,
+        streamContent: `${modelContent.trimStart()}${reminderSummary}`,
+      };
+    };
+
+    if (body.stream === true) {
+      const encoder = new TextEncoder();
+      const responseStream = new ReadableStream({
+        async start(controller) {
+          const emit = (event: Record<string, unknown>) => {
+            controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
+          };
+
+          try {
+            let modelContent = '';
+            const completion = await client.chat.completions.create({
+              model,
+              messages: modelMessages,
+              stream: true,
+            });
+            for await (const chunk of completion) {
+              const delta = chunk.choices[0]?.delta?.content;
+              if (!delta) continue;
+              modelContent += delta;
+              emit({ type: 'delta', content: delta });
+            }
+
+            const finalized = await finalizeResponse(modelContent);
+            emit({ type: 'done', content: finalized.streamContent, conversationId: binding.conversationId });
+          } catch (error: any) {
+            emit({ type: 'error', error: error.message || 'QQ 小伴回复失败' });
+          } finally {
+            controller.close();
+          }
+        },
+      });
+
+      return new Response(responseStream, {
+        headers: {
+          'Content-Type': 'application/x-ndjson; charset=utf-8',
+          'Cache-Control': 'no-cache, no-transform',
+          'X-Accel-Buffering': 'no',
+        },
+      });
     }
 
-    return NextResponse.json({ content, conversationId: binding.conversationId });
+    const completion = await client.chat.completions.create({ model, messages: modelMessages });
+    const modelContent = completion.choices[0]?.message?.content;
+    if (!modelContent?.trim()) throw new Error('模型没有返回可展示的正文');
+    const finalized = await finalizeResponse(modelContent);
+    return NextResponse.json({ content: finalized.content, conversationId: binding.conversationId });
   } catch (error: any) {
     return NextResponse.json({ error: error.message || 'QQ 小伴回复失败' }, { status: 500 });
   }

@@ -98,24 +98,69 @@ function applyReminderCommand(userId, command, refMsgIdx, eventId) {
   return `好，${command.minutes} 分钟后再提醒你「${reminder.content}」。`;
 }
 
-async function requestAssistant(binding, message, eventId) {
+async function requestAssistant(binding, message, eventId, onProgress) {
   const response = await fetch(internalUrl, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
       'x-qq-assistant-secret': secret,
     },
-    body: JSON.stringify({ userId: binding.userId, message, eventId }),
+    body: JSON.stringify({ userId: binding.userId, message, eventId, stream: true }),
     signal: AbortSignal.timeout(180_000),
   });
-  const result = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(result.error || `内部小伴接口返回 HTTP ${response.status}`);
-  return result.content;
+  if (!response.ok) {
+    const result = await response.json().catch(() => ({}));
+    throw new Error(result.error || `内部小伴接口返回 HTTP ${response.status}`);
+  }
+  if (!response.headers.get('content-type')?.includes('application/x-ndjson')) {
+    const result = await response.json().catch(() => ({}));
+    return { content: result.content || '', streamed: false };
+  }
+  if (!response.body) throw new Error('内部小伴接口没有返回消息流');
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let content = '';
+  let finalContent = '';
+  let displayedContent = '';
+
+  const consumeLine = async (line) => {
+    if (!line.trim()) return;
+    const event = JSON.parse(line);
+    if (event.type === 'error') throw new Error(event.error || 'QQ 小伴回复失败');
+    if (event.type === 'delta' && typeof event.content === 'string') {
+      content += event.content;
+      const nextContent = content.trimStart();
+      if (nextContent && nextContent !== displayedContent) {
+        displayedContent = nextContent;
+        await onProgress?.(nextContent);
+      }
+    }
+    if (event.type === 'done' && typeof event.content === 'string') {
+      finalContent = event.content;
+      if (finalContent && finalContent !== displayedContent) {
+        displayedContent = finalContent;
+        await onProgress?.(finalContent);
+      }
+    }
+  };
+
+  while (true) {
+    const { done, value } = await reader.read();
+    buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+    const lines = buffer.split(/\r?\n/);
+    buffer = lines.pop() || '';
+    for (const line of lines) await consumeLine(line);
+    if (done) break;
+  }
+  if (buffer.trim()) await consumeLine(buffer);
+  return { content: finalContent || content, streamed: true };
 }
 
-async function sendReply(bot, target, content) {
+async function sendMarkdownReply(bot, target, content) {
   const chunks = String(content || '').match(/[\s\S]{1,4800}/g)?.slice(0, 4) || [];
-  for (const chunk of chunks) await bot.sendText(target, chunk);
+  for (const chunk of chunks) await bot.sendMarkdown(target, chunk);
 }
 
 async function handleMessage(entry, msg) {
@@ -143,8 +188,35 @@ async function handleMessage(entry, msg) {
       msg.refMsgIdx,
       `${entry.appId}:${msg.messageId}`
     );
-    const reply = reminderReply || await requestAssistant(binding, content, msg.messageId);
-    await sendReply(entry.bot, msg.replyTarget, reply);
+    if (reminderReply) {
+      await sendMarkdownReply(entry.bot, msg.replyTarget, reminderReply);
+      return;
+    }
+
+    const qqStream = entry.bot.openStream({ target: msg.replyTarget });
+    let streamError = null;
+    const result = await requestAssistant(binding, content, msg.messageId, async (fullContent) => {
+      if (streamError || !fullContent) return;
+      try {
+        await qqStream.update(fullContent);
+      } catch (error) {
+        streamError = error;
+        qqStream.cancel();
+      }
+    });
+
+    if (streamError || !result.streamed) {
+      qqStream.cancel();
+      await sendMarkdownReply(entry.bot, msg.replyTarget, result.content);
+      return;
+    }
+
+    try {
+      await qqStream.complete();
+    } catch {
+      qqStream.cancel();
+      await sendMarkdownReply(entry.bot, msg.replyTarget, result.content);
+    }
   } catch (error) {
     const message = shortError(error);
     updateBinding(entry.userId, { lastError: message });
