@@ -320,7 +320,7 @@ function loadRunContext(run) {
   const space = db.prepare('SELECT * FROM "Space" WHERE "id" = ? AND "userId" = ?').get(run.spaceId, run.userId);
   if (!space) throw new Error('任务所属空间不存在');
   const user = db.prepare(
-    'SELECT "customModelEnabled", "apiBaseUrl", "apiKey", "modelName", "imageModelEnabled", "imageModelName", "imageModelSize", "tavilyApiKey" FROM "User" WHERE "id" = ?'
+    'SELECT "customModelEnabled", "apiBaseUrl", "apiKey", "modelName", "modelContextWindow", "imageModelEnabled", "imageModelName", "imageModelSize", "tavilyApiKey" FROM "User" WHERE "id" = ?'
   ).get(run.userId);
   if (!user) throw new Error('任务所属用户不存在');
 
@@ -332,7 +332,7 @@ function loadRunContext(run) {
   if (customIds.length > 0) {
     const placeholders = customIds.map(() => '?').join(', ');
     const rows = db.prepare(
-      `SELECT "id", "name", "description", "systemPrompt", "category" FROM "Agent" WHERE "id" IN (${placeholders})`
+      `SELECT "id", "name", "description", "systemPrompt", "category", "agentType" FROM "Agent" WHERE "id" IN (${placeholders})`
     ).all(...customIds);
     for (const agent of rows) customAgents.set(agent.id, agent);
   }
@@ -343,11 +343,13 @@ function loadRunContext(run) {
     .filter(Boolean)
     .map((agent) => ({
       ...agent,
-      memoryContext: loadAgentMemoryContextSync(db, {
-        userId: run.userId,
-        agentId: agent.id,
-        query: agentMemoryQuery,
-      }),
+      memoryContext: agent.agentType === 'EMPLOYEE'
+        ? loadAgentMemoryContextSync(db, {
+            userId: run.userId,
+            agentId: agent.id,
+            query: agentMemoryQuery,
+          })
+        : '',
     }));
   if (agents.length === 0) throw new Error('空间中没有可执行任务的 Agent');
   const usesCoordinatorAdvisor = Boolean(db.prepare(
@@ -368,6 +370,7 @@ function loadRunContext(run) {
       apiKey: apiKey || 'fake-key',
       baseURL: useCustomModel ? user.apiBaseUrl : 'https://api-inference.modelscope.cn/v1',
       name: useCustomModel ? user.modelName : 'deepseek-ai/DeepSeek-V4-Flash',
+      contextWindow: user.modelContextWindow,
     },
     imageModel: user.imageModelEnabled && user.apiBaseUrl && user.apiKey && user.imageModelName
       ? {
@@ -922,8 +925,18 @@ function markAgentWorking(run, task) {
 }
 
 async function executeTask(run, task, context, previousResults) {
-  const agent = context.agents.find((item) => item.id === task.agentId);
-  if (!agent) throw new Error(`找不到任务成员：${task.agentId}`);
+  const assignedAgent = context.agents.find((item) => item.id === task.agentId);
+  if (!assignedAgent) throw new Error(`找不到任务成员：${task.agentId}`);
+  const agent = assignedAgent.agentType === 'EMPLOYEE'
+    ? {
+        ...assignedAgent,
+        memoryContext: loadAgentMemoryContextSync(db, {
+          userId: run.userId,
+          agentId: assignedAgent.id,
+          query: `${task.title}\n${task.instruction}\n${task.acceptanceCriteria || ''}`,
+        }),
+      }
+    : assignedAgent;
   if (task.mode === 'advisor') return executeAdvisorTask(run, task, context, previousResults, agent);
   const artifactManifest = await ensureTaskArtifactManifest(run, task);
   const workspaceOptions = taskWorkspaceOptions(run, task);

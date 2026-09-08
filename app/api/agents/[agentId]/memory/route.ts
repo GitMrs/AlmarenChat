@@ -6,6 +6,13 @@ import { manualAgentMemoryRule, synchronizeAgentMemory } from '@/lib/agent-memor
 
 const ACTIONS = new Set(['approve', 'ignore', 'update', 'enable', 'disable']);
 
+async function isEmployeeAgent(agentId: string) {
+  return Boolean(await prisma.agent.findFirst({
+    where: { id: agentId, agentType: 'EMPLOYEE' },
+    select: { id: true },
+  }));
+}
+
 async function responseFor(userId: string, agentId: string) {
   const [rules, experiences] = await Promise.all([
     prisma.agentMemoryRule.findMany({
@@ -26,6 +33,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ agen
   try {
     const userId = requireAuth(request);
     const { agentId } = await params;
+    if (!(await isEmployeeAgent(agentId))) {
+      return NextResponse.json({ error: '普通 Agent 没有成长档案' }, { status: 404 });
+    }
     await synchronizeAgentMemory(userId, agentId);
     return NextResponse.json(await responseFor(userId, agentId));
   } catch (error: any) {
@@ -38,6 +48,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ age
   try {
     const userId = requireAuth(request);
     const { agentId } = await params;
+    if (!(await isEmployeeAgent(agentId))) {
+      return NextResponse.json({ error: '普通 Agent 不支持员工记忆' }, { status: 400 });
+    }
     const rule = manualAgentMemoryRule(await request.json());
     await prisma.agentMemoryRule.upsert({
       where: { userId_agentId_key: { userId, agentId, key: rule.key } },
@@ -55,6 +68,9 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ ag
   try {
     const userId = requireAuth(request);
     const { agentId } = await params;
+    if (!(await isEmployeeAgent(agentId))) {
+      return NextResponse.json({ error: '普通 Agent 不支持员工记忆' }, { status: 400 });
+    }
     const body = await request.json();
     const action = String(body.action || '');
     const id = String(body.id || '');
@@ -90,6 +106,9 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ a
   try {
     const userId = requireAuth(request);
     const { agentId } = await params;
+    if (!(await isEmployeeAgent(agentId))) {
+      return NextResponse.json({ error: '普通 Agent 不支持员工记忆' }, { status: 400 });
+    }
     const id = new URL(request.url).searchParams.get('id') || '';
     const result = await prisma.agentMemoryRule.deleteMany({ where: { id, userId, agentId } });
     if (result.count !== 1) return NextResponse.json({ error: '员工经验不存在' }, { status: 404 });

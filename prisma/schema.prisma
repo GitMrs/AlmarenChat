@@ -16,6 +16,7 @@ model User {
   apiBaseUrl   String?
   apiKey       String?
   modelName    String?
+  modelContextWindow Int?
   customModelEnabled Boolean @default(false)
   imageModelEnabled Boolean @default(false)
   imageModelName String?
@@ -58,6 +59,7 @@ model Agent {
   greeting     String?
   systemPrompt String?
   model        String?
+  agentType    String         @default("BASIC")
   isPublic     Boolean        @default(true)
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt

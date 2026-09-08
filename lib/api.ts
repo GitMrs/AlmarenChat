@@ -745,6 +745,12 @@ export async function streamSpaceMessage(data: {
   history: { role: string; content: string; speakerAgentId?: string | null }[];
   targetAgentId?: string;
   interactionMode?: 'chat' | 'multi_reply' | 'coordinated_turn' | 'coordination_summary';
+  coordinationScope?: {
+    scopeId: string;
+    mode: 'broadcast' | 'discussion' | 'review' | 'decision' | 'relay';
+    topic: string;
+    participantIds: string[];
+  };
   multiReplyIndex?: number;
   webSearchEnabled?: boolean;
   skipPersistUserMessage?: boolean;
@@ -765,6 +771,7 @@ export async function streamSpaceMessage(data: {
       history: data.history,
       targetAgentId: data.targetAgentId,
       interactionMode: data.interactionMode,
+      coordinationScope: data.coordinationScope,
       multiReplyIndex: data.multiReplyIndex,
       webSearchEnabled: data.webSearchEnabled,
       skipPersistUserMessage: data.skipPersistUserMessage,
@@ -797,6 +804,7 @@ export const user = {
     apiBaseUrl?: string | null;
     apiKey?: string | null;
     modelName?: string | null;
+    modelContextWindow?: number;
     customModelEnabled?: boolean;
     imageModelEnabled?: boolean;
     imageModelName?: string | null;

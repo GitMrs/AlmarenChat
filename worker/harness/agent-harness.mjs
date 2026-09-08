@@ -14,6 +14,7 @@ import { readSpaceSkillFile } from '../../lib/space-skills.mjs';
 import { executeSkill } from '../runtime/builtin-skill-runtime.mjs';
 import { generateImageToolSchema, generateWorkspaceImage } from '../runtime/image-generation-runtime.mjs';
 import { continuationIterationsFromAnswer } from '../../lib/agent-wait-policy.mjs';
+import { taskContextTargetTokens } from '../../lib/model-limits.mjs';
 
 const READ_TOOLS = new Set(['list_files', 'read_file', 'check_files']);
 export const EXECUTOR_TOOL_ITERATIONS = 10;
@@ -79,7 +80,7 @@ function previousAttemptSection(task) {
     : '';
 }
 
-function previousResultContext(runId, previousResults, emit) {
+function previousResultContext(runId, previousResults, emit, model) {
   if (previousResults.length === 0) return '';
   const raw = previousResults.map((item) => `【${item.title}】\n${item.result}`).join('\n\n');
   if (raw.length <= 4_000) return raw;
@@ -90,7 +91,7 @@ function previousResultContext(runId, previousResults, emit) {
     createdAt: new Date().toISOString(),
   }));
   const compressed = contextManager.compress(messages, {
-    targetTokens: 3_000,
+    targetTokens: taskContextTargetTokens(model?.name, model?.contextWindow),
     maxMessages: previousResults.length,
     preserveRecent: Math.max(2, Math.floor(previousResults.length * 0.3)),
   });
@@ -157,7 +158,7 @@ export async function runExecutorHarness({
     && skillAllowsTool(skill, 'generate_image')
     && Boolean(context.imageModel);
   const canProduceArtifacts = workspaceWriteAllowed || codeExecutionAllowed || imageGenerationAllowed;
-  const priorContent = previousResultContext(run.id, previousResults, emit);
+  const priorContent = previousResultContext(run.id, previousResults, emit, context.model);
   const prior = priorContent ? `\n\n前序步骤结果：\n${priorContent}` : '';
   const research = context.researchContext && needsResearch(run, task)
     ? `\n\n受控联网资料：\n${context.researchContext}`

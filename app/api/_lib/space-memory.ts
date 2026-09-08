@@ -59,7 +59,7 @@ export async function rebuildSpaceMemory(spaceId: string) {
     const attachments = Array.isArray(message.attachments) ? message.attachments : [];
     const structured = attachments.find((attachment) => (
       attachment && typeof attachment === 'object'
-      && ['task_proposal', 'run_result'].includes(String((attachment as { type?: unknown }).type || ''))
+      && ['task_proposal', 'run_result', 'space_memory_episode'].includes(String((attachment as { type?: unknown }).type || ''))
     ));
     if (!structured || typeof structured !== 'object') return [];
     const type = String((structured as { type?: unknown }).type || '');
@@ -68,7 +68,11 @@ export async function rebuildSpaceMemory(spaceId: string) {
     return [{
       type,
       actor: message.speakerAgentId || '空间协调者',
-      summary: type === 'task_proposal' ? [title, summary].filter(Boolean).join('：') : message.content,
+      summary: type === 'task_proposal'
+        ? [title, summary].filter(Boolean).join('：')
+        : type === 'space_memory_episode'
+          ? [String((structured as { topic?: unknown }).topic || '').trim(), summary].filter(Boolean).join('：')
+          : message.content,
       at: message.createdAt.toISOString(),
       refId: message.id,
     }];

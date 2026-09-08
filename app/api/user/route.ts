@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
+import { MODEL_CONTEXT_WINDOW_OPTIONS } from '@/lib/model-limits.mjs';
 
 export async function GET(request: Request) {
   try {
@@ -16,6 +17,7 @@ export async function GET(request: Request) {
         apiBaseUrl: true,
         apiKey: true,
         modelName: true,
+        modelContextWindow: true,
         customModelEnabled: true,
         imageModelEnabled: true,
         imageModelName: true,
@@ -45,7 +47,7 @@ export async function PATCH(request: Request) {
     const userId = requireAuth(request);
     const body = await request.json();
 
-    const allowedFields = ['name', 'avatar', 'apiBaseUrl', 'apiKey', 'modelName', 'customModelEnabled', 'imageModelEnabled', 'imageModelName', 'imageModelSize', 'tavilyApiKey', 'defaultStyle', 'contextMessageLimit'] as const;
+    const allowedFields = ['name', 'avatar', 'apiBaseUrl', 'apiKey', 'modelName', 'modelContextWindow', 'customModelEnabled', 'imageModelEnabled', 'imageModelName', 'imageModelSize', 'tavilyApiKey', 'defaultStyle', 'contextMessageLimit'] as const;
     const data: Record<string, any> = {};
     for (const field of allowedFields) {
       if (body[field] !== undefined) {
@@ -55,6 +57,11 @@ export async function PATCH(request: Request) {
     if (data.contextMessageLimit !== undefined) {
       const limit = Number(data.contextMessageLimit);
       data.contextMessageLimit = Math.max(1, Math.min(80, Number.isFinite(limit) ? Math.floor(limit) : 40));
+    }
+    if (data.modelContextWindow !== undefined
+      && data.modelContextWindow !== null
+      && !MODEL_CONTEXT_WINDOW_OPTIONS.includes(Number(data.modelContextWindow))) {
+      return NextResponse.json({ error: '不支持的模型上下文窗口' }, { status: 400 });
     }
     if (data.imageModelSize !== undefined && !['1024x1024', '1536x1024', '1024x1536'].includes(data.imageModelSize)) {
       return NextResponse.json({ error: '不支持的默认图片尺寸' }, { status: 400 });
@@ -71,6 +78,7 @@ export async function PATCH(request: Request) {
         apiBaseUrl: true,
         apiKey: true,
         modelName: true,
+        modelContextWindow: true,
         customModelEnabled: true,
         imageModelEnabled: true,
         imageModelName: true,

@@ -21,7 +21,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ ag
   try {
     const userId = requireAuth(request);
     const { agentId } = await params;
-    const data = await request.json();
+    const { agentType: _agentType, ...data } = await request.json();
 
     const agent = await prisma.agent.findUnique({ where: { id: agentId } });
     if (!agent) {

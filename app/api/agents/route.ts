@@ -25,8 +25,12 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const userId = requireAuth(request);
-    const { name, avatar, description, category, tone, greeting, systemPrompt, isPublic } =
+    const { name, avatar, description, category, tone, greeting, systemPrompt, isPublic, agentType } =
       await request.json();
+
+    if (!['BASIC', 'EMPLOYEE'].includes(agentType)) {
+      return NextResponse.json({ error: '不支持的 Agent 类型' }, { status: 400 });
+    }
 
     const agent = await prisma.agent.create({
       data: {
@@ -37,6 +41,7 @@ export async function POST(request: Request) {
         tone,
         greeting,
         systemPrompt,
+        agentType,
         isPublic: isPublic ?? false,
         creatorId: userId,
       },

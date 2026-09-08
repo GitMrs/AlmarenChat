@@ -21,9 +21,7 @@ export default function AgentAvatarPicker({
 }: AgentAvatarPickerProps) {
   return (
     <div className="flex w-[136px] flex-col items-center gap-3">
-      <div className="rounded-2xl bg-slate-50 p-2">
-        <Avatar src={value} alt={agentName || 'Agent'} size="lg" />
-      </div>
+      <Avatar src={value} alt={agentName || 'Agent'} size="lg" />
       <div className="grid grid-cols-3 gap-1">
         {options.map((avatar, index) => {
           const selected = value === avatar;
@@ -50,10 +48,10 @@ export default function AgentAvatarPicker({
         type="button"
         onClick={onRefresh}
         title="换一批头像"
-        className="inline-flex h-9 w-fit items-center justify-center gap-1.5 rounded-full border border-black/[0.06] bg-white px-4 text-xs font-bold text-slate-500 transition hover:bg-slate-50 hover:text-slate-900"
+        aria-label="换一批头像"
+        className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-900"
       >
         <RefreshCw size={13} />
-        换一批
       </button>
     </div>
   );

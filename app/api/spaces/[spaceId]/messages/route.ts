@@ -16,6 +16,7 @@ import { collectChatCompletionStream, runToolLoop } from '@/lib/agent-runtime/to
 import { normalizeTaskProposalSteps, taskProposalCapabilities, taskProposalNeedsClarification, taskProposalWithTurnNetworkAuthorization } from '@/lib/task-proposals';
 import { professionalDeliverableNeedsTask } from '@/lib/task-proposal-policy.mjs';
 import { compressConversationContext, estimateMessagesTokens } from '@/lib/context-compression';
+import { conversationContextTargetTokens } from '@/lib/model-limits.mjs';
 import { spaceMemoryContext } from '@/lib/space-memory-policy.mjs';
 import { persistSpaceMemory, rebuildSpaceMemory, spaceMemoryNeedsTrustedRebuild } from '@/app/api/_lib/space-memory';
 import { recentRunEvidenceContext } from '@/lib/agent-run-evidence.mjs';
@@ -25,6 +26,7 @@ import { createModelClient, DEFAULT_BASE_URL, DEFAULT_MODEL, resolveModelName } 
 import { getSpaceSkill, readSpaceSkillFile } from '@/lib/space-skills.mjs';
 import { spaceSkillReferenceToolSchema } from '@/lib/agent-runtime/skill-registry.mjs';
 import { runPiSpaceTurn } from '@/lib/pi-runtime/space-session.mjs';
+import { selectRelevantProjectMemory } from '@/lib/pi-runtime/working-memory.mjs';
 import { createCollaborationState } from '@/lib/relay/collaboration.mjs';
 import { createGomokuState } from '@/lib/relay/gomoku.mjs';
 import { loadAgentMemoryContext } from '@/lib/agent-memory';
@@ -33,6 +35,29 @@ const MESSAGE_PAGE_SIZE = 40;
 const READ_ONLY_WORKSPACE_TOOLS = new Set(['list_files', 'read_file', 'check_files']);
 const ACTIVE_DISCUSSION_STATUSES = ['QUEUED', 'RUNNING', 'WAITING_RESEARCH', 'CANCEL_REQUESTED'];
 const ACTIVE_RELAY_STATUSES = ['QUEUED', 'RUNNING', 'WAITING_APPROVAL', 'CANCEL_REQUESTED'];
+const PI_COORDINATION_MODES = new Set(['broadcast', 'discussion', 'review', 'decision', 'relay']);
+
+type PiCoordinationScope = {
+  scopeId: string;
+  mode: 'broadcast' | 'discussion' | 'review' | 'decision' | 'relay';
+  topic: string;
+  participantIds: string[];
+};
+
+function normalizePiCoordinationScope(value: unknown, memberAgentIds: Set<string>): PiCoordinationScope | null {
+  if (!value || typeof value !== 'object') return null;
+  const source = value as Record<string, unknown>;
+  const scopeId = typeof source.scopeId === 'string' && /^[a-zA-Z0-9_-]{1,80}$/.test(source.scopeId)
+    ? source.scopeId
+    : '';
+  const mode = String(source.mode || '');
+  const topic = typeof source.topic === 'string' ? source.topic.trim().slice(0, 4000) : '';
+  const participantIds = [...new Set(Array.isArray(source.participantIds) ? source.participantIds.map(String) : [])]
+    .filter((id) => memberAgentIds.has(id))
+    .slice(0, 6);
+  if (!scopeId || !PI_COORDINATION_MODES.has(mode) || !topic || participantIds.length === 0) return null;
+  return { scopeId, mode: mode as PiCoordinationScope['mode'], topic, participantIds };
+}
 const WEB_SEARCH_TOOL = {
   type: 'function',
   function: {
@@ -206,6 +231,7 @@ async function userModelSettings(userId: string) {
       apiBaseUrl: true,
       apiKey: true,
       modelName: true,
+      modelContextWindow: true,
       imageModelEnabled: true,
       imageModelName: true,
       imageModelSize: true,
@@ -218,6 +244,7 @@ async function userModelSettings(userId: string) {
     apiBaseUrl: user.customModelEnabled ? user.apiBaseUrl : null,
     apiKey: user.customModelEnabled ? user.apiKey : null,
     modelName: user.customModelEnabled ? user.modelName : null,
+    modelContextWindow: user.modelContextWindow,
     imageModelAvailable: Boolean(user.imageModelEnabled && user.apiBaseUrl && user.apiKey && user.imageModelName),
     tavilyApiKey: user.tavilyApiKey,
     contextMessageLimit: user.contextMessageLimit || 40,
@@ -260,14 +287,24 @@ async function handlePiMessage(options: {
   allowWebSearch: boolean;
   agentMemoryContext: string;
   interactionMode?: 'chat' | 'multi_reply' | 'coordinated_turn' | 'coordination_summary';
+  coordinationScope?: PiCoordinationScope | null;
   multiReplyIndex: number;
 }) {
   const {
     userId, spaceId, space, targetAgent, memberAgents, selectedSkill, textMessage,
-    skipPersistUserMessage, allowWebSearch, agentMemoryContext, interactionMode, multiReplyIndex,
+    skipPersistUserMessage, allowWebSearch, agentMemoryContext, interactionMode, coordinationScope, multiReplyIndex,
   } = options;
+  let persistedMemory = await prisma.spaceMemory.findUnique({ where: { spaceId } });
+  if (!persistedMemory || spaceMemoryNeedsTrustedRebuild(persistedMemory)) {
+    await rebuildSpaceMemory(spaceId);
+    persistedMemory = await prisma.spaceMemory.findUnique({ where: { spaceId } });
+  }
+  const projectMemoryContext = coordinationScope
+    ? selectRelevantProjectMemory(spaceMemoryContext(persistedMemory), coordinationScope.topic)
+    : '';
+  let persistedUserMessage: { id: string; createdAt: Date } | null = null;
   if (!skipPersistUserMessage) {
-    await prisma.spaceMessage.create({
+    persistedUserMessage = await prisma.spaceMessage.create({
       data: {
         spaceId,
         role: 'user',
@@ -280,7 +317,15 @@ async function handlePiMessage(options: {
           digest: selectedSkill.digest,
         }] as Prisma.InputJsonValue } : {}),
       },
+      select: { id: true, createdAt: true },
     });
+    await persistSpaceMemory(spaceId, [{
+      type: 'user_message',
+      actor: '用户',
+      summary: textMessage,
+      at: persistedUserMessage.createdAt.toISOString(),
+      refId: persistedUserMessage.id,
+    }]);
   }
 
   const settings = await userModelSettings(userId);
@@ -311,7 +356,10 @@ async function handlePiMessage(options: {
             apiBaseUrl: settings.apiBaseUrl || DEFAULT_BASE_URL,
             apiKey: settings.apiKey || process.env.apiKey,
             modelName: settings.modelName || DEFAULT_MODEL,
+            modelContextWindow: settings.modelContextWindow,
             allowWebSearch,
+            coordinationScope,
+            projectMemoryContext,
             onCoordinationRequest: (request: Record<string, unknown>) => {
               if (coordinationRequest) return false;
               coordinationRequest = request;
@@ -352,18 +400,37 @@ async function handlePiMessage(options: {
           return;
         }
         await syncPiWorkspaceFiles(userId, spaceId, changedPaths);
-        await prisma.$transaction([
+        const memoryEpisode = interactionMode === 'coordination_summary' && coordinationScope ? {
+          type: 'space_memory_episode',
+          scopeId: coordinationScope.scopeId,
+          kind: 'coordination',
+          mode: coordinationScope.mode,
+          topic: coordinationScope.topic,
+          participantIds: coordinationScope.participantIds,
+          summary: result.content,
+        } : null;
+        const [, assistantMessage] = await prisma.$transaction([
+          prisma.space.update({ where: { id: spaceId }, data: { updatedAt: new Date() } }),
           prisma.spaceMessage.create({
             data: {
               spaceId,
               role: 'assistant',
               speakerAgentId: targetAgent.id,
               content: result.content,
-              attachments: [result.execution] as Prisma.InputJsonValue,
+              attachments: [result.execution, ...(memoryEpisode ? [memoryEpisode] : [])] as Prisma.InputJsonValue,
             },
+            select: { id: true, createdAt: true },
           }),
-          prisma.space.update({ where: { id: spaceId }, data: { updatedAt: new Date() } }),
         ]);
+        if (memoryEpisode) {
+          await persistSpaceMemory(spaceId, [{
+            type: 'coordination_summary',
+            actor: targetAgent.name,
+            summary: `${coordinationScope.topic}：${result.content}`,
+            at: assistantMessage.createdAt.toISOString(),
+            refId: assistantMessage.id,
+          }]);
+        }
         send({ type: 'complete', execution: result.execution, ...(coordinationRequest ? { coordination: coordinationRequest } : {}) });
         try { controller.close(); } catch { /* client disconnected */ }
       } catch (error) {
@@ -414,7 +481,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
     const userId = requireAuth(request);
     const { spaceId } = await params;
     const {
-      message, targetAgentId, history, skipPersistUserMessage, interactionMode,
+      message, targetAgentId, history, skipPersistUserMessage, interactionMode, coordinationScope,
       multiReplyIndex, webSearchEnabled, skillId, workId,
     } = await request.json();
     const textMessage = typeof message === 'string' ? message.trim() : '';
@@ -453,6 +520,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
     }
 
     if (space.runtimeType === 'PI_CODING') {
+      const normalizedInteractionMode = ['multi_reply', 'coordinated_turn', 'coordination_summary'].includes(interactionMode)
+        ? interactionMode
+        : 'chat';
+      const normalizedCoordinationScope = ['coordinated_turn', 'coordination_summary'].includes(normalizedInteractionMode)
+        ? normalizePiCoordinationScope(coordinationScope, new Set(memberAgents.map((agent) => agent.id)))
+        : null;
+      if (['coordinated_turn', 'coordination_summary'].includes(normalizedInteractionMode) && !normalizedCoordinationScope) {
+        return NextResponse.json({ error: '成员协作范围无效或已经失效' }, { status: 400 });
+      }
       return handlePiMessage({
         userId,
         spaceId,
@@ -464,9 +540,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
         skipPersistUserMessage: Boolean(skipPersistUserMessage),
         allowWebSearch,
         agentMemoryContext: agentMemory,
-        interactionMode: ['multi_reply', 'coordinated_turn', 'coordination_summary'].includes(interactionMode)
-          ? interactionMode
-          : 'chat',
+        interactionMode: normalizedInteractionMode,
+        coordinationScope: normalizedCoordinationScope,
         multiReplyIndex: Number.isInteger(multiReplyIndex) && multiReplyIndex > 0
           ? Math.min(multiReplyIndex, 20)
           : 0,
@@ -536,7 +611,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
     // 智能上下文压缩
     let sourceHistory = rawHistory;
     const originalTokenCount = estimateMessagesTokens(rawHistory);
-    const targetTokens = 6000; // 目标 token 数量
+    const targetTokens = conversationContextTargetTokens(settings.modelName || DEFAULT_MODEL, settings.modelContextWindow);
 
     if (rawHistory.length > settings.contextMessageLimit || originalTokenCount > targetTokens) {
       const compressionResult = compressConversationContext(rawHistory, {

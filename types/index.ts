@@ -9,6 +9,7 @@ export interface User {
 export interface Agent {
   id: string;
   creatorId?: string;
+  agentType: 'BASIC' | 'EMPLOYEE';
   name: string;
   avatar?: string;
   description?: string;
@@ -412,10 +413,21 @@ export interface SpacePiExecutionNote {
 }
 
 export interface SpacePiCoordinationRequest {
+  scopeId: string;
   mode: 'broadcast' | 'discussion' | 'review' | 'decision' | 'relay';
   topic: string;
   participantIds: string[];
   rounds: number;
+}
+
+export interface SpacePiMemoryEpisodeAttachment {
+  type: 'space_memory_episode';
+  scopeId: string;
+  kind: 'coordination';
+  mode: SpacePiCoordinationRequest['mode'];
+  topic: string;
+  participantIds: string[];
+  summary: string;
 }
 
 export interface SpacePiExecutionAttachment {
@@ -549,7 +561,7 @@ export interface SpaceRelayReviewAttachment {
   decision: 'CONTINUE';
 }
 
-export type SpaceMessageAttachment = MessageAttachment | SpaceTaskProposal | SpaceDiscussionAttachment | SpaceRunResultAttachment | SpaceSkillInvocationAttachment | SpacePiExecutionAttachment | SpaceRelayAttachment | SpaceRelayStartedAttachment | SpaceRelayTurnAttachment | SpaceRelayReviewAttachment;
+export type SpaceMessageAttachment = MessageAttachment | SpaceTaskProposal | SpaceDiscussionAttachment | SpaceRunResultAttachment | SpaceSkillInvocationAttachment | SpacePiExecutionAttachment | SpacePiMemoryEpisodeAttachment | SpaceRelayAttachment | SpaceRelayStartedAttachment | SpaceRelayTurnAttachment | SpaceRelayReviewAttachment;
 
 export interface AgentRun {
   id: string;

@@ -1005,6 +1005,7 @@ export default function SpaceDetailPage() {
         target: Agent | null;
         message: string;
         interactionMode: 'chat' | 'multi_reply' | 'coordinated_turn' | 'coordination_summary';
+        coordinationScope?: SpacePiCoordinationRequest;
         multiReplyIndex?: number;
         skipPersistUserMessage: boolean;
         allowWebSearch: boolean;
@@ -1045,6 +1046,7 @@ export default function SpaceDetailPage() {
           })),
           targetAgentId: replyRequest.target?.id,
           interactionMode: replyRequest.interactionMode,
+          coordinationScope: replyRequest.coordinationScope,
           multiReplyIndex: replyRequest.multiReplyIndex,
           webSearchEnabled: replyRequest.allowWebSearch,
           skipPersistUserMessage: replyRequest.skipPersistUserMessage,
@@ -1126,6 +1128,7 @@ export default function SpaceDetailPage() {
                 target: participant,
                 message: piCoordinationTurnPrompt(request, participant.name),
                 interactionMode: 'coordinated_turn',
+                coordinationScope: request,
                 skipPersistUserMessage: true,
                 allowWebSearch: false,
               });
@@ -1134,6 +1137,7 @@ export default function SpaceDetailPage() {
               target: coordinatorAgent as Agent,
               message: piCoordinationSummaryPrompt(request),
               interactionMode: 'coordination_summary',
+              coordinationScope: request,
               skipPersistUserMessage: true,
               allowWebSearch: false,
             });

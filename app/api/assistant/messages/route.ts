@@ -9,6 +9,8 @@ import { ensurePersonalAssistant } from '@/lib/personal-assistant/profile';
 import { buildPersonalAssistantPrompt } from '@/lib/personal-assistant/prompt-builder';
 import { buildAssistantActivityContext, buildAssistantPlatformContext } from '@/lib/personal-assistant/platform-context';
 import { archiveOldMainChatMessages, loadAssistantMemoryContext } from '@/lib/personal-assistant/experience-memory';
+import { compressConversationContext } from '@/lib/context-compression';
+import { conversationContextTargetTokens } from '@/lib/model-limits.mjs';
 
 export const runtime = 'nodejs';
 
@@ -72,6 +74,7 @@ export async function POST(request: Request) {
           apiBaseUrl: true,
           apiKey: true,
           modelName: true,
+          modelContextWindow: true,
           tavilyApiKey: true,
           dailyChatLimit: true,
           contextMessageLimit: true,
@@ -165,6 +168,25 @@ export async function POST(request: Request) {
       webEnabled: webSearchEnabled,
       experienceContext: memoryContext.experienceContext,
     });
+    const compressedHistory = compressConversationContext(
+      memoryContext.history
+        .filter((item) => item.role === 'user' || item.role === 'assistant')
+        .map((item, index) => ({
+          id: `history-${index}`,
+          role: item.role,
+          content: item.content,
+        })),
+      {
+        maxMessages: contextLimit,
+        targetTokens: conversationContextTargetTokens(
+          usesCustomModel ? userSettings.modelName : '',
+          userSettings.modelContextWindow
+        ),
+        preserveRecent: Math.max(1, Math.floor(contextLimit * 0.4)),
+        aggressiveAfter: Math.floor(contextLimit * 1.5),
+        preserveSystem: false,
+      }
+    ).compressedMessages;
     const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
       {
         role: 'system',
@@ -174,7 +196,7 @@ export async function POST(request: Request) {
           webContext ? `本轮联网结果：\n${webContext}` : '',
         ].filter(Boolean).join('\n\n'),
       },
-      ...memoryContext.history.filter((item) => item.role === 'user' || item.role === 'assistant').map((item) => ({
+      ...compressedHistory.map((item) => ({
         role: item.role as 'user' | 'assistant',
         content: item.content,
       })),

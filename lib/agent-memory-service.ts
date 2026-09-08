@@ -12,6 +12,11 @@ function jsonStrings(value: unknown) {
 }
 
 export async function synchronizeAgentMemory(userId: string, agentId: string) {
+  const agent = await prisma.agent.findFirst({
+    where: { id: agentId, agentType: 'EMPLOYEE' },
+    select: { id: true },
+  });
+  if (!agent) return;
   const [tasks, correctionEvents] = await Promise.all([
     prisma.agentTask.findMany({
       where: {
@@ -110,6 +115,11 @@ export async function recordAgentCorrection(
   tx: Prisma.TransactionClient,
   options: { userId: string; agentId: string; taskId: string; runId: string; eventId: string; feedback: string }
 ) {
+  const agent = await tx.agent.findFirst({
+    where: { id: options.agentId, agentType: 'EMPLOYEE' },
+    select: { id: true },
+  });
+  if (!agent) return;
   const candidate = correctionMemoryCandidate(options);
   if (!candidate) return;
   const existing = await tx.agentMemoryRule.findUnique({

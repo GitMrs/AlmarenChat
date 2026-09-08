@@ -46,6 +46,7 @@ export function transformAgent(raw: RawAgent): Agent {
 
   return {
     id: raw.identifier,
+    agentType: 'BASIC',
     name: raw.meta.title,
     avatar: raw.meta.avatar,
     description: raw.meta.description,

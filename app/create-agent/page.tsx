@@ -25,8 +25,11 @@ import {
 } from 'lucide-react';
 import AppShell from '@/components/layout/AppShell';
 import LoginRequired from '@/components/auth/LoginRequired';
+import AgentAvatarPicker from '@/components/agent/AgentAvatarPicker';
 import AgentGrowthPanel from '@/components/agent/AgentGrowthPanel';
 import KnowledgeManager from '@/components/agent/KnowledgeManager';
+import Avatar from '@/components/shared/Avatar';
+import { createAgentAvatar, createRandomAgentAvatarOptions, DEFAULT_AGENT_AVATAR } from '@/lib/agent-avatar';
 import { cn } from '@/lib/utils';
 import { AGENT_CATEGORIES, AGENT_TONES, CATEGORY_COLORS } from '@/types';
 import { agents, auth } from '@/lib/api';
@@ -95,6 +98,10 @@ function CreateAgentContent() {
   const [greeting, setGreeting] = useState('');
   const [systemPrompt, setSystemPrompt] = useState('');
   const [selectedAvatar, setSelectedAvatar] = useState('🛡️');
+  const [proSelectedAvatar, setProSelectedAvatar] = useState(DEFAULT_AGENT_AVATAR);
+  const [proAvatarOptions, setProAvatarOptions] = useState(() =>
+    Array.from({ length: 9 }, (_, index) => createAgentAvatar(`almaren-agent-preview-${index + 1}`))
+  );
   const [isPublic, setIsPublic] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [needsLogin, setNeedsLogin] = useState<boolean | null>(null);
@@ -186,13 +193,14 @@ ${dims.boundaries.trim() || '- 严禁越权承诺，严禁未经验证盲目脑�
           setGreeting(agent.greeting || '');
           setSystemPrompt(agent.systemPrompt || '');
           setSelectedAvatar(agent.avatar || '🪄');
+          setProSelectedAvatar(agent.avatar || DEFAULT_AGENT_AVATAR);
           setIsPublic(Boolean(agent.isPublic));
 
           const dims = parsePromptToDimensions(agent.systemPrompt || '');
           setProDimensions(dims);
           setProIdea(agent.description || agent.name || '');
 
-          if (agent.systemPrompt?.includes('# ROLE') || agent.systemPrompt?.includes('SOUL') || dims.rebuttal || dims.sop) {
+          if (agent.agentType === 'EMPLOYEE') {
             setCreationMode('pro');
             const dynamicCases: string[] = [];
             if (dims.rebuttal) {
@@ -230,6 +238,7 @@ ${dims.boundaries.trim() || '- 严禁越权承诺，严禁未经验证盲目脑�
   }, [editingAgentId]);
 
   const categoryColor = CATEGORY_COLORS[category] || '#6366f1';
+  const displayedTab = activeTab === 'growth' && creationMode !== 'pro' ? 'create' : activeTab;
   const canCreate = name.trim().length > 0 && description.trim().length > 0 && category && tone;
 
   const switchTab = (tab: AgentEditorTab) => {
@@ -316,7 +325,16 @@ ${dims.boundaries.trim() || '- 严禁越权承诺，严禁未经验证盲目脑�
       const data = await res.json();
       if (data.compiledPrompt) {
         setName(data.name || name);
-        setSelectedAvatar(data.avatar || selectedAvatar);
+        const compiledAvatar = data.avatarSeed
+          ? createAgentAvatar(String(data.avatarSeed))
+          : data.avatar;
+        if (compiledAvatar) {
+          setProSelectedAvatar(compiledAvatar);
+          setProAvatarOptions((current) => [
+            compiledAvatar,
+            ...current.filter((avatar) => avatar !== compiledAvatar),
+          ].slice(0, 9));
+        }
         setDescription(data.description || description);
         setGreeting(data.greeting || greeting);
         setCategory(data.category || category);
@@ -409,7 +427,8 @@ ${dims.boundaries.trim() || '- 严禁越权承诺，严禁未经验证盲目脑�
         tone,
         greeting: finalGreeting,
         systemPrompt: finalPrompt,
-        avatar: selectedAvatar,
+        avatar: creationMode === 'pro' ? proSelectedAvatar : selectedAvatar,
+        agentType: creationMode === 'pro' ? 'EMPLOYEE' : 'BASIC',
         isPublic,
       };
 
@@ -471,12 +490,16 @@ ${dims.boundaries.trim() || '- 严禁越权承诺，严禁未经验证盲目脑�
             </div>
 
             {/* 双模式切换按钮 */}
-            <div className="flex items-center rounded-2xl bg-slate-100 p-1.5 border border-black/[0.04]">
+            <div
+              className="flex items-center rounded-2xl bg-slate-100 p-1.5 border border-black/[0.04]"
+              title={editingAgentId ? '已有 Agent 不能切换创建类型' : undefined}
+            >
               <button
                 type="button"
+                disabled={Boolean(editingAgentId)}
                 onClick={() => setCreationMode('basic')}
                 className={cn(
-                  'flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-black transition',
+                  'flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-black transition disabled:cursor-not-allowed',
                   creationMode === 'basic' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-500 hover:text-slate-900'
                 )}
               >
@@ -485,6 +508,7 @@ ${dims.boundaries.trim() || '- 严禁越权承诺，严禁未经验证盲目脑�
               </button>
               <button
                 type="button"
+                disabled={Boolean(editingAgentId)}
                 onClick={() => {
                   setCreationMode('pro');
                   if (!proDimensions.soul && !proDimensions.rebuttal && systemPrompt) {
@@ -495,12 +519,12 @@ ${dims.boundaries.trim() || '- 严禁越权承诺，严禁未经验证盲目脑�
                   }
                 }}
                 className={cn(
-                  'flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-black transition',
+                  'flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-black transition disabled:cursor-not-allowed',
                   creationMode === 'pro' ? 'bg-slate-950 text-white shadow-sm' : 'text-slate-500 hover:text-slate-900'
                 )}
               >
                 <ShieldCheck size={15} />
-                👔 专家数字员工版 (Truman 体系)
+                👔 专家数字员工版
               </button>
             </div>
           </div>
@@ -511,10 +535,12 @@ ${dims.boundaries.trim() || '- 严禁越权承诺，严禁未经验证盲目脑�
           {[
             { id: 'create', label: '角色配置与架构', icon: Bot, disabled: false },
             { id: 'knowledge', label: '知识库向量维护', icon: Database, disabled: !editingAgentId },
-            { id: 'growth', label: '成长档案', icon: BrainCircuit, disabled: !editingAgentId },
+            ...(creationMode === 'pro'
+              ? [{ id: 'growth', label: '成长档案', icon: BrainCircuit, disabled: !editingAgentId }]
+              : []),
           ].map((tab) => {
             const Icon = tab.icon;
-            const active = activeTab === tab.id;
+            const active = displayedTab === tab.id;
             return (
               <button
                 key={tab.id}
@@ -534,7 +560,7 @@ ${dims.boundaries.trim() || '- 严禁越权承诺，严禁未经验证盲目脑�
           })}
         </section>
 
-        {activeTab === 'create' ? (
+        {displayedTab === 'create' ? (
           <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_440px]">
             {/* 左侧主要区域 */}
             <div className="space-y-6">
@@ -695,25 +721,18 @@ ${dims.boundaries.trim() || '- 严禁越权承诺，严禁未经验证盲目脑�
 
                     <div className="grid gap-5 sm:grid-cols-[auto_1fr]">
                       {/* 头像选择 */}
-                      <div className="flex flex-col items-center gap-2">
-                        <div className="flex h-20 w-20 items-center justify-center rounded-3xl bg-slate-100 text-4xl shadow-inner">
-                          {selectedAvatar}
-                        </div>
-                        <div className="flex flex-wrap gap-1 max-w-[100px] justify-center">
-                          {AVATAR_OPTIONS.slice(14).concat(AVATAR_OPTIONS.slice(0, 6)).map((av) => (
-                            <button
-                              key={av}
-                              type="button"
-                              onClick={() => setSelectedAvatar(av)}
-                              className={cn(
-                                'h-6 w-6 rounded-lg text-sm flex items-center justify-center transition',
-                                selectedAvatar === av ? 'bg-slate-950 text-white scale-110' : 'hover:bg-slate-100'
-                              )}
-                            >
-                              {av}
-                            </button>
-                          ))}
-                        </div>
+                      <div className="flex items-center justify-center sm:justify-start">
+                        <AgentAvatarPicker
+                          value={proSelectedAvatar}
+                          options={proAvatarOptions}
+                          agentName={name}
+                          onChange={setProSelectedAvatar}
+                          onRefresh={() => {
+                            const nextOptions = createRandomAgentAvatarOptions();
+                            setProAvatarOptions(nextOptions);
+                            setProSelectedAvatar((current) => current || nextOptions[0]);
+                          }}
+                        />
                       </div>
 
                       {/* 称号与定位 */}
@@ -767,7 +786,7 @@ ${dims.boundaries.trim() || '- 严禁越权承诺，严禁未经验证盲目脑�
                   <section className="rounded-[28px] border border-black/[0.06] bg-white p-6 shadow-sm">
                     <div className="mb-4 flex items-center justify-between">
                       <div>
-                        <h2 className="text-lg font-black text-slate-950">数字生命 5 维架构体系 (Truman 架构)</h2>
+                        <h2 className="text-lg font-black text-slate-950">数字生命 5 维架构体系</h2>
                         <p className="text-xs text-slate-500">点击查看或微调各个维度的约束与规则，也可切换到 Markdown 源码。</p>
                       </div>
                     </div>
@@ -1151,9 +1170,13 @@ ${dims.boundaries.trim() || '- 严禁越权承诺，严禁未经验证盲目脑�
 
                       <div className="rounded-[24px] bg-[#fbfaf7] p-5">
                         <div className="mb-4 flex items-start gap-4">
-                          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-3xl shadow-2xs">
-                            {selectedAvatar}
-                          </div>
+                          {creationMode === 'pro' ? (
+                            <Avatar src={proSelectedAvatar} alt={name || '数字员工'} size="lg" />
+                          ) : (
+                            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-3xl shadow-2xs">
+                              {selectedAvatar}
+                            </div>
+                          )}
                           <div className="min-w-0 flex-1">
                             <h3 className="truncate text-lg font-black text-slate-950">{name || '未命名 Agent'}</h3>
                             <div className="mt-1 flex flex-wrap gap-1.5">
@@ -1283,7 +1306,7 @@ ${dims.boundaries.trim() || '- 严禁越权承诺，严禁未经验证盲目脑�
               </div>
             </aside>
           </div>
-        ) : activeTab === 'knowledge' ? (
+        ) : displayedTab === 'knowledge' ? (
           <KnowledgeManager agentId={editingAgentId} agentName={name} />
         ) : (
           <section className="rounded-[28px] border border-black/[0.06] bg-white p-5 shadow-sm sm:p-7">

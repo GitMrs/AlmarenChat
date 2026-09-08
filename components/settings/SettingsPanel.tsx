@@ -29,7 +29,21 @@ import {
   saveBrowserModelConfig,
   type BrowserModelConfig,
 } from '@/lib/browser-model';
+import {
+  MODEL_CONTEXT_WINDOW_OPTIONS,
+  modelTokenLimits,
+  recommendedModelContextWindow,
+} from '@/lib/model-limits.mjs';
 import { cn } from '@/lib/utils';
+
+const CONTEXT_WINDOW_LABELS: Record<number, string> = {
+  32_768: '32K',
+  65_536: '64K',
+  131_072: '128K',
+  200_000: '200K',
+  262_144: '256K',
+  1_048_576: '1M',
+};
 
 type AccountSnapshot = {
   name: string;
@@ -40,6 +54,7 @@ type ModelSnapshot = {
   apiBaseUrl: string;
   apiKey: string;
   modelName: string;
+  modelContextWindow: number;
   imageModelEnabled: boolean;
   imageModelName: string;
   imageModelSize: string;
@@ -59,6 +74,7 @@ export default function SettingsPanel() {
   const [apiBaseUrl, setApiBaseUrl] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [modelName, setModelName] = useState('');
+  const [modelContextWindow, setModelContextWindow] = useState(131_072);
   const [imageModelEnabled, setImageModelEnabled] = useState(false);
   const [imageModelName, setImageModelName] = useState('');
   const [imageModelSize, setImageModelSize] = useState('1024x1024');
@@ -101,12 +117,13 @@ export default function SettingsPanel() {
       apiBaseUrl: apiBaseUrl.trim(),
       apiKey: apiKey.trim(),
       modelName: modelName.trim(),
+      modelContextWindow,
       imageModelEnabled,
       imageModelName: imageModelName.trim(),
       imageModelSize,
       contextMessageLimit,
     }),
-    [apiBaseUrl, apiKey, contextMessageLimit, customModelEnabled, imageModelEnabled, imageModelName, imageModelSize, modelName]
+    [apiBaseUrl, apiKey, contextMessageLimit, customModelEnabled, imageModelEnabled, imageModelName, imageModelSize, modelContextWindow, modelName]
   );
   const hasAccountChanges = initialAccount ? JSON.stringify(currentAccount) !== JSON.stringify(initialAccount) : false;
   const hasModelChanges = initialModel ? JSON.stringify(currentModel) !== JSON.stringify(initialModel) : false;
@@ -119,6 +136,14 @@ export default function SettingsPanel() {
   const canFetchModels = Boolean(apiBaseUrl.trim() && apiKey.trim());
   const modelConfigIncomplete = customModelEnabled && !canTestModel;
   const imageModelConfigIncomplete = imageModelEnabled && !(apiBaseUrl.trim() && apiKey.trim() && imageModelName.trim());
+  const tokenLimits = useMemo(
+    () => modelTokenLimits(modelName, modelContextWindow),
+    [modelContextWindow, modelName]
+  );
+
+  const handleModelNameChange = (value: string) => {
+    setModelName(value);
+  };
 
   useEffect(() => {
     const storedBrowserModel = readBrowserModelConfigForScope('GLOBAL');
@@ -141,6 +166,8 @@ export default function SettingsPanel() {
         setApiBaseUrl(u.apiBaseUrl || '');
         setApiKey(u.apiKey || '');
         setModelName(u.modelName || '');
+        const contextWindow = u.modelContextWindow || recommendedModelContextWindow();
+        setModelContextWindow(contextWindow);
         setImageModelEnabled(Boolean(u.imageModelEnabled));
         setImageModelName(u.imageModelName || '');
         setImageModelSize(u.imageModelSize || '1024x1024');
@@ -152,6 +179,7 @@ export default function SettingsPanel() {
           apiBaseUrl: u.apiBaseUrl || '',
           apiKey: u.apiKey || '',
           modelName: u.modelName || '',
+          modelContextWindow: contextWindow,
           imageModelEnabled: Boolean(u.imageModelEnabled),
           imageModelName: u.imageModelName || '',
           imageModelSize: u.imageModelSize || '1024x1024',
@@ -203,6 +231,7 @@ export default function SettingsPanel() {
         apiBaseUrl: currentModel.apiBaseUrl || null,
         apiKey: currentModel.apiKey || null,
         modelName: currentModel.modelName || null,
+        modelContextWindow: currentModel.modelContextWindow,
         imageModelEnabled: currentModel.imageModelEnabled,
         imageModelName: currentModel.imageModelName || null,
         imageModelSize: currentModel.imageModelSize,
@@ -211,6 +240,7 @@ export default function SettingsPanel() {
       setApiBaseUrl(currentModel.apiBaseUrl);
       setApiKey(currentModel.apiKey);
       setModelName(currentModel.modelName);
+      setModelContextWindow(currentModel.modelContextWindow);
       setImageModelEnabled(currentModel.imageModelEnabled);
       setImageModelName(currentModel.imageModelName);
       setImageModelSize(currentModel.imageModelSize);
@@ -625,7 +655,7 @@ export default function SettingsPanel() {
                     searchPlaceholder="搜索模型"
                     emptyText="没有匹配的模型"
                     actionText="手动填写其他模型"
-                    onChange={setModelName}
+                    onChange={handleModelNameChange}
                     onAction={() => setManualModelEntry(true)}
                   />
                 ) : (
@@ -633,7 +663,7 @@ export default function SettingsPanel() {
                     <input
                       id="model-name"
                       value={modelName}
-                      onChange={(event) => setModelName(event.target.value)}
+                      onChange={(event) => handleModelNameChange(event.target.value)}
                       placeholder="例如 gpt-4o、deepseek-chat、claude-sonnet-4"
                       className="h-12 min-w-0 flex-1 rounded-2xl border border-black/[0.08] bg-[#fbfaf7] px-4 text-sm font-medium text-slate-800 outline-none focus:border-slate-300 focus:ring-4 focus:ring-slate-200/70"
                     />
@@ -657,6 +687,31 @@ export default function SettingsPanel() {
                     {modelListResult.type === 'success' && availableModels.length > 0 ? '，请从下拉列表选择。' : ''}
                   </p>
                 )}
+              </div>
+
+              <div className="flex flex-col gap-3 border-y border-black/[0.06] py-4 sm:flex-row sm:items-center sm:justify-between">
+                <label className="block">
+                  <span className="mb-2 block text-sm font-bold text-slate-700">上下文窗口</span>
+                  <select
+                    value={modelContextWindow}
+                    onChange={(event) => setModelContextWindow(Number(event.target.value))}
+                    className="h-11 min-w-48 rounded-xl border border-black/[0.08] bg-[#fbfaf7] px-3 text-sm font-bold text-slate-800 outline-none focus:border-slate-300"
+                  >
+                    {MODEL_CONTEXT_WINDOW_OPTIONS.map((value: number) => (
+                      <option key={value} value={value}>
+                        {CONTEXT_WINDOW_LABELS[value]}（{value.toLocaleString('en-US')}）
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div className="text-sm sm:text-right">
+                  <div className="font-black text-slate-800">
+                    最长上下文约 {tokenLimits.compactionTriggerTokens.toLocaleString('en-US')} Token 后压缩
+                  </div>
+                  <div className="mt-1 text-xs font-semibold text-slate-400">
+                    各类对话和任务会按用途自动计算实际预算
+                  </div>
+                </div>
               </div>
 
               <div className="rounded-2xl border border-black/[0.06] bg-[#fbfaf7] p-4">

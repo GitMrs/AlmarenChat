@@ -7,17 +7,15 @@ export async function loadAgentMemoryContext(options: {
   query: string;
 }) {
   if (!options.agentId) return '';
-  const [rules, experiences] = await Promise.all([
-    prisma.agentMemoryRule.findMany({
-      where: { userId: options.userId, agentId: options.agentId, status: 'ACTIVE' },
-      orderBy: { updatedAt: 'desc' },
-      take: 60,
-    }),
-    prisma.agentExperience.findMany({
-      where: { userId: options.userId, agentId: options.agentId, outcome: 'ACCEPTED' },
-      orderBy: { updatedAt: 'desc' },
-      take: 40,
-    }),
-  ]);
-  return agentMemoryContext({ rules, experiences, query: options.query });
+  const agent = await prisma.agent.findFirst({
+    where: { id: options.agentId, agentType: 'EMPLOYEE' },
+    select: { id: true },
+  });
+  if (!agent) return '';
+  const rules = await prisma.agentMemoryRule.findMany({
+    where: { userId: options.userId, agentId: options.agentId, status: 'ACTIVE' },
+    orderBy: { updatedAt: 'desc' },
+    take: 60,
+  });
+  return agentMemoryContext({ rules, query: options.query });
 }

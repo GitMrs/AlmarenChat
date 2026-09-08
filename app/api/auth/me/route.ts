@@ -16,6 +16,7 @@ export async function GET(request: Request) {
         apiBaseUrl: true,
         apiKey: true,
         modelName: true,
+        modelContextWindow: true,
         customModelEnabled: true,
         tavilyApiKey: true,
         defaultStyle: true,

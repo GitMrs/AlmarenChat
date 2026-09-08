@@ -8,6 +8,8 @@ import { formatKnowledgeContext, getKnowledgeHits } from '@/lib/knowledge';
 import { createModelClient, resolveModelName } from '@/lib/model-client';
 import { reserveChatQuota } from '@/lib/chat-quota';
 import { loadAgentMemoryContext } from '@/lib/agent-memory';
+import { compressConversationContext, estimateMessagesTokens } from '@/lib/context-compression';
+import { conversationContextTargetTokens } from '@/lib/model-limits.mjs';
 
 const TEXT_CHAT_COST = 1;
 const IMAGE_CHAT_COST = 3;
@@ -63,6 +65,7 @@ export async function POST(request: Request) {
         apiBaseUrl: true,
         apiKey: true,
         modelName: true,
+        modelContextWindow: true,
         tavilyApiKey: true,
         dailyChatLimit: true,
       },
@@ -147,7 +150,26 @@ export async function POST(request: Request) {
         : [];
 
     const fallbackHistory = Array.isArray(history) ? history : [];
-    const sourceHistory = persistedHistory.length > 0 ? persistedHistory.reverse() : fallbackHistory.slice(-contextLimit);
+    const rawHistory = persistedHistory.length > 0 ? persistedHistory.reverse() : fallbackHistory.slice(-contextLimit);
+    const normalizedHistory = rawHistory.map((msg: any, index: number) => ({
+      ...msg,
+      id: String(msg.id || `history-${index}`),
+      role: String(msg.role || 'assistant'),
+      content: String(msg.content || ''),
+    }));
+    const historyTargetTokens = conversationContextTargetTokens(
+      userSettings.customModelEnabled ? userSettings.modelName : '',
+      userSettings.modelContextWindow
+    );
+    const sourceHistory = estimateMessagesTokens(normalizedHistory) > historyTargetTokens
+      ? compressConversationContext(normalizedHistory, {
+          maxMessages: contextLimit,
+          targetTokens: historyTargetTokens,
+          preserveRecent: Math.max(1, Math.floor(contextLimit * 0.4)),
+          aggressiveAfter: Math.floor(contextLimit * 1.5),
+          preserveSystem: false,
+        }).compressedMessages
+      : normalizedHistory;
 
     const openaiMessages: { role: 'system' | 'user' | 'assistant'; content: any }[] = sourceHistory
       .filter((msg: { role: string; content: string }) => msg.content && msg.role !== 'system')
