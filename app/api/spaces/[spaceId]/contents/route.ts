@@ -55,6 +55,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ s
         works: works.count,
       };
     }, { preserveEntries: ['.space'] });
+    await prisma.space.update({ where: { id: spaceId }, data: { activeWorkId: null } });
     await ensureSpaceRoot(userId, spaceId);
 
     return NextResponse.json({ success: true, deleted });

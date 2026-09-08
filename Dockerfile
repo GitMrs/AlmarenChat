@@ -5,6 +5,7 @@ WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV SKIP_PRISMA_GENERATE=1
 ENV ONNXRUNTIME_NODE_INSTALL=skip
+ENV BUILD_STANDALONE=1
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates openssl python3 make g++ \

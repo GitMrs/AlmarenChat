@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { ArrowRight, Check, Clock3, Edit3, Loader2, MessageSquare, Search, Sparkles, Trash2, X } from 'lucide-react';
 import AppShell from '@/components/layout/AppShell';
 import LoginRequired from '@/components/auth/LoginRequired';
+import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import { conversations as conversationsApi } from '@/lib/api';
 import { CATEGORY_COLORS } from '@/types';
 
@@ -33,6 +34,7 @@ export default function ConversationsPage() {
   const [editingTitle, setEditingTitle] = useState('');
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [pendingDeleteConversation, setPendingDeleteConversation] = useState<any | null>(null);
 
   useEffect(() => {
     if (!localStorage.getItem('token')) {
@@ -86,15 +88,16 @@ export default function ConversationsPage() {
     }
   };
 
-  const deleteConversation = async (conversationId: string) => {
-    if (deletingId) return;
-    if (!window.confirm('确定删除这个会话吗？删除后不能恢复。')) return;
+  const deleteConversation = async () => {
+    if (!pendingDeleteConversation || deletingId) return;
+    const target = pendingDeleteConversation;
 
-    setDeletingId(conversationId);
+    setDeletingId(target.id);
     setError('');
     try {
-      await conversationsApi.delete(conversationId);
-      setConversationList((items) => items.filter((item) => item.id !== conversationId));
+      await conversationsApi.delete(target.id);
+      setConversationList((items) => items.filter((item) => item.id !== target.id));
+      setPendingDeleteConversation(null);
     } catch (err: any) {
       setError(err.message || '删除会话失败');
     } finally {
@@ -257,7 +260,7 @@ export default function ConversationsPage() {
                           </button>
                           <button
                             type="button"
-                            onClick={() => deleteConversation(conversation.id)}
+                            onClick={() => setPendingDeleteConversation(conversation)}
                             disabled={deletingId === conversation.id}
                             className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full bg-rose-50 text-rose-500 transition hover:bg-rose-500 hover:text-white disabled:cursor-default disabled:bg-slate-100 disabled:text-slate-300"
                             aria-label="删除会话"
@@ -311,6 +314,17 @@ export default function ConversationsPage() {
           </aside>
         </section>
       </div>
+      <ConfirmDialog
+        open={Boolean(pendingDeleteConversation)}
+        title={`删除「${pendingDeleteConversation?.title || '新对话'}」？`}
+        description="这个会话的消息记录将被删除，且无法恢复。"
+        icon={<Trash2 size={20} />}
+        confirmText="删除会话"
+        loading={Boolean(pendingDeleteConversation && deletingId === pendingDeleteConversation.id)}
+        destructive
+        onCancel={() => setPendingDeleteConversation(null)}
+        onConfirm={deleteConversation}
+      />
     </AppShell>
   );
 }

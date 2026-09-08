@@ -375,6 +375,13 @@ function compactWorkTitle(title: string, maxLength = 14) {
   return value.length > maxLength ? `${value.slice(0, maxLength)}...` : value;
 }
 
+function replaceWorkQuery(workId: string) {
+  if (typeof window === 'undefined') return;
+  const url = new URL(window.location.href);
+  url.searchParams.set('work', workId);
+  window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+}
+
 function messageRunId(message: SpaceMessage) {
   const attachment = message.attachments?.find((item) => item.type === 'task_proposal' || item.type === 'run_result');
   return attachment && 'runId' in attachment ? attachment.runId : undefined;
@@ -414,6 +421,11 @@ export default function SpaceDetailPage() {
   const [works, setWorks] = useState<SpaceWork[]>([]);
   const [selectedWorkId, setSelectedWorkId] = useState('all');
   const [activeWorkId, setActiveWorkId] = useState('new');
+  const [workMenuOpen, setWorkMenuOpen] = useState(false);
+  const [switchingWork, setSwitchingWork] = useState(false);
+  const [renamingWork, setRenamingWork] = useState(false);
+  const [workTitleDraft, setWorkTitleDraft] = useState('');
+  const [savingWorkTitle, setSavingWorkTitle] = useState(false);
   const [discussions, setDiscussions] = useState<SpaceDiscussion[]>([]);
   const [relays, setRelays] = useState<SpaceRelay[]>([]);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
@@ -679,6 +691,19 @@ export default function SpaceDetailPage() {
     [files, reviewTask]
   );
   const workById = useMemo(() => new Map(works.map((work) => [work.id, work])), [works]);
+  const taskById = useMemo(
+    () => new Map(runs.flatMap((run) => run.tasks.map((task) => [task.id, task] as const))),
+    [runs]
+  );
+  const fileSourceLabel = (file: SpaceFile) => {
+    const work = file.workId ? workById.get(file.workId) : null;
+    const task = file.taskId ? taskById.get(file.taskId) : null;
+    if (!work && !task) return '公共资料';
+    return [
+      work ? `${WORK_NOUNS[work.kind] || '成果'} · ${work.title || '未命名'}` : '历史成果',
+      task?.agentName,
+    ].filter(Boolean).join(' · ');
+  };
   const visibleFiles = useMemo(() => {
     if (selectedWorkId === 'all') return files;
     if (selectedWorkId === 'legacy') return files.filter((file) => !file.workId);
@@ -687,6 +712,119 @@ export default function SpaceDetailPage() {
   const hasPendingTaskProposal = useMemo(
     () => messages.some((message) => taskProposalOf(message)?.status === 'pending'),
     [messages]
+  );
+  const currentWork = activeWorkId === 'new' ? null : workById.get(activeWorkId) || null;
+  const workNoun = WORK_NOUNS[space?.templateId || ''] || '成果';
+  const workSelectionLocked = isStreaming || isRunActive || hasPendingTaskProposal || switchingWork;
+
+  const switchActiveWork = async (workId: string) => {
+    if (workSelectionLocked || workId === activeWorkId) {
+      setWorkMenuOpen(false);
+      return;
+    }
+    setSwitchingWork(true);
+    setError('');
+    try {
+      await spacesApi.update(spaceId, { activeWorkId: workId === 'new' ? null : workId });
+      setActiveWorkId(workId);
+      setSelectedWorkId(workId === 'new' ? 'all' : workId);
+      setSpace((current: any) => current ? { ...current, activeWorkId: workId === 'new' ? null : workId } : current);
+      replaceWorkQuery(workId);
+      setWorkMenuOpen(false);
+      setRenamingWork(false);
+    } catch (err: any) {
+      setError(err.message || '切换当前成果失败');
+    } finally {
+      setSwitchingWork(false);
+    }
+  };
+
+  const saveWorkTitle = async () => {
+    const title = workTitleDraft.trim();
+    if (!currentWork || !title || savingWorkTitle) return;
+    setSavingWorkTitle(true);
+    setError('');
+    try {
+      const result = await spacesApi.renameWork(spaceId, currentWork.id, title);
+      setWorks((items) => items.map((work) => work.id === result.work.id ? { ...work, ...result.work } : work));
+      setRenamingWork(false);
+    } catch (err: any) {
+      setError(err.message || '重命名成果失败');
+    } finally {
+      setSavingWorkTitle(false);
+    }
+  };
+  const renderWorkSelector = (compact = false) => (
+    <div data-work-selector className="relative mt-3">
+      {renamingWork && currentWork ? (
+        <div className="flex items-center gap-1.5">
+          <input
+            value={workTitleDraft}
+            onChange={(event) => setWorkTitleDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') saveWorkTitle();
+              if (event.key === 'Escape') setRenamingWork(false);
+            }}
+            maxLength={120}
+            autoFocus
+            className="h-8 min-w-0 flex-1 rounded-md border border-black/[0.08] bg-white px-2.5 text-xs font-bold text-slate-800 outline-none focus:border-slate-300"
+          />
+          <button type="button" onClick={saveWorkTitle} disabled={savingWorkTitle || !workTitleDraft.trim()} aria-label="保存成果名称" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-slate-950 text-white disabled:bg-slate-200">
+            {savingWorkTitle ? <Loader2 className="animate-spin" size={14} /> : <Check size={14} />}
+          </button>
+          <button type="button" onClick={() => setRenamingWork(false)} disabled={savingWorkTitle} aria-label="取消重命名" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-700">
+            <X size={14} />
+          </button>
+        </div>
+      ) : (
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => setWorkMenuOpen((open) => !open)}
+            disabled={workSelectionLocked}
+            aria-expanded={workMenuOpen}
+            className={`flex h-8 min-w-0 items-center gap-2 rounded-md border border-black/[0.06] bg-[#fbfaf7] px-2.5 text-left text-xs font-bold text-slate-600 transition hover:border-slate-200 hover:text-slate-950 disabled:text-slate-300 ${compact ? 'max-w-[190px]' : 'flex-1'}`}
+          >
+            {switchingWork ? <Loader2 className="shrink-0 animate-spin" size={13} /> : <FileText className="shrink-0" size={13} />}
+            <span className="shrink-0 text-slate-400">当前{workNoun}</span>
+            <span className="min-w-0 flex-1 truncate text-slate-800">{currentWork?.title || `新建${workNoun}`}</span>
+            <ChevronRight className="shrink-0 rotate-90" size={13} />
+          </button>
+          {currentWork && (
+            <button
+              type="button"
+              onClick={() => {
+                setWorkTitleDraft(currentWork.title);
+                setRenamingWork(true);
+                setWorkMenuOpen(false);
+              }}
+              disabled={workSelectionLocked}
+              aria-label={`重命名${currentWork.title}`}
+              title="重命名当前成果"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-400 transition hover:bg-slate-100 hover:text-slate-800 disabled:text-slate-200"
+            >
+              <FilePenLine size={14} />
+            </button>
+          )}
+        </div>
+      )}
+      {workMenuOpen && !renamingWork && (
+        <div className="absolute left-0 top-10 z-50 w-72 max-w-[calc(100vw-3rem)] overflow-hidden rounded-lg border border-black/[0.08] bg-white p-1.5 shadow-xl">
+          <button type="button" onClick={() => switchActiveWork('new')} className="flex h-9 w-full items-center gap-2 rounded-md px-2.5 text-left text-xs font-bold text-slate-600 hover:bg-slate-50">
+            <Plus size={14} />
+            <span className="min-w-0 flex-1 truncate">新建{workNoun}</span>
+            {activeWorkId === 'new' && <Check size={14} className="text-emerald-600" />}
+          </button>
+          {works.map((work) => (
+            <button key={work.id} type="button" onClick={() => switchActiveWork(work.id)} className="flex h-9 w-full items-center gap-2 rounded-md px-2.5 text-left text-xs font-bold text-slate-600 hover:bg-slate-50">
+              <FileText size={14} />
+              <span className="min-w-0 flex-1 truncate">{work.title}</span>
+              {activeWorkId === work.id && <Check size={14} className="text-emerald-600" />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
   const speakerById = useMemo(() => {
     const map = new Map<string, any>(agents.map((agent) => [agent.id, agent]));
@@ -726,7 +864,18 @@ export default function SpaceDetailPage() {
       const pendingWorkId = messageResult.messages
         .map((message) => taskProposalOf(message))
         .find((proposal) => proposal?.status === 'pending')?.workId;
-      setActiveWorkId(pendingWorkId || 'new');
+      const workIds = new Set(workResult.works.map((work) => work.id));
+      const requestedWorkId = new URL(window.location.href).searchParams.get('work');
+      const restoredWorkId = requestedWorkId === 'new' || (requestedWorkId && workIds.has(requestedWorkId))
+        ? requestedWorkId
+        : null;
+      const persistedWorkId = spaceResult.space.activeWorkId && workIds.has(spaceResult.space.activeWorkId)
+        ? spaceResult.space.activeWorkId
+        : null;
+      const nextWorkId = pendingWorkId || restoredWorkId || persistedWorkId || 'new';
+      setActiveWorkId(nextWorkId);
+      setSelectedWorkId(nextWorkId === 'new' ? 'all' : nextWorkId);
+      replaceWorkQuery(nextWorkId);
       setFiles(fileResult.files);
       setRuns(runResult.runs);
       setWorks(workResult.works);
@@ -872,6 +1021,7 @@ export default function SpaceDetailPage() {
   useEffect(() => {
     const closeComposerTools = (event: PointerEvent) => {
       if (!composerToolsRef.current?.contains(event.target as Node)) setComposerToolsOpen(false);
+      if (!(event.target instanceof Element) || !event.target.closest('[data-work-selector]')) setWorkMenuOpen(false);
     };
     document.addEventListener('pointerdown', closeComposerTools);
     return () => document.removeEventListener('pointerdown', closeComposerTools);
@@ -1356,6 +1506,7 @@ export default function SpaceDetailPage() {
       setWorks([]);
       setSelectedWorkId('all');
       setActiveWorkId('new');
+      replaceWorkQuery('new');
       setDiscussions([]);
       setRelays([]);
       setLearning(null);
@@ -1591,6 +1742,8 @@ export default function SpaceDetailPage() {
           : [{ ...result.run.work!, _count: { files: 0, runs: 1 } }, ...items]);
         setSelectedWorkId(result.run.work.id);
         setActiveWorkId(result.run.work.id);
+        setSpace((current: any) => current ? { ...current, activeWorkId: result.run.work!.id } : current);
+        replaceWorkQuery(result.run.work.id);
       }
       setSelectedRunId(result.run.id);
       setMessages((items) => items.map((item) => item.id === message.id ? {
@@ -1814,7 +1967,7 @@ export default function SpaceDetailPage() {
               </button>
               <div className="flex items-start gap-3">
                 <Avatar src={coordinatorAgent.avatar || '🧭'} alt={coordinatorAgent.name} size="md" />
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <div className="flex min-w-0 items-center gap-2">
                     <h1 className="truncate text-lg font-black text-slate-950">{space.name}</h1>
                     <span className="inline-flex shrink-0 items-center gap-1 text-[11px] font-bold text-slate-400">
@@ -1825,6 +1978,7 @@ export default function SpaceDetailPage() {
                   <p className="mt-1 line-clamp-2 text-xs font-semibold leading-5 text-slate-400">
                     {space.description || `${memberAgents.length + 1} 位成员协作空间`}
                   </p>
+                  {!isPiSpace && renderWorkSelector()}
                 </div>
               </div>
             </div>
@@ -1948,7 +2102,9 @@ export default function SpaceDetailPage() {
                             <div className="min-w-0 flex-1 truncate text-xs font-black text-slate-700">{file.fileName}</div>
                             <FileStatus status={file.status} />
                           </div>
-                          <div className="mt-0.5 text-[11px] font-semibold text-slate-400">{formatBytes(file.size)}</div>
+                          <div className="mt-0.5 truncate text-[11px] font-semibold text-slate-400">
+                            {fileSourceLabel(file)}{file.size ? ` · ${formatBytes(file.size)}` : ''}
+                          </div>
                         </div>
                       </button>
                     ))}
@@ -2002,6 +2158,7 @@ export default function SpaceDetailPage() {
                 <p className="truncate text-xs font-semibold text-slate-400">
                   {space.description || `${memberAgents.length + 1} 位成员`}
                 </p>
+                {!isPiSpace && renderWorkSelector(true)}
               </div>
 
               <button
@@ -2724,24 +2881,8 @@ export default function SpaceDetailPage() {
 
             <footer className="border-t border-black/[0.06] bg-white p-3 sm:p-4 lg:bg-[#fbfaf7] lg:px-10 lg:pb-4 lg:pt-3">
               <div className="mx-auto max-w-4xl">
-                <ComposerShell toolbar={((!isPiSpace && works.length > 0) || selectedSkill || imageGenerationMode) ? (
+                <ComposerShell toolbar={(selectedSkill || imageGenerationMode) ? (
                   <div className="flex max-w-full flex-wrap items-center gap-2">
-                    {!isPiSpace && works.length > 0 && (
-                      <select
-                        value={activeWorkId}
-                        onChange={(event) => setActiveWorkId(event.target.value)}
-                        aria-label="当前成果"
-                        disabled={isStreaming || isRunActive || hasPendingTaskProposal}
-                        className="h-8 max-w-[min(70vw,24rem)] rounded-lg border border-black/[0.08] bg-white px-2.5 text-xs font-black text-slate-600 outline-none disabled:text-slate-300"
-                      >
-                        <option value="new">新建{WORK_NOUNS[space.templateId] || '成果'}</option>
-                        {works.map((work, index) => (
-                          <option key={work.id} value={work.id}>
-                            {WORK_NOUNS[work.kind] || '成果'} {works.length - index} · {compactWorkTitle(work.title)}
-                          </option>
-                        ))}
-                      </select>
-                    )}
                     {selectedSkill && (
                       <div className="inline-flex h-8 max-w-full items-center gap-2 rounded-lg bg-white px-2.5 text-xs font-black text-slate-600 shadow-sm">
                         <BookOpen size={13} className="shrink-0" />
@@ -3144,7 +3285,7 @@ export default function SpaceDetailPage() {
                                   <FileStatus status={file.status} />
                                 </div>
                                 <div className="mt-0.5 truncate text-xs font-semibold text-slate-400">
-                                  {file.workId ? `${WORK_NOUNS[workById.get(file.workId)?.kind || ''] || '成果'} · ${workById.get(file.workId)?.title || '未命名'}` : '公共资料 / 历史成果'}
+                                  {fileSourceLabel(file)}
                                   {file.size ? ` · ${formatBytes(file.size)}` : ''}
                                 </div>
                               </div>

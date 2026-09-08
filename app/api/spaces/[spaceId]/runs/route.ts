@@ -247,6 +247,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
       const work = targetWork
         ? await tx.spaceWork.update({ where: { id: targetWork.id }, data: { updatedAt: new Date() } })
         : await tx.spaceWork.create({ data: { spaceId, title: workTitle, kind: space.templateId || 'general' } });
+      await tx.space.update({ where: { id: spaceId }, data: { activeWorkId: work.id } });
 
       const created = await tx.agentRun.create({
         data: {

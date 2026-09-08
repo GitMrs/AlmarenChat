@@ -116,6 +116,7 @@ model Space {
   runtimeType String @default("NATIVE")
   executionMode String @default("REVIEW_DISPATCH")
   hostAgentId String?
+  activeWorkId String?
   templateId String?
   templateVersion Int?
   templateSnapshot Json?

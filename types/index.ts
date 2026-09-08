@@ -180,6 +180,7 @@ export interface Space {
   runtimeType: 'NATIVE' | 'PI_CODING';
   executionMode: 'AUTO' | 'REVIEW_DISPATCH';
   hostAgentId?: string | null;
+  activeWorkId?: string | null;
   templateId?: string | null;
   templateVersion?: number | null;
   templateSnapshot?: {

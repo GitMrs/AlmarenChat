@@ -6,6 +6,7 @@ import { ArrowRight, Code2, Loader2, PanelsTopLeft, Plus, Search, Trash2, UsersR
 import AppShell from '@/components/layout/AppShell';
 import LoginRequired from '@/components/auth/LoginRequired';
 import Avatar from '@/components/shared/Avatar';
+import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import CreateSpaceDialog, { type CreateSpaceInput } from '@/components/spaces/CreateSpaceDialog';
 import { spaces as spacesApi, agents as agentsApi } from '@/lib/api';
 import { getBuiltInAgents } from '@/lib/agents-data';
@@ -32,6 +33,8 @@ export default function SpacesPage() {
   const [createError, setCreateError] = useState('');
   const [needsLogin, setNeedsLogin] = useState(false);
   const [error, setError] = useState('');
+  const [pendingDeleteSpace, setPendingDeleteSpace] = useState<any | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const load = async () => {
     if (!localStorage.getItem('token')) {
@@ -80,10 +83,20 @@ export default function SpacesPage() {
     }
   };
 
-  const deleteSpace = async (spaceId: string) => {
-    if (!window.confirm('确定删除这个空间吗？空间消息和成员记录会一起删除。')) return;
-    await spacesApi.delete(spaceId);
-    setSpaces((items) => items.filter((item) => item.id !== spaceId));
+  const deleteSpace = async () => {
+    if (!pendingDeleteSpace || deletingId) return;
+    const target = pendingDeleteSpace;
+    setDeletingId(target.id);
+    setError('');
+    try {
+      await spacesApi.delete(target.id);
+      setSpaces((items) => items.filter((item) => item.id !== target.id));
+      setPendingDeleteSpace(null);
+    } catch (err: any) {
+      setError(err.message || '删除空间失败');
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   return (
@@ -204,7 +217,8 @@ export default function SpacesPage() {
                         <div className="flex justify-end border-t border-black/[0.04] px-5 py-2">
                           <button
                             type="button"
-                            onClick={() => deleteSpace(space.id)}
+                            onClick={() => setPendingDeleteSpace(space)}
+                            disabled={Boolean(deletingId)}
                             className="inline-flex h-8 items-center gap-1 rounded-full px-3 text-xs font-bold text-slate-400 transition hover:bg-rose-50 hover:text-rose-500"
                           >
                             <Trash2 size={13} />
@@ -229,6 +243,17 @@ export default function SpacesPage() {
           onCreate={createSpace}
         />
       )}
+      <ConfirmDialog
+        open={Boolean(pendingDeleteSpace)}
+        title={`删除「${pendingDeleteSpace?.name || '这个空间'}」？`}
+        description="空间消息、成员记录和相关数据会一起删除，且无法恢复。"
+        icon={<Trash2 size={20} />}
+        confirmText="删除空间"
+        loading={Boolean(pendingDeleteSpace && deletingId === pendingDeleteSpace.id)}
+        destructive
+        onCancel={() => setPendingDeleteSpace(null)}
+        onConfirm={deleteSpace}
+      />
     </AppShell>
   );
 }

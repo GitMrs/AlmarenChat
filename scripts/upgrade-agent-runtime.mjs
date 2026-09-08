@@ -33,6 +33,7 @@ try {
     if (!hasColumn('User', 'imageModelName')) db.exec('ALTER TABLE "User" ADD COLUMN "imageModelName" TEXT');
     if (!hasColumn('User', 'imageModelSize')) db.exec(`ALTER TABLE "User" ADD COLUMN "imageModelSize" TEXT DEFAULT '1024x1024'`);
     if (!hasColumn('User', 'imageModelProtocol')) db.exec(`ALTER TABLE "User" ADD COLUMN "imageModelProtocol" TEXT NOT NULL DEFAULT 'OPENAI_IMAGES'`);
+    if (!hasColumn('Space', 'activeWorkId')) db.exec('ALTER TABLE "Space" ADD COLUMN "activeWorkId" TEXT');
     if (!hasColumn('Conversation', 'kind')) db.exec(`ALTER TABLE "Conversation" ADD COLUMN "kind" TEXT NOT NULL DEFAULT 'AGENT'`);
     if (!hasColumn('Conversation', 'assistantMode')) db.exec('ALTER TABLE "Conversation" ADD COLUMN "assistantMode" TEXT');
     if (hasTable('Message') && !hasColumn('Message', 'source')) {

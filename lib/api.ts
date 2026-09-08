@@ -378,7 +378,7 @@ export const spaces = {
       body: JSON.stringify(data),
     }),
   get: (id: string) => request<{ space: any }>(`/spaces/${id}`),
-  update: (id: string, data: { name?: string; description?: string | null; instructions?: string | null; executionMode?: 'AUTO' | 'REVIEW_DISPATCH'; hostAgentId?: string | null }) =>
+  update: (id: string, data: { name?: string; description?: string | null; instructions?: string | null; executionMode?: 'AUTO' | 'REVIEW_DISPATCH'; hostAgentId?: string | null; activeWorkId?: string | null }) =>
     request<{ space: any }>(`/spaces/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
@@ -524,6 +524,11 @@ export const spaces = {
     }),
   runs: (id: string) => request<{ runs: AgentRun[] }>(`/spaces/${id}/runs`),
   works: (id: string) => request<{ works: SpaceWork[] }>(`/spaces/${id}/works`),
+  renameWork: (spaceId: string, workId: string, title: string) =>
+    request<{ work: SpaceWork }>(`/spaces/${spaceId}/works/${workId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ title }),
+    }),
   createRun: (
     id: string,
     input: string,
