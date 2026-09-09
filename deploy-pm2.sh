@@ -59,6 +59,8 @@ if [ -z "$DATABASE_URL" ] || [[ "$DATABASE_URL" == file:/app/* ]]; then
 fi
 
 yarn prisma generate
+echo "Backing up SQLite database before schema changes..."
+yarn db:backup
 yarn db:upgrade-agent-runtime
 yarn prisma db push
 

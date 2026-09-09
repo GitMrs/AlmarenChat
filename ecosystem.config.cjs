@@ -12,6 +12,7 @@ module.exports = {
         PORT: process.env.PORT || 8001,
         HOSTNAME: '0.0.0.0',
         DATABASE_URL: process.env.DATABASE_URL || 'file:./data/dev.db',
+        SPACE_CONNECTOR_SECRET: process.env.SPACE_CONNECTOR_SECRET || '',
       },
     },
     {
@@ -29,6 +30,7 @@ module.exports = {
         DATABASE_URL: process.env.DATABASE_URL || 'file:./data/dev.db',
         AGENT_WORKER_POLL_MS: process.env.AGENT_WORKER_POLL_MS || 1200,
         AGENT_MODEL_TIMEOUT_MS: process.env.AGENT_MODEL_TIMEOUT_MS || 180000,
+        SPACE_CONNECTOR_SECRET: process.env.SPACE_CONNECTOR_SECRET || '',
       },
     },
     {

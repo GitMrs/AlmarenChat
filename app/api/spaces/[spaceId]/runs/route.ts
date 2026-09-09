@@ -8,6 +8,7 @@ import { taskProposalNeedsClarification } from '@/lib/task-proposals';
 import { coordinatorAuthorization } from '@/lib/agent-runtime-v3-policy.mjs';
 import { taskProposalWithServerCapabilities } from '@/lib/task-proposal-policy.mjs';
 import { getSpaceSkill } from '@/lib/space-skills.mjs';
+import { runningWorkStage } from '@/lib/space-templates.mjs';
 
 const ACTIVE_RELAY_STATUSES = ['QUEUED', 'RUNNING', 'WAITING_APPROVAL', 'CANCEL_REQUESTED'];
 
@@ -244,9 +245,31 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
       });
       const modelRequestLimit = 48;
       const workTitle = String(currentProposal?.goal || runInput).split('\n')[0].trim().slice(0, 120) || '未命名成果';
+      const templateSnapshot = space.templateSnapshot && typeof space.templateSnapshot === 'object'
+        ? space.templateSnapshot as Record<string, unknown>
+        : null;
+      const workStage = runningWorkStage(templateSnapshot);
       const work = targetWork
-        ? await tx.spaceWork.update({ where: { id: targetWork.id }, data: { updatedAt: new Date() } })
-        : await tx.spaceWork.create({ data: { spaceId, title: workTitle, kind: space.templateId || 'general' } });
+        ? await tx.spaceWork.update({
+            where: { id: targetWork.id },
+            data: {
+              status: 'ACTIVE',
+              stage: workStage,
+              completedAt: null,
+              objective: targetWork.objective || String(currentProposal?.goal || runInput).trim().slice(0, 4000),
+              updatedAt: new Date(),
+            },
+          })
+        : await tx.spaceWork.create({
+            data: {
+              spaceId,
+              title: workTitle,
+              kind: space.templateId || 'general',
+              status: 'ACTIVE',
+              stage: workStage,
+              objective: String(currentProposal?.goal || runInput).trim().slice(0, 4000),
+            },
+          });
       await tx.space.update({ where: { id: spaceId }, data: { activeWorkId: work.id } });
 
       const created = await tx.agentRun.create({
@@ -255,6 +278,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
           workId: work.id,
           userId,
           input: runInput,
+          executionEngine: space.executionEngine === 'pi' ? 'pi' : 'native',
+          engineVersion: '1',
           runtimeVersion: 3,
           eventSequence: 1,
           coordinatorState: {

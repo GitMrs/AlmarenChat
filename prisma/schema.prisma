@@ -114,6 +114,7 @@ model Space {
   description String?
   instructions String?
   runtimeType String @default("NATIVE")
+  executionEngine String @default("native")
   executionMode String @default("REVIEW_DISPATCH")
   hostAgentId String?
   activeWorkId String?
@@ -128,6 +129,9 @@ model Space {
   files    SpaceFile[]
   runs     AgentRun[]
   works    SpaceWork[]
+  automations SpaceAutomation[]
+  actionRequests SpaceActionRequest[]
+  connectors SpaceConnector[]
   discussions SpaceDiscussion[]
   relays      SpaceRelay[]
   memory      SpaceMemory?
@@ -135,19 +139,158 @@ model Space {
   @@index([userId, updatedAt])
 }
 
+model SpaceConnector {
+  id                        String    @id @default(uuid())
+  spaceId                   String
+  space                     Space     @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  provider                  String
+  enabled                   Boolean   @default(true)
+  status                    String    @default("CONFIGURED")
+  publicConfig              Json?
+  credentialCiphertext      String
+  accessTokenCiphertext     String?
+  accessTokenExpiresAt      DateTime?
+  lastCheckedAt             DateTime?
+  lastError                 String?
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
+
+  executions SpaceConnectorExecution[]
+
+  @@unique([spaceId, provider])
+  @@index([spaceId, enabled])
+  @@index([provider, status])
+}
+
+model SpaceConnectorExecution {
+  id              String             @id @default(uuid())
+  connectorId     String
+  connector       SpaceConnector     @relation(fields: [connectorId], references: [id], onDelete: Cascade)
+  actionRequestId String             @unique
+  actionRequest   SpaceActionRequest @relation(fields: [actionRequestId], references: [id], onDelete: Cascade)
+  operation       String
+  status          String             @default("QUEUED")
+  requestSummary  Json?
+  responseSummary Json?
+  externalId      String?
+  externalUrl     String?
+  error           String?
+  nextPollAt      DateTime?
+  pollCount       Int                @default(0)
+  startedAt       DateTime?
+  completedAt     DateTime?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  @@index([connectorId, createdAt])
+  @@index([status, createdAt])
+  @@index([status, nextPollAt])
+}
+
 model SpaceWork {
-  id        String   @id @default(uuid())
-  spaceId   String
-  space     Space    @relation(fields: [spaceId], references: [id], onDelete: Cascade)
-  title     String
-  kind      String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String    @id @default(uuid())
+  spaceId     String
+  space       Space     @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  title       String
+  kind        String
+  status      String    @default("ACTIVE")
+  stage       String?
+  objective   String?
+  metadata    Json?
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   runs  AgentRun[]
   files SpaceFile[]
+  actionRequests SpaceActionRequest[]
 
   @@index([spaceId, updatedAt])
+  @@index([spaceId, status, updatedAt])
+}
+
+model SpaceAutomation {
+  id              String    @id @default(uuid())
+  spaceId         String
+  space           Space     @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  name            String
+  prompt          String
+  scheduleType    String    @default("INTERVAL")
+  intervalMinutes Int       @default(1440)
+  timeZone        String    @default("Asia/Shanghai")
+  scheduleHour    Int?
+  scheduleMinute  Int?
+  weekdays        Json?
+  workStrategy    String    @default("NEW_WORK")
+  networkPolicy   String    @default("forbidden")
+  completionAction String   @default("NONE")
+  completionConfig Json?
+  enabled         Boolean   @default(false)
+  nextRunAt       DateTime
+  lastRunAt       DateTime?
+  lastRunId       String?
+  lastError       String?
+  consecutiveFailures Int   @default(0)
+  deletedAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  executions SpaceAutomationExecution[]
+
+  @@index([enabled, nextRunAt])
+  @@index([spaceId, deletedAt])
+  @@index([spaceId, updatedAt])
+}
+
+model SpaceAutomationExecution {
+  id           String          @id @default(uuid())
+  automationId String
+  automation   SpaceAutomation @relation(fields: [automationId], references: [id], onDelete: Cascade)
+  scheduledFor DateTime
+  status       String          @default("TRIGGERED")
+  runId        String?         @unique
+  run          AgentRun?       @relation(fields: [runId], references: [id], onDelete: SetNull)
+  error        String?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  actionRequests SpaceActionRequest[]
+
+  @@unique([automationId, scheduledFor])
+  @@index([automationId, createdAt])
+  @@index([status, createdAt])
+}
+
+model SpaceActionRequest {
+  id                    String    @id @default(uuid())
+  spaceId               String
+  space                 Space     @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  workId                String?
+  work                  SpaceWork? @relation(fields: [workId], references: [id], onDelete: SetNull)
+  runId                 String?
+  run                   AgentRun? @relation(fields: [runId], references: [id], onDelete: SetNull)
+  automationExecutionId String?
+  automationExecution   SpaceAutomationExecution? @relation(fields: [automationExecutionId], references: [id], onDelete: SetNull)
+  kind                  String
+  riskLevel             String    @default("HIGH")
+  title                 String
+  status                String    @default("PENDING")
+  payload               Json?
+  result                Json?
+  error                 String?
+  idempotencyKey        String    @unique
+  decidedBy             String?
+  requestedAt           DateTime  @default(now())
+  decidedAt             DateTime?
+  completedAt           DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  connectorExecution SpaceConnectorExecution?
+
+  @@index([spaceId, status, createdAt])
+  @@index([workId, createdAt])
+  @@index([runId, createdAt])
 }
 
 model SpaceMember {
@@ -521,6 +664,8 @@ model AgentRun {
   completionId String?   @unique
   modelRequestCount Int  @default(0)
   modelRequestLimit Int  @default(12)
+  executionEngine String  @default("native")
+  engineVersion   String  @default("1")
   runtimeVersion Int      @default(1)
   eventSequence  Int      @default(0)
   coordinatorState Json?
@@ -536,6 +681,8 @@ model AgentRun {
   coordinatorTurns AgentCoordinatorTurn[]
   taskCompletions AgentTaskCompletion[]
   runtimeOutbox AgentRuntimeOutbox[]
+  automationExecution SpaceAutomationExecution?
+  actionRequests SpaceActionRequest[]
 
   @@index([spaceId, createdAt])
   @@index([userId, createdAt])

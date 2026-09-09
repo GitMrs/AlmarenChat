@@ -8,9 +8,12 @@ function harness(overrides = {}) {
     calls,
     options: {
       recover: () => calls.push('recover'),
+      triggerAutomation: () => calls.push('trigger-automation'),
       claimCompletion: () => null,
       deliverCompletion: () => calls.push('deliver'),
       failCompletion: () => calls.push('fail-completion'),
+      claimConnectorExecution: () => null,
+      processConnectorExecution: async () => calls.push('process-connector-action'),
       claimRun: () => null,
       processRun: async () => calls.push('process-run'),
       heartbeatRun: () => calls.push('heartbeat'),
@@ -38,7 +41,7 @@ test('completion delivery has priority over runs and discussions', async () => {
     },
   });
   assert.equal(await runWorkerIteration(state.options), 'completion');
-  assert.deepEqual(state.calls, ['recover', 'deliver']);
+  assert.deepEqual(state.calls, ['recover', 'trigger-automation', 'deliver']);
 });
 
 test('run processing always clears heartbeat and releases its lease', async () => {
@@ -50,7 +53,16 @@ test('run processing always clears heartbeat and releases its lease', async () =
     },
   });
   await assert.rejects(() => runWorkerIteration(state.options), /execution failed/);
-  assert.deepEqual(state.calls, ['recover', 'unref', 'process-run', 'clear-heartbeat', 'release-run']);
+  assert.deepEqual(state.calls, ['recover', 'trigger-automation', 'unref', 'process-run', 'clear-heartbeat', 'release-run']);
+});
+
+test('approved connector actions run before model tasks', async () => {
+  const state = harness({
+    claimConnectorExecution: () => ({ id: 'connector-action-1' }),
+    claimRun: () => { state.calls.push('claim-run'); return { id: 'run-1' }; },
+  });
+  assert.equal(await runWorkerIteration(state.options), 'connector-action');
+  assert.deepEqual(state.calls, ['recover', 'trigger-automation', 'process-connector-action']);
 });
 
 test('discussion runs only when no completion or task run is available', async () => {
@@ -58,7 +70,7 @@ test('discussion runs only when no completion or task run is available', async (
     claimDiscussion: () => ({ id: 'discussion-1' }),
   });
   assert.equal(await runWorkerIteration(state.options), 'discussion');
-  assert.deepEqual(state.calls, ['recover', 'process-discussion']);
+  assert.deepEqual(state.calls, ['recover', 'trigger-automation', 'process-discussion']);
 });
 
 test('relay runs only when higher-priority work is unavailable', async () => {
@@ -66,11 +78,11 @@ test('relay runs only when higher-priority work is unavailable', async () => {
     claimRelay: () => ({ id: 'relay-1' }),
   });
   assert.equal(await runWorkerIteration(state.options), 'relay');
-  assert.deepEqual(state.calls, ['recover', 'process-relay']);
+  assert.deepEqual(state.calls, ['recover', 'trigger-automation', 'process-relay']);
 });
 
 test('idle iteration waits before polling again', async () => {
   const state = harness();
   assert.equal(await runWorkerIteration(state.options), 'idle');
-  assert.deepEqual(state.calls, ['recover', 'delay']);
+  assert.deepEqual(state.calls, ['recover', 'trigger-automation', 'delay']);
 });

@@ -1,8 +1,11 @@
 export async function runWorkerIteration({
   recover,
+  triggerAutomation,
   claimCompletion,
   deliverCompletion,
   failCompletion,
+  claimConnectorExecution,
+  processConnectorExecution,
   claimRun,
   processRun,
   heartbeatRun,
@@ -17,6 +20,7 @@ export async function runWorkerIteration({
   clearIntervalFn = clearInterval,
 }) {
   recover();
+  triggerAutomation?.();
 
   const completion = claimCompletion();
   if (completion) {
@@ -26,6 +30,12 @@ export async function runWorkerIteration({
       failCompletion(completion, error);
     }
     return 'completion';
+  }
+
+  const connectorExecution = claimConnectorExecution?.();
+  if (connectorExecution) {
+    await processConnectorExecution(connectorExecution);
+    return 'connector-action';
   }
 
   const run = claimRun();

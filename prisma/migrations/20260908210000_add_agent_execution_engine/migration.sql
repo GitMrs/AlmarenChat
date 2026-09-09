@@ -1,0 +1,2 @@
+ALTER TABLE "AgentRun" ADD COLUMN "executionEngine" TEXT NOT NULL DEFAULT 'native';
+ALTER TABLE "AgentRun" ADD COLUMN "engineVersion" TEXT NOT NULL DEFAULT '1';

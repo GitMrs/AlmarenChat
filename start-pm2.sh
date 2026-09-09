@@ -22,6 +22,8 @@ echo "Verifying SQLite native bindings..."
 yarn db:verify-native
 
 echo "Upgrading Agent Runtime schema..."
+echo "Backing up SQLite database before schema changes..."
+yarn db:backup
 yarn db:upgrade-agent-runtime
 
 export PORT

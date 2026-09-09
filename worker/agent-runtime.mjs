@@ -52,6 +52,9 @@ import { createDiscussionRuntime } from './runtime/discussion-runtime.mjs';
 import { createRelayRuntime } from './runtime/relay-runtime.mjs';
 import { createWorkspaceRecoveryRuntime } from './runtime/workspace-recovery-runtime.mjs';
 import { createTaskLifecycleRuntime } from './runtime/task-lifecycle-runtime.mjs';
+import { advanceWorkAfterRun, completeAutomationExecution } from './runtime/work-lifecycle-store.mjs';
+import { triggerNextDueAutomation } from './runtime/space-automation-runtime.mjs';
+import { createConnectorActionRuntime } from './runtime/connector-action-runtime.mjs';
 import { loadAgentMemoryContextSync, recordAcceptedAgentExperiences } from './runtime/agent-memory-store.mjs';
 import {
   loadCoordinatorAcceptanceEvidence,
@@ -60,7 +63,10 @@ import {
 } from './runtime/coordinator-context.mjs';
 import { claimNextDiscussion as claimDiscussionLease, claimNextRelay as claimRelayLease, claimNextRun as claimRunLease, heartbeatRunLease, releaseRunLease as releaseLease } from './runtime/lease-store.mjs';
 import { cancellationRequests, recoverInterruptedDiscussions as recoverDiscussionRecords, recoverInterruptedRelays as recoverRelayRecords, recoverStaleRunLeases } from './runtime/recovery-store.mjs';
-import { runAdvisorHarness, runExecutorHarness } from './harness/agent-harness.mjs';
+import { createExecutionEngineRegistry } from './engines/engine-registry.mjs';
+import { createNativeExecutionEngine, NATIVE_EXECUTION_ENGINE_ID } from './engines/native-engine.mjs';
+import { createPiExecutionEngine } from './engines/pi-engine.mjs';
+import { createPiWorkerGovernance } from './engines/pi-worker-governance.mjs';
 
 const workerDir = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(workerDir, '..');
@@ -69,6 +75,18 @@ const workerId = randomUUID();
 let stopping = false;
 
 const db = openWorkerDatabase(resolveWorkerDatabasePath(projectRoot));
+const executionEngines = createExecutionEngineRegistry(
+  [
+    createNativeExecutionEngine(),
+    createPiExecutionEngine({ buildSessionOptions: createPiWorkerGovernance({ db, now }) }),
+  ],
+  { defaultEngineId: NATIVE_EXECUTION_ENGINE_ID }
+);
+const {
+  claimNextConnectorExecution,
+  processConnectorExecution,
+  recoverInterruptedConnectorExecutions,
+} = createConnectorActionRuntime({ db, projectRoot, now, persistSpaceMemory });
 
 const rawAgents = JSON.parse(await readFile(path.join(projectRoot, 'src', 'lib', 'agent.json'), 'utf8'));
 const builtInAgents = new Map(
@@ -269,6 +287,7 @@ function stageCompletion(runId, completionId, status, result, error, eventType, 
   const run = db.prepare('SELECT "spaceId" FROM "AgentRun" WHERE "id" = ?').get(runId);
   if (!run) throw new Error('任务不存在，无法提交完成事件');
   addEvent(runId, eventType, eventMessage, eventPayload, completionId);
+  completeAutomationExecution(db, { runId, runStatus: status, error, timestamp });
   enqueueCompletion(db, {
     runId,
     spaceId: run.spaceId,
@@ -361,7 +380,8 @@ function loadRunContext(run) {
   const apiKey = useCustomModel ? user.apiKey : process.env.apiKey;
   if (!fakeMode && !apiKey) throw new Error('未配置可用的模型 API Key');
   const memory = loadOrCreateSpaceMemory(run.spaceId);
-  const authorization = run.runtimeVersion >= 3 ? readCoordinatorState(db, run.id).authorization || null : null;
+  const coordinatorState = run.runtimeVersion >= 3 ? readCoordinatorState(db, run.id) : null;
+  const authorization = coordinatorState?.authorization || null;
 
   return {
     space,
@@ -387,6 +407,7 @@ function loadRunContext(run) {
     researchSources: [],
     researchContext: '',
     authorization,
+    automated: coordinatorState?.automated === true,
     projectMemory: [
       spaceMemoryContext(memory),
       spaceLearningContext(readSpaceLearningSync({ projectRoot, userId: run.userId, spaceId: run.spaceId })),
@@ -610,7 +631,7 @@ async function coordinateNextWork(run, context, triggerEventId) {
 
     const timestamp = now();
     if (action.type === 'dispatch') {
-      const awaitingApproval = dispatchRequiresApproval(context.space.executionMode);
+      const awaitingApproval = dispatchRequiresApproval(context.space.executionMode, context.automated);
       const initialStatus = awaitingApproval ? 'PROPOSED' : 'PENDING';
       const alreadyCreated = db.prepare(
         `SELECT * FROM "AgentTask" WHERE "runId" = ? AND "parentTaskId" = ? ORDER BY "sortOrder" ASC`
@@ -990,7 +1011,8 @@ async function executeTask(run, task, context, previousResults) {
     attempt: task.attempt,
   });
 
-  const harnessResult = await runExecutorHarness({
+  const harnessResult = await executionEngines.execute({
+    mode: 'executor',
     run,
     task: previousCompletion ? { ...task, previousAttemptReport: previousCompletion.report } : task,
     agent,
@@ -1023,7 +1045,7 @@ async function executeTask(run, task, context, previousResults) {
       };
     },
     workspaceOptions,
-  });
+  }, run.executionEngine, run.engineVersion);
   if (harnessResult.paused) {
     await recordTaskArtifactManifest(run, task, context);
     return null;
@@ -1124,7 +1146,8 @@ async function executeAdvisorTask(run, task, context, previousResults, agent) {
   const previousCompletion = task.attempt > 1
     ? db.prepare(`SELECT "report" FROM "AgentTaskCompletion" WHERE "taskId" = ? AND "attempt" = ? ORDER BY "createdAt" DESC LIMIT 1`).get(task.id, task.attempt - 1)
     : null;
-  const result = await runAdvisorHarness({
+  const advisorResult = await executionEngines.execute({
+    mode: 'advisor',
     run,
     task: previousCompletion ? { ...task, previousAttemptReport: previousCompletion.report } : task,
     agent,
@@ -1141,7 +1164,8 @@ async function executeAdvisorTask(run, task, context, previousResults, agent) {
     registerWorkspaceFile: workspaceWriteAllowed
       ? (relativePath) => registerWorkspaceFile(run, task, relativePath)
       : null,
-  });
+  }, run.executionEngine, run.engineVersion);
+  const result = advisorResult.result;
   if (isCancelRequested(run.id) || isTaskCancelRequested(task.id)) throw new Error('步骤已取消');
   if (!result) throw new Error(`${agent.name}没有返回顾问结果`);
   const manifest = workspaceWriteAllowed
@@ -1594,6 +1618,7 @@ async function processRun(run) {
           });
         }
         const completionId = completionIdFor(run.id);
+        advanceWorkAfterRun(db, { workId: run.workId, runStatus: outcome.status, timestamp });
         db.prepare(
           `UPDATE "AgentRun" SET "status" = ?, "workerId" = NULL, "heartbeatAt" = NULL,
            "completionId" = COALESCE("completionId", ?), "result" = ?, "coordinatorState" = ?,
@@ -1651,6 +1676,7 @@ async function main() {
   recoverStaleOutbox(db, leaseCutoffIso(Date.now(), leaseTimeoutMs));
   recoverRuntimeIntents(db, leaseCutoffIso(Date.now(), leaseTimeoutMs));
   recoverCoordinatorTurns(db, leaseCutoffIso(Date.now(), leaseTimeoutMs));
+  recoverInterruptedConnectorExecutions();
   reconcileCompletionOutbox(db);
   console.log(`[agent-worker] ready (${fakeMode ? 'fake' : 'model'} mode)`);
   await runWorkerLoop({
@@ -1660,9 +1686,12 @@ async function main() {
       recoverStaleOutbox(db, leaseCutoffIso(Date.now(), leaseTimeoutMs));
       recoverRuntimeIntents(db, leaseCutoffIso(Date.now(), leaseTimeoutMs));
     },
+    triggerAutomation: () => triggerNextDueAutomation(db, now()),
     claimCompletion: () => claimNextCompletion(db, workerId),
     deliverCompletion: (completion) => deliverCompletion(db, completion),
     failCompletion: (completion, error) => failCompletion(db, completion, error),
+    claimConnectorExecution: claimNextConnectorExecution,
+    processConnectorExecution,
     claimRun: claimNextRun,
     processRun,
     heartbeatRun,

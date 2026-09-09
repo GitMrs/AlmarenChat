@@ -67,7 +67,7 @@ test('coordinator context recovers state and partitions tasks without changing o
     'image-generator', 'professional-analysis', 'document-writer', 'csv-business-analysis', 'responsive-page-builder',
   ]);
   assert.deepEqual(context.team[1].availableSkills.map((skill) => skill.id), [
-    'professional-analysis', 'document-writer', 'csv-business-analysis',
+    'image-generator', 'professional-analysis', 'document-writer', 'csv-business-analysis',
   ]);
   db.close();
 });

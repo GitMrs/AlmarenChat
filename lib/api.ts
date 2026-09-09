@@ -1,4 +1,4 @@
-import type { AgentGrowthProfile, AgentRun, AssistantConversationSummary, AssistantExperienceMessage, AssistantMemoryItem, AssistantQQBinding, AssistantReminder, AssistantReminderCandidate, Message, PersonalAssistantBootstrap, PersonalAssistantProfile, SpaceDiscussion, SpaceFileShare, SpaceRelay, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal, SpaceWork } from '@/types';
+import type { AgentGrowthProfile, AgentRun, AssistantConversationSummary, AssistantExperienceMessage, AssistantMemoryItem, AssistantQQBinding, AssistantReminder, AssistantReminderCandidate, Message, PersonalAssistantBootstrap, PersonalAssistantProfile, SpaceActionRequest, SpaceAutomation, SpaceConnector, SpaceDiscussion, SpaceFileShare, SpaceOperationOutcome, SpaceOperationsSummary, SpaceRelay, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal, SpaceWork } from '@/types';
 
 const API_BASE = '/api';
 
@@ -372,13 +372,13 @@ export const conversations = {
 // Spaces
 export const spaces = {
   list: () => request<{ spaces: any[] }>('/spaces'),
-  create: (data: { name: string; description?: string; instructions?: string; runtimeType?: 'NATIVE' | 'PI_CODING'; executionMode?: 'AUTO' | 'REVIEW_DISPATCH'; agentIds?: string[]; templateId?: string | null }) =>
+  create: (data: { name: string; description?: string; instructions?: string; executionEngine?: 'native' | 'pi'; executionMode?: 'AUTO' | 'REVIEW_DISPATCH'; agentIds?: string[]; templateId?: string | null }) =>
     request<{ space: any }>('/spaces', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
   get: (id: string) => request<{ space: any }>(`/spaces/${id}`),
-  update: (id: string, data: { name?: string; description?: string | null; instructions?: string | null; executionMode?: 'AUTO' | 'REVIEW_DISPATCH'; hostAgentId?: string | null; activeWorkId?: string | null }) =>
+  update: (id: string, data: { name?: string; description?: string | null; instructions?: string | null; executionEngine?: 'native' | 'pi'; executionMode?: 'AUTO' | 'REVIEW_DISPATCH'; hostAgentId?: string | null; activeWorkId?: string | null }) =>
     request<{ space: any }>(`/spaces/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
@@ -524,11 +524,72 @@ export const spaces = {
     }),
   runs: (id: string) => request<{ runs: AgentRun[] }>(`/spaces/${id}/runs`),
   works: (id: string) => request<{ works: SpaceWork[] }>(`/spaces/${id}/works`),
+  createWork: (spaceId: string, data: { title: string; objective?: string; kind?: string }) =>
+    request<{ work: SpaceWork }>(`/spaces/${spaceId}/works`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
   renameWork: (spaceId: string, workId: string, title: string) =>
     request<{ work: SpaceWork }>(`/spaces/${spaceId}/works/${workId}`, {
       method: 'PATCH',
       body: JSON.stringify({ title }),
     }),
+  updateWork: (spaceId: string, workId: string, data: { title?: string; objective?: string | null; stage?: string | null; status?: 'ACTIVE' | 'COMPLETED' | 'ARCHIVED' }) =>
+    request<{ work: SpaceWork }>(`/spaces/${spaceId}/works/${workId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+  automations: (spaceId: string) =>
+    request<{ automations: SpaceAutomation[] }>(`/spaces/${spaceId}/automations`),
+  createAutomation: (spaceId: string, data: { name: string; prompt: string; scheduleType: 'INTERVAL' | 'DAILY' | 'WEEKLY'; intervalMinutes: number; timeZone: string; scheduleHour?: number; scheduleMinute?: number; weekdays?: number[]; workStrategy: 'NEW_WORK' | 'ACTIVE_WORK'; networkPolicy: 'forbidden' | 'allowed' | 'required'; completionAction?: 'NONE' | 'WECHAT_CREATE_DRAFT'; completionConfig?: { themeId?: string } | null; enabled: boolean }) =>
+    request<{ automation: SpaceAutomation }>(`/spaces/${spaceId}/automations`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  updateAutomation: (spaceId: string, automationId: string, data: Partial<Pick<SpaceAutomation, 'name' | 'prompt' | 'scheduleType' | 'intervalMinutes' | 'timeZone' | 'scheduleHour' | 'scheduleMinute' | 'weekdays' | 'workStrategy' | 'networkPolicy' | 'completionAction' | 'completionConfig' | 'enabled' | 'nextRunAt'>>) =>
+    request<{ automation: SpaceAutomation }>(`/spaces/${spaceId}/automations/${automationId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+  triggerAutomation: (spaceId: string, automationId: string) =>
+    request<{ automation: SpaceAutomation }>(`/spaces/${spaceId}/automations/${automationId}/trigger`, { method: 'POST' }),
+  deleteAutomation: (spaceId: string, automationId: string) =>
+    request<{ success: true }>(`/spaces/${spaceId}/automations/${automationId}`, { method: 'DELETE' }),
+  actions: (spaceId: string) => request<{ actions: SpaceActionRequest[] }>(`/spaces/${spaceId}/actions`),
+  operations: (spaceId: string) => request<{ summary: SpaceOperationsSummary; recentOutcomes: SpaceOperationOutcome[] }>(`/spaces/${spaceId}/operations`),
+  requestWechatDraft: (spaceId: string, data: { articleFileId: string; coverFileId: string; themeId: string; requestId: string }) =>
+    request<{ action: SpaceActionRequest }>(`/spaces/${spaceId}/actions`, {
+      method: 'POST',
+      body: JSON.stringify({ kind: 'WECHAT_CREATE_DRAFT', ...data }),
+    }),
+  decideAction: (spaceId: string, actionId: string, decision: 'approve' | 'reject', reason?: string) =>
+    request<{ action: SpaceActionRequest; work?: SpaceWork | null; followUpAction?: SpaceActionRequest | null }>(`/spaces/${spaceId}/actions/${actionId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ decision, reason }),
+    }),
+  retryConnectorActionStatus: (spaceId: string, actionId: string) =>
+    request<{ action: SpaceActionRequest }>(`/spaces/${spaceId}/actions/${actionId}/retry`, { method: 'POST' }),
+  connectors: (spaceId: string) =>
+    request<{ connectors: SpaceConnector[] }>(`/spaces/${spaceId}/connectors`),
+  configureWechatConnector: (spaceId: string, data: { appId: string; appSecret?: string }) =>
+    request<{ connector: SpaceConnector }>(`/spaces/${spaceId}/connectors/wechat`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+  validateWechatConnector: (spaceId: string, requestId: string) =>
+    request<{ connector: SpaceConnector; action: SpaceActionRequest }>(`/spaces/${spaceId}/connectors/wechat/validate`, {
+      method: 'POST',
+      body: JSON.stringify({ requestId }),
+    }),
+  wechatPublications: (spaceId: string) =>
+    request<{ actions: SpaceActionRequest[] }>(`/spaces/${spaceId}/connectors/wechat/publications`),
+  setWechatConnectorEnabled: (spaceId: string, enabled: boolean) =>
+    request<{ connector: SpaceConnector }>(`/spaces/${spaceId}/connectors/wechat`, {
+      method: 'PATCH',
+      body: JSON.stringify({ enabled }),
+    }),
+  removeWechatConnector: (spaceId: string) =>
+    request<{ success: true }>(`/spaces/${spaceId}/connectors/wechat`, { method: 'DELETE' }),
   createRun: (
     id: string,
     input: string,

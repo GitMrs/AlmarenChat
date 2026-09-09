@@ -36,7 +36,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const userId = requireAuth(request);
-    const { name, description, instructions, runtimeType, executionMode, agentIds, templateId } = await request.json();
+    const { name, description, instructions, runtimeType, executionEngine, executionMode, agentIds, templateId } = await request.json();
     const selectedTemplate = templateId ? getSpaceTemplate(templateId) : null;
     if (templateId && !selectedTemplate) {
       return NextResponse.json({ error: '空间模板不存在或已失效' }, { status: 400 });
@@ -52,9 +52,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: '空间规则不能超过 12000 字' }, { status: 400 });
     }
     const normalizedExecutionMode = executionMode === 'AUTO' ? 'AUTO' : 'REVIEW_DISPATCH';
-    const normalizedRuntimeType = runtimeType === undefined ? 'NATIVE' : runtimeType;
-    if (!['NATIVE', 'PI_CODING'].includes(normalizedRuntimeType)) {
-      return NextResponse.json({ error: '不支持的空间运行时' }, { status: 400 });
+    if (runtimeType !== undefined && !['NATIVE', 'PI_CODING'].includes(runtimeType)) {
+      return NextResponse.json({ error: '不支持的旧版空间运行时' }, { status: 400 });
+    }
+    const normalizedExecutionEngine = executionEngine === undefined
+      ? (runtimeType === 'PI_CODING' ? 'pi' : 'native')
+      : executionEngine;
+    if (!['native', 'pi'].includes(normalizedExecutionEngine)) {
+      return NextResponse.json({ error: '不支持的 Agent 执行引擎' }, { status: 400 });
     }
 
     const requestedAgentIds = Array.isArray(agentIds)
@@ -73,7 +78,8 @@ export async function POST(request: Request) {
         name: title,
         description: typeof description === 'string' ? description.trim() || null : null,
         instructions: spaceInstructions || null,
-        runtimeType: normalizedRuntimeType,
+        runtimeType: 'NATIVE',
+        executionEngine: normalizedExecutionEngine,
         executionMode: normalizedExecutionMode,
         hostAgentId: SPACE_COORDINATOR_ID,
         ...(selectedTemplate && templateSnapshot ? {

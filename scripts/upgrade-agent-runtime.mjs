@@ -33,7 +33,7 @@ try {
     if (!hasColumn('User', 'imageModelName')) db.exec('ALTER TABLE "User" ADD COLUMN "imageModelName" TEXT');
     if (!hasColumn('User', 'imageModelSize')) db.exec(`ALTER TABLE "User" ADD COLUMN "imageModelSize" TEXT DEFAULT '1024x1024'`);
     if (!hasColumn('User', 'imageModelProtocol')) db.exec(`ALTER TABLE "User" ADD COLUMN "imageModelProtocol" TEXT NOT NULL DEFAULT 'OPENAI_IMAGES'`);
-    if (!hasColumn('Space', 'activeWorkId')) db.exec('ALTER TABLE "Space" ADD COLUMN "activeWorkId" TEXT');
+    if (hasTable('Space') && !hasColumn('Space', 'activeWorkId')) db.exec('ALTER TABLE "Space" ADD COLUMN "activeWorkId" TEXT');
     if (!hasColumn('Conversation', 'kind')) db.exec(`ALTER TABLE "Conversation" ADD COLUMN "kind" TEXT NOT NULL DEFAULT 'AGENT'`);
     if (!hasColumn('Conversation', 'assistantMode')) db.exec('ALTER TABLE "Conversation" ADD COLUMN "assistantMode" TEXT');
     if (hasTable('Message') && !hasColumn('Message', 'source')) {
@@ -255,8 +255,11 @@ try {
         "name" TEXT NOT NULL,
         "description" TEXT,
         "instructions" TEXT,
+        "runtimeType" TEXT NOT NULL DEFAULT 'NATIVE',
+        "executionEngine" TEXT NOT NULL DEFAULT 'native',
         "executionMode" TEXT NOT NULL DEFAULT 'REVIEW_DISPATCH',
         "hostAgentId" TEXT,
+        "activeWorkId" TEXT,
         "templateId" TEXT,
         "templateVersion" INTEGER,
         "templateSnapshot" JSONB,
@@ -266,7 +269,13 @@ try {
       );
     `);
     if (!hasColumn('Space', 'hostAgentId')) db.exec('ALTER TABLE "Space" ADD COLUMN "hostAgentId" TEXT');
+    if (!hasColumn('Space', 'activeWorkId')) db.exec('ALTER TABLE "Space" ADD COLUMN "activeWorkId" TEXT');
     if (!hasColumn('Space', 'instructions')) db.exec('ALTER TABLE "Space" ADD COLUMN "instructions" TEXT');
+    if (!hasColumn('Space', 'runtimeType')) db.exec(`ALTER TABLE "Space" ADD COLUMN "runtimeType" TEXT NOT NULL DEFAULT 'NATIVE'`);
+    if (!hasColumn('Space', 'executionEngine')) {
+      db.exec(`ALTER TABLE "Space" ADD COLUMN "executionEngine" TEXT NOT NULL DEFAULT 'native'`);
+      db.exec(`UPDATE "Space" SET "executionEngine" = 'pi' WHERE "runtimeType" = 'PI_CODING'`);
+    }
     if (!hasColumn('Space', 'executionMode')) db.exec(`ALTER TABLE "Space" ADD COLUMN "executionMode" TEXT NOT NULL DEFAULT 'REVIEW_DISPATCH'`);
     if (!hasColumn('Space', 'templateId')) db.exec('ALTER TABLE "Space" ADD COLUMN "templateId" TEXT');
     if (!hasColumn('Space', 'templateVersion')) db.exec('ALTER TABLE "Space" ADD COLUMN "templateVersion" INTEGER');
@@ -278,12 +287,23 @@ try {
         "spaceId" TEXT NOT NULL,
         "title" TEXT NOT NULL,
         "kind" TEXT NOT NULL,
+        "status" TEXT NOT NULL DEFAULT 'ACTIVE',
+        "stage" TEXT,
+        "objective" TEXT,
+        "metadata" JSONB,
+        "completedAt" DATETIME,
         "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         "updatedAt" DATETIME NOT NULL,
         CONSTRAINT "SpaceWork_spaceId_fkey" FOREIGN KEY ("spaceId") REFERENCES "Space" ("id") ON DELETE CASCADE ON UPDATE CASCADE
       );
       CREATE INDEX IF NOT EXISTS "SpaceWork_spaceId_updatedAt_idx" ON "SpaceWork"("spaceId", "updatedAt");
     `);
+    if (!hasColumn('SpaceWork', 'status')) db.exec(`ALTER TABLE "SpaceWork" ADD COLUMN "status" TEXT NOT NULL DEFAULT 'ACTIVE'`);
+    if (!hasColumn('SpaceWork', 'stage')) db.exec('ALTER TABLE "SpaceWork" ADD COLUMN "stage" TEXT');
+    if (!hasColumn('SpaceWork', 'objective')) db.exec('ALTER TABLE "SpaceWork" ADD COLUMN "objective" TEXT');
+    if (!hasColumn('SpaceWork', 'metadata')) db.exec('ALTER TABLE "SpaceWork" ADD COLUMN "metadata" JSONB');
+    if (!hasColumn('SpaceWork', 'completedAt')) db.exec('ALTER TABLE "SpaceWork" ADD COLUMN "completedAt" DATETIME');
+    db.exec('CREATE INDEX IF NOT EXISTS "SpaceWork_spaceId_status_updatedAt_idx" ON "SpaceWork"("spaceId", "status", "updatedAt")');
 
     db.exec(`
       CREATE TABLE IF NOT EXISTS "SpaceMember" (
@@ -335,6 +355,8 @@ try {
         "completionId" TEXT,
         "modelRequestCount" INTEGER NOT NULL DEFAULT 0,
         "modelRequestLimit" INTEGER NOT NULL DEFAULT 12,
+        "executionEngine" TEXT NOT NULL DEFAULT 'native',
+        "engineVersion" TEXT NOT NULL DEFAULT '1',
         "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         "updatedAt" DATETIME NOT NULL,
         "startedAt" DATETIME,
@@ -579,11 +601,143 @@ try {
     if (!hasColumn('AgentRun', 'completionId')) db.exec('ALTER TABLE "AgentRun" ADD COLUMN "completionId" TEXT');
     if (!hasColumn('AgentRun', 'modelRequestCount')) db.exec('ALTER TABLE "AgentRun" ADD COLUMN "modelRequestCount" INTEGER NOT NULL DEFAULT 0');
     if (!hasColumn('AgentRun', 'modelRequestLimit')) db.exec('ALTER TABLE "AgentRun" ADD COLUMN "modelRequestLimit" INTEGER NOT NULL DEFAULT 12');
+    if (!hasColumn('AgentRun', 'executionEngine')) db.exec(`ALTER TABLE "AgentRun" ADD COLUMN "executionEngine" TEXT NOT NULL DEFAULT 'native'`);
+    if (!hasColumn('AgentRun', 'engineVersion')) db.exec(`ALTER TABLE "AgentRun" ADD COLUMN "engineVersion" TEXT NOT NULL DEFAULT '1'`);
     if (!hasColumn('AgentRun', 'runtimeVersion')) db.exec('ALTER TABLE "AgentRun" ADD COLUMN "runtimeVersion" INTEGER NOT NULL DEFAULT 1');
     if (!hasColumn('AgentRun', 'eventSequence')) db.exec('ALTER TABLE "AgentRun" ADD COLUMN "eventSequence" INTEGER NOT NULL DEFAULT 0');
     if (!hasColumn('AgentRun', 'coordinatorState')) db.exec('ALTER TABLE "AgentRun" ADD COLUMN "coordinatorState" JSONB');
     if (!hasColumn('AgentRun', 'workId')) db.exec('ALTER TABLE "AgentRun" ADD COLUMN "workId" TEXT REFERENCES "SpaceWork"("id") ON DELETE SET NULL ON UPDATE CASCADE');
     if (!hasColumn('SpaceFile', 'workId')) db.exec('ALTER TABLE "SpaceFile" ADD COLUMN "workId" TEXT REFERENCES "SpaceWork"("id") ON DELETE SET NULL ON UPDATE CASCADE');
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS "SpaceAutomation" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "spaceId" TEXT NOT NULL,
+        "name" TEXT NOT NULL,
+        "prompt" TEXT NOT NULL,
+        "scheduleType" TEXT NOT NULL DEFAULT 'INTERVAL',
+        "intervalMinutes" INTEGER NOT NULL DEFAULT 1440,
+        "timeZone" TEXT NOT NULL DEFAULT 'Asia/Shanghai',
+        "scheduleHour" INTEGER,
+        "scheduleMinute" INTEGER,
+        "weekdays" JSONB,
+        "workStrategy" TEXT NOT NULL DEFAULT 'NEW_WORK',
+        "networkPolicy" TEXT NOT NULL DEFAULT 'forbidden',
+        "enabled" BOOLEAN NOT NULL DEFAULT false,
+        "nextRunAt" DATETIME NOT NULL,
+        "lastRunAt" DATETIME,
+        "lastRunId" TEXT,
+        "lastError" TEXT,
+        "consecutiveFailures" INTEGER NOT NULL DEFAULT 0,
+        "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" DATETIME NOT NULL,
+        CONSTRAINT "SpaceAutomation_spaceId_fkey" FOREIGN KEY ("spaceId") REFERENCES "Space" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+      );
+      CREATE TABLE IF NOT EXISTS "SpaceAutomationExecution" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "automationId" TEXT NOT NULL,
+        "scheduledFor" DATETIME NOT NULL,
+        "status" TEXT NOT NULL DEFAULT 'TRIGGERED',
+        "runId" TEXT,
+        "error" TEXT,
+        "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" DATETIME NOT NULL,
+        CONSTRAINT "SpaceAutomationExecution_automationId_fkey" FOREIGN KEY ("automationId") REFERENCES "SpaceAutomation" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+        CONSTRAINT "SpaceAutomationExecution_runId_fkey" FOREIGN KEY ("runId") REFERENCES "AgentRun" ("id") ON DELETE SET NULL ON UPDATE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS "SpaceAutomation_enabled_nextRunAt_idx" ON "SpaceAutomation"("enabled", "nextRunAt");
+      CREATE INDEX IF NOT EXISTS "SpaceAutomation_spaceId_updatedAt_idx" ON "SpaceAutomation"("spaceId", "updatedAt");
+      CREATE UNIQUE INDEX IF NOT EXISTS "SpaceAutomationExecution_runId_key" ON "SpaceAutomationExecution"("runId");
+      CREATE UNIQUE INDEX IF NOT EXISTS "SpaceAutomationExecution_automationId_scheduledFor_key" ON "SpaceAutomationExecution"("automationId", "scheduledFor");
+      CREATE INDEX IF NOT EXISTS "SpaceAutomationExecution_automationId_createdAt_idx" ON "SpaceAutomationExecution"("automationId", "createdAt");
+      CREATE INDEX IF NOT EXISTS "SpaceAutomationExecution_status_createdAt_idx" ON "SpaceAutomationExecution"("status", "createdAt");
+    `);
+    if (!hasColumn('SpaceAutomation', 'timeZone')) db.exec(`ALTER TABLE "SpaceAutomation" ADD COLUMN "timeZone" TEXT NOT NULL DEFAULT 'Asia/Shanghai'`);
+    if (!hasColumn('SpaceAutomation', 'scheduleHour')) db.exec('ALTER TABLE "SpaceAutomation" ADD COLUMN "scheduleHour" INTEGER');
+    if (!hasColumn('SpaceAutomation', 'scheduleMinute')) db.exec('ALTER TABLE "SpaceAutomation" ADD COLUMN "scheduleMinute" INTEGER');
+    if (!hasColumn('SpaceAutomation', 'weekdays')) db.exec('ALTER TABLE "SpaceAutomation" ADD COLUMN "weekdays" JSONB');
+    if (!hasColumn('SpaceAutomation', 'consecutiveFailures')) db.exec('ALTER TABLE "SpaceAutomation" ADD COLUMN "consecutiveFailures" INTEGER NOT NULL DEFAULT 0');
+    if (!hasColumn('SpaceAutomation', 'completionAction')) db.exec(`ALTER TABLE "SpaceAutomation" ADD COLUMN "completionAction" TEXT NOT NULL DEFAULT 'NONE'`);
+    if (!hasColumn('SpaceAutomation', 'completionConfig')) db.exec('ALTER TABLE "SpaceAutomation" ADD COLUMN "completionConfig" JSONB');
+    if (!hasColumn('SpaceAutomation', 'deletedAt')) db.exec('ALTER TABLE "SpaceAutomation" ADD COLUMN "deletedAt" DATETIME');
+    db.exec('CREATE INDEX IF NOT EXISTS "SpaceAutomation_spaceId_deletedAt_idx" ON "SpaceAutomation"("spaceId", "deletedAt")');
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS "SpaceActionRequest" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "spaceId" TEXT NOT NULL,
+        "workId" TEXT,
+        "runId" TEXT,
+        "automationExecutionId" TEXT,
+        "kind" TEXT NOT NULL,
+        "riskLevel" TEXT NOT NULL DEFAULT 'HIGH',
+        "title" TEXT NOT NULL,
+        "status" TEXT NOT NULL DEFAULT 'PENDING',
+        "payload" JSONB,
+        "result" JSONB,
+        "error" TEXT,
+        "idempotencyKey" TEXT NOT NULL,
+        "decidedBy" TEXT,
+        "requestedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "decidedAt" DATETIME,
+        "completedAt" DATETIME,
+        "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" DATETIME NOT NULL,
+        CONSTRAINT "SpaceActionRequest_spaceId_fkey" FOREIGN KEY ("spaceId") REFERENCES "Space" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+        CONSTRAINT "SpaceActionRequest_workId_fkey" FOREIGN KEY ("workId") REFERENCES "SpaceWork" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
+        CONSTRAINT "SpaceActionRequest_runId_fkey" FOREIGN KEY ("runId") REFERENCES "AgentRun" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
+        CONSTRAINT "SpaceActionRequest_automationExecutionId_fkey" FOREIGN KEY ("automationExecutionId") REFERENCES "SpaceAutomationExecution" ("id") ON DELETE SET NULL ON UPDATE CASCADE
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS "SpaceActionRequest_idempotencyKey_key" ON "SpaceActionRequest"("idempotencyKey");
+      CREATE INDEX IF NOT EXISTS "SpaceActionRequest_spaceId_status_createdAt_idx" ON "SpaceActionRequest"("spaceId", "status", "createdAt");
+      CREATE INDEX IF NOT EXISTS "SpaceActionRequest_workId_createdAt_idx" ON "SpaceActionRequest"("workId", "createdAt");
+      CREATE INDEX IF NOT EXISTS "SpaceActionRequest_runId_createdAt_idx" ON "SpaceActionRequest"("runId", "createdAt");
+    `);
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS "SpaceConnector" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "spaceId" TEXT NOT NULL,
+        "provider" TEXT NOT NULL,
+        "enabled" BOOLEAN NOT NULL DEFAULT true,
+        "status" TEXT NOT NULL DEFAULT 'CONFIGURED',
+        "publicConfig" JSONB,
+        "credentialCiphertext" TEXT NOT NULL,
+        "accessTokenCiphertext" TEXT,
+        "accessTokenExpiresAt" DATETIME,
+        "lastCheckedAt" DATETIME,
+        "lastError" TEXT,
+        "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" DATETIME NOT NULL,
+        CONSTRAINT "SpaceConnector_spaceId_fkey" FOREIGN KEY ("spaceId") REFERENCES "Space" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS "SpaceConnector_spaceId_provider_key" ON "SpaceConnector"("spaceId", "provider");
+      CREATE INDEX IF NOT EXISTS "SpaceConnector_spaceId_enabled_idx" ON "SpaceConnector"("spaceId", "enabled");
+      CREATE INDEX IF NOT EXISTS "SpaceConnector_provider_status_idx" ON "SpaceConnector"("provider", "status");
+      CREATE TABLE IF NOT EXISTS "SpaceConnectorExecution" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "connectorId" TEXT NOT NULL,
+        "actionRequestId" TEXT NOT NULL,
+        "operation" TEXT NOT NULL,
+        "status" TEXT NOT NULL DEFAULT 'QUEUED',
+        "requestSummary" JSONB,
+        "responseSummary" JSONB,
+        "externalId" TEXT,
+        "externalUrl" TEXT,
+        "error" TEXT,
+        "nextPollAt" DATETIME,
+        "pollCount" INTEGER NOT NULL DEFAULT 0,
+        "startedAt" DATETIME,
+        "completedAt" DATETIME,
+        "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" DATETIME NOT NULL,
+        CONSTRAINT "SpaceConnectorExecution_connectorId_fkey" FOREIGN KEY ("connectorId") REFERENCES "SpaceConnector" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+        CONSTRAINT "SpaceConnectorExecution_actionRequestId_fkey" FOREIGN KEY ("actionRequestId") REFERENCES "SpaceActionRequest" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS "SpaceConnectorExecution_actionRequestId_key" ON "SpaceConnectorExecution"("actionRequestId");
+      CREATE INDEX IF NOT EXISTS "SpaceConnectorExecution_connectorId_createdAt_idx" ON "SpaceConnectorExecution"("connectorId", "createdAt");
+      CREATE INDEX IF NOT EXISTS "SpaceConnectorExecution_status_createdAt_idx" ON "SpaceConnectorExecution"("status", "createdAt");
+    `);
+    if (!hasColumn('SpaceConnectorExecution', 'nextPollAt')) db.exec('ALTER TABLE "SpaceConnectorExecution" ADD COLUMN "nextPollAt" DATETIME');
+    if (!hasColumn('SpaceConnectorExecution', 'pollCount')) db.exec('ALTER TABLE "SpaceConnectorExecution" ADD COLUMN "pollCount" INTEGER NOT NULL DEFAULT 0');
+    db.exec('CREATE INDEX IF NOT EXISTS "SpaceConnectorExecution_status_nextPollAt_idx" ON "SpaceConnectorExecution"("status", "nextPollAt")');
     if (!hasColumn('AgentTask', 'acceptanceCriteria')) db.exec('ALTER TABLE "AgentTask" ADD COLUMN "acceptanceCriteria" TEXT');
     if (!hasColumn('AgentTask', 'origin')) db.exec(`ALTER TABLE "AgentTask" ADD COLUMN "origin" TEXT NOT NULL DEFAULT 'legacy_plan'`);
     if (!hasColumn('AgentTask', 'parentTaskId')) db.exec('ALTER TABLE "AgentTask" ADD COLUMN "parentTaskId" TEXT');

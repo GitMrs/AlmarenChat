@@ -86,6 +86,8 @@ export async function POST(
           status: 'QUEUED',
           retryOfId: existing.id,
           attempt: existing.attempt + 1,
+          executionEngine: existing.executionEngine,
+          engineVersion: existing.engineVersion,
           runtimeVersion: existing.runtimeVersion,
           modelRequestLimit: existing.modelRequestLimit,
           coordinatorState: {

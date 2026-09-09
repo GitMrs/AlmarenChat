@@ -309,6 +309,16 @@
   resolved "https://registry.yarnpkg.com/@babel/runtime/-/runtime-7.29.7.tgz#12022450c45a4da6d8d8287b18a4ff2ddb23f768"
   integrity sha512-Nq8OhGWiZIZGV6hLHoyAKLLcJihP/xFeBMGJoUrxTX2psI8dCifzLhZISFb+VWS3wFMRDmCGw5R+dOySCqPLhw==
 
+"@dicebear/core@^10.7.0":
+  version "10.7.0"
+  resolved "https://registry.yarnpkg.com/@dicebear/core/-/core-10.7.0.tgz#abb30c82f809ffc56d9aa8b1f936cf294a01224f"
+  integrity sha512-JUOzKOd8RUByJJo8ZL+C7YE/pvEsWewfpbWUmR8OIQZWv/PvUQHnohdevySC3icyyxe6EIU/8B/rQgA42us1QA==
+
+"@dicebear/styles@^10.6.0":
+  version "10.6.0"
+  resolved "https://registry.yarnpkg.com/@dicebear/styles/-/styles-10.6.0.tgz#55cec7fc58aae8f086c534ad1703be11bd762e8e"
+  integrity sha512-KhxbEVI+z8TaenX58+ZhIRFBt7adggu/F+8g6ZYLu43H2/lgLuWA3Kg8vHBrCVWdfTTTt1p2wUhQomIkkypTuQ==
+
 "@earendil-works/chord@^0.85.1":
   version "0.85.1"
   resolved "https://registry.yarnpkg.com/@earendil-works/chord/-/chord-0.85.1.tgz#acc677176bee8b7c1fbed96483317f694398aded"
@@ -1594,14 +1604,6 @@ better-result@^2.7.0:
   resolved "https://registry.npmjs.org/better-result/-/better-result-2.9.2.tgz"
   integrity sha512-WIFoBPCdnTOdk9inkE1ZRvCZ4P0CpSkAiLlchC65N7n9DcjZ3NhqkBOlafzpOVnO8ixyi37kicmSJ3ENhPZl7Q==
 
-better-sqlite3@^12.0.3:
-  version "12.11.1"
-  resolved "https://registry.yarnpkg.com/better-sqlite3/-/better-sqlite3-12.11.1.tgz#067846efabf7671957fc8a9e8df3be39c6cc0b84"
-  integrity sha512-dq9AtApgg5PGFtBzPFSBl3HZQjHok5gaQCM6zh2Yk0aSmDCs1CbnVI8/HgASQkNKsWFpseIO9beg5xxpYhbIfA==
-  dependencies:
-    bindings "^1.5.0"
-    prebuild-install "^7.1.1"
-
 better-sqlite3@^12.6.0:
   version "12.10.0"
   resolved "https://registry.npmjs.org/better-sqlite3/-/better-sqlite3-12.10.0.tgz"
@@ -1609,6 +1611,13 @@ better-sqlite3@^12.6.0:
   dependencies:
     bindings "^1.5.0"
     prebuild-install "^7.1.1"
+
+better-sqlite3@^13.0.3:
+  version "13.0.3"
+  resolved "https://registry.yarnpkg.com/better-sqlite3/-/better-sqlite3-13.0.3.tgz#b6ea0dc7fff7e28d04d9093e81051d38f7beabe2"
+  integrity sha512-RbOBxmLBG8uvFUc15X9+9SFemKcQ0WBuISBVkpuiaUB2qblC8UWlHEjdWVoZ8AdhSwmoEgsiXKfopX0CQxaACQ==
+  dependencies:
+    node-addon-api "^8.0.0"
 
 bignumber.js@^9.0.0:
   version "9.3.1"
@@ -3329,6 +3338,11 @@ node-abi@^3.3.0:
   integrity sha512-KdHvFWZjEKDf0cakgFjebl371GPsISX2oZHcuyKqM7DtogIsHrqKeLTo8wBHxaXRAQlY2PsPlZmfo+9ZCxEREQ==
   dependencies:
     semver "^7.3.5"
+
+node-addon-api@^8.0.0:
+  version "8.9.2"
+  resolved "https://registry.yarnpkg.com/node-addon-api/-/node-addon-api-8.9.2.tgz#db7ac94a13ffd9b55e6cb04584bd5ef8e1d74b18"
+  integrity sha512-VijLXbi3UACN69I0JVXJsX4tjACjNoQDgv2gTF6sx2wWEi8tkSg2eX8p5gSIFi8z2+DL3oHmY6OyKce38SDolg==
 
 node-domexception@^1.0.0:
   version "1.0.0"

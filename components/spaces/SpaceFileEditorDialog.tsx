@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Code2, Copy, ExternalLink, Eye, Globe2, Image as ImageIcon, Loader2, Maximize2, Minimize2, Package, Save, X } from 'lucide-react';
+import { Code2, Copy, ExternalLink, Eye, Globe2, Image as ImageIcon, Loader2, Maximize2, Minimize2, Package, Save, Send, X } from 'lucide-react';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import MarkdownPublishingPreview from '@/components/spaces/MarkdownPublishingPreview';
 import StaticHtmlPreview from '@/components/spaces/StaticHtmlPreview';
@@ -79,12 +79,18 @@ export default function SpaceFileEditorDialog({
   spaceId,
   file,
   publishTarget,
+  wechatConnectorReady = false,
+  wechatCoverFiles = [],
+  onRequestWechatDraft,
   onClose,
   onSaved,
 }: {
   spaceId: string;
   file: SpaceFile | null;
   publishTarget?: 'wechat';
+  wechatConnectorReady?: boolean;
+  wechatCoverFiles?: SpaceFile[];
+  onRequestWechatDraft?: (coverFileId: string, themeId: string) => Promise<void>;
   onClose: () => void;
   onSaved: (file: SpaceFile) => void;
 }) {
@@ -111,6 +117,9 @@ export default function SpaceFileEditorDialog({
   const [copyMessage, setCopyMessage] = useState('');
   const [copyError, setCopyError] = useState('');
   const [wechatThemeId, setWechatThemeId] = useState('fresh-green');
+  const [wechatCoverFileId, setWechatCoverFileId] = useState('');
+  const [wechatDraftBusy, setWechatDraftBusy] = useState(false);
+  const [wechatDraftMessage, setWechatDraftMessage] = useState('');
   const markdownPreviewRef = useRef<HTMLDivElement>(null);
   const dirty = content !== originalContent;
   const htmlPreview = /\.html?$/i.test(file?.fileName || '');
@@ -131,6 +140,11 @@ export default function SpaceFileEditorDialog({
       // Browser privacy settings may disable local storage; the default theme still works.
     }
   }, []);
+
+  useEffect(() => {
+    const available = wechatCoverFiles.filter((candidate) => !file?.workId || !candidate.workId || candidate.workId === file.workId);
+    setWechatCoverFileId((current) => available.some((candidate) => candidate.id === current) ? current : available[0]?.id || '');
+  }, [file, wechatCoverFiles]);
 
   useEffect(() => {
     if (!file) return;
@@ -246,6 +260,20 @@ export default function SpaceFileEditorDialog({
       setError(reason.message || '保存文件失败');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const requestWechatDraft = async () => {
+    if (!onRequestWechatDraft || !wechatCoverFileId || dirty || wechatDraftBusy) return;
+    setWechatDraftBusy(true);
+    setWechatDraftMessage('');
+    try {
+      await onRequestWechatDraft(wechatCoverFileId, wechatThemeId);
+      setWechatDraftMessage('已创建微信草稿审批请求');
+    } catch (reason: any) {
+      setWechatDraftMessage(reason.message || '创建微信草稿审批请求失败');
+    } finally {
+      setWechatDraftBusy(false);
     }
   };
 
@@ -561,6 +589,23 @@ export default function SpaceFileEditorDialog({
               {wechatPublishing && mode === 'preview' && (copyError || copyMessage) && (
                 <div className={`mt-1 ${copyError ? 'text-rose-600' : 'text-emerald-600'}`}>{copyError || copyMessage}</div>
               )}
+              {wechatPublishing && mode === 'preview' && wechatConnectorReady && (
+                <div className="mt-2 flex min-w-0 items-center gap-2">
+                  <ImageIcon size={14} className="shrink-0 text-slate-400" />
+                  <span className="shrink-0 text-slate-600">草稿封面</span>
+                  <select
+                    value={wechatCoverFileId}
+                    onChange={(event) => setWechatCoverFileId(event.target.value)}
+                    aria-label="微信草稿封面"
+                    className="h-8 min-w-0 max-w-64 flex-1 rounded-md border border-black/[0.08] bg-white px-2 text-xs font-bold text-slate-600 outline-none"
+                  >
+                    {wechatCoverFiles.filter((candidate) => !file.workId || !candidate.workId || candidate.workId === file.workId).map((candidate) => (
+                      <option key={candidate.id} value={candidate.id}>{candidate.fileName}</option>
+                    ))}
+                  </select>
+                  {wechatDraftMessage && <span className="truncate text-[11px] text-slate-500">{wechatDraftMessage}</span>}
+                </div>
+              )}
             </div>
             <div className="grid shrink-0 grid-cols-2 gap-2 sm:flex">
               {wechatPublishing && mode === 'preview' && (
@@ -573,6 +618,12 @@ export default function SpaceFileEditorDialog({
                     <Copy size={14} />
                     复制公众号正文
                   </button>
+                  {wechatConnectorReady && (
+                    <button type="button" onClick={requestWechatDraft} disabled={!article.title || !article.body || !wechatCoverFileId || dirty || wechatDraftBusy} title={dirty ? '请先保存文章' : !wechatCoverFileId ? '请先上传并选择封面图片' : '提交高风险动作审批'} className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-lg border border-emerald-200 px-3 text-xs font-black text-emerald-700 transition hover:bg-emerald-50 disabled:border-slate-200 disabled:text-slate-300 sm:flex-none">
+                      {wechatDraftBusy ? <Loader2 className="animate-spin" size={14} /> : <Send size={14} />}
+                      创建草稿
+                    </button>
+                  )}
                 </>
               )}
               <button type="button" onClick={requestClose} disabled={saving} className="inline-flex h-10 flex-1 items-center justify-center rounded-lg px-4 text-xs font-black text-slate-500 transition hover:bg-slate-100 hover:text-slate-950 disabled:text-slate-300 sm:flex-none">

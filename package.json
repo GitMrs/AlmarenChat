@@ -8,6 +8,7 @@
     "build": "next build",
     "start": "NODE_ENV=production node server.mjs",
     "db:verify-native": "node scripts/verify-sqlite-native.mjs",
+    "db:backup": "node scripts/backup-sqlite.mjs",
     "db:upgrade-agent-runtime": "node scripts/upgrade-agent-runtime.mjs",
     "v3:fixtures": "node scripts/export-v3-replay-fixtures.mjs",
     "v3:check": "node scripts/v3-check.mjs",
@@ -46,10 +47,13 @@
     "react-dom": "^19.0.1",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
+    "remark-parse": "^11.0.0",
+    "remark-rehype": "^11.0.0",
     "socket.io": "^4.8.3",
     "socket.io-client": "^4.8.3",
     "tailwind-merge": "^3.6.0",
-    "tailwindcss": "^4.1.14"
+    "tailwindcss": "^4.1.14",
+    "unified": "^11.0.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.14",

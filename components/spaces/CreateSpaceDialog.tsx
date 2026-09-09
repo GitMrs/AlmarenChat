@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, BookOpen, Check, ChevronRight, ClipboardList, Code2, FileText, GraduationCap, LayoutGrid, Lightbulb, Loader2, PanelsTopLeft, Search, Trash2, UsersRound, Video, X } from 'lucide-react';
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, BookOpen, Check, ChevronRight, ClipboardList, FileText, GraduationCap, LayoutGrid, Lightbulb, Loader2, PanelsTopLeft, Search, Trash2, UsersRound, Video, X } from 'lucide-react';
 import Avatar from '@/components/shared/Avatar';
 import { getSpaceTemplate, SPACE_TEMPLATES, spaceTemplateInstructions } from '@/lib/space-templates.mjs';
 import type { Agent } from '@/types';
@@ -12,7 +12,6 @@ export type CreateSpaceInput = {
   name: string;
   description: string;
   instructions: string;
-  runtimeType: 'NATIVE' | 'PI_CODING';
   agentIds: string[];
   templateId: string | null;
 };
@@ -47,7 +46,6 @@ export default function CreateSpaceDialog({
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [instructions, setInstructions] = useState('');
-  const [runtimeType, setRuntimeType] = useState<'NATIVE' | 'PI_CODING'>('NATIVE');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [templateId, setTemplateId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
@@ -187,7 +185,6 @@ export default function CreateSpaceDialog({
       name: name.trim(),
       description: description.trim(),
       instructions: instructions.trim(),
-      runtimeType,
       agentIds: selectedIds,
       templateId,
     });
@@ -296,33 +293,6 @@ export default function CreateSpaceDialog({
                     className="h-10 w-full rounded-lg border border-black/[0.08] bg-[#fbfaf7] px-3 text-sm font-medium text-slate-800 outline-none focus:border-slate-300"
                   />
                 </label>
-              </div>
-
-              <div>
-                <div className="mb-1 flex items-center justify-between gap-3">
-                  <span className="text-xs font-black text-slate-600">运行方式</span>
-                  <span className="text-[11px] font-semibold text-amber-600">创建后不可更改</span>
-                </div>
-                <div className="grid grid-cols-2 gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => setRuntimeType('NATIVE')}
-                    aria-pressed={runtimeType === 'NATIVE'}
-                    className={`min-h-16 rounded-lg border p-2.5 text-left transition ${runtimeType === 'NATIVE' ? 'border-slate-950 bg-slate-950 text-white' : 'border-black/[0.08] bg-white text-slate-700 hover:border-slate-300'}`}
-                  >
-                    <div className="flex items-center gap-2"><UsersRound size={17} /><span className="text-xs font-black">团队协作</span></div>
-                    <div className={`mt-1 line-clamp-2 text-[11px] font-semibold leading-4 ${runtimeType === 'NATIVE' ? 'text-slate-300' : 'text-slate-400'}`}>协调者拆解任务，成员协作并按流程验收</div>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setRuntimeType('PI_CODING')}
-                    aria-pressed={runtimeType === 'PI_CODING'}
-                    className={`min-h-16 rounded-lg border p-2.5 text-left transition ${runtimeType === 'PI_CODING' ? 'border-slate-950 bg-slate-950 text-white' : 'border-black/[0.08] bg-white text-slate-700 hover:border-slate-300'}`}
-                  >
-                    <div className="flex items-center gap-2"><Code2 size={17} /><span className="text-xs font-black">项目执行</span></div>
-                    <div className={`mt-1 line-clamp-2 text-[11px] font-semibold leading-4 ${runtimeType === 'PI_CODING' ? 'text-slate-300' : 'text-slate-400'}`}>角色保持可见，由 Pi 在项目目录中持续执行</div>
-                  </button>
-                </div>
               </div>
 
               {selectedTemplate && (

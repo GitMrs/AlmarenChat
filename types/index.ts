@@ -178,6 +178,7 @@ export interface Space {
   description?: string | null;
   instructions?: string | null;
   runtimeType: 'NATIVE' | 'PI_CODING';
+  executionEngine: 'native' | 'pi';
   executionMode: 'AUTO' | 'REVIEW_DISPATCH';
   hostAgentId?: string | null;
   activeWorkId?: string | null;
@@ -188,6 +189,14 @@ export interface Space {
     version: number;
     name: string;
     icon: string;
+    workKind?: string;
+    workLabel?: string;
+    supportsMultipleWorks?: boolean;
+    lifecycleStages?: Array<{ id: string; name: string }>;
+    defaultArtifacts?: Array<{ id: string; label: string; required: boolean }>;
+    completionCriteria?: Array<{ id: string; label: string }>;
+    completionAction?: 'NONE' | 'WECHAT_CREATE_DRAFT';
+    completionConfig?: { themeId?: string } | null;
     workflow: string[];
     deliverables: string[];
     qualityRules?: string[];
@@ -203,6 +212,41 @@ export interface Space {
   files?: SpaceFile[];
   runs?: AgentRun[];
   works?: SpaceWork[];
+  connectors?: SpaceConnector[];
+}
+
+export interface SpaceConnector {
+  id: string;
+  spaceId: string;
+  provider: 'WECHAT_OFFICIAL_ACCOUNT' | string;
+  providerName: string;
+  enabled: boolean;
+  configured: boolean;
+  status: 'CONFIGURED' | 'READY' | 'ERROR' | 'DISABLED' | string;
+  publicConfig: { appId?: string };
+  lastCheckedAt?: string | null;
+  lastError?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SpaceConnectorExecution {
+  id: string;
+  connectorId: string;
+  actionRequestId: string;
+  operation: 'WECHAT_VALIDATE_CONNECTION' | 'WECHAT_CREATE_DRAFT' | 'WECHAT_PUBLISH' | string;
+  status: 'QUEUED' | 'RUNNING' | 'WAITING_PROVIDER' | 'COMPLETED' | 'FAILED';
+  requestSummary?: Record<string, unknown> | null;
+  responseSummary?: Record<string, unknown> | null;
+  externalId?: string | null;
+  externalUrl?: string | null;
+  error?: string | null;
+  nextPollAt?: string | null;
+  pollCount: number;
+  startedAt?: string | null;
+  completedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface SpaceWork {
@@ -210,9 +254,99 @@ export interface SpaceWork {
   spaceId: string;
   title: string;
   kind: string;
+  status: 'ACTIVE' | 'COMPLETED' | 'ARCHIVED';
+  stage?: string | null;
+  objective?: string | null;
+  metadata?: Record<string, unknown> | null;
+  completedAt?: string | null;
   createdAt: string;
   updatedAt: string;
   _count?: { files: number; runs: number };
+}
+
+export interface SpaceAutomationExecution {
+  id: string;
+  automationId: string;
+  scheduledFor: string;
+  status: 'TRIGGERED' | 'COMPLETED' | 'PARTIAL' | 'FAILED_VALIDATION' | 'FAILED' | 'BLOCKED' | 'CANCELLED';
+  runId?: string | null;
+  error?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  run?: Pick<AgentRun, 'status' | 'result' | 'error' | 'completedAt'> | null;
+}
+
+export interface SpaceAutomation {
+  id: string;
+  spaceId: string;
+  name: string;
+  prompt: string;
+  scheduleType: 'INTERVAL' | 'DAILY' | 'WEEKLY';
+  intervalMinutes: number;
+  timeZone: string;
+  scheduleHour?: number | null;
+  scheduleMinute?: number | null;
+  weekdays?: number[] | null;
+  workStrategy: 'NEW_WORK' | 'ACTIVE_WORK';
+  networkPolicy: 'forbidden' | 'allowed' | 'required';
+  completionAction: 'NONE' | 'WECHAT_CREATE_DRAFT';
+  completionConfig?: { themeId?: string } | null;
+  enabled: boolean;
+  nextRunAt: string;
+  lastRunAt?: string | null;
+  lastRunId?: string | null;
+  lastError?: string | null;
+  consecutiveFailures: number;
+  deletedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  executions?: SpaceAutomationExecution[];
+}
+
+export interface SpaceActionRequest {
+  id: string;
+  spaceId: string;
+  workId?: string | null;
+  runId?: string | null;
+  automationExecutionId?: string | null;
+  kind: 'FINALIZE_WORK' | 'WECHAT_VALIDATE_CONNECTION' | 'WECHAT_CREATE_DRAFT' | 'WECHAT_PUBLISH' | string;
+  riskLevel: 'LOW' | 'MEDIUM' | 'HIGH';
+  title: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'COMPLETED' | 'FAILED';
+  payload?: ({
+    workTitle?: string;
+    defaultArtifacts?: Array<{ id: string; label: string; required: boolean }>;
+    completionCriteria?: Array<{ id: string; label: string }>;
+  } & Record<string, unknown>) | null;
+  result?: Record<string, unknown> | null;
+  error?: string | null;
+  decidedBy?: string | null;
+  requestedAt: string;
+  decidedAt?: string | null;
+  completedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  work?: SpaceWork | null;
+  run?: Pick<AgentRun, 'status' | 'result' | 'error' | 'completedAt'> | null;
+  connectorExecution?: SpaceConnectorExecution | null;
+}
+
+export interface SpaceOperationsSummary {
+  periodDays: number;
+  works: { total: number; active: number; ready: number; awaitingFinalization: number };
+  runs: { total: number; completed: number; failed: number; successRate: number | null };
+  automation: { total: number; completed: number; failed: number; successRate: number | null };
+  publishing: { draftsCreated: number; publicationsCompleted: number; failed: number; pendingApprovals: number };
+}
+
+export interface SpaceOperationOutcome {
+  id: string;
+  kind: string;
+  title: string;
+  status: SpaceActionRequest['status'];
+  error?: string | null;
+  createdAt: string;
+  completedAt?: string | null;
 }
 
 export interface SpaceMember {
@@ -581,6 +715,8 @@ export interface AgentRun {
     completionId?: string | null;
     modelRequestCount: number;
     modelRequestLimit: number;
+    executionEngine: string;
+    engineVersion: string;
     runtimeVersion: number;
     eventSequence: number;
     coordinatorState?: unknown;

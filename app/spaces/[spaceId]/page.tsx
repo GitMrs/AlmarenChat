@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Activity, ArrowLeft, BookOpen, Check, CheckCircle2, ChevronRight, Code2, Download, FilePenLine, FileText, Globe2, History, Image as ImageIcon, ListTodo, Loader2, MessagesSquare, PackagePlus, Paperclip, Plus, RotateCcw, Save, Send, Settings2, ShieldCheck, SkipForward, Square, Trash2, UploadCloud, UsersRound, X } from 'lucide-react';
+import { Activity, ArrowLeft, BookOpen, CalendarClock, Check, CheckCircle2, ChevronRight, Code2, Download, ExternalLink, FilePenLine, FileText, Globe2, History, Image as ImageIcon, ListTodo, Loader2, MessagesSquare, Newspaper, PackagePlus, Paperclip, Play, Plus, RotateCcw, Save, Send, Settings2, ShieldCheck, SkipForward, Square, Trash2, UploadCloud, UsersRound, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import AppShell from '@/components/layout/AppShell';
@@ -30,7 +30,8 @@ import {
   MAX_CONTINUATION_ITERATIONS,
 } from '@/lib/agent-wait-policy.mjs';
 import { isEditableSpaceFile } from '@/lib/space-files';
-import type { Agent, AgentRun, AgentRunEvent, AgentTask, SpaceDiscussion, SpaceFile, SpaceLearning, SpaceLearningItem, SpaceMessage, SpacePiCoordinationRequest, SpacePiExecutionActivity, SpacePiExecutionNote, SpacePiSkillApproval, SpaceRelay, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal, SpaceWork } from '@/types';
+import { createClientId } from '@/lib/client-id';
+import type { Agent, AgentRun, AgentRunEvent, AgentTask, SpaceActionRequest, SpaceAutomation, SpaceConnector, SpaceDiscussion, SpaceFile, SpaceLearning, SpaceLearningItem, SpaceMessage, SpaceOperationOutcome, SpaceOperationsSummary, SpacePiCoordinationRequest, SpacePiExecutionActivity, SpacePiExecutionNote, SpacePiSkillApproval, SpaceRelay, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal, SpaceWork } from '@/types';
 
 const FALLBACK_COLOR = '#4f46e5';
 const SPACE_COORDINATOR_ID = 'space-coordinator';
@@ -81,6 +82,17 @@ const FILE_STATUS_LABELS: Record<string, string> = {
   WAITING_APPROVAL: '待审核',
   INCOMPLETE: '未完成',
 };
+const CONNECTOR_ACTION_STATUS_LABELS: Record<string, string> = {
+  PENDING: '待确认',
+  APPROVED: '执行中',
+  REJECTED: '已取消',
+  COMPLETED: '已完成',
+  FAILED: '失败',
+};
+
+function connectorActionValue(value: unknown) {
+  return typeof value === 'string' && value.trim() ? value.trim() : '';
+}
 const LEARNING_CATEGORY_LABELS: Record<string, string> = {
   collaboration: '协作与派发',
   acceptance: '验收与返工',
@@ -97,6 +109,38 @@ const WORK_NOUNS: Record<string, string> = {
   'course-training': '课程',
   'simple-webpage': '页面',
 };
+const WORK_STAGE_LABELS: Record<string, string> = {
+  brief: '需求确认',
+  production: '制作中',
+  review: '待定稿',
+  ready: '已完成',
+};
+const WORK_STATUS_LABELS: Record<SpaceWork['status'], string> = {
+  ACTIVE: '进行中',
+  COMPLETED: '已完成',
+  ARCHIVED: '已归档',
+};
+const AUTOMATION_WEEKDAYS = [
+  { value: 1, label: '一' },
+  { value: 2, label: '二' },
+  { value: 3, label: '三' },
+  { value: 4, label: '四' },
+  { value: 5, label: '五' },
+  { value: 6, label: '六' },
+  { value: 0, label: '日' },
+];
+
+function automationScheduleLabel(automation: SpaceAutomation) {
+  if (automation.scheduleType === 'DAILY') {
+    return `每天 ${String(automation.scheduleHour ?? 0).padStart(2, '0')}:${String(automation.scheduleMinute ?? 0).padStart(2, '0')}`;
+  }
+  if (automation.scheduleType === 'WEEKLY') {
+    const labels = AUTOMATION_WEEKDAYS.filter((day) => automation.weekdays?.includes(day.value)).map((day) => day.label).join('、');
+    return `周${labels} ${String(automation.scheduleHour ?? 0).padStart(2, '0')}:${String(automation.scheduleMinute ?? 0).padStart(2, '0')}`;
+  }
+  const interval = automation.intervalMinutes;
+  return interval % 1440 === 0 ? `每 ${interval / 1440} 天` : interval % 60 === 0 ? `每 ${interval / 60} 小时` : `每 ${interval} 分钟`;
+}
 
 const PI_COORDINATION_LABELS: Record<SpacePiCoordinationRequest['mode'], string> = {
   broadcast: '全员回应',
@@ -419,6 +463,14 @@ export default function SpaceDetailPage() {
   const [files, setFiles] = useState<SpaceFile[]>([]);
   const [runs, setRuns] = useState<AgentRun[]>([]);
   const [works, setWorks] = useState<SpaceWork[]>([]);
+  const [automations, setAutomations] = useState<SpaceAutomation[]>([]);
+  const [actionRequests, setActionRequests] = useState<SpaceActionRequest[]>([]);
+  const [wechatPublicationActions, setWechatPublicationActions] = useState<SpaceActionRequest[]>([]);
+  const [wechatPublicationsLoading, setWechatPublicationsLoading] = useState(false);
+  const [operationsSummary, setOperationsSummary] = useState<SpaceOperationsSummary | null>(null);
+  const [operationOutcomes, setOperationOutcomes] = useState<SpaceOperationOutcome[]>([]);
+  const [operationsLoading, setOperationsLoading] = useState(false);
+  const [connectors, setConnectors] = useState<SpaceConnector[]>([]);
   const [selectedWorkId, setSelectedWorkId] = useState('all');
   const [activeWorkId, setActiveWorkId] = useState('new');
   const [workMenuOpen, setWorkMenuOpen] = useState(false);
@@ -426,11 +478,29 @@ export default function SpaceDetailPage() {
   const [renamingWork, setRenamingWork] = useState(false);
   const [workTitleDraft, setWorkTitleDraft] = useState('');
   const [savingWorkTitle, setSavingWorkTitle] = useState(false);
+  const [updatingWorkStatus, setUpdatingWorkStatus] = useState(false);
+  const [automationName, setAutomationName] = useState('');
+  const [automationPrompt, setAutomationPrompt] = useState('');
+  const [automationInterval, setAutomationInterval] = useState(1440);
+  const [automationScheduleType, setAutomationScheduleType] = useState<'INTERVAL' | 'DAILY' | 'WEEKLY'>('DAILY');
+  const [automationTimeZone, setAutomationTimeZone] = useState('Asia/Shanghai');
+  const [automationTime, setAutomationTime] = useState('09:00');
+  const [automationWeekdays, setAutomationWeekdays] = useState<number[]>([1, 2, 3, 4, 5]);
+  const [automationWorkStrategy, setAutomationWorkStrategy] = useState<'NEW_WORK' | 'ACTIVE_WORK'>('NEW_WORK');
+  const [automationNetworkPolicy, setAutomationNetworkPolicy] = useState<'forbidden' | 'allowed' | 'required'>('forbidden');
+  const [automationCompletionAction, setAutomationCompletionAction] = useState<'NONE' | 'WECHAT_CREATE_DRAFT'>('NONE');
+  const [automationWechatTheme, setAutomationWechatTheme] = useState('fresh-green');
+  const [automationEnableOnCreate, setAutomationEnableOnCreate] = useState(false);
+  const [automationBusyId, setAutomationBusyId] = useState('');
+  const [actionBusyId, setActionBusyId] = useState('');
+  const [wechatAppId, setWechatAppId] = useState('');
+  const [wechatAppSecret, setWechatAppSecret] = useState('');
+  const [wechatConnectorBusy, setWechatConnectorBusy] = useState(false);
   const [discussions, setDiscussions] = useState<SpaceDiscussion[]>([]);
   const [relays, setRelays] = useState<SpaceRelay[]>([]);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [mode, setMode] = useState<'chat' | 'task'>('chat');
-  const [sidePanel, setSidePanel] = useState<'members' | 'files' | 'skills' | 'runs' | 'settings' | null>(null);
+  const [sidePanel, setSidePanel] = useState<'members' | 'files' | 'skills' | 'runs' | 'operations' | 'publications' | 'settings' | null>(null);
   const [loading, setLoading] = useState(true);
   const [needsLogin, setNeedsLogin] = useState(false);
   const [error, setError] = useState('');
@@ -466,6 +536,7 @@ export default function SpaceDetailPage() {
   const [downloadingFileId, setDownloadingFileId] = useState('');
   const [instructionsDraft, setInstructionsDraft] = useState('');
   const [executionModeDraft, setExecutionModeDraft] = useState<'AUTO' | 'REVIEW_DISPATCH'>('REVIEW_DISPATCH');
+  const [executionEngineDraft, setExecutionEngineDraft] = useState<'native' | 'pi'>('native');
   const [savingInstructions, setSavingInstructions] = useState(false);
   const [learning, setLearning] = useState<SpaceLearning | null>(null);
   const [learningReadme, setLearningReadme] = useState('');
@@ -513,6 +584,7 @@ export default function SpaceDetailPage() {
   const skillZipInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const composerToolsRef = useRef<HTMLDivElement>(null);
+  const wechatConnector = connectors.find((connector) => connector.provider === 'WECHAT_OFFICIAL_ACCOUNT') || null;
 
   const agentById = useMemo(() => new Map(agents.map((agent) => [agent.id, agent])), [agents]);
   const memberAgents = useMemo(
@@ -754,6 +826,20 @@ export default function SpaceDetailPage() {
       setSavingWorkTitle(false);
     }
   };
+  const toggleWorkCompleted = async () => {
+    if (!currentWork || updatingWorkStatus) return;
+    setUpdatingWorkStatus(true);
+    setError('');
+    try {
+      const status = currentWork.status === 'COMPLETED' ? 'ACTIVE' : 'COMPLETED';
+      const result = await spacesApi.updateWork(spaceId, currentWork.id, { status });
+      setWorks((items) => items.map((work) => work.id === result.work.id ? { ...work, ...result.work } : work));
+    } catch (err: any) {
+      setError(err.message || '更新成果状态失败');
+    } finally {
+      setUpdatingWorkStatus(false);
+    }
+  };
   const renderWorkSelector = (compact = false) => (
     <div data-work-selector className="relative mt-3">
       {renamingWork && currentWork ? (
@@ -788,6 +874,11 @@ export default function SpaceDetailPage() {
             {switchingWork ? <Loader2 className="shrink-0 animate-spin" size={13} /> : <FileText className="shrink-0" size={13} />}
             <span className="shrink-0 text-slate-400">当前{workNoun}</span>
             <span className="min-w-0 flex-1 truncate text-slate-800">{currentWork?.title || `新建${workNoun}`}</span>
+            {currentWork?.stage && (
+              <span className="shrink-0 text-[10px] font-semibold text-slate-400">
+                {WORK_STAGE_LABELS[currentWork.stage] || currentWork.stage}
+              </span>
+            )}
             <ChevronRight className="shrink-0 rotate-90" size={13} />
           </button>
           {currentWork && (
@@ -806,6 +897,18 @@ export default function SpaceDetailPage() {
               <FilePenLine size={14} />
             </button>
           )}
+          {currentWork && currentWork.status !== 'ARCHIVED' && (
+            <button
+              type="button"
+              onClick={toggleWorkCompleted}
+              disabled={workSelectionLocked || updatingWorkStatus}
+              aria-label={currentWork.status === 'COMPLETED' ? `重新打开${currentWork.title}` : `完成${currentWork.title}`}
+              title={currentWork.status === 'COMPLETED' ? '重新打开成果' : '标记成果已完成'}
+              className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition disabled:text-slate-200 ${currentWork.status === 'COMPLETED' ? 'text-emerald-600 hover:bg-emerald-50' : 'text-slate-400 hover:bg-slate-100 hover:text-slate-800'}`}
+            >
+              {updatingWorkStatus ? <Loader2 className="animate-spin" size={14} /> : currentWork.status === 'COMPLETED' ? <RotateCcw size={14} /> : <CheckCircle2 size={14} />}
+            </button>
+          )}
         </div>
       )}
       {workMenuOpen && !renamingWork && (
@@ -816,9 +919,15 @@ export default function SpaceDetailPage() {
             {activeWorkId === 'new' && <Check size={14} className="text-emerald-600" />}
           </button>
           {works.map((work) => (
-            <button key={work.id} type="button" onClick={() => switchActiveWork(work.id)} className="flex h-9 w-full items-center gap-2 rounded-md px-2.5 text-left text-xs font-bold text-slate-600 hover:bg-slate-50">
+            <button key={work.id} type="button" onClick={() => switchActiveWork(work.id)} className="flex h-11 w-full items-center gap-2 rounded-md px-2.5 text-left text-xs font-bold text-slate-600 hover:bg-slate-50">
               <FileText size={14} />
-              <span className="min-w-0 flex-1 truncate">{work.title}</span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate">{work.title}</span>
+                <span className="block truncate text-[10px] font-semibold text-slate-400">
+                  {work.stage ? WORK_STAGE_LABELS[work.stage] || work.stage : WORK_STATUS_LABELS[work.status]}
+                  {work.status !== 'ACTIVE' ? ` · ${WORK_STATUS_LABELS[work.status]}` : ''}
+                </span>
+              </span>
               {activeWorkId === work.id && <Check size={14} className="text-emerald-600" />}
             </button>
           ))}
@@ -842,12 +951,15 @@ export default function SpaceDetailPage() {
     setLoading(true);
     setError('');
     try {
-      const [spaceResult, messageResult, fileResult, runResult, workResult, discussionResult, relayResult, skillResult, learningResult, builtIn, customResult] = await Promise.all([
+      const [spaceResult, messageResult, fileResult, runResult, workResult, automationResult, actionResult, connectorResult, discussionResult, relayResult, skillResult, learningResult, builtIn, customResult] = await Promise.all([
         spacesApi.get(spaceId),
         spacesApi.messages(spaceId, { limit: 60 }),
         spacesApi.files(spaceId),
         spacesApi.runs(spaceId),
         spacesApi.works(spaceId),
+        spacesApi.automations(spaceId),
+        spacesApi.actions(spaceId),
+        spacesApi.connectors(spaceId),
         spacesApi.discussions(spaceId),
         spacesApi.relays(spaceId),
         spacesApi.skills(spaceId),
@@ -859,6 +971,7 @@ export default function SpaceDetailPage() {
       setSpace(spaceResult.space);
       setInstructionsDraft(spaceResult.space.instructions || '');
       setExecutionModeDraft(spaceResult.space.executionMode === 'AUTO' ? 'AUTO' : 'REVIEW_DISPATCH');
+      setExecutionEngineDraft(spaceResult.space.executionEngine === 'pi' ? 'pi' : 'native');
       forceScrollToBottomRef.current = true;
       setMessages(messageResult.messages);
       const pendingWorkId = messageResult.messages
@@ -879,6 +992,10 @@ export default function SpaceDetailPage() {
       setFiles(fileResult.files);
       setRuns(runResult.runs);
       setWorks(workResult.works);
+      setAutomations(automationResult.automations);
+      setActionRequests(actionResult.actions);
+      setConnectors(connectorResult.connectors);
+      setWechatAppId(connectorResult.connectors.find((connector) => connector.provider === 'WECHAT_OFFICIAL_ACCOUNT')?.publicConfig.appId || '');
       setDiscussions(discussionResult.discussions);
       setRelays(relayResult.relays);
       setSkills(skillResult.skills);
@@ -963,16 +1080,70 @@ export default function SpaceDetailPage() {
       spacesApi.files(spaceId),
       spacesApi.messages(spaceId, { limit: 60 }),
       spacesApi.learning(spaceId),
-    ]).then(([fileResult, messageResult, learningResult]) => {
+      spacesApi.works(spaceId),
+      spacesApi.automations(spaceId),
+      spacesApi.actions(spaceId),
+    ]).then(([fileResult, messageResult, learningResult, workResult, automationResult, actionResult]) => {
       setFiles(fileResult.files);
       setMessages(messageResult.messages);
       setLearning(learningResult.learning);
       setLearningReadme(learningResult.readme);
+      setWorks(workResult.works);
+      setAutomations(automationResult.automations);
+      setActionRequests(actionResult.actions);
     }).catch(() => {});
     refreshCompletion();
     const timer = window.setTimeout(refreshCompletion, 1_000);
     return () => window.clearTimeout(timer);
   }, [latestRun?.id, latestRun?.status, spaceId]);
+
+  useEffect(() => {
+    if (!actionRequests.some((action) => action.status === 'APPROVED')) return;
+    const refresh = () => Promise.all([
+      spacesApi.actions(spaceId),
+      spacesApi.messages(spaceId, { limit: 60 }),
+      spacesApi.connectors(spaceId),
+    ]).then(([actionResult, messageResult, connectorResult]) => {
+      setActionRequests(actionResult.actions);
+      setWechatPublicationActions((current) => {
+        if (current.length === 0) return current;
+        const updates = new Map(actionResult.actions.map((action) => [action.id, action]));
+        return current.map((action) => updates.get(action.id) || action);
+      });
+      setMessages(messageResult.messages);
+      setConnectors(connectorResult.connectors);
+    }).catch(() => {});
+    const timer = window.setInterval(refresh, 1_500);
+    return () => window.clearInterval(timer);
+  }, [actionRequests, spaceId]);
+
+  useEffect(() => {
+    const watched = new Map(automations.filter((automation) => automation.enabled).map((automation) => [automation.id, automation.lastRunId || null]));
+    if (watched.size === 0) return;
+    const refresh = async () => {
+      try {
+        const automationResult = await spacesApi.automations(spaceId);
+        const started = automationResult.automations.find((automation) => {
+          const previousRunId = watched.get(automation.id);
+          return watched.has(automation.id) && automation.lastRunId && automation.lastRunId !== previousRunId;
+        });
+        setAutomations(automationResult.automations);
+        if (!started?.lastRunId) return;
+        const [runResult, workResult, messageResult] = await Promise.all([
+          spacesApi.runs(spaceId),
+          spacesApi.works(spaceId),
+          spacesApi.messages(spaceId, { limit: 60 }),
+        ]);
+        setRuns(runResult.runs);
+        setWorks(workResult.works);
+        setMessages(messageResult.messages);
+      } catch {
+        // A later poll can recover from a transient refresh failure.
+      }
+    };
+    const timer = window.setInterval(refresh, 2_500);
+    return () => window.clearInterval(timer);
+  }, [automations.map((automation) => `${automation.id}:${automation.enabled}:${automation.lastRunId || ''}`).join('|'), spaceId]);
 
   useEffect(() => {
     if (!activeDiscussion) return;
@@ -1451,16 +1622,236 @@ export default function SpaceDetailPage() {
     try {
       const result = await spacesApi.update(spaceId, {
         instructions: instructionsDraft.trim() || null,
-        ...(!isPiSpace ? { executionMode: executionModeDraft } : {}),
+        ...(!isPiSpace ? { executionMode: executionModeDraft, executionEngine: executionEngineDraft } : {}),
       });
       setSpace((current: any) => ({ ...current, ...result.space }));
       setInstructionsDraft(result.space.instructions || '');
       setExecutionModeDraft(result.space.executionMode === 'AUTO' ? 'AUTO' : 'REVIEW_DISPATCH');
+      setExecutionEngineDraft(result.space.executionEngine === 'pi' ? 'pi' : 'native');
     } catch (err: any) {
       setError(err.message || '保存空间规则失败');
     } finally {
       setSavingInstructions(false);
     }
+  };
+
+  const createAutomation = async () => {
+    if (!automationName.trim() || !automationPrompt.trim() || automationBusyId) return;
+    setAutomationBusyId('new');
+    setError('');
+    try {
+      const result = await spacesApi.createAutomation(spaceId, {
+        name: automationName.trim(),
+        prompt: automationPrompt.trim(),
+        intervalMinutes: automationInterval,
+        scheduleType: automationScheduleType,
+        timeZone: automationTimeZone,
+        scheduleHour: Number(automationTime.split(':')[0]),
+        scheduleMinute: Number(automationTime.split(':')[1]),
+        weekdays: automationScheduleType === 'WEEKLY' ? automationWeekdays : undefined,
+        workStrategy: automationWorkStrategy,
+        networkPolicy: automationNetworkPolicy,
+        completionAction: space?.templateId === 'wechat-article' ? automationCompletionAction : 'NONE',
+        completionConfig: space?.templateId === 'wechat-article' && automationCompletionAction === 'WECHAT_CREATE_DRAFT'
+          ? { themeId: automationWechatTheme }
+          : null,
+        enabled: automationEnableOnCreate,
+      });
+      setAutomations((items) => [result.automation, ...items]);
+      setAutomationName('');
+      setAutomationPrompt('');
+      setAutomationEnableOnCreate(false);
+    } catch (err: any) {
+      setError(err.message || '创建自动化失败');
+    } finally {
+      setAutomationBusyId('');
+    }
+  };
+
+  const toggleAutomation = async (automation: SpaceAutomation) => {
+    if (automationBusyId) return;
+    setAutomationBusyId(automation.id);
+    setError('');
+    try {
+      const result = await spacesApi.updateAutomation(spaceId, automation.id, { enabled: !automation.enabled });
+      setAutomations((items) => items.map((item) => item.id === automation.id ? result.automation : item));
+    } catch (err: any) {
+      setError(err.message || '更新自动化失败');
+    } finally {
+      setAutomationBusyId('');
+    }
+  };
+
+  const triggerAutomation = async (automation: SpaceAutomation) => {
+    if (automationBusyId) return;
+    setAutomationBusyId(automation.id);
+    setError('');
+    try {
+      const previousRunId = automation.lastRunId || null;
+      const result = await spacesApi.triggerAutomation(spaceId, automation.id);
+      setAutomations((items) => items.map((item) => item.id === automation.id ? { ...item, ...result.automation } : item));
+      for (let attempt = 0; attempt < 20; attempt += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, 750));
+        const [automationResult, runResult, workResult, messageResult] = await Promise.all([
+          spacesApi.automations(spaceId),
+          spacesApi.runs(spaceId),
+          spacesApi.works(spaceId),
+          spacesApi.messages(spaceId, { limit: 60 }),
+        ]);
+        setAutomations(automationResult.automations);
+        setRuns(runResult.runs);
+        setWorks(workResult.works);
+        setMessages(messageResult.messages);
+        const current = automationResult.automations.find((item) => item.id === automation.id);
+        if (!current?.lastRunId || current.lastRunId === previousRunId) continue;
+        const run = runResult.runs.find((item) => item.id === current.lastRunId);
+        if (run?.workId) setActiveWorkId(run.workId);
+        setSidePanel(null);
+        setSelectedRunId(current.lastRunId);
+        setMode('task');
+        break;
+      }
+    } catch (err: any) {
+      setError(err.message || '触发自动化失败');
+    } finally {
+      setAutomationBusyId('');
+    }
+  };
+
+  const deleteAutomation = async (automation: SpaceAutomation) => {
+    if (automationBusyId || !window.confirm(`确定删除自动化“${automation.name}”吗？历史执行和运营统计会保留。`)) return;
+    setAutomationBusyId(automation.id);
+    setError('');
+    try {
+      await spacesApi.deleteAutomation(spaceId, automation.id);
+      setAutomations((items) => items.filter((item) => item.id !== automation.id));
+    } catch (err: any) {
+      setError(err.message || '删除自动化失败');
+    } finally {
+      setAutomationBusyId('');
+    }
+  };
+
+  const decideActionRequest = async (action: SpaceActionRequest, decision: 'approve' | 'reject') => {
+    if (actionBusyId) return;
+    setActionBusyId(action.id);
+    setError('');
+    try {
+      const result = await spacesApi.decideAction(spaceId, action.id, decision);
+      setActionRequests((items) => items.map((item) => item.id === action.id ? result.action : item));
+      if (result.followUpAction) {
+        setActionRequests((items) => [result.followUpAction!, ...items.filter((item) => item.id !== result.followUpAction!.id)]);
+      }
+      setWechatPublicationActions((items) => items.map((item) => item.id === action.id ? result.action : item));
+      if (result.work) {
+        setWorks((items) => items.map((work) => work.id === result.work?.id ? { ...work, ...result.work } : work));
+      }
+      const messageResult = await spacesApi.messages(spaceId, { limit: 60 });
+      setMessages(messageResult.messages);
+    } catch (err: any) {
+      setError(err.message || '处理动作审批失败');
+    } finally {
+      setActionBusyId('');
+    }
+  };
+
+  const retryConnectorActionStatus = async (action: SpaceActionRequest) => {
+    if (actionBusyId) return;
+    setActionBusyId(action.id);
+    setError('');
+    try {
+      const result = await spacesApi.retryConnectorActionStatus(spaceId, action.id);
+      setActionRequests((items) => items.map((item) => item.id === action.id ? result.action : item));
+      setWechatPublicationActions((items) => items.map((item) => item.id === action.id ? result.action : item));
+    } catch (err: any) {
+      setError(err.message || '重新查询微信发布状态失败');
+    } finally {
+      setActionBusyId('');
+    }
+  };
+
+  const openWechatPublications = async () => {
+    setSidePanel('publications');
+    setWechatPublicationsLoading(true);
+    setError('');
+    try {
+      const result = await spacesApi.wechatPublications(spaceId);
+      setWechatPublicationActions(result.actions);
+    } catch (err: any) {
+      setError(err.message || '读取微信发布记录失败');
+    } finally {
+      setWechatPublicationsLoading(false);
+    }
+  };
+
+  const openOperations = async () => {
+    setSidePanel('operations');
+    setOperationsLoading(true);
+    setError('');
+    try {
+      const result = await spacesApi.operations(spaceId);
+      setOperationsSummary(result.summary);
+      setOperationOutcomes(result.recentOutcomes);
+    } catch (err: any) {
+      setError(err.message || '读取运营概览失败');
+    } finally {
+      setOperationsLoading(false);
+    }
+  };
+
+  const saveWechatConnector = async () => {
+    if (!wechatAppId.trim() || (!wechatConnector && !wechatAppSecret.trim()) || wechatConnectorBusy) return;
+    setWechatConnectorBusy(true);
+    setError('');
+    try {
+      const result = await spacesApi.configureWechatConnector(spaceId, {
+        appId: wechatAppId.trim(),
+        ...(wechatAppSecret.trim() ? { appSecret: wechatAppSecret.trim() } : {}),
+      });
+      setConnectors((items) => [result.connector, ...items.filter((item) => item.provider !== result.connector.provider)]);
+      setWechatAppId(result.connector.publicConfig.appId || '');
+      setWechatAppSecret('');
+    } catch (err: any) {
+      setError(err.message || '保存微信公众号配置失败');
+    } finally {
+      setWechatConnectorBusy(false);
+    }
+  };
+
+  const toggleWechatConnector = async () => {
+    if (!wechatConnector || wechatConnectorBusy) return;
+    setWechatConnectorBusy(true);
+    setError('');
+    try {
+      const result = await spacesApi.setWechatConnectorEnabled(spaceId, !wechatConnector.enabled);
+      setConnectors((items) => items.map((item) => item.id === result.connector.id ? result.connector : item));
+    } catch (err: any) {
+      setError(err.message || '更新微信公众号连接器失败');
+    } finally {
+      setWechatConnectorBusy(false);
+    }
+  };
+
+  const validateWechatConnector = async () => {
+    if (!wechatConnector?.enabled || wechatConnectorBusy) return;
+    setWechatConnectorBusy(true);
+    setError('');
+    try {
+      const result = await spacesApi.validateWechatConnector(spaceId, createClientId());
+      setConnectors((items) => items.map((item) => item.id === result.connector.id ? result.connector : item));
+      setActionRequests((items) => [result.action, ...items.filter((item) => item.id !== result.action.id)]);
+    } catch (err: any) {
+      setError(err.message || '验证微信公众号连接失败');
+    } finally {
+      setWechatConnectorBusy(false);
+    }
+  };
+
+  const requestWechatDraft = async (articleFile: SpaceFile, coverFileId: string, themeId: string) => {
+    const result = await spacesApi.requestWechatDraft(spaceId, { articleFileId: articleFile.id, coverFileId, themeId, requestId: createClientId() });
+    setActionRequests((items) => [result.action, ...items.filter((item) => item.id !== result.action.id)]);
+    setEditingFile(null);
+    setSidePanel('settings');
   };
 
   const updateLearningDraft = (collection: 'proposals' | 'rules', id: string, field: 'title' | 'instruction', value: string) => {
@@ -2112,6 +2503,42 @@ export default function SpaceDetailPage() {
                 )}
               </section>
 
+              {!isPiSpace && (
+                <section className="border-b border-black/[0.06] px-6 py-5">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 text-xs font-black text-slate-500">
+                      <Activity size={15} />
+                      运营概览
+                    </div>
+                    <button type="button" onClick={openOperations} className="text-xs font-black text-slate-400 transition hover:text-slate-950">
+                      查看数据
+                    </button>
+                  </div>
+                  <p className="mt-2 text-xs font-semibold leading-5 text-slate-400">成果、自动化和外部发布的近 30 天闭环数据。</p>
+                </section>
+              )}
+
+              {space?.templateId === 'wechat-article' && (
+                <section className="border-b border-black/[0.06] px-6 py-5">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 text-xs font-black text-slate-500">
+                      <Newspaper size={15} />
+                      微信发布
+                    </div>
+                    <button
+                      type="button"
+                      onClick={openWechatPublications}
+                      className="text-xs font-black text-slate-400 transition hover:text-slate-950"
+                    >
+                      查看记录
+                    </button>
+                  </div>
+                  <p className="mt-2 text-xs font-semibold leading-5 text-slate-400">
+                    草稿、正式发布与失败记录统一留痕。
+                  </p>
+                </section>
+              )}
+
               <section className="px-6 py-5">
                 <div className="mb-3 flex items-center justify-between">
                   <div className="flex items-center gap-2 text-xs font-black text-slate-500">
@@ -2123,6 +2550,7 @@ export default function SpaceDetailPage() {
                     onClick={() => {
                       setInstructionsDraft(space.instructions || '');
                       setExecutionModeDraft(space.executionMode === 'AUTO' ? 'AUTO' : 'REVIEW_DISPATCH');
+                      setExecutionEngineDraft(space.executionEngine === 'pi' ? 'pi' : 'native');
                       setSidePanel('settings');
                     }}
                     className="text-xs font-black text-slate-400 transition hover:text-slate-950"
@@ -2200,6 +2628,7 @@ export default function SpaceDetailPage() {
                 onClick={() => {
                   setInstructionsDraft(space.instructions || '');
                   setExecutionModeDraft(space.executionMode === 'AUTO' ? 'AUTO' : 'REVIEW_DISPATCH');
+                  setExecutionEngineDraft(space.executionEngine === 'pi' ? 'pi' : 'native');
                   setSidePanel('settings');
                 }}
                 aria-expanded={sidePanel === 'settings'}
@@ -3147,8 +3576,8 @@ export default function SpaceDetailPage() {
               <aside className="absolute inset-y-0 right-0 z-20 flex w-full flex-col border-l border-black/[0.06] bg-white shadow-[-16px_0_40px_-24px_rgba(15,23,42,0.35)] sm:w-[360px]">
                 <div className="flex h-[65px] shrink-0 items-center justify-between border-b border-black/[0.06] px-5">
                   <div className="flex items-center gap-2 text-sm font-black text-slate-800">
-                    {sidePanel === 'members' ? <UsersRound size={17} /> : sidePanel === 'files' ? <FileText size={17} /> : sidePanel === 'skills' ? <BookOpen size={17} /> : sidePanel === 'runs' ? <History size={17} /> : <Settings2 size={17} />}
-                    {sidePanel === 'members' ? '空间成员' : sidePanel === 'files' ? '资料与成果' : sidePanel === 'skills' ? 'Space Skills' : sidePanel === 'runs' ? '历史任务' : '空间设置'}
+                    {sidePanel === 'members' ? <UsersRound size={17} /> : sidePanel === 'files' ? <FileText size={17} /> : sidePanel === 'skills' ? <BookOpen size={17} /> : sidePanel === 'runs' ? <History size={17} /> : sidePanel === 'operations' ? <Activity size={17} /> : sidePanel === 'publications' ? <Newspaper size={17} /> : <Settings2 size={17} />}
+                    {sidePanel === 'members' ? '空间成员' : sidePanel === 'files' ? '资料与成果' : sidePanel === 'skills' ? 'Space Skills' : sidePanel === 'runs' ? '历史任务' : sidePanel === 'operations' ? '运营概览' : sidePanel === 'publications' ? '微信发布记录' : '空间设置'}
                   </div>
                   <button
                     type="button"
@@ -3454,15 +3883,198 @@ export default function SpaceDetailPage() {
                         );
                       })}
                     </div>
+                  ) : sidePanel === 'operations' ? (
+                    <div>
+                      {operationsLoading ? (
+                        <div className="flex items-center justify-center gap-2 py-12 text-xs font-black text-slate-400">
+                          <Loader2 className="animate-spin" size={16} />
+                          正在汇总运营数据
+                        </div>
+                      ) : operationsSummary ? (
+                        <div className="space-y-6">
+                          <div>
+                            <div className="text-xs font-black text-slate-400">全部成果</div>
+                            <div className="mt-3 grid grid-cols-2 border-y border-black/[0.06]">
+                              {[
+                                ['已定稿', operationsSummary.works.ready],
+                                ['待定稿', operationsSummary.works.awaitingFinalization],
+                                ['进行中', operationsSummary.works.active],
+                                ['成果总数', operationsSummary.works.total],
+                              ].map(([label, value], index) => (
+                                <div key={String(label)} className={`px-3 py-4 ${index % 2 === 0 ? 'border-r border-black/[0.06]' : ''} ${index < 2 ? 'border-b border-black/[0.06]' : ''}`}>
+                                  <div className="text-xl font-black text-slate-800">{value}</div>
+                                  <div className="mt-1 text-[11px] font-semibold text-slate-400">{label}</div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-xs font-black text-slate-400">近 {operationsSummary.periodDays} 天执行质量</div>
+                            <div className="mt-3 space-y-3">
+                              <div className="flex items-center justify-between border-b border-black/[0.06] pb-3 text-xs font-bold">
+                                <span className="text-slate-500">任务完成率</span>
+                                <span className="text-slate-800">{operationsSummary.runs.successRate === null ? '暂无数据' : `${operationsSummary.runs.successRate}%`} · {operationsSummary.runs.completed}/{operationsSummary.runs.total}</span>
+                              </div>
+                              <div className="flex items-center justify-between border-b border-black/[0.06] pb-3 text-xs font-bold">
+                                <span className="text-slate-500">自动化成功率</span>
+                                <span className="text-slate-800">{operationsSummary.automation.successRate === null ? '暂无数据' : `${operationsSummary.automation.successRate}%`} · {operationsSummary.automation.completed}/{operationsSummary.automation.total}</span>
+                              </div>
+                            </div>
+                          </div>
+                          {space?.templateId === 'wechat-article' && (
+                            <div>
+                              <div className="text-xs font-black text-slate-400">微信发布漏斗</div>
+                              <div className="mt-3 grid grid-cols-2 gap-y-4 border-y border-black/[0.06] py-4 text-center">
+                                <div><div className="text-lg font-black text-slate-800">{operationsSummary.publishing.draftsCreated}</div><div className="text-[11px] font-semibold text-slate-400">草稿创建</div></div>
+                                <div><div className="text-lg font-black text-emerald-700">{operationsSummary.publishing.publicationsCompleted}</div><div className="text-[11px] font-semibold text-slate-400">正式发布</div></div>
+                                <div><div className="text-lg font-black text-amber-600">{operationsSummary.publishing.pendingApprovals}</div><div className="text-[11px] font-semibold text-slate-400">等待审批</div></div>
+                                <div><div className="text-lg font-black text-rose-600">{operationsSummary.publishing.failed}</div><div className="text-[11px] font-semibold text-slate-400">外部失败</div></div>
+                              </div>
+                            </div>
+                          )}
+                          {operationOutcomes.length > 0 && (
+                            <div>
+                              <div className="text-xs font-black text-slate-400">最近外部结果</div>
+                              <div className="mt-2 divide-y divide-black/[0.06]">
+                                {operationOutcomes.map((outcome) => (
+                                  <div key={outcome.id} className="py-3">
+                                    <div className="flex items-start justify-between gap-3">
+                                      <div className="line-clamp-2 min-w-0 text-xs font-black leading-5 text-slate-700">{outcome.title}</div>
+                                      <span className="shrink-0 text-[10px] font-black text-slate-400">{CONNECTOR_ACTION_STATUS_LABELS[outcome.status] || outcome.status}</span>
+                                    </div>
+                                    {outcome.error && <div className="mt-1 line-clamp-2 text-[11px] font-semibold leading-5 text-rose-600">{outcome.error}</div>}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="py-12 text-center text-xs font-semibold text-slate-400">暂无运营数据</div>
+                      )}
+                    </div>
+                  ) : sidePanel === 'publications' ? (
+                    <div className="space-y-3">
+                      {wechatPublicationsLoading ? (
+                        <div className="flex items-center justify-center gap-2 py-12 text-xs font-black text-slate-400">
+                          <Loader2 className="animate-spin" size={16} />
+                          正在读取发布记录
+                        </div>
+                      ) : wechatPublicationActions.length === 0 ? (
+                        <div className="py-12 text-center">
+                          <Newspaper className="mx-auto text-slate-300" size={26} />
+                          <div className="mt-3 text-sm font-black text-slate-500">暂无发布记录</div>
+                          <div className="mt-1 text-xs font-semibold text-slate-400">创建微信草稿后会在这里留下记录</div>
+                        </div>
+                      ) : wechatPublicationActions.map((action) => {
+                        const execution = action.connectorExecution;
+                        const draftId = action.kind === 'WECHAT_CREATE_DRAFT'
+                          ? connectorActionValue(execution?.externalId)
+                          : connectorActionValue(execution?.requestSummary?.mediaId);
+                        const publishId = action.kind === 'WECHAT_PUBLISH' ? connectorActionValue(execution?.externalId) : '';
+                        const articleId = connectorActionValue(execution?.responseSummary?.articleId);
+                        const statusClass = action.status === 'FAILED'
+                          ? 'bg-rose-50 text-rose-600'
+                          : action.status === 'COMPLETED'
+                            ? 'bg-emerald-50 text-emerald-700'
+                            : action.status === 'PENDING'
+                              ? 'bg-amber-50 text-amber-700'
+                              : action.status === 'APPROVED'
+                                ? 'bg-sky-50 text-sky-700'
+                                : 'bg-slate-100 text-slate-500';
+                        return (
+                          <article key={action.id} className="rounded-lg border border-black/[0.07] bg-white p-4">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0 flex-1">
+                                <div className="text-[11px] font-black text-slate-400">{action.kind === 'WECHAT_CREATE_DRAFT' ? '微信草稿' : '正式发布'}</div>
+                                <div className="mt-1 line-clamp-2 text-sm font-black leading-5 text-slate-800">{action.title}</div>
+                              </div>
+                              <span className={`shrink-0 rounded px-2 py-1 text-[10px] font-black ${statusClass}`}>
+                                {CONNECTOR_ACTION_STATUS_LABELS[action.status] || action.status}
+                              </span>
+                            </div>
+                            {action.work?.title && <div className="mt-2 truncate text-[11px] font-semibold text-slate-400">成果：{action.work.title}</div>}
+                            {(draftId || publishId || articleId) && (
+                              <dl className="mt-3 space-y-1.5 border-t border-black/[0.05] pt-3 text-[11px] leading-5">
+                                {draftId && <div><dt className="inline font-black text-slate-400">草稿 ID：</dt><dd className="inline break-all font-semibold text-slate-600">{draftId}</dd></div>}
+                                {publishId && <div><dt className="inline font-black text-slate-400">发布 ID：</dt><dd className="inline break-all font-semibold text-slate-600">{publishId}</dd></div>}
+                                {articleId && <div><dt className="inline font-black text-slate-400">文章 ID：</dt><dd className="inline break-all font-semibold text-slate-600">{articleId}</dd></div>}
+                              </dl>
+                            )}
+                            {(action.error || execution?.error) && (
+                              <div className="mt-3 rounded-md bg-rose-50 px-3 py-2 text-[11px] font-semibold leading-5 text-rose-600">{action.error || execution?.error}</div>
+                            )}
+                            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-black/[0.05] pt-3">
+                              <span className="text-[10px] font-semibold text-slate-400">
+                                {new Date(action.completedAt || action.decidedAt || action.requestedAt).toLocaleString('zh-CN')}
+                              </span>
+                              <div className="flex items-center gap-2">
+                                {action.status === 'PENDING' && (
+                                  <button type="button" onClick={() => setSidePanel('settings')} className="text-[11px] font-black text-amber-700 hover:underline">前往处理</button>
+                                )}
+                                {action.status === 'FAILED' && action.kind === 'WECHAT_PUBLISH' && execution?.externalId && (
+                                  <button type="button" onClick={() => retryConnectorActionStatus(action)} disabled={Boolean(actionBusyId)} className="inline-flex items-center gap-1 text-[11px] font-black text-rose-600 disabled:text-slate-300">
+                                    {actionBusyId === action.id ? <Loader2 className="animate-spin" size={12} /> : <RotateCcw size={12} />}
+                                    重新查询
+                                  </button>
+                                )}
+                                {execution?.externalUrl && (
+                                  <a href={execution.externalUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[11px] font-black text-emerald-700 hover:underline">
+                                    查看文章 <ExternalLink size={11} />
+                                  </a>
+                                )}
+                              </div>
+                            </div>
+                          </article>
+                        );
+                      })}
+                    </div>
                   ) : (
                     <div className="space-y-4">
-                      <div className="rounded-lg border border-black/[0.08] bg-[#fbfaf7] px-4 py-3">
-                        <div className="text-sm font-black text-slate-700">运行方式</div>
-                        <div className="mt-1 flex items-center gap-1.5 text-xs font-semibold leading-5 text-slate-400">
-                          {isPiSpace ? <Code2 size={13} /> : <UsersRound size={13} />}
-                          {isPiSpace ? '项目执行 · 由 Pi 驱动' : '团队协作'} · 创建后不可更改
+                      {!isPiSpace && (
+                        <button type="button" onClick={openOperations} className="flex h-11 w-full items-center justify-between rounded-lg border border-black/[0.07] px-3 text-left text-xs font-black text-slate-600 hover:bg-slate-50">
+                          <span className="flex items-center gap-2"><Activity size={15} />运营概览</span>
+                          <ChevronRight size={14} className="text-slate-300" />
+                        </button>
+                      )}
+                      {isPiSpace ? (
+                        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+                          <div className="text-sm font-black text-amber-800">旧版 Pi 项目空间</div>
+                          <div className="mt-1 text-xs font-semibold leading-5 text-amber-700/70">
+                            当前仍使用兼容执行路径，空间内容不会被自动迁移。
+                          </div>
                         </div>
-                      </div>
+                      ) : (
+                        <div>
+                          <div className="mb-2 flex items-center justify-between gap-3">
+                            <div className="text-sm font-black text-slate-700">任务执行引擎</div>
+                            <span className="text-[11px] font-semibold text-slate-400">仅影响后续新任务</span>
+                          </div>
+                          <div className="grid grid-cols-2 overflow-hidden rounded-lg border border-black/[0.08] bg-[#fbfaf7] p-1">
+                            <button
+                              type="button"
+                              onClick={() => setExecutionEngineDraft('native')}
+                              aria-pressed={executionEngineDraft === 'native'}
+                              className={`min-h-11 rounded-md px-3 text-xs font-black transition ${executionEngineDraft === 'native' ? 'bg-slate-950 text-white shadow-sm' : 'text-slate-500 hover:text-slate-950'}`}
+                            >
+                              原生引擎
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setExecutionEngineDraft('pi')}
+                              aria-pressed={executionEngineDraft === 'pi'}
+                              className={`min-h-11 rounded-md px-3 text-xs font-black transition ${executionEngineDraft === 'pi' ? 'bg-slate-950 text-white shadow-sm' : 'text-slate-500 hover:text-slate-950'}`}
+                            >
+                              Pi 引擎
+                            </button>
+                          </div>
+                          <p className="mt-2 text-xs font-semibold leading-5 text-slate-400">
+                            {executionEngineDraft === 'pi'
+                              ? '任务仍由 Worker 编排、审批和验收，成员的模型与工具循环交给 Pi 执行。'
+                              : '使用现有稳定执行内核，保留当前任务行为。'}
+                          </p>
+                        </div>
+                      )}
                       {!isPiSpace && (
                         <div>
                         <div className="mb-2 text-sm font-black text-slate-700">执行模式</div>
@@ -3515,6 +4127,433 @@ export default function SpaceDetailPage() {
                         {savingInstructions ? <Loader2 className="animate-spin" size={15} /> : <Save size={15} />}
                         保存设置
                       </button>
+                      {actionRequests.some((action) => action.status === 'PENDING' || action.status === 'APPROVED' || (['WECHAT_CREATE_DRAFT', 'WECHAT_PUBLISH'].includes(action.kind) && ['COMPLETED', 'FAILED'].includes(action.status))) && (
+                        <section className="border-t border-black/[0.06] pt-5">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-2 text-sm font-black text-slate-700">
+                              <ShieldCheck size={16} />
+                              待处理动作
+                            </div>
+                            <span className="text-xs font-black text-amber-600">
+                              {actionRequests.some((action) => action.status === 'PENDING') ? `${actionRequests.filter((action) => action.status === 'PENDING').length} 项待确认` : '最近记录'}
+                            </span>
+                          </div>
+                          <div className="mt-3 space-y-2">
+                            {actionRequests.filter((action) => action.status === 'PENDING').map((action) => (
+                              <div key={action.id} className="rounded-lg border border-amber-200 bg-amber-50/60 p-3">
+                                <div className="flex items-center justify-between gap-3">
+                                  <span className="text-[11px] font-black text-amber-700">等待你的确认</span>
+                                  <span className="text-[10px] font-black text-amber-600">{action.riskLevel === 'HIGH' ? '高风险动作' : '需要确认'}</span>
+                                </div>
+                                <div className="mt-1 text-sm font-black text-slate-800">{action.title}</div>
+                                {action.payload?.completionCriteria && action.payload.completionCriteria.length > 0 && (
+                                  <div className="mt-2 space-y-1 text-[11px] font-semibold leading-5 text-slate-500">
+                                    {action.payload.completionCriteria.slice(0, 3).map((criterion) => (
+                                      <div key={criterion.id} className="flex gap-1.5">
+                                        <Check size={12} className="mt-1 shrink-0 text-emerald-600" />
+                                        <span>{criterion.label}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                                <div className="mt-3 flex justify-end gap-2">
+                                  <button type="button" onClick={() => decideActionRequest(action, 'reject')} disabled={Boolean(actionBusyId)} className="h-9 rounded-lg px-3 text-xs font-black text-slate-500 hover:bg-white disabled:text-slate-300">
+                                    {action.kind === 'FINALIZE_WORK' ? '暂不定稿' : '取消'}
+                                  </button>
+                                  <button type="button" onClick={() => decideActionRequest(action, 'approve')} disabled={Boolean(actionBusyId)} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-slate-950 px-3 text-xs font-black text-white disabled:bg-slate-200">
+                                    {actionBusyId === action.id ? <Loader2 className="animate-spin" size={13} /> : <CheckCircle2 size={13} />}
+                                    {action.kind === 'WECHAT_CREATE_DRAFT' ? '确认创建草稿' : action.kind === 'WECHAT_PUBLISH' ? '确认正式发布' : '确认定稿'}
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                            {actionRequests.filter((action) => action.status === 'APPROVED').map((action) => (
+                              <div key={action.id} className="rounded-lg border border-sky-200 bg-sky-50/60 p-3">
+                                <div className="flex items-center gap-2 text-[11px] font-black text-sky-700">
+                                  <Loader2 className="animate-spin" size={13} />
+                                  {action.connectorExecution?.status === 'WAITING_PROVIDER' ? '微信处理中' : '等待 Worker 执行'}
+                                </div>
+                                <div className="mt-1 text-sm font-black text-slate-800">{action.title}</div>
+                                {action.connectorExecution?.nextPollAt && (
+                                  <div className="mt-1 text-[11px] font-semibold text-slate-400">下次查询：{new Date(action.connectorExecution.nextPollAt).toLocaleString('zh-CN')}</div>
+                                )}
+                                {action.connectorExecution?.error && (
+                                  <div className="mt-1 text-[11px] font-semibold leading-5 text-amber-600">上次查询：{action.connectorExecution.error}</div>
+                                )}
+                              </div>
+                            ))}
+                            {actionRequests.filter((action) => ['WECHAT_CREATE_DRAFT', 'WECHAT_PUBLISH'].includes(action.kind) && ['COMPLETED', 'FAILED'].includes(action.status)).slice(0, 3).map((action) => (
+                              <div key={action.id} className={`rounded-lg border p-3 ${action.status === 'COMPLETED' ? 'border-emerald-200 bg-emerald-50/50' : 'border-rose-200 bg-rose-50/50'}`}>
+                                <div className={`text-[11px] font-black ${action.status === 'COMPLETED' ? 'text-emerald-700' : 'text-rose-600'}`}>
+                                  {action.status === 'COMPLETED' ? (action.kind === 'WECHAT_PUBLISH' ? '发布完成' : '草稿已创建') : '执行失败'}
+                                </div>
+                                <div className="mt-1 text-sm font-black text-slate-800">{action.title}</div>
+                                {action.error && <div className="mt-1 text-[11px] font-semibold leading-5 text-rose-600">{action.error}</div>}
+                                {action.connectorExecution?.externalUrl && (
+                                  <a href={action.connectorExecution.externalUrl} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1.5 text-xs font-black text-emerald-700 hover:underline">
+                                    <Globe2 size={13} />
+                                    查看已发布文章
+                                  </a>
+                                )}
+                                {action.status === 'FAILED' && action.kind === 'WECHAT_PUBLISH' && action.connectorExecution?.externalId && (
+                                  <button type="button" onClick={() => retryConnectorActionStatus(action)} disabled={Boolean(actionBusyId)} className="mt-2 inline-flex h-8 items-center gap-1.5 rounded-md border border-rose-200 bg-white px-2.5 text-[11px] font-black text-rose-600 disabled:text-slate-300">
+                                    {actionBusyId === action.id ? <Loader2 className="animate-spin" size={12} /> : <RotateCcw size={12} />}
+                                    重新查询状态
+                                  </button>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </section>
+                      )}
+                      {space?.templateId === 'wechat-article' && <section className="border-t border-black/[0.06] pt-5">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="flex items-center gap-2 text-sm font-black text-slate-700">
+                              <Globe2 size={16} />
+                              微信公众号连接器
+                            </div>
+                            <p className="mt-1 text-xs font-semibold leading-5 text-slate-400">
+                              凭据加密保存到当前空间。配置连接器不会自动创建草稿或发布文章。
+                            </p>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-3">
+                            <button type="button" onClick={openWechatPublications} className="text-xs font-black text-slate-400 transition hover:text-slate-950">
+                              发布记录
+                            </button>
+                            {wechatConnector && (
+                              <button
+                                type="button"
+                                onClick={toggleWechatConnector}
+                                disabled={wechatConnectorBusy}
+                                role="switch"
+                                aria-checked={wechatConnector.enabled}
+                                aria-label={wechatConnector.enabled ? '停用微信公众号连接器' : '启用微信公众号连接器'}
+                                className={`relative mt-1 h-6 w-10 shrink-0 rounded-full transition ${wechatConnector.enabled ? 'bg-emerald-500' : 'bg-slate-200'}`}
+                              >
+                                <span className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow-sm transition ${wechatConnector.enabled ? 'left-5' : 'left-1'}`} />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                        <div className="mt-4 space-y-3 border-y border-black/[0.06] py-4">
+                          <input
+                            value={wechatAppId}
+                            onChange={(event) => setWechatAppId(event.target.value)}
+                            maxLength={66}
+                            autoComplete="off"
+                            placeholder="微信公众号 AppID"
+                            className="h-10 w-full rounded-lg border border-black/[0.08] bg-[#fbfaf7] px-3 text-xs font-semibold text-slate-700 outline-none focus:border-slate-300"
+                          />
+                          <input
+                            type="password"
+                            value={wechatAppSecret}
+                            onChange={(event) => setWechatAppSecret(event.target.value)}
+                            maxLength={500}
+                            autoComplete="new-password"
+                            placeholder={wechatConnector ? 'AppSecret（留空则保持不变）' : '微信公众号 AppSecret'}
+                            className="h-10 w-full rounded-lg border border-black/[0.08] bg-[#fbfaf7] px-3 text-xs font-semibold text-slate-700 outline-none focus:border-slate-300"
+                          />
+                          {wechatConnector?.lastError && (
+                            <div className="rounded-md bg-rose-50 px-3 py-2 text-[11px] font-semibold leading-5 text-rose-600">{wechatConnector.lastError}</div>
+                          )}
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <span className="text-[11px] font-bold text-slate-400">
+                              {!wechatConnector
+                                ? '尚未配置'
+                                : !wechatConnector.enabled
+                                  ? '已配置 · 已停用'
+                                  : wechatConnector.status === 'READY'
+                                    ? '连接可用'
+                                    : wechatConnector.status === 'CHECKING'
+                                      ? '正在验证连接'
+                                      : wechatConnector.status === 'ERROR'
+                                        ? '连接验证失败'
+                                        : '已配置 · 待验证'}
+                            </span>
+                            <div className="flex items-center gap-2">
+                              {wechatConnector?.enabled && (
+                                <button
+                                  type="button"
+                                  onClick={validateWechatConnector}
+                                  disabled={wechatConnectorBusy || wechatConnector.status === 'CHECKING'}
+                                  className="inline-flex h-10 items-center gap-2 rounded-lg border border-black/[0.08] bg-white px-3 text-xs font-black text-slate-600 disabled:text-slate-300"
+                                >
+                                  {wechatConnector.status === 'CHECKING' ? <Loader2 className="animate-spin" size={14} /> : <ShieldCheck size={14} />}
+                                  验证连接
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={saveWechatConnector}
+                                disabled={!wechatAppId.trim() || (!wechatConnector && !wechatAppSecret.trim()) || wechatConnectorBusy}
+                                className="inline-flex h-10 items-center gap-2 rounded-lg bg-slate-950 px-4 text-xs font-black text-white disabled:bg-slate-200 disabled:text-slate-400"
+                              >
+                                {wechatConnectorBusy ? <Loader2 className="animate-spin" size={14} /> : <Save size={14} />}
+                                {wechatConnector ? '更新配置' : '保存配置'}
+                              </button>
+                            </div>
+                          </div>
+                          {wechatConnector?.lastCheckedAt && (
+                            <div className="text-[11px] font-semibold text-slate-400">
+                              最近验证：{new Date(wechatConnector.lastCheckedAt).toLocaleString('zh-CN')}
+                            </div>
+                          )}
+                        </div>
+                        <p className="mt-3 text-[11px] font-semibold leading-5 text-amber-600">
+                          草稿创建与正式发布将在独立高风险审批后执行，自动执行模式不能跳过该确认。
+                        </p>
+                      </section>}
+                      {!isPiSpace && <section className="border-t border-black/[0.06] pt-5">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="flex items-center gap-2 text-sm font-black text-slate-700">
+                              <CalendarClock size={16} />
+                              空间自动化
+                            </div>
+                            <p className="mt-1 text-xs font-semibold leading-5 text-slate-400">
+                              到期后由 Worker 创建标准任务，仍遵循当前派发审批与执行引擎设置。
+                            </p>
+                          </div>
+                          <span className="shrink-0 text-xs font-black text-slate-400">{automations.length} 条</span>
+                        </div>
+
+                        <div className="mt-4 space-y-3 border-y border-black/[0.06] py-4">
+                          <input
+                            value={automationName}
+                            onChange={(event) => setAutomationName(event.target.value)}
+                            maxLength={80}
+                            placeholder="自动化名称"
+                            className="h-10 w-full rounded-lg border border-black/[0.08] bg-[#fbfaf7] px-3 text-xs font-semibold text-slate-700 outline-none focus:border-slate-300"
+                          />
+                          <textarea
+                            value={automationPrompt}
+                            onChange={(event) => setAutomationPrompt(event.target.value)}
+                            maxLength={12_000}
+                            rows={4}
+                            placeholder="每次执行的任务要求"
+                            className="w-full resize-y rounded-lg border border-black/[0.08] bg-[#fbfaf7] px-3 py-2.5 text-xs font-semibold leading-5 text-slate-700 outline-none focus:border-slate-300"
+                          />
+                          <div className="grid grid-cols-2 gap-2">
+                            <select
+                              value={automationScheduleType}
+                              onChange={(event) => setAutomationScheduleType(event.target.value as 'INTERVAL' | 'DAILY' | 'WEEKLY')}
+                              aria-label="定时方式"
+                              className="h-10 min-w-0 rounded-lg border border-black/[0.08] bg-white px-3 text-xs font-bold text-slate-700 outline-none"
+                            >
+                              <option value="DAILY">每天定时</option>
+                              <option value="WEEKLY">每周定时</option>
+                              <option value="INTERVAL">固定间隔</option>
+                            </select>
+                            {automationScheduleType === 'INTERVAL' ? (
+                              <select
+                                value={automationInterval}
+                                onChange={(event) => setAutomationInterval(Number(event.target.value))}
+                                aria-label="执行间隔"
+                                className="h-10 min-w-0 rounded-lg border border-black/[0.08] bg-white px-3 text-xs font-bold text-slate-700 outline-none"
+                              >
+                                <option value={60}>每小时</option>
+                                <option value={360}>每 6 小时</option>
+                                <option value={720}>每 12 小时</option>
+                                <option value={1440}>每 24 小时</option>
+                                <option value={10080}>每 7 天</option>
+                              </select>
+                            ) : (
+                              <input
+                                type="time"
+                                value={automationTime}
+                                onChange={(event) => setAutomationTime(event.target.value)}
+                                aria-label="执行时间"
+                                className="h-10 min-w-0 rounded-lg border border-black/[0.08] bg-white px-3 text-xs font-bold text-slate-700 outline-none"
+                              />
+                            )}
+                          </div>
+                          {automationScheduleType === 'WEEKLY' && (
+                            <div className="grid grid-cols-7 gap-1" aria-label="执行星期">
+                              {AUTOMATION_WEEKDAYS.map((day) => {
+                                const selected = automationWeekdays.includes(day.value);
+                                return (
+                                  <button
+                                    key={day.value}
+                                    type="button"
+                                    aria-pressed={selected}
+                                    onClick={() => setAutomationWeekdays((days) => selected ? days.filter((value) => value !== day.value) : [...days, day.value])}
+                                    className={`h-8 rounded-md text-[11px] font-black transition ${selected ? 'bg-slate-950 text-white' : 'bg-slate-100 text-slate-500 hover:text-slate-800'}`}
+                                  >
+                                    {day.label}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                          <div className="grid grid-cols-2 gap-2">
+                            <select
+                              value={automationTimeZone}
+                              onChange={(event) => setAutomationTimeZone(event.target.value)}
+                              aria-label="执行时区"
+                              className="h-10 min-w-0 rounded-lg border border-black/[0.08] bg-white px-3 text-xs font-bold text-slate-700 outline-none"
+                            >
+                              <option value="Asia/Shanghai">北京时间</option>
+                              <option value="Asia/Tokyo">东京时间</option>
+                              <option value="Europe/London">伦敦时间</option>
+                              <option value="America/New_York">纽约时间</option>
+                              <option value="UTC">UTC</option>
+                            </select>
+                            <select
+                              value={automationWorkStrategy}
+                              onChange={(event) => setAutomationWorkStrategy(event.target.value as 'NEW_WORK' | 'ACTIVE_WORK')}
+                              aria-label="成果策略"
+                              className="h-10 min-w-0 rounded-lg border border-black/[0.08] bg-white px-3 text-xs font-bold text-slate-700 outline-none"
+                            >
+                              <option value="NEW_WORK">每次新建成果</option>
+                              <option value="ACTIVE_WORK">续做当前成果</option>
+                            </select>
+                          </div>
+                          <select
+                            value={automationNetworkPolicy}
+                            onChange={(event) => setAutomationNetworkPolicy(event.target.value as 'forbidden' | 'allowed' | 'required')}
+                            aria-label="自动化联网策略"
+                            className="h-10 w-full rounded-lg border border-black/[0.08] bg-white px-3 text-xs font-bold text-slate-700 outline-none"
+                          >
+                            <option value="forbidden">禁止联网</option>
+                            <option value="allowed">允许按需联网</option>
+                            <option value="required">必须联网</option>
+                          </select>
+                          {space?.templateId === 'wechat-article' && (
+                            <div className="rounded-lg border border-black/[0.06] bg-slate-50/70 p-3">
+                              <label htmlFor="automation-completion-action" className="mb-2 block text-xs font-black text-slate-600">成果定稿后</label>
+                              <div className="grid grid-cols-2 gap-2">
+                                <select
+                                  id="automation-completion-action"
+                                  value={automationCompletionAction}
+                                  onChange={(event) => setAutomationCompletionAction(event.target.value as 'NONE' | 'WECHAT_CREATE_DRAFT')}
+                                  className="h-10 min-w-0 rounded-lg border border-black/[0.08] bg-white px-3 text-xs font-bold text-slate-700 outline-none"
+                                >
+                                  <option value="NONE">仅完成成果</option>
+                                  <option value="WECHAT_CREATE_DRAFT">准备微信草稿</option>
+                                </select>
+                                {automationCompletionAction === 'WECHAT_CREATE_DRAFT' && (
+                                  <select
+                                    value={automationWechatTheme}
+                                    onChange={(event) => setAutomationWechatTheme(event.target.value)}
+                                    aria-label="微信排版主题"
+                                    className="h-10 min-w-0 rounded-lg border border-black/[0.08] bg-white px-3 text-xs font-bold text-slate-700 outline-none"
+                                  >
+                                    <option value="fresh-green">清新绿</option>
+                                    <option value="editorial-red">编辑红</option>
+                                    <option value="midnight-gold">午夜金</option>
+                                  </select>
+                                )}
+                              </div>
+                              {automationCompletionAction === 'WECHAT_CREATE_DRAFT' && (
+                                <p className="mt-2 text-[11px] font-semibold leading-5 text-slate-400">
+                                  定稿后会生成独立审批，仍需你确认才创建微信草稿，不会自动发布。
+                                </p>
+                              )}
+                            </div>
+                          )}
+                          <div className="flex items-center justify-between gap-3">
+                            <label className="flex items-center gap-2 text-xs font-bold text-slate-500">
+                              <input
+                                type="checkbox"
+                                checked={automationEnableOnCreate}
+                                onChange={(event) => setAutomationEnableOnCreate(event.target.checked)}
+                                className="h-4 w-4 rounded border-slate-300"
+                              />
+                              创建后启用
+                            </label>
+                            <button
+                              type="button"
+                              onClick={createAutomation}
+                              disabled={!automationName.trim() || !automationPrompt.trim() || (automationScheduleType === 'WEEKLY' && automationWeekdays.length === 0) || Boolean(automationBusyId)}
+                              className="inline-flex h-10 items-center gap-2 rounded-lg bg-slate-950 px-4 text-xs font-black text-white disabled:bg-slate-200 disabled:text-slate-400"
+                            >
+                              {automationBusyId === 'new' ? <Loader2 className="animate-spin" size={14} /> : <Plus size={14} />}
+                              创建规则
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="mt-3 space-y-2">
+                          {automations.length === 0 ? (
+                            <div className="py-5 text-center text-xs font-semibold text-slate-400">暂无自动化规则</div>
+                          ) : automations.map((automation) => (
+                            <div key={automation.id} className="border-b border-black/[0.06] px-1 py-3 last:border-b-0">
+                              <div className="flex items-start gap-3">
+                                <div className="min-w-0 flex-1">
+                                  <div className="truncate text-sm font-black text-slate-700">{automation.name}</div>
+                                  <div className="mt-1 line-clamp-2 text-xs font-semibold leading-5 text-slate-400">{automation.prompt}</div>
+                                  <div className="mt-1 text-[11px] font-bold text-slate-400">
+                                    {automationScheduleLabel(automation)} · {automation.enabled ? `下次：${new Date(automation.nextRunAt).toLocaleString('zh-CN')}` : '已停用'}
+                                  </div>
+                                  {automation.completionAction === 'WECHAT_CREATE_DRAFT' && (
+                                    <div className="mt-1 text-[11px] font-bold text-emerald-600">
+                                      定稿后准备微信草稿 · {automation.completionConfig?.themeId === 'editorial-red' ? '编辑红' : automation.completionConfig?.themeId === 'midnight-gold' ? '午夜金' : '清新绿'}
+                                    </div>
+                                  )}
+                                  {automation.lastError && (
+                                    <div className="mt-2 rounded-md bg-rose-50 px-2.5 py-2 text-[11px] font-semibold leading-5 text-rose-600">
+                                      已暂停：{automation.lastError}
+                                    </div>
+                                  )}
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => toggleAutomation(automation)}
+                                  disabled={Boolean(automationBusyId)}
+                                  role="switch"
+                                  aria-checked={automation.enabled}
+                                  aria-label={`${automation.enabled ? '停用' : '启用'}${automation.name}`}
+                                  title={automation.enabled ? '停用' : '启用'}
+                                  className={`relative mt-1 h-6 w-10 shrink-0 rounded-full transition ${automation.enabled ? 'bg-emerald-500' : 'bg-slate-200'}`}
+                                >
+                                  <span className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow-sm transition ${automation.enabled ? 'left-5' : 'left-1'}`} />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => triggerAutomation(automation)}
+                                  disabled={Boolean(automationBusyId)}
+                                  aria-label={`立即运行${automation.name}`}
+                                  title={automation.enabled ? '立即运行' : '恢复并立即运行'}
+                                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-800 disabled:text-slate-200"
+                                >
+                                  {automationBusyId === automation.id ? <Loader2 className="animate-spin" size={14} /> : <Play size={14} />}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => deleteAutomation(automation)}
+                                  disabled={Boolean(automationBusyId)}
+                                  aria-label={`删除${automation.name}`}
+                                  title="删除自动化"
+                                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-300 transition hover:bg-rose-50 hover:text-rose-600 disabled:text-slate-200"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              </div>
+                              {automation.executions && automation.executions.length > 0 && (
+                                <div className="mt-2 space-y-1 border-t border-black/[0.05] pt-2">
+                                  {automation.executions.slice(0, 3).map((execution) => (
+                                    <button
+                                      key={execution.id}
+                                      type="button"
+                                      disabled={!execution.runId}
+                                      onClick={() => {
+                                        if (!execution.runId) return;
+                                        setSidePanel(null);
+                                        openTaskRun(execution.runId);
+                                      }}
+                                      className="flex w-full items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left text-[11px] font-semibold text-slate-400 hover:bg-slate-50 hover:text-slate-700 disabled:hover:bg-transparent"
+                                    >
+                                      <span>{new Date(execution.scheduledFor).toLocaleString('zh-CN')}</span>
+                                      <span className="shrink-0 font-black">{RUN_STATUS_LABELS[execution.run?.status || ''] || (execution.status === 'TRIGGERED' ? '已触发' : execution.status)}</span>
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </section>}
                       {!isPiSpace && <section className="border-t border-black/[0.06] pt-5">
                         <div className="flex items-start justify-between gap-3">
                           <div>
@@ -3753,6 +4792,9 @@ export default function SpaceDetailPage() {
         spaceId={spaceId}
         file={editingFile}
         publishTarget={space?.templateId === 'wechat-article' ? 'wechat' : undefined}
+        wechatConnectorReady={Boolean(wechatConnector?.enabled && wechatConnector.status === 'READY')}
+        wechatCoverFiles={files.filter((file) => file.status === 'READY' && String(file.mimeType || '').startsWith('image/'))}
+        onRequestWechatDraft={editingFile ? (coverFileId, themeId) => requestWechatDraft(editingFile, coverFileId, themeId) : undefined}
         onClose={() => setEditingFile(null)}
         onSaved={(updatedFile) => {
           setFiles((items) => [updatedFile, ...items.filter((item) => item.id !== updatedFile.id)]);

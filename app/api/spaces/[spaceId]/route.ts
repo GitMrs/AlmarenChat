@@ -35,7 +35,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ sp
     const userId = requireAuth(request);
     const { spaceId } = await params;
     const body = await request.json();
-    const { name, description, instructions, executionMode, hostAgentId, activeWorkId } = body;
+    const { name, description, instructions, executionEngine, executionMode, hostAgentId, activeWorkId } = body;
 
     const space = await prisma.space.findFirst({ where: { id: spaceId, userId } });
     if (!space) return NextResponse.json({ error: 'Space not found' }, { status: 404 });
@@ -43,7 +43,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ sp
       return NextResponse.json({ error: '空间运行时创建后不可更改' }, { status: 400 });
     }
 
-    const data: { name?: string; description?: string | null; instructions?: string | null; executionMode?: string; hostAgentId?: string | null; activeWorkId?: string | null } = {};
+    const data: { name?: string; description?: string | null; instructions?: string | null; executionEngine?: string; executionMode?: string; hostAgentId?: string | null; activeWorkId?: string | null } = {};
     if (name !== undefined) {
       const title = typeof name === 'string' ? name.trim() : '';
       if (!title) return NextResponse.json({ error: '空间名称不能为空' }, { status: 400 });
@@ -64,6 +64,17 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ sp
         return NextResponse.json({ error: '不支持的空间执行模式' }, { status: 400 });
       }
       data.executionMode = executionMode;
+    }
+    if (executionEngine !== undefined) {
+      if (!['native', 'pi'].includes(executionEngine)) {
+        return NextResponse.json({ error: '不支持的 Agent 执行引擎' }, { status: 400 });
+      }
+      const activeRun = await prisma.agentRun.findFirst({
+        where: { spaceId, status: { in: ACTIVE_AGENT_RUN_STATUSES } },
+        select: { id: true },
+      });
+      if (activeRun) return NextResponse.json({ error: '任务执行期间不能切换执行引擎' }, { status: 409 });
+      data.executionEngine = executionEngine;
     }
     if (hostAgentId !== undefined) {
       if (hostAgentId === null || hostAgentId === '' || hostAgentId === SPACE_COORDINATOR_ID) {
