@@ -8,7 +8,13 @@ import {
   messageFilter,
 } from '@tencent-connect/qqbot-nodejs';
 import { decryptQQCredential } from '../lib/qq-assistant/credentials.mjs';
-import { classifyQQCommand, qqReminderRetryDelayMs, sqliteDate } from '../lib/qq-assistant/policy.mjs';
+import {
+  classifyQQCommand,
+  qqImageAttachments,
+  qqReminderRetryDelayMs,
+  qqWebSearchEnabled,
+  sqliteDate,
+} from '../lib/qq-assistant/policy.mjs';
 import { resolveWorkerDatabasePath } from './runtime/worker-config.mjs';
 import { openWorkerDatabase } from './runtime/worker-database.mjs';
 
@@ -98,14 +104,14 @@ function applyReminderCommand(userId, command, refMsgIdx, eventId) {
   return `好，${command.minutes} 分钟后再提醒你「${reminder.content}」。`;
 }
 
-async function requestAssistant(binding, message, eventId, onProgress) {
+async function requestAssistant(binding, message, eventId, webSearchEnabled, attachments, onProgress) {
   const response = await fetch(internalUrl, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
       'x-qq-assistant-secret': secret,
     },
-    body: JSON.stringify({ userId: binding.userId, message, eventId, stream: true }),
+    body: JSON.stringify({ userId: binding.userId, message, eventId, webSearchEnabled, attachments, stream: true }),
     signal: AbortSignal.timeout(180_000),
   });
   if (!response.ok) {
@@ -163,9 +169,40 @@ async function sendMarkdownReply(bot, target, content) {
   for (const chunk of chunks) await bot.sendMarkdown(target, chunk);
 }
 
+async function syncWebSearchMenu(bot, appId) {
+  try {
+    const response = await bot.api.get('/v2/menu');
+    const menu = response?.menu && typeof response.menu === 'object' ? response.menu : {};
+    const items = Array.isArray(menu.items) ? menu.items : [];
+    const index = items.findIndex((item) => item?.type === 'switch' && item.switch?.switch_id === 'web_search');
+    const webSearchItem = {
+      type: 'switch',
+      name: '联网查询',
+      switch: { switch_id: 'web_search', default: false },
+    };
+    let nextItems;
+
+    if (index >= 0) {
+      nextItems = items.map((item, itemIndex) => itemIndex === index ? webSearchItem : item);
+    } else if (items.length < 10) {
+      nextItems = [...items, webSearchItem];
+    } else {
+      console.warn(`[qqbot:${appId}] 自定义菜单已有 10 项，无法添加联网查询开关。`);
+      return;
+    }
+
+    if (JSON.stringify(nextItems) === JSON.stringify(items)) return;
+    await bot.api.put('/v2/menu', { menu: { ...menu, items: nextItems } });
+    console.info(`[qqbot:${appId}] 联网查询菜单已同步`);
+  } catch (error) {
+    console.warn(`[qqbot:${appId}] 联网查询菜单同步失败：${shortError(error)}`);
+  }
+}
+
 async function handleMessage(entry, msg) {
   if (msg.kind !== 'c2c' || msg.replyTarget.scope !== 'c2c') return;
-  const content = msg.content?.trim();
+  const attachments = qqImageAttachments(msg.attachments);
+  const content = msg.content?.trim() || (attachments.length ? '请分析这张图片。' : '');
   if (!content) return;
 
   const binding = currentBinding(entry.userId);
@@ -195,15 +232,22 @@ async function handleMessage(entry, msg) {
 
     const qqStream = entry.bot.openStream({ target: msg.replyTarget });
     let streamError = null;
-    const result = await requestAssistant(binding, content, msg.messageId, async (fullContent) => {
-      if (streamError || !fullContent) return;
-      try {
-        await qqStream.update(fullContent);
-      } catch (error) {
-        streamError = error;
-        qqStream.cancel();
+    const result = await requestAssistant(
+      binding,
+      content,
+      msg.messageId,
+      qqWebSearchEnabled(msg.messageScene?.ext),
+      attachments,
+      async (fullContent) => {
+        if (streamError || !fullContent) return;
+        try {
+          await qqStream.update(fullContent);
+        } catch (error) {
+          streamError = error;
+          qqStream.cancel();
+        }
       }
-    });
+    );
 
     if (streamError || !result.streamed) {
       qqStream.cancel();
@@ -258,6 +302,7 @@ function startBinding(binding) {
   bot.on('ready', () => {
     entry.ready = true;
     updateBinding(binding.userId, { status: 'READY', lastError: null, connectedAt: sqliteDate() });
+    void syncWebSearchMenu(bot, binding.appId);
   });
   bot.on('resumed', () => {
     entry.ready = true;

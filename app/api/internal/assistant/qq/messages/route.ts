@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import prisma from '@/app/api/_lib/db';
 import { reserveChatQuota } from '@/lib/chat-quota';
 import { createModelClient, resolveModelName } from '@/lib/model-client';
+import { buildWebSearchContext } from '@/lib/web-search';
 import { buildAssistantActivityContext, buildAssistantPlatformContext } from '@/lib/personal-assistant/platform-context';
 import { buildPersonalAssistantPrompt } from '@/lib/personal-assistant/prompt-builder';
 import { ensurePersonalAssistant } from '@/lib/personal-assistant/profile';
@@ -10,7 +11,7 @@ import { archiveOldMainChatMessages, loadAssistantMemoryContext } from '@/lib/pe
 import { buildReminderExtractionPrompt, parseReminderExtraction } from '@/lib/personal-assistant/reminder-extraction.mjs';
 import { classifyReminderRequest } from '@/lib/personal-assistant/reminder-intent.mjs';
 import { isValidInternalQQSecret } from '@/lib/qq-assistant/credentials.mjs';
-import { classifyQQCommand } from '@/lib/qq-assistant/policy.mjs';
+import { classifyQQCommand, qqImageAttachments } from '@/lib/qq-assistant/policy.mjs';
 import { compressConversationContext } from '@/lib/context-compression';
 import { conversationContextTargetTokens } from '@/lib/model-limits.mjs';
 
@@ -31,6 +32,8 @@ export async function POST(request: Request) {
     const userId = typeof body.userId === 'string' ? body.userId.trim() : '';
     const eventId = typeof body.eventId === 'string' ? body.eventId.trim().slice(0, 200) : '';
     const message = typeof body.message === 'string' ? body.message.trim().slice(0, 50000) : '';
+    const webSearchEnabled = body.webSearchEnabled === true;
+    const imageAttachments = qqImageAttachments(body.attachments);
     if (!userId || !eventId || !message) {
       return NextResponse.json({ error: 'QQ 消息参数不完整' }, { status: 400 });
     }
@@ -73,6 +76,7 @@ export async function POST(request: Request) {
         apiKey: true,
         modelName: true,
         modelContextWindow: true,
+        tavilyApiKey: true,
         dailyChatLimit: true,
         contextMessageLimit: true,
       },
@@ -116,7 +120,7 @@ export async function POST(request: Request) {
       tasks: profile.includeTaskContext,
       chats: profile.includeChatContext,
     };
-    const [memoryContext, memories, platformContext, activityContext] = await Promise.all([
+    const [memoryContext, memories, platformContext, activityContext, webContext] = await Promise.all([
       loadAssistantMemoryContext({
         userId,
         conversationId: binding.conversationId,
@@ -132,6 +136,7 @@ export async function POST(request: Request) {
       }),
       buildAssistantPlatformContext(userId, contextSources),
       buildAssistantActivityContext(userId, message, contextSources),
+      webSearchEnabled ? buildWebSearchContext(message, userSettings.tavilyApiKey) : Promise.resolve(null),
     ]);
 
     const systemPrompt = [
@@ -141,11 +146,12 @@ export async function POST(request: Request) {
         memories,
         platformContext,
         activityContext,
-        webEnabled: false,
+        webEnabled: webSearchEnabled,
         experienceContext: memoryContext.experienceContext,
       }),
+      webContext ? `本轮联网结果：\n${webContext}` : '',
       '【当前渠道】：你正在 QQ 私聊中回复用户。QQ 与网页共用同一个主聊天上下文；不要提供站内相对链接，可以使用 QQ 支持的标准 Markdown，但避免 HTML 和复杂表格，回答保持适合即时消息阅读。长期记忆、任务和提醒也与网页共享。用户要求提醒时不要声称已经创建，系统会在回复末尾附加真实创建结果。',
-    ].join('\n\n');
+    ].filter(Boolean).join('\n\n');
     const compressedHistory = compressConversationContext(
       memoryContext.history
         .filter((item) => item.role === 'user' || item.role === 'assistant')
@@ -165,13 +171,22 @@ export async function POST(request: Request) {
         preserveSystem: false,
       }
     ).compressedMessages;
-    const modelMessages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
+    const userContent = imageAttachments.length
+      ? [
+          { type: 'text' as const, text: message },
+          ...imageAttachments.map((attachment) => ({
+            type: 'image_url' as const,
+            image_url: { url: attachment.url },
+          })),
+        ]
+      : message;
+    const modelMessages: Array<{ role: 'system' | 'user' | 'assistant'; content: any }> = [
       { role: 'system', content: systemPrompt },
       ...compressedHistory.map((item) => ({
         role: item.role as 'user' | 'assistant',
         content: item.content,
       })),
-      { role: 'user', content: message },
+      { role: 'user', content: userContent },
     ];
 
     const userMessageId = eventMessageId('user', binding.appId, eventId);
@@ -218,7 +233,14 @@ export async function POST(request: Request) {
             },
           })),
           prisma.message.create({
-            data: { id: userMessageId, conversationId: binding.conversationId, role: 'user', source: 'QQ', content: message },
+            data: {
+              id: userMessageId,
+              conversationId: binding.conversationId,
+              role: 'user',
+              source: 'QQ',
+              content: message,
+              attachments: imageAttachments.length ? imageAttachments : undefined,
+            },
           }),
           prisma.message.create({
             data: { id: assistantMessageId, conversationId: binding.conversationId, role: 'assistant', source: 'QQ', content },
