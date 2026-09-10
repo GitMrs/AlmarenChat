@@ -78,6 +78,7 @@ function legacyCopyText(text: string) {
 export default function SpaceFileEditorDialog({
   spaceId,
   file,
+  initialMode = 'preview',
   publishTarget,
   wechatConnectorReady = false,
   wechatCoverFiles = [],
@@ -87,6 +88,7 @@ export default function SpaceFileEditorDialog({
 }: {
   spaceId: string;
   file: SpaceFile | null;
+  initialMode?: 'preview' | 'source';
   publishTarget?: 'wechat';
   wechatConnectorReady?: boolean;
   wechatCoverFiles?: SpaceFile[];
@@ -154,7 +156,7 @@ export default function SpaceFileEditorDialog({
     setContent('');
     setOriginalContent('');
     setReadOnlyReason(null);
-    setMode(/\.(?:html?|md|markdown)$/i.test(file.fileName) ? 'preview' : 'source');
+    setMode(initialMode === 'preview' && /\.(?:html?|md|markdown)$/i.test(file.fileName) ? 'preview' : 'source');
     setPreview(null);
     setPreviewError('');
     setExternalImages(true);
@@ -208,7 +210,7 @@ export default function SpaceFileEditorDialog({
     return () => {
       active = false;
     };
-  }, [file, spaceId]);
+  }, [file, initialMode, spaceId]);
 
   useEffect(() => {
     if (!file) return;

@@ -15,9 +15,11 @@ import TaskProposalDialog, { type TaskProposalRevision } from '@/components/spac
 import TaskDispatchDialog, { type TaskDispatchRevision } from '@/components/spaces/TaskDispatchDialog';
 import TaskReviewDialog from '@/components/spaces/TaskReviewDialog';
 import SpaceFileEditorDialog from '@/components/spaces/SpaceFileEditorDialog';
+import SpaceImagePreviewDialog from '@/components/spaces/SpaceImagePreviewDialog';
 import SpaceDiscussionDialog from '@/components/spaces/SpaceDiscussionDialog';
 import SpaceDiscussionStatus from '@/components/spaces/SpaceDiscussionStatus';
 import SpaceRelayStatus from '@/components/spaces/SpaceRelayStatus';
+import SpaceOperationsCenter, { type SpaceOperationsTab } from '@/components/spaces/SpaceOperationsCenter';
 import { CompressionStatusPanel } from '@/components/spaces/CompressionStatusPanel';
 import { agentRuns as agentRunsApi, agents as agentsApi, spaces as spacesApi, streamSpaceMessage } from '@/lib/api';
 import { getBuiltInAgents } from '@/lib/agents-data';
@@ -29,7 +31,7 @@ import {
   isRunBudgetWait,
   MAX_CONTINUATION_ITERATIONS,
 } from '@/lib/agent-wait-policy.mjs';
-import { isEditableSpaceFile } from '@/lib/space-files';
+import { isEditableSpaceFile, isPreviewableSpaceImage } from '@/lib/space-files';
 import { createClientId } from '@/lib/client-id';
 import type { Agent, AgentRun, AgentRunEvent, AgentTask, SpaceActionRequest, SpaceAutomation, SpaceConnector, SpaceDiscussion, SpaceFile, SpaceLearning, SpaceLearningItem, SpaceMessage, SpaceOperationOutcome, SpaceOperationsSummary, SpacePiCoordinationRequest, SpacePiExecutionActivity, SpacePiExecutionNote, SpacePiSkillApproval, SpaceRelay, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal, SpaceWork } from '@/types';
 
@@ -500,7 +502,9 @@ export default function SpaceDetailPage() {
   const [relays, setRelays] = useState<SpaceRelay[]>([]);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [mode, setMode] = useState<'chat' | 'task'>('chat');
-  const [sidePanel, setSidePanel] = useState<'members' | 'files' | 'skills' | 'runs' | 'operations' | 'publications' | 'settings' | null>(null);
+  const [workspaceView, setWorkspaceView] = useState<'chat' | 'files' | 'operations'>('chat');
+  const [operationsTab, setOperationsTab] = useState<SpaceOperationsTab>('overview');
+  const [sidePanel, setSidePanel] = useState<'members' | 'files' | 'skills' | 'runs' | 'operations' | 'publications' | 'settings' | 'automation' | 'connector' | null>(null);
   const [loading, setLoading] = useState(true);
   const [needsLogin, setNeedsLogin] = useState(false);
   const [error, setError] = useState('');
@@ -566,6 +570,9 @@ export default function SpaceDetailPage() {
   const [resumeLoading, setResumeLoading] = useState(false);
   const [resumeError, setResumeError] = useState('');
   const [editingFile, setEditingFile] = useState<SpaceFile | null>(null);
+  const [fileEditorInitialMode, setFileEditorInitialMode] = useState<'preview' | 'source'>('preview');
+  const [imagePreview, setImagePreview] = useState<{ file: SpaceFile; url: string } | null>(null);
+  const [previewingImageId, setPreviewingImageId] = useState('');
   const [pendingDeleteFile, setPendingDeleteFile] = useState<SpaceFile | null>(null);
   const [deletingFileId, setDeletingFileId] = useState('');
   const [discussionDialogOpen, setDiscussionDialogOpen] = useState(false);
@@ -772,7 +779,7 @@ export default function SpaceDetailPage() {
     const task = file.taskId ? taskById.get(file.taskId) : null;
     if (!work && !task) return '公共资料';
     return [
-      work ? `${WORK_NOUNS[work.kind] || '成果'} · ${work.title || '未命名'}` : '历史成果',
+      work ? `${WORK_NOUNS[work.kind] || '成果'} · ${compactWorkTitle(work.title || '未命名', 24)}` : '历史成果',
       task?.agentName,
     ].filter(Boolean).join(' · ');
   };
@@ -1044,6 +1051,7 @@ export default function SpaceDetailPage() {
 
   const openTaskRun = (runId: string, followRetries = false) => {
     const target = followRetries ? latestRunInRetryChain(runs, runId) : null;
+    setWorkspaceView('chat');
     setSelectedRunId(target?.id || runId);
     setMode('task');
   };
@@ -1611,7 +1619,10 @@ export default function SpaceDetailPage() {
 
   const openRelayResult = (relay: SpaceRelay) => {
     const preview = files.find((file) => file.relativePath.replaceAll('\\', '/') === `relays/${relay.id}/index.html`);
-    if (preview) setEditingFile(preview);
+    if (preview) {
+      setFileEditorInitialMode('preview');
+      setEditingFile(preview);
+    }
     else setError('棋盘预览文件尚未生成');
   };
 
@@ -1707,6 +1718,7 @@ export default function SpaceDetailPage() {
         const run = runResult.runs.find((item) => item.id === current.lastRunId);
         if (run?.workId) setActiveWorkId(run.workId);
         setSidePanel(null);
+        setWorkspaceView('chat');
         setSelectedRunId(current.lastRunId);
         setMode('task');
         break;
@@ -1771,7 +1783,9 @@ export default function SpaceDetailPage() {
   };
 
   const openWechatPublications = async () => {
-    setSidePanel('publications');
+    setSidePanel(null);
+    setWorkspaceView('operations');
+    setOperationsTab('publishing');
     setWechatPublicationsLoading(true);
     setError('');
     try {
@@ -1785,7 +1799,9 @@ export default function SpaceDetailPage() {
   };
 
   const openOperations = async () => {
-    setSidePanel('operations');
+    setSidePanel(null);
+    setWorkspaceView('operations');
+    setOperationsTab('overview');
     setOperationsLoading(true);
     setError('');
     try {
@@ -1851,7 +1867,9 @@ export default function SpaceDetailPage() {
     const result = await spacesApi.requestWechatDraft(spaceId, { articleFileId: articleFile.id, coverFileId, themeId, requestId: createClientId() });
     setActionRequests((items) => [result.action, ...items.filter((item) => item.id !== result.action.id)]);
     setEditingFile(null);
-    setSidePanel('settings');
+    setWorkspaceView('operations');
+    setOperationsTab('overview');
+    setSidePanel(null);
   };
 
   const updateLearningDraft = (collection: 'proposals' | 'rules', id: string, field: 'title' | 'instruction', value: string) => {
@@ -1904,6 +1922,7 @@ export default function SpaceDetailPage() {
       setLearningReadme('');
       setSelectedRunId(null);
       setMode('chat');
+      setWorkspaceView('chat');
       setInput('');
       setDismissedDiscussionIds([]);
       localStorage.removeItem(`space:${spaceId}:dismissed-discussions`);
@@ -2076,6 +2095,25 @@ export default function SpaceDetailPage() {
     }
   };
 
+  const previewImage = async (file: SpaceFile) => {
+    if (previewingImageId) return;
+    setPreviewingImageId(file.id);
+    setError('');
+    try {
+      const blob = await spacesApi.downloadFile(spaceId, file.id);
+      if (!isPreviewableSpaceImage(file.fileName, blob.type || file.mimeType)) throw new Error('当前图片格式不支持在线预览');
+      setImagePreview({ file, url: URL.createObjectURL(blob) });
+    } catch (err: any) {
+      setError(err.message || '预览图片失败');
+    } finally {
+      setPreviewingImageId('');
+    }
+  };
+
+  useEffect(() => () => {
+    if (imagePreview?.url) URL.revokeObjectURL(imagePreview.url);
+  }, [imagePreview]);
+
   const resolvePiSkillApproval = async (approved: boolean) => {
     if (!pendingPiSkillApproval || piSkillApprovalBusy) return;
     setPiSkillApprovalBusy(true);
@@ -2106,7 +2144,14 @@ export default function SpaceDetailPage() {
   };
 
   const openFile = (file: SpaceFile) => {
-    if (isEditableSpaceFile(file.fileName)) setEditingFile(file);
+    if (isPreviewableSpaceImage(file.fileName, file.mimeType)) {
+      void previewImage(file);
+      return;
+    }
+    if (isEditableSpaceFile(file.fileName)) {
+      setFileEditorInitialMode('preview');
+      setEditingFile(file);
+    }
     else downloadFile(file);
   };
 
@@ -2453,71 +2498,6 @@ export default function SpaceDetailPage() {
                 </p>
               </section>
 
-              <section className="border-b border-black/[0.06] px-6 py-5">
-                <div className="mb-4 flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-xs font-black text-slate-500">
-                    <FileText size={15} />
-                    资料与成果
-                    <span className="text-slate-300">{files.length}</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setSidePanel('files')}
-                    className="text-xs font-black text-slate-400 transition hover:text-slate-950"
-                  >
-                    管理
-                  </button>
-                </div>
-                {files.length === 0 ? (
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="flex w-full items-center gap-3 rounded-lg border border-dashed border-slate-200 px-3 py-3 text-left text-xs font-bold text-slate-400 transition hover:border-slate-300 hover:text-slate-700"
-                  >
-                    <UploadCloud size={16} />
-                    上传第一份空间资料
-                  </button>
-                ) : (
-                  <div className="space-y-1">
-                    {files.slice(0, 4).map((file) => (
-                      <button
-                        key={file.id}
-                        type="button"
-                        onClick={() => openFile(file)}
-                        title={isEditableSpaceFile(file.fileName) ? '编辑文件' : '下载文件'}
-                        className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left transition hover:bg-[#fbfaf7]"
-                      >
-                        <FileText size={15} className="shrink-0 text-slate-400" />
-                        <div className="min-w-0 flex-1">
-                          <div className="flex min-w-0 items-center gap-2">
-                            <div className="min-w-0 flex-1 truncate text-xs font-black text-slate-700">{file.fileName}</div>
-                            <FileStatus status={file.status} />
-                          </div>
-                          <div className="mt-0.5 truncate text-[11px] font-semibold text-slate-400">
-                            {fileSourceLabel(file)}{file.size ? ` · ${formatBytes(file.size)}` : ''}
-                          </div>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </section>
-
-              {!isPiSpace && (
-                <section className="border-b border-black/[0.06] px-6 py-5">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2 text-xs font-black text-slate-500">
-                      <Activity size={15} />
-                      运营概览
-                    </div>
-                    <button type="button" onClick={openOperations} className="text-xs font-black text-slate-400 transition hover:text-slate-950">
-                      查看数据
-                    </button>
-                  </div>
-                  <p className="mt-2 text-xs font-semibold leading-5 text-slate-400">成果、自动化和外部发布的近 30 天闭环数据。</p>
-                </section>
-              )}
-
               {space?.templateId === 'wechat-article' && (
                 <section className="border-b border-black/[0.06] px-6 py-5">
                   <div className="flex items-center justify-between gap-3">
@@ -2603,8 +2583,11 @@ export default function SpaceDetailPage() {
               </button>
               <button
                 type="button"
-                onClick={() => setSidePanel('files')}
-                aria-expanded={sidePanel === 'files'}
+                onClick={() => {
+                  setSidePanel(null);
+                  setWorkspaceView('files');
+                }}
+                aria-expanded={workspaceView === 'files'}
                 aria-label={`空间资料，共 ${files.length} 个文件`}
                 title="空间资料"
                 className="inline-flex h-10 items-center gap-2 rounded-lg px-3 text-sm font-black text-slate-600 transition hover:bg-slate-100 hover:text-slate-950"
@@ -2641,6 +2624,122 @@ export default function SpaceDetailPage() {
               </div>
               {!isPiSpace && renderWorkSelector()}
             </header>
+
+            {!isPiSpace && (
+              <nav className="flex h-14 shrink-0 items-stretch gap-1 border-b border-black/[0.06] bg-white px-3 sm:px-5" aria-label="空间工作视图">
+                {[
+                  { id: 'chat' as const, label: '对话', icon: MessagesSquare },
+                  { id: 'files' as const, label: '成果', icon: FileText, count: files.length },
+                  { id: 'operations' as const, label: '运营', icon: Activity, count: actionRequests.filter((action) => action.status === 'PENDING').length },
+                ].map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => {
+                        if (item.id === 'operations') {
+                          openOperations();
+                        } else {
+                          setSidePanel(null);
+                          setWorkspaceView(item.id);
+                        }
+                      }}
+                      aria-pressed={workspaceView === item.id}
+                      className={`inline-flex h-full items-center gap-2 border-b-2 px-3 text-xs font-black transition ${workspaceView === item.id ? 'border-slate-950 text-slate-950' : 'border-transparent text-slate-400 hover:border-slate-200 hover:text-slate-800'}`}
+                    >
+                      <Icon size={15} />
+                      {item.label}
+                      {item.count ? <span className={`rounded px-1.5 py-0.5 text-[10px] ${workspaceView === item.id ? 'bg-slate-100 text-slate-600' : 'bg-slate-50 text-slate-300'}`}>{item.count}</span> : null}
+                    </button>
+                  );
+                })}
+              </nav>
+            )}
+
+            {!isPiSpace && workspaceView === 'files' ? (
+              <div className="min-h-0 flex-1 overflow-y-auto bg-[#fbfaf7]">
+                <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 lg:px-10 lg:py-8">
+                  <div className="flex flex-wrap items-end justify-between gap-4 border-b border-black/[0.07] pb-5">
+                    <div>
+                      <h2 className="text-xl font-black text-slate-950">资料与成果</h2>
+                      <div className="mt-1 text-xs font-semibold text-slate-400">{visibleFiles.length} 个文件</div>
+                    </div>
+                    <div className="flex min-w-0 items-center gap-2">
+                      <select value={selectedWorkId} onChange={(event) => setSelectedWorkId(event.target.value)} aria-label="筛选成果" className="h-10 min-w-0 flex-1 rounded-lg border border-black/[0.08] bg-white px-3 text-xs font-bold text-slate-700 outline-none sm:w-64">
+                        <option value="all">全部成果</option>
+                        {works.map((work, index) => <option key={work.id} value={work.id}>{WORK_NOUNS[work.kind] || '成果'} {works.length - index} · {compactWorkTitle(work.title, 14)}</option>)}
+                        {files.some((file) => !file.workId) && <option value="legacy">公共 / 历史</option>}
+                      </select>
+                      <button type="button" onClick={() => fileInputRef.current?.click()} disabled={uploadingFile} className="inline-flex h-10 shrink-0 items-center gap-2 rounded-lg bg-slate-950 px-3 text-xs font-black text-white disabled:bg-slate-200">
+                        {uploadingFile ? <Loader2 className="animate-spin" size={15} /> : <UploadCloud size={15} />}
+                        上传
+                      </button>
+                    </div>
+                  </div>
+                  {error && <div className="mt-5 rounded-lg bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-600">{error}</div>}
+                  {visibleFiles.length === 0 ? (
+                    <div className="border-b border-dashed border-slate-200 py-20 text-center"><FileText className="mx-auto text-slate-300" size={28} /><div className="mt-3 text-sm font-black text-slate-500">暂无资料</div></div>
+                  ) : (
+                    <div className="mt-5 overflow-hidden rounded-lg border border-black/[0.07] bg-white divide-y divide-black/[0.06]">
+                      {visibleFiles.map((file) => (
+                        <div key={file.id} className="group flex min-h-[76px] items-center gap-3 px-3 py-3 transition hover:bg-[#fbfaf7] sm:gap-4 sm:px-4">
+                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-black/[0.06] bg-slate-50 text-slate-500">{previewingImageId === file.id ? <Loader2 className="animate-spin" size={17} /> : isPreviewableSpaceImage(file.fileName, file.mimeType) ? <ImageIcon size={17} /> : <FileText size={17} />}</div>
+                          <button type="button" onClick={() => openFile(file)} className="min-w-0 max-w-2xl flex-1 rounded-md py-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-slate-300">
+                            <div className="flex min-w-0 items-center gap-2">
+                              <span className="truncate text-sm font-black text-slate-800">{file.fileName}</span>
+                              <FileStatus status={file.status} />
+                            </div>
+                            <div className="mt-1 truncate text-xs font-semibold text-slate-400">{fileSourceLabel(file)}{file.size ? ` · ${formatBytes(file.size)}` : ''}</div>
+                          </button>
+                          <div className="ml-auto flex shrink-0 items-center gap-0.5 sm:gap-1 sm:border-l sm:border-black/[0.06] sm:pl-3">
+                            <button type="button" onClick={() => { setFileEditorInitialMode('source'); setEditingFile(file); }} disabled={!isEditableSpaceFile(file.fileName)} title="编辑文件" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-900 disabled:hidden"><FilePenLine size={16} /></button>
+                            <button type="button" onClick={() => downloadFile(file)} disabled={Boolean(downloadingFileId)} title="下载文件" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-900 disabled:text-slate-200">{downloadingFileId === file.id ? <Loader2 className="animate-spin" size={16} /> : <Download size={16} />}</button>
+                            <button type="button" onClick={() => setPendingDeleteFile(file)} disabled={isStreaming || isRunActive} title="删除文件" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-500 disabled:text-slate-200"><Trash2 size={16} /></button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : !isPiSpace && workspaceView === 'operations' ? (
+              <SpaceOperationsCenter
+                tab={operationsTab}
+                summary={operationsSummary}
+                outcomes={operationOutcomes}
+                loading={operationsLoading}
+                automations={automations}
+                automationBusyId={automationBusyId}
+                actions={actionRequests}
+                actionBusyId={actionBusyId}
+                publications={wechatPublicationActions}
+                publicationsLoading={wechatPublicationsLoading}
+                connector={wechatConnector}
+                learning={learning}
+                learningReadme={learningReadme}
+                learningActionId={learningActionId}
+                isWechatSpace={space?.templateId === 'wechat-article'}
+                onTabChange={(tab) => {
+                  setOperationsTab(tab);
+                  if (tab === 'overview') openOperations();
+                  if (tab === 'publishing') openWechatPublications();
+                }}
+                onRefreshOverview={openOperations}
+                onRefreshPublications={openWechatPublications}
+                onOpenAutomationEditor={() => setSidePanel('automation')}
+                onOpenConnectorSettings={() => setSidePanel('connector')}
+                onToggleAutomation={toggleAutomation}
+                onTriggerAutomation={triggerAutomation}
+                onDeleteAutomation={deleteAutomation}
+                onOpenRun={(runId) => openTaskRun(runId)}
+                onDecideAction={decideActionRequest}
+                onRetryPublication={retryConnectorActionStatus}
+                onUpdateLearningDraft={updateLearningDraft}
+                onApplyLearningAction={applyLearningAction}
+              />
+            ) : (
+              <>
             <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-[#fbfaf7] px-4 py-5 sm:px-6 lg:px-10 lg:py-6">
               <div className="mx-auto max-w-4xl space-y-5">
                 {error && <div className="rounded-2xl bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-600">{error}</div>}
@@ -2981,7 +3080,8 @@ export default function SpaceDetailPage() {
                                   type="button"
                                   onClick={() => {
                                     returnToChat();
-                                    setSidePanel('files');
+                                    setSidePanel(null);
+                                    setWorkspaceView('files');
                                   }}
                                   className="flex min-w-0 items-center gap-3 rounded-lg border border-black/[0.06] bg-white px-4 py-3 text-left transition hover:bg-slate-50"
                                 >
@@ -3563,6 +3663,8 @@ export default function SpaceDetailPage() {
                 </ComposerShell>
               </div>
             </footer>
+              </>
+            )}
           </main>
 
           {sidePanel && (
@@ -3576,8 +3678,8 @@ export default function SpaceDetailPage() {
               <aside className="absolute inset-y-0 right-0 z-20 flex w-full flex-col border-l border-black/[0.06] bg-white shadow-[-16px_0_40px_-24px_rgba(15,23,42,0.35)] sm:w-[360px]">
                 <div className="flex h-[65px] shrink-0 items-center justify-between border-b border-black/[0.06] px-5">
                   <div className="flex items-center gap-2 text-sm font-black text-slate-800">
-                    {sidePanel === 'members' ? <UsersRound size={17} /> : sidePanel === 'files' ? <FileText size={17} /> : sidePanel === 'skills' ? <BookOpen size={17} /> : sidePanel === 'runs' ? <History size={17} /> : sidePanel === 'operations' ? <Activity size={17} /> : sidePanel === 'publications' ? <Newspaper size={17} /> : <Settings2 size={17} />}
-                    {sidePanel === 'members' ? '空间成员' : sidePanel === 'files' ? '资料与成果' : sidePanel === 'skills' ? 'Space Skills' : sidePanel === 'runs' ? '历史任务' : sidePanel === 'operations' ? '运营概览' : sidePanel === 'publications' ? '微信发布记录' : '空间设置'}
+                    {sidePanel === 'members' ? <UsersRound size={17} /> : sidePanel === 'skills' ? <BookOpen size={17} /> : sidePanel === 'runs' ? <History size={17} /> : sidePanel === 'automation' ? <CalendarClock size={17} /> : sidePanel === 'connector' ? <Globe2 size={17} /> : <Settings2 size={17} />}
+                    {sidePanel === 'members' ? '空间成员' : sidePanel === 'skills' ? 'Space Skills' : sidePanel === 'runs' ? '历史任务' : sidePanel === 'automation' ? '新建自动化' : sidePanel === 'connector' ? '微信连接设置' : '空间设置'}
                   </div>
                   <button
                     type="button"
@@ -3668,88 +3770,6 @@ export default function SpaceDetailPage() {
                             <Plus size={17} />
                           </button>
                         </div>
-                      </div>
-                    </>
-                  ) : sidePanel === 'files' ? (
-                    <>
-                      <div className="flex items-center gap-2">
-                        <select
-                          value={selectedWorkId}
-                          onChange={(event) => setSelectedWorkId(event.target.value)}
-                          aria-label="筛选成果"
-                          className="h-10 min-w-0 flex-1 rounded-lg border border-black/[0.08] bg-white px-3 text-xs font-bold text-slate-700 outline-none"
-                        >
-                          <option value="all">全部</option>
-                          {works.map((work, index) => (
-                            <option key={work.id} value={work.id}>
-                              {WORK_NOUNS[work.kind] || '成果'} {works.length - index} · {compactWorkTitle(work.title, 14)}
-                            </option>
-                          ))}
-                          {files.some((file) => !file.workId) && <option value="legacy">公共 / 历史</option>}
-                        </select>
-                        <button
-                          type="button"
-                          onClick={() => fileInputRef.current?.click()}
-                          disabled={uploadingFile}
-                          title="上传资料"
-                          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-950 text-white disabled:bg-slate-200 disabled:text-slate-400"
-                        >
-                          {uploadingFile ? <Loader2 className="animate-spin" size={15} /> : <UploadCloud size={15} />}
-                        </button>
-                      </div>
-                      <div className="mt-5 space-y-2">
-                        {visibleFiles.length === 0 ? (
-                          <div className="rounded-lg border border-dashed border-slate-200 px-5 py-10 text-center">
-                            <FileText className="mx-auto text-slate-300" size={24} />
-                            <div className="mt-3 text-sm font-black text-slate-500">暂无资料</div>
-                            <div className="mt-1 text-xs font-semibold leading-5 text-slate-400">上传的资料会保存在当前空间。</div>
-                          </div>
-                        ) : (
-                          visibleFiles.map((file) => (
-                            <div key={file.id} className="flex items-center gap-3 rounded-lg border border-black/[0.06] bg-white px-3 py-3">
-                              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500">
-                                <FileText size={16} />
-                              </div>
-                              <div className="min-w-0 flex-1">
-                                <div className="flex min-w-0 items-center gap-2">
-                                  <div className="min-w-0 flex-1 truncate text-sm font-black text-slate-800">{file.fileName}</div>
-                                  <FileStatus status={file.status} />
-                                </div>
-                                <div className="mt-0.5 truncate text-xs font-semibold text-slate-400">
-                                  {fileSourceLabel(file)}
-                                  {file.size ? ` · ${formatBytes(file.size)}` : ''}
-                                </div>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => setEditingFile(file)}
-                                disabled={!isEditableSpaceFile(file.fileName)}
-                                title={isEditableSpaceFile(file.fileName) ? '编辑文件' : '当前文件类型不支持在线编辑'}
-                                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-950 disabled:hidden"
-                              >
-                                <FilePenLine size={16} />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => downloadFile(file)}
-                                disabled={Boolean(downloadingFileId)}
-                                title="下载文件"
-                                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-950 disabled:text-slate-200"
-                              >
-                                {downloadingFileId === file.id ? <Loader2 className="animate-spin" size={16} /> : <Download size={16} />}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setPendingDeleteFile(file)}
-                                disabled={isStreaming || isRunActive}
-                                title="删除文件"
-                                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-rose-50 hover:text-rose-500 disabled:text-slate-200"
-                              >
-                                <Trash2 size={16} />
-                              </button>
-                            </div>
-                          ))
-                        )}
                       </div>
                     </>
                   ) : sidePanel === 'skills' ? (
@@ -4031,12 +4051,7 @@ export default function SpaceDetailPage() {
                     </div>
                   ) : (
                     <div className="space-y-4">
-                      {!isPiSpace && (
-                        <button type="button" onClick={openOperations} className="flex h-11 w-full items-center justify-between rounded-lg border border-black/[0.07] px-3 text-left text-xs font-black text-slate-600 hover:bg-slate-50">
-                          <span className="flex items-center gap-2"><Activity size={15} />运营概览</span>
-                          <ChevronRight size={14} className="text-slate-300" />
-                        </button>
-                      )}
+                      {sidePanel === 'settings' && <>
                       {isPiSpace ? (
                         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
                           <div className="text-sm font-black text-amber-800">旧版 Pi 项目空间</div>
@@ -4127,7 +4142,8 @@ export default function SpaceDetailPage() {
                         {savingInstructions ? <Loader2 className="animate-spin" size={15} /> : <Save size={15} />}
                         保存设置
                       </button>
-                      {actionRequests.some((action) => action.status === 'PENDING' || action.status === 'APPROVED' || (['WECHAT_CREATE_DRAFT', 'WECHAT_PUBLISH'].includes(action.kind) && ['COMPLETED', 'FAILED'].includes(action.status))) && (
+                      </>}
+                      {String(sidePanel) === 'operations' && actionRequests.some((action) => action.status === 'PENDING' || action.status === 'APPROVED' || (['WECHAT_CREATE_DRAFT', 'WECHAT_PUBLISH'].includes(action.kind) && ['COMPLETED', 'FAILED'].includes(action.status))) && (
                         <section className="border-t border-black/[0.06] pt-5">
                           <div className="flex items-center justify-between gap-3">
                             <div className="flex items-center gap-2 text-sm font-black text-slate-700">
@@ -4206,7 +4222,7 @@ export default function SpaceDetailPage() {
                           </div>
                         </section>
                       )}
-                      {space?.templateId === 'wechat-article' && <section className="border-t border-black/[0.06] pt-5">
+                      {sidePanel === 'connector' && space?.templateId === 'wechat-article' && <section>
                         <div className="flex items-start justify-between gap-3">
                           <div>
                             <div className="flex items-center gap-2 text-sm font-black text-slate-700">
@@ -4304,7 +4320,7 @@ export default function SpaceDetailPage() {
                           草稿创建与正式发布将在独立高风险审批后执行，自动执行模式不能跳过该确认。
                         </p>
                       </section>}
-                      {!isPiSpace && <section className="border-t border-black/[0.06] pt-5">
+                      {sidePanel === 'automation' && !isPiSpace && <section>
                         <div className="flex items-start justify-between gap-3">
                           <div>
                             <div className="flex items-center gap-2 text-sm font-black text-slate-700">
@@ -4554,7 +4570,7 @@ export default function SpaceDetailPage() {
                           ))}
                         </div>
                       </section>}
-                      {!isPiSpace && <section className="border-t border-black/[0.06] pt-5">
+                      {String(sidePanel) === 'operations' && !isPiSpace && <section className="border-t border-black/[0.06] pt-5">
                         <div className="flex items-start justify-between gap-3">
                           <div>
                             <div className="flex items-center gap-2 text-sm font-black text-slate-700">
@@ -4791,6 +4807,7 @@ export default function SpaceDetailPage() {
       <SpaceFileEditorDialog
         spaceId={spaceId}
         file={editingFile}
+        initialMode={fileEditorInitialMode}
         publishTarget={space?.templateId === 'wechat-article' ? 'wechat' : undefined}
         wechatConnectorReady={Boolean(wechatConnector?.enabled && wechatConnector.status === 'READY')}
         wechatCoverFiles={files.filter((file) => file.status === 'READY' && String(file.mimeType || '').startsWith('image/'))}
@@ -4798,6 +4815,15 @@ export default function SpaceDetailPage() {
         onClose={() => setEditingFile(null)}
         onSaved={(updatedFile) => {
           setFiles((items) => [updatedFile, ...items.filter((item) => item.id !== updatedFile.id)]);
+        }}
+      />
+      <SpaceImagePreviewDialog
+        file={imagePreview?.file || null}
+        url={imagePreview?.url || ''}
+        downloading={Boolean(imagePreview && downloadingFileId === imagePreview.file.id)}
+        onClose={() => setImagePreview(null)}
+        onDownload={() => {
+          if (imagePreview) void downloadFile(imagePreview.file);
         }}
       />
       <ConfirmDialog
