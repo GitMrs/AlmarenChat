@@ -9,6 +9,7 @@ import { ensurePersonalAssistant } from '@/lib/personal-assistant/profile';
 import { buildPersonalAssistantPrompt } from '@/lib/personal-assistant/prompt-builder';
 import { buildAssistantActivityContext, buildAssistantPlatformContext } from '@/lib/personal-assistant/platform-context';
 import { archiveOldMainChatMessages, loadAssistantMemoryContext } from '@/lib/personal-assistant/experience-memory';
+import { buildTimedAssistantHistory } from '@/lib/personal-assistant/history-context.mjs';
 import { compressConversationContext } from '@/lib/context-compression';
 import { conversationContextTargetTokens } from '@/lib/model-limits.mjs';
 
@@ -169,13 +170,7 @@ export async function POST(request: Request) {
       experienceContext: memoryContext.experienceContext,
     });
     const compressedHistory = compressConversationContext(
-      memoryContext.history
-        .filter((item) => item.role === 'user' || item.role === 'assistant')
-        .map((item, index) => ({
-          id: `history-${index}`,
-          role: item.role,
-          content: item.content,
-        })),
+      buildTimedAssistantHistory(memoryContext.history),
       {
         maxMessages: contextLimit,
         targetTokens: conversationContextTargetTokens(

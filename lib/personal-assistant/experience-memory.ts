@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import prisma from '@/app/api/_lib/db';
+import { formatAssistantHistoryTimestamp } from '@/lib/personal-assistant/history-context.mjs';
 
 export const EXPERIENCE_ARCHIVE_TRIGGER = 64;
 export const EXPERIENCE_ARCHIVE_BATCH = 48;
@@ -21,7 +22,7 @@ function compactText(value: string, limit: number) {
 
 export function buildExperiencePrompt(messages: RawMessage[]) {
   const transcript = messages.map((message) => (
-    `${message.role === 'user' ? '用户' : '助理'}：${compactText(message.content, 1200)}`
+    `[${formatAssistantHistoryTimestamp(message.createdAt)}，北京时间] ${message.role === 'user' ? '用户' : '助理'}：${compactText(message.content, 1200)}`
   )).join('\n');
   return `请把下面一段个人助理对话压缩成一份可长期延续关系的“经历摘要”。
 
@@ -29,7 +30,8 @@ export function buildExperiencePrompt(messages: RawMessage[]) {
 1. 只记录真实发生的对话、用户明确表达的信息、已经形成的结论和仍未解决的事项。
 2. 不要把推测写成事实，不要新增建议，不要复述寒暄。
 3. 使用第三人称客观表达，保留重要人名、项目名、数字和时间。
-4. 控制在 300~800 个中文字符，直接输出 Markdown 列表，不要标题或代码块。
+4. 对具有时效性的状态表述，应明确其发生时间并采用历史视角；缺少后续证据时，不得将其写成现在仍在持续或长期未解决的事项。
+5. 控制在 300~800 个中文字符，直接输出 Markdown 列表，不要标题或代码块。
 
 对话：
 ${transcript}`;
@@ -38,7 +40,7 @@ ${transcript}`;
 export function buildDeterministicExperienceSummary(messages: RawMessage[]) {
   const lines = messages
     .filter((message) => message.content.trim())
-    .map((message) => `- ${message.role === 'user' ? '用户提到' : '助理回应'}：${compactText(message.content, 220)}`);
+    .map((message) => `- [${formatAssistantHistoryTimestamp(message.createdAt)}] ${message.role === 'user' ? '用户当时提到' : '助理当时回应'}：${compactText(message.content, 220)}`);
   return lines.join('\n').slice(0, 6000);
 }
 
@@ -146,7 +148,7 @@ export async function loadAssistantMemoryContext(options: {
       },
       orderBy: { createdAt: 'desc' },
       take: options.historyLimit,
-      select: { role: true, content: true },
+      select: { role: true, content: true, createdAt: true },
     }),
     options.includeExperiences
       ? prisma.assistantExperience.findMany({

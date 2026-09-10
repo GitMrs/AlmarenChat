@@ -8,6 +8,7 @@ import { buildAssistantActivityContext, buildAssistantPlatformContext } from '@/
 import { buildPersonalAssistantPrompt } from '@/lib/personal-assistant/prompt-builder';
 import { ensurePersonalAssistant } from '@/lib/personal-assistant/profile';
 import { archiveOldMainChatMessages, loadAssistantMemoryContext } from '@/lib/personal-assistant/experience-memory';
+import { buildTimedAssistantHistory } from '@/lib/personal-assistant/history-context.mjs';
 import { buildReminderExtractionPrompt, parseReminderExtraction } from '@/lib/personal-assistant/reminder-extraction.mjs';
 import { classifyReminderRequest } from '@/lib/personal-assistant/reminder-intent.mjs';
 import { isValidInternalQQSecret } from '@/lib/qq-assistant/credentials.mjs';
@@ -153,13 +154,7 @@ export async function POST(request: Request) {
       '【当前渠道】：你正在 QQ 私聊中回复用户。QQ 与网页共用同一个主聊天上下文；不要提供站内相对链接，可以使用 QQ 支持的标准 Markdown，但避免 HTML 和复杂表格，回答保持适合即时消息阅读。长期记忆、任务和提醒也与网页共享。用户要求提醒时不要声称已经创建，系统会在回复末尾附加真实创建结果。',
     ].filter(Boolean).join('\n\n');
     const compressedHistory = compressConversationContext(
-      memoryContext.history
-        .filter((item) => item.role === 'user' || item.role === 'assistant')
-        .map((item, index) => ({
-          id: `history-${index}`,
-          role: item.role,
-          content: item.content,
-        })),
+      buildTimedAssistantHistory(memoryContext.history),
       {
         maxMessages: contextLimit,
         targetTokens: conversationContextTargetTokens(
