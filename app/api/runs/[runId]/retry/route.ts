@@ -77,7 +77,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ run
         skillId: task.skillId,
         skillVersion: task.skillVersion,
         skillSnapshot: task.skillSnapshot ?? undefined,
-        webResearchRequired: task.webResearchRequired,
+        webResearchRequired: false,
         dependsOn: task.dependsOn ?? undefined,
         modelRequestLimit: task.modelRequestLimit,
         status: completed ? 'COMPLETED' : 'PENDING',

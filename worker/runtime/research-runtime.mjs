@@ -7,6 +7,7 @@ import {
 } from '../../lib/agent-runtime/runtime-tools.mjs';
 import { authorizationAllowsCapability } from '../../lib/agent-runtime-v3-policy.mjs';
 import { explicitlyForbidsResearchExecution, explicitlyForbidsWebResearch } from '../../lib/web-research-intent.mjs';
+import { createRuntimePermissionBroker } from '../../lib/runtime-permission-broker.mjs';
 
 function parseResearchPlan(content, fallbackQuery) {
   try {
@@ -57,9 +58,6 @@ export function createResearchRuntime({
   search = searchWeb,
 }) {
   function taskNeedsResearchContext(task, runtimeVersion = 3) {
-    if (runtimeVersion >= 3 && task && task.webResearchRequired !== undefined && task.webResearchRequired !== null) {
-      return task.webResearchRequired === true || task.webResearchRequired === 1;
-    }
     return wantsWebResearch(`${task.title}\n${task.instruction}`);
   }
 
@@ -235,14 +233,28 @@ export function createResearchRuntime({
 
   async function buildResearchContext(run, context, options = {}) {
     const researchInput = String(options.researchInput || run.input);
+    const runtimePermissions = context.runtimePermissions || (context.runtimePermissions = createRuntimePermissionBroker({
+      authorization: context.authorization,
+      operationLimit: 2,
+    }));
     if (run.runtimeVersion >= 3 && !authorizationAllowsCapability(context.authorization, 'web_research')) return '';
-    if (run.runtimeVersion >= 3 && options.task && !taskNeedsResearchContext(options.task, run.runtimeVersion)) return '';
+    // A task field must not opt in to research. The concrete input being
+    // processed is the runtime signal; callers can pass a focused research
+    // request when the current action actually needs external facts.
+    if (run.runtimeVersion >= 3 && options.task && !wantsWebResearch(researchInput)) return '';
     if (run.runtimeVersion >= 3 && options.task
       ? explicitlyForbidsResearchExecution(researchInput)
       : explicitlyForbidsWebResearch(researchInput)) return '';
     if (!(run.runtimeVersion >= 3 && options.task) && !wantsWebResearch(researchInput)) return '';
     const { queries, officialDomains } = await createResearchPlan(run, context, researchInput);
     if (queries.length === 0) return '';
+    const permission = run.runtimeVersion >= 3
+      ? runtimePermissions.consume('web_research', 'web_search')
+      : { allowed: true };
+    if (!permission.allowed) {
+      addEvent(run.id, 'WEB_SEARCH_BLOCKED', permission.error, { code: permission.code, usage: runtimePermissions.usage });
+      return `联网检索未执行：${permission.error}`;
+    }
     const provider = context.tavilyApiKey ? 'tavily' : 'duckduckgo';
     addEvent(run.id, 'WEB_SEARCH_STARTED', `开始通过 ${provider === 'tavily' ? 'Tavily' : 'DuckDuckGo'} 执行 ${queries.length} 次受控联网检索`, {
       queries,
@@ -279,11 +291,18 @@ export function createResearchRuntime({
             query: followupQuery,
             issues: result.audit.issues || [],
           });
-          result = await search(normalizeSearchQueries([queries[0], followupQuery]), context.tavilyApiKey, {
+          const retryPermission = run.runtimeVersion >= 3
+            ? runtimePermissions.consume('web_research', 'web_search_retry')
+            : { allowed: true };
+          if (!retryPermission.allowed) {
+            addEvent(run.id, 'WEB_SEARCH_RETRY_BLOCKED', retryPermission.error, { code: retryPermission.code, usage: runtimePermissions.usage });
+          } else {
+            result = await search(normalizeSearchQueries([queries[0], followupQuery]), context.tavilyApiKey, {
             officialDomains,
             requirements: researchRequirements(researchInput),
             reviewRelevance,
-          });
+            });
+          }
         }
       }
       context.researchAudit = result.audit;

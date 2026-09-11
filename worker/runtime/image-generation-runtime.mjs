@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { workspaceAttemptFile } from '../../lib/workspace-staging.mjs';
 import { IMAGE_GENERATION_SIZES, isNonRetryableImageGenerationError, requestGeneratedImage } from '../../lib/image-generation.mjs';
@@ -7,6 +7,7 @@ const MAX_PROMPT_CHARS = 2_000;
 const MAX_BATCH_IMAGES = 1;
 const ALLOWED_SIZES = new Set(IMAGE_GENERATION_SIZES);
 const SAFE_FILE_STEM = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$/;
+const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.webp'];
 
 // Kept for persisted 1.0.0 Skill snapshots. New tasks only receive generate_images.
 export const generateImageToolSchema = {
@@ -89,6 +90,11 @@ export async function generateWorkspaceImage({
     const relativePath = `assets/${normalizedFileName}${generated.extension}`;
     const { target } = workspaceAttemptFile(workspaceOptions, relativePath);
     await mkdir(path.dirname(target), { recursive: true });
+    if (normalizedFileName === 'cover') {
+      await Promise.all(IMAGE_EXTENSIONS
+        .filter((extension) => !relativePath.endsWith(extension))
+        .map((extension) => rm(workspaceAttemptFile(workspaceOptions, `assets/cover${extension}`).target, { force: true })));
+    }
     if (isCancelled?.()) throw new Error('任务已取消');
     await writeFile(target, generated.bytes);
     return {

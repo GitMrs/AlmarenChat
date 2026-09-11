@@ -101,7 +101,7 @@ test('V3 research requires the current task opt-in and respects a forbidden run 
   assert.equal(current.events.length, 0);
 });
 
-test('V3 structured task opt-in can request research without keyword inference', async () => {
+test('V3 task fields cannot force research without a runtime research request', async () => {
   const current = fixture();
   const task = { title: '核对依据', instruction: '补齐交付所需依据', webResearchRequired: 1 };
   const context = {
@@ -110,7 +110,7 @@ test('V3 structured task opt-in can request research without keyword inference',
   };
   assert.equal(await current.runtime.buildResearchContext(
     { id: 'run-1', input: '交付任务', runtimeVersion: 3 }, context, { task, researchInput: task.instruction }
-  ), '[1] 官方资料');
+  ), '');
 });
 
 test('research failures become explicit context and a failed source audit', async () => {

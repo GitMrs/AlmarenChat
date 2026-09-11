@@ -6,8 +6,10 @@ import path from 'node:path';
 import test from 'node:test';
 import { promisify } from 'node:util';
 
+import { fileURLToPath } from 'node:url';
+
 const execFileAsync = promisify(execFile);
-const fixtureRoot = path.dirname(new URL(import.meta.url).pathname);
+const fixtureRoot = path.dirname(fileURLToPath(import.meta.url));
 const skillRoot = path.resolve(fixtureRoot, '../../../../skills/builtin/csv-business-analysis');
 
 test('CSV analysis Skill declares a closed execution contract', async () => {
@@ -58,7 +60,11 @@ test('CSV analysis fixture rejects paths outside its workspace', async () => {
       '--input', '../sales.csv',
       '--markdown-output', 'outputs/analysis.md',
       '--html-output', 'outputs/report.html',
-    ], { cwd: workspace, timeout: 10_000, env: { PATH: process.env.PATH || '' } }),
+    ], {
+      cwd: workspace,
+      timeout: 10_000,
+      env: { PATH: process.env.PATH || '', PYTHONIOENCODING: 'utf-8' },
+    }),
     /路径超出工作区/
   );
 });

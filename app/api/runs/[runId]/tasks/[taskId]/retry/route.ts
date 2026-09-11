@@ -117,7 +117,7 @@ export async function POST(
                   ? Prisma.JsonNull
                   : retrySkill as Prisma.InputJsonValue,
               } : {}),
-              webResearchRequired: task.webResearchRequired,
+              webResearchRequired: false,
               modelRequestLimit: taskModelRequestLimit(task.mode),
               status: 'PENDING',
               attempt: nextTaskAttempt,

@@ -786,7 +786,7 @@ export default function SpaceDetailPage() {
   const visibleFiles = useMemo(() => {
     if (selectedWorkId === 'all') return files;
     if (selectedWorkId === 'legacy') return files.filter((file) => !file.workId);
-    return files.filter((file) => file.workId === selectedWorkId);
+    return files.filter((file) => !file.workId || file.workId === selectedWorkId);
   }, [files, selectedWorkId]);
   const hasPendingTaskProposal = useMemo(
     () => messages.some((message) => taskProposalOf(message)?.status === 'pending'),

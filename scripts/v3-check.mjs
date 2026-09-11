@@ -17,7 +17,9 @@ function testFiles(directory) {
 
 function run(label, command, args) {
   console.log(`\n[V3] ${label}`);
-  const result = spawnSync(command, args, { cwd: projectRoot, stdio: 'inherit' });
+  const isCmd = process.platform === 'win32' && command.endsWith('tsc');
+  const executable = isCmd ? `${command}.cmd` : command;
+  const result = spawnSync(executable, args, { cwd: projectRoot, stdio: 'inherit', shell: isCmd });
   if (result.error) throw result.error;
   if (result.status !== 0) process.exit(result.status || 1);
 }

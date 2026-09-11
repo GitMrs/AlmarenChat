@@ -62,9 +62,6 @@ const SUBMIT_TASK_RESULT_TOOL = {
 };
 
 function needsResearch(run, task) {
-  if (run?.runtimeVersion >= 3 && task?.webResearchRequired !== undefined && task?.webResearchRequired !== null) {
-    return task.webResearchRequired === true || task.webResearchRequired === 1;
-  }
   return wantsWebResearch(`${task.title}\n${task.instruction}`);
 }
 

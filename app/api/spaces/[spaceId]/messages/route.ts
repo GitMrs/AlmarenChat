@@ -12,6 +12,7 @@ import {
   resolveMentionTarget,
 } from '@/app/api/_lib/spaces';
 import { describeWorkspaceArtifact, executeWorkspaceTool, workspaceToolSchemas } from '@/lib/agent-runtime/runtime-tools.mjs';
+import { fetchWebPage } from '@/lib/web-fetch.mjs';
 import { collectChatCompletionStream, runToolLoop } from '@/lib/agent-runtime/tool-loop.mjs';
 import { normalizeTaskProposalSteps, taskProposalCapabilities, taskProposalNeedsClarification, taskProposalWithTurnNetworkAuthorization } from '@/lib/task-proposals';
 import { professionalDeliverableNeedsTask } from '@/lib/task-proposal-policy.mjs';
@@ -30,6 +31,7 @@ import { selectRelevantProjectMemory } from '@/lib/pi-runtime/working-memory.mjs
 import { createCollaborationState } from '@/lib/relay/collaboration.mjs';
 import { createGomokuState } from '@/lib/relay/gomoku.mjs';
 import { loadAgentMemoryContext } from '@/lib/agent-memory';
+import { createRuntimePermissionBroker } from '@/lib/runtime-permission-broker.mjs';
 
 const MESSAGE_PAGE_SIZE = 40;
 const READ_ONLY_WORKSPACE_TOOLS = new Set(['list_files', 'read_file', 'check_files']);
@@ -73,6 +75,19 @@ const WEB_SEARCH_TOOL = {
     },
   },
 } as const;
+const WEB_FETCH_TOOL = {
+  type: 'function',
+  function: {
+    name: 'web_fetch',
+    description: '读取指定的公开 HTTPS 网页或 JSON 接口并返回正文。不得访问当前工作区、内网或本机地址。',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['url'],
+      properties: { url: { type: 'string', description: '需要读取的 HTTPS 网页地址' } },
+    },
+  },
+} as const;
 const TASK_PROPOSAL_TOOL = {
   type: 'function',
   function: {
@@ -81,7 +96,7 @@ const TASK_PROPOSAL_TOOL = {
     parameters: {
       type: 'object',
       additionalProperties: false,
-      required: ['title', 'goal', 'summary', 'steps', 'deliverables', 'artifacts', 'capabilities', 'networkPolicy'],
+      required: ['title', 'goal', 'summary', 'steps', 'deliverables', 'artifacts', 'capabilities'],
       properties: {
         title: { type: 'string', description: '简短任务标题' },
         goal: { type: 'string', description: '完整、可独立执行的目标，包含范围、约束和验收标准' },
@@ -94,12 +109,7 @@ const TASK_PROPOSAL_TOOL = {
           minItems: 1,
           uniqueItems: true,
           items: { type: 'string', enum: ['workspace_read', 'workspace_write', 'web_research', 'code_execute', 'image_generate'] },
-          description: '任务实际需要的能力。始终包含 workspace_read；创建或修改文件时加入 workspace_write；需要运行已注册 Skill 的 Python/Node 入口时加入 code_execute；需要生成新图片时加入 image_generate；需要外部公开资料时加入 web_research。',
-        },
-        networkPolicy: {
-          type: 'string',
-          enum: ['forbidden', 'allowed', 'required'],
-          description: '联网策略。用户明确要求不联网时必须为 forbidden；确实依赖外部资料时为 required；仅允许执行阶段按需判断时为 allowed。',
+          description: '任务实际需要的文件、执行或图片能力。联网权限由本轮用户开关形成运行时权限包，不要在方案中预声明。',
         },
       },
     },
@@ -665,7 +675,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
       : null;
     const availableTools = [
       ...(selectedWork ? workspaceToolSchemas.filter((tool: any) => READ_ONLY_WORKSPACE_TOOLS.has(tool.function.name)) : []),
-      ...(!isMultiReply && allowWebSearch ? [WEB_SEARCH_TOOL] : []),
+      ...(!isMultiReply && allowWebSearch ? [WEB_SEARCH_TOOL, WEB_FETCH_TOOL] : []),
       ...(!isMultiReply ? [TASK_PROPOSAL_TOOL] : []),
       ...(relayTool ? [relayTool] : []),
       ...(skillReferenceTool ? [skillReferenceTool] : []),
@@ -678,6 +688,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
       space.description ? `当前空间说明：${space.description}` : '',
       space.instructions ? `当前空间规则：\n${space.instructions}` : '',
       selectedWork ? `当前正在继续处理：${selectedWork.title}。只读取和修改该成果目录中的文件。` : '当前处于新成果模式，不继承已有成果目录中的文件。',
+      space.templateId === 'wechat-article'
+        ? '公众号空间的 shared/content-strategy.md 是空间级账号策略：所有成果均可读取，更新时仍须通过已确认的后台任务；article.md、publish-info.md 和 assets/cover.<实际扩展名> 只属于当前成果。'
+        : '',
       projectMemory,
       teamLearning,
       runEvidence,
@@ -709,10 +722,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
         !isMultiReply ? '任务方案必须覆盖完整目标、范围、主要里程碑、预期产物和总体验收要求，但不要提前选择成员或生成固定执行链。用户确认的是目标与能力边界；运行时 Coordinator 会读取空间中的实时成员、工作状态和每轮成果，动态决定下一件任务交给谁。按可独立验收的产物描述里程碑，不要按页面结构、样式、功能点或检查阶段机械拆分。不要声称任务已经开始。' : '',
         relayTool ? '用户明确要求多个成员按顺序参与同一件事时，调用 start_relay；这包含让大家依次参与、每个人分别回应、轮流处理、接力推进、相互审阅或持续改进同一份文字成果。只有明确的逐员参与或顺序推进要求才启动，泛泛征询意见不自动启动。用户说“大家”“所有成员”或“全员”时，participantIds 必须包含全部可用普通成员；用户只要求几位成员时才选择子集。需要文件、联网、命令、浏览器或专业交付时仍调用 propose_task。讨论只能由用户从空间输入框的“发起讨论”入口手动创建和执行；用户在聊天中要求讨论时，提示这个入口，不要用 start_relay 或其他协调工具代替。接力开始后你会作为可见的空间协调者组织开场，成员轮次由平台直接推进，结束时你再验收汇总。' : '',
         !isMultiReply ? (allowWebSearch
-          ? '本轮用户已开启联网权限。调用 propose_task 时必须声明 networkPolicy：任务必须依赖外部资料时为 required，只是允许执行阶段按需判断时为 allowed，完全不需要时为 forbidden。'
-          : '本轮用户没有开启联网权限。调用 propose_task 时 networkPolicy 必须为 forbidden，capabilities 不得包含 web_research；即使你认为外部资料有帮助，也不得申请联网。') : '',
+          ? '本轮用户已开启联网总权限。不要在任务方案中声明联网策略；实际执行到需要外部资料时，运行时再调用 web_search 或 web_fetch，并受次数预算限制。'
+          : '本轮用户没有开启联网权限。实际执行不得调用 web_search 或 web_fetch；需要外部资料时提示用户开启联网。') : '',
         !isMultiReply ? '如果品种、单位、范围、输入文件、输出要求等关键信息不足，先在普通对话中追问；获得用户回答前不得调用 propose_task，也不得把“询问用户、确认用户信息、等待用户补充”写成后台执行步骤。' : '',
-        !isMultiReply && allowWebSearch ? '本轮联网搜索已由用户开启。需要外部公开资料或实时事实时调用 web_search；查询当前空间目录和文件必须使用本地只读工具，不得调用 web_search。一次联网查询直接回答，不要生成任务方案。' : '',
+        !isMultiReply && allowWebSearch ? '本轮联网已开启：关键词检索使用 web_search，用户给出具体网页或公开 JSON 地址时使用 web_fetch；两者都不得访问当前空间目录、文件、本机或内网。一次联网查询直接回答，不要生成任务方案。' : '',
         !isMultiReply && !allowWebSearch ? '本轮联网搜索未开启。需要外部公开资料或实时事实时，请简短提示用户开启输入框的联网开关；不得仅为获得联网能力而生成任务方案。' : '',
         !isMultiReply ? '仅在用户明确要求创建或修改文件、网页、代码或文档时，才把写入工作区列入任务。只有任务确实需要运行已注册 Skill 的 Python/Node 入口时才申请 code_execute；普通文件编辑和静态检查不得申请。' : '',
         !isMultiReply && settings.imageModelAvailable
@@ -754,7 +767,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
       async start(controller) {
         let taskProposal: TaskProposal | null = null;
         let relayDraft: RelayDraft | null = null;
-        let webSearchCount = 0;
+        const runtimePermissions = createRuntimePermissionBroker({
+          authorization: { capabilities: allowWebSearch ? ['web_research'] : [], networkPolicy: allowWebSearch ? 'allowed' : 'forbidden' },
+          operationLimit: 2,
+        });
         try {
           const loopResult = await runToolLoop({
             messages: openaiMessages,
@@ -774,11 +790,23 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
             executeTool: async (name: string, args: Record<string, unknown>) => {
               if (name === 'web_search') {
                 if (!allowWebSearch || isMultiReply) throw new Error('本轮没有获得联网搜索授权');
-                if (webSearchCount >= 2) return { ok: false, error: '本轮最多允许两次联网搜索，请使用已有资料回答' };
                 const query = typeof args.query === 'string' ? args.query.trim().slice(0, 300) : '';
                 if (!query) return { ok: false, error: '搜索关键词不能为空' };
-                webSearchCount += 1;
+                const permission = runtimePermissions.consume('web_research', 'web_search');
+                if (!permission.allowed) return { ok: false, error: permission.error };
                 return { ok: true, context: await buildWebSearchContext(query, settings.tavilyApiKey) };
+              }
+              if (name === 'web_fetch') {
+                if (!allowWebSearch || isMultiReply) throw new Error('本轮没有获得联网权限');
+                const url = typeof args.url === 'string' ? args.url.trim().slice(0, 2_000) : '';
+                if (!url) return { ok: false, error: '网址不能为空' };
+                const permission = runtimePermissions.consume('web_research', 'web_fetch');
+                if (!permission.allowed) return { ok: false, error: permission.error };
+                try {
+                  return { ok: true, ...(await fetchWebPage(url)) };
+                } catch (error) {
+                  return { ok: false, error: error instanceof Error ? error.message : String(error) };
+                }
               }
               if (name === 'propose_task') {
                 if (taskProposal) return { ok: false, error: '本轮已经生成任务方案' };

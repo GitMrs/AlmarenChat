@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import { copyFileSync, existsSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import Database from 'better-sqlite3';
 
@@ -21,6 +22,41 @@ function hasColumn(table, column) {
 
 function hasIndex(name) {
   return Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = ?").get(name));
+}
+
+function migrateWechatSharedStrategies() {
+  if (!hasTable('Space') || !hasTable('SpaceFile')) return 0;
+  const candidates = db.prepare(`
+    SELECT file."id", file."relativePath", space."id" AS "spaceId", space."userId"
+    FROM "Space" space
+    JOIN "SpaceFile" file ON file."spaceId" = space."id"
+    WHERE space."templateId" = 'wechat-article'
+      AND file."workId" IS NOT NULL
+      AND (file."fileName" = 'content-strategy.md' OR file."relativePath" LIKE '%/content-strategy.md')
+      AND file."status" = 'READY'
+      AND NOT EXISTS (
+        SELECT 1 FROM "SpaceFile" shared
+        WHERE shared."spaceId" = space."id" AND shared."relativePath" = 'workspace/shared/content-strategy.md'
+      )
+    ORDER BY file."updatedAt" DESC
+  `).all();
+  const migratedSpaces = new Set();
+  const update = db.prepare(`
+    UPDATE "SpaceFile"
+    SET "fileName" = 'shared/content-strategy.md', "relativePath" = 'workspace/shared/content-strategy.md', "workId" = NULL
+    WHERE "id" = ?
+  `);
+  for (const candidate of candidates) {
+    if (migratedSpaces.has(candidate.spaceId)) continue;
+    const source = path.resolve(process.cwd(), 'data', 'spaces', candidate.userId, candidate.spaceId, ...String(candidate.relativePath).split('/'));
+    if (!existsSync(source)) continue;
+    const target = path.resolve(process.cwd(), 'data', 'spaces', candidate.userId, candidate.spaceId, 'workspace', 'shared', 'content-strategy.md');
+    mkdirSync(path.dirname(target), { recursive: true });
+    if (!existsSync(target)) copyFileSync(source, target);
+    update.run(candidate.id);
+    migratedSpaces.add(candidate.spaceId);
+  }
+  return migratedSpaces.size;
 }
 
 try {
@@ -795,7 +831,9 @@ try {
     `);
   })();
 
-  console.log('Space and Agent Runtime database upgrade completed.');
+  const migratedWechatStrategies = migrateWechatSharedStrategies();
+
+  console.log(`Space and Agent Runtime database upgrade completed. Migrated ${migratedWechatStrategies} WeChat shared strategies.`);
 } finally {
   db.close();
 }

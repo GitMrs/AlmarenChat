@@ -521,7 +521,6 @@ async function coordinateNextWork(run, context, triggerEventId) {
                 instruction: run.input,
                 acceptanceCriteria: '完整满足授权目标，并提供可核对的结果或文件证据。',
                 reason: '该成员是当前可用的执行成员。',
-                webResearchRequired: false,
                 skillId: authorization.selectedSkill?.id || 'general-task',
                 expectedArtifacts: authorization.artifacts || [],
               }],
@@ -540,10 +539,10 @@ async function coordinateNextWork(run, context, triggerEventId) {
               '当 requiredNextMember 非空时，本轮 tasks 的第一项必须派给该成员；若用户要求其先明确、梳理或分析规则，mode 应为 advisor。' +
               '默认一次只派一项；只有两项成果真正独立且成员不同才可并行派两项。' +
               '当 authorization 包含 image_generate 时，Coordinator 只负责规划和验收，不亲自生成：优先把配图工作交给最了解来源内容的成员，其次才是视觉或前端成员；每个任务只能生成 1 张图片，需要多张时必须拆成分别由用户确认的任务，不要额外拆出纯提示词规划步骤。' +
-              '不得重复已有任务，不得给 WORKING 成员派活，不得扩大已授权能力。' +
+              '不得重复已有任务，不得给 WORKING 成员派活，不得扩大已授权能力。封面唯一规范是 assets/cover.<模型返回扩展名>；已有 cover 主文件名产物不得因扩展名不同而重复生成，只有确实缺失或验收标准不满足时才追加图片任务。' +
               '每个成员的 availableSkills 是本轮可选工作方法。authorization.selectedSkill 非空时，这是用户本轮明确指定的工作方法，第一项任务必须采用它；否则优先选择与任务产物匹配的专用 Skill，没有匹配项时才使用 general-task。Skill 不能扩大 authorization 的能力。可执行 Skill 必须使用 executor 模式，并且 authorization 必须包含 code_execute。' +
-              '每个子任务必须设置 webResearchRequired。只有该子任务确实依赖外部公开资料且 authorization.networkPolicy 不是 forbidden 时才能为 true；任务指令明确不联网时必须为 false。' +
-              `必须调用 ${COORDINATOR_ACTION_TOOL_NAME} 提交唯一动作。继续工作时提交：{"type":"dispatch","summary":"决策摘要","tasks":[{"agentId":"成员ID","skillId":"Skill ID","mode":"advisor|executor","title":"标题","instruction":"完整指令","acceptanceCriteria":"可核对标准","reason":"选人和 Skill 理由","webResearchRequired":false,"expectedArtifacts":["相对路径或结果"]}]}；` +
+              'Coordinator 不需要在派发阶段预声明联网；成员执行到需要外部事实时，运行时会根据本轮权限和实际工具调用决定是否联网。' +
+              `必须调用 ${COORDINATOR_ACTION_TOOL_NAME} 提交唯一动作。继续工作时提交：{"type":"dispatch","summary":"决策摘要","tasks":[{"agentId":"成员ID","skillId":"Skill ID","mode":"advisor|executor","title":"标题","instruction":"完整指令","acceptanceCriteria":"可核对标准","reason":"选人和 Skill 理由","expectedArtifacts":["相对路径或结果"]}]}；` +
               '目标已由已验收成果完全满足时，必须逐项覆盖 authorization 中的 steps 和 deliverables，且只能引用 completed 中的任务 ID：' +
               '{"type":"finish","summary":"完成依据","coverage":[{"requirement":"授权步骤或交付物原文","taskIds":["已验收任务ID"],"evidence":"该任务如何满足此要求"}]}；' +
               '授权范围内确实无法继续：{"type":"block","reason":"具体原因","summary":"给用户的说明"}。',
@@ -656,7 +655,7 @@ async function coordinateNextWork(run, context, triggerEventId) {
             id, run.id, task.agentId, task.agentName, task.title,
             `${task.instruction}${artifactNote}`, task.acceptanceCriteria, turn.id, task.mode,
             task.skillId, task.skillVersion, JSON.stringify(task.skillSnapshot),
-            task.webResearchRequired ? 1 : 0,
+            0,
             taskModelRequestLimit(task.mode), initialStatus, maxSortOrder + index + 1,
             timestamp, awaitingApproval ? null : timestamp, timestamp, timestamp
           );
@@ -665,7 +664,6 @@ async function coordinateNextWork(run, context, triggerEventId) {
             : `协调者将“${task.title}”交给 ${task.agentName}`, {
             taskId: id, agentId: task.agentId, attempt: 1, actor: 'coordinator',
             reason: task.reason, mode: task.mode, turnId: turn.id,
-            webResearchRequired: task.webResearchRequired,
             skillId: task.skillId, skillName: task.skillSnapshot.name, skillVersion: task.skillVersion,
           }, `dynamic-task-${awaitingApproval ? 'proposed' : 'dispatched'}:${turn.id}:${index}`);
           addEvent(run.id, 'SKILL_SELECTED', `为“${task.title}”采用 ${task.skillSnapshot.name}`, {

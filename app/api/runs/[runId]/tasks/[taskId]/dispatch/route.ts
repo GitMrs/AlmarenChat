@@ -4,9 +4,8 @@ import { requireAuth } from '@/app/api/_lib/auth';
 import { appendAgentRunEvent } from '@/app/api/_lib/agent-run-events';
 import { getAgentRunForUser } from '@/app/api/_lib/agent-runs';
 import { resolveAgent } from '@/app/api/_lib/spaces';
-import { authorizationAllowsCapability, coordinatorStateAfterDispatchRejection } from '@/lib/agent-runtime-v3-policy.mjs';
+import { coordinatorStateAfterDispatchRejection } from '@/lib/agent-runtime-v3-policy.mjs';
 import { resolveTaskSkill } from '@/lib/agent-runtime/skill-registry.mjs';
-import { explicitlyForbidsWebResearch } from '@/lib/web-research-intent.mjs';
 
 const ACTIONS = new Set(['approve', 'reject']);
 
@@ -106,20 +105,10 @@ export async function POST(
     const authorization = coordinatorState.authorization && typeof coordinatorState.authorization === 'object'
       ? coordinatorState.authorization as Record<string, unknown>
       : { capabilities: [] };
-    const webResearchRequired = typeof revision.webResearchRequired === 'boolean'
-      ? revision.webResearchRequired
-      : Boolean(task.webResearchRequired);
-    if (webResearchRequired && !authorizationAllowsCapability(authorization, 'web_research')) {
-      return NextResponse.json({ error: '本次目标授权不允许联网检索' }, { status: 400 });
-    }
-    if (webResearchRequired && explicitlyForbidsWebResearch(`${title}\n${instruction}\n${acceptanceCriteria}`)) {
-      return NextResponse.json({ error: '任务指令明确禁止联网，不能同时要求联网检索' }, { status: 400 });
-    }
     const taskContentRevised = agentId !== task.agentId
       || title !== task.title
       || instruction !== task.instruction
-      || acceptanceCriteria !== (task.acceptanceCriteria || '')
-      || webResearchRequired !== Boolean(task.webResearchRequired);
+      || acceptanceCriteria !== (task.acceptanceCriteria || '');
     const skill = resolveTaskSkill({
       requestedSkillId: taskContentRevised ? undefined : task.skillId,
       agent,
@@ -141,7 +130,7 @@ export async function POST(
           skillId: skill.id,
           skillVersion: skill.version,
           skillSnapshot: skill,
-          webResearchRequired,
+          webResearchRequired: false,
           status: 'PENDING',
           approvedAt: timestamp,
         },
@@ -175,7 +164,6 @@ export async function POST(
           skillId: skill.id,
           skillName: skill.name,
           skillVersion: skill.version,
-          webResearchRequired,
         },
         taskId,
         agentId,
