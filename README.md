@@ -1,6 +1,16 @@
 # AlmarenChat
 
-一个基于Web的智能通信工具，内置AI助手，支持Agent聊天和人机聊天。
+AlmarenChat 是一个基于 Next.js、Prisma 和 SQLite 的 AI 工作与陪伴平台，包含 Agent 单聊、个人小伴、QQ Bot、空间任务和受治理的自动化连接器。
+
+当前功能文档：
+
+- [AI 模型与运行方式](docs/ai-models.md)
+- [网页小伴](docs/personal-assistant.md)
+- [QQ 小伴](docs/qq-assistant.md)
+- [个人小伴记忆规则](docs/personal-assistant-memory.md)
+- [Agent Runtime](docs/agent-runtime.md)
+- [空间连接器](docs/space-connectors.md)
+- [空间自动化验收](docs/space-automation-acceptance.md)
 
 ## 功能特性
 
@@ -13,7 +23,7 @@
 ### AI Agent功能
 - **Agent商店**：浏览和选择各种AI助手
 - **自定义Agent**：创建个性化的AI助手
-- **智能对话**：基于Google Gemini的AI对话能力
+- **智能对话**：支持平台模型、在线兼容 API 和浏览器本地 Ollama
 - **上下文理解**：AI能够理解对话上下文
 
 ### 用户界面
@@ -27,15 +37,15 @@
 ### 前端技术
 - **React 19**：现代化的前端框架
 - **TypeScript**：类型安全的JavaScript超集
-- **Vite**：快速的前端构建工具
+- **Next.js**：页面和 API 路由
 - **Tailwind CSS**：实用优先的CSS框架
 - **Lucide React**：美观的图标库
 - **React Markdown**：Markdown渲染支持
 
 ### 后端技术
-- **Express**：Node.js Web应用框架
-- **Google Gemini AI**：先进的AI模型服务
-- **WebSocket**：实时通信支持
+- **Prisma + SQLite**：用户、消息、任务和记忆数据
+- **OpenAI 兼容接口**：线上模型与本地 Ollama
+- **QQ Bot Worker**：QQ 私聊、流式回复和提醒投递
 
 ### 开发工具
 - **ESBuild**：超快的JavaScript打包器
@@ -46,25 +56,14 @@
 
 ```
 AlmarenChat/
-├── src/
-│   ├── components/          # React组件
-│   │   ├── ActiveChatScreen.tsx    # 聊天界面
-│   │   ├── AgentStoreScreen.tsx    # Agent商店
-│   │   ├── ChatListScreen.tsx      # 聊天列表
-│   │   ├── ContactsScreen.tsx      # 联系人列表
-│   │   ├── LoginScreen.tsx         # 登录界面
-│   │   └── SettingsScreen.tsx      # 设置界面
-│   ├── lib/                 # 工具库
-│   │   ├── agent.json       # Agent配置数据
-│   │   └── utils.ts         # 工具函数
-│   ├── App.tsx              # 主应用组件
-│   ├── main.tsx             # 应用入口
-│   ├── mockData.ts          # 模拟数据
-│   └── types.ts             # TypeScript类型定义
-├── server.ts                # Express服务器
-├── package.json             # 项目配置
-├── vite.config.ts           # Vite配置
-└── tsconfig.json            # TypeScript配置
+├── app/                     # Next.js 页面与 API 路由
+├── components/              # React UI 组件
+├── lib/                     # 模型、记忆、连接器和运行时逻辑
+├── prisma/                  # Schema 与数据库迁移
+├── worker/                  # Agent、QQ 和空间后台 Worker
+├── public/                  # 静态资源与上传文件
+├── package.json
+└── deploy-pm2.sh            # 生产部署入口
 ```
 
 ## 安装和运行
@@ -72,7 +71,7 @@ AlmarenChat/
 ### 环境要求
 - Node.js 18+
 - npm 或 yarn
-- Google Gemini API密钥
+- 线上模型密钥（按部署环境配置）
 
 ### 安装步骤
 
@@ -88,13 +87,13 @@ AlmarenChat/
    ```
 
 3. **配置环境变量**
-   复制`.env.example`文件为`.env`，并填入你的Google Gemini API密钥：
+   复制 `.env.example` 文件为 `.env`，按需填写数据库、模型、QQ 和连接器密钥：
    ```bash
    cp .env.example .env
    ```
    编辑`.env`文件：
    ```
-   GEMINI_API_KEY=your_api_key_here
+   DATABASE_URL="file:./data/dev.db"
    ```
 
 4. **启动开发服务器**
@@ -103,7 +102,7 @@ AlmarenChat/
    ```
 
 5. **访问应用**
-   打开浏览器访问 `http://localhost:3000`
+   打开终端显示的本地地址。生产部署默认使用 `PORT=8001`，可参考 `deploy-pm2.sh`。
 
 ### 生产构建
 
@@ -136,78 +135,41 @@ npm start
 - **通知设置**：管理消息通知
 - **隐私设置**：控制已读回执等隐私选项
 
-## API接口
+## API 接口
 
-### 聊天API
-- **POST** `/api/chat` - 发送消息并获取AI回复
-  - 请求体：`{ message, history, context }`
-  - 响应：流式文本响应
+- **POST** `/api/chat`：Agent 单聊流式回复
+- **POST** `/api/assistant/messages`：网页小伴消息和本地 Ollama 准备请求
+- **POST** `/api/uploads/images`：上传聊天图片
+- **POST** `/api/internal/assistant/qq/messages`：QQ Worker 内部消息接口，需要内部密钥
 
-## 开发指南
+## 开发说明
 
-### 添加新组件
-1. 在`src/components/`目录下创建新组件
-2. 使用TypeScript编写组件逻辑
-3. 使用Tailwind CSS进行样式设计
-4. 在`App.tsx`中引入并使用
-
-### 修改AI配置
-编辑`server.ts`文件中的AI模型配置：
-```typescript
-const responseStream = await ai.models.generateContentStream({
-  model: 'gemini-3.5-flash', // 修改使用的模型
-  contents,
-  config: {
-    systemInstruction: context || 'You are a helpful AI assistant.',
-  }
-});
-```
-
-### 自定义样式
-修改`tailwind.config.js`文件来自定义主题：
-```javascript
-module.exports = {
-  theme: {
-    extend: {
-      colors: {
-        primary: '#your-color',
-      }
-    }
-  }
-}
-```
+业务代码主要位于 `app/`、`components/`、`lib/`、`prisma/` 和 `worker/`。模型配置和 QQ/小伴运行规则见上方文档索引；修改数据库 Schema 后需要生成 Prisma Client 并执行对应迁移或升级脚本。
 
 ## 部署说明
 
-### Docker部署
-```dockerfile
-FROM node:18-alpine
-WORKDIR /app
-COPY package*.json ./
-RUN npm install
-COPY . .
-RUN npm run build
-EXPOSE 3000
-CMD ["npm", "start"]
+### PM2 部署
+
+```bash
+ENV_FILE=.env.production PORT=8001 ./deploy-pm2.sh
+pm2 status
+pm2 logs almaren-chat
+pm2 logs almaren-chat-worker
+pm2 logs almaren-chat-qq
 ```
 
-### 云平台部署
-支持部署到以下平台：
-- Vercel
-- Netlify
-- AWS Amplify
-- Google Cloud Run
+部署脚本会备份 SQLite、升级 Agent Runtime Schema、构建应用并启动 Web、Agent Worker 和 QQ Worker。
 
 ## 常见问题
 
-### Q: 如何获取Google Gemini API密钥？
-A: 访问 [Google AI Studio](https://makersuite.google.com/app/apikey) 获取API密钥。
+### Q: 本地 Ollama 配置保存在哪里？
+A: 保存在当前浏览器的 localStorage。它是 Agent 和小伴的默认配置，聊天时仍可切换回线上模型。详见 [AI 模型与运行方式](docs/ai-models.md)。
 
 ### Q: 如何修改端口号？
-A: 编辑`server.ts`文件中的`PORT`变量。
+A: 启动时设置 `PORT`，例如 `PORT=8001 yarn start`；PM2 部署时设置 `PORT` 环境变量。
 
-### Q: 如何添加新的AI模型？
-A: 修改`server.ts`中的模型配置，并确保API密钥支持该模型。
+### Q: QQ 为什么不使用本地 Ollama？
+A: QQ Worker 在服务端运行，只能调用线上模型；网页端 Agent 和小伴才支持浏览器直连 Ollama。详见 [QQ 小伴](docs/qq-assistant.md)。
 
 ## 贡献指南
 

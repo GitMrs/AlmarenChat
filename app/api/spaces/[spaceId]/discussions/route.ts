@@ -44,10 +44,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
       ? body.participantIds.map(String).filter(Boolean)
       : [];
     const memberIds = new Set(space.members.map((member) => member.agentId));
-    const participantIds: string[] = [...new Set<string>(requestedIds)].filter((id) => memberIds.has(id)).slice(0, 4);
+    const participantIds: string[] = [...new Set<string>(requestedIds)].filter((id) => memberIds.has(id));
 
     if (!topic) return NextResponse.json({ error: '请输入讨论主题' }, { status: 400 });
-    if (participantIds.length < 2) return NextResponse.json({ error: '至少选择两位空间成员' }, { status: 400 });
+    if (participantIds.length < 2 || participantIds.length > 6) return NextResponse.json({ error: '讨论需要选择 2 至 6 位空间成员' }, { status: 400 });
 
     const [active, activeRelay] = await Promise.all([
       prisma.spaceDiscussion.findFirst({

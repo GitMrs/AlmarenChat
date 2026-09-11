@@ -57,7 +57,7 @@ function ContextLimitControl({
 function ModelSettingsControl({ config }: { config: BrowserModelConfig }) {
   return (
     <div className="mb-5 border-b border-black/[0.06] pb-5">
-      <h2 className="mb-3 text-sm font-black text-slate-800">当前模型</h2>
+      <h2 className="mb-3 text-sm font-black text-slate-800">本次聊天模型</h2>
       <div className="flex items-center gap-3 rounded-xl bg-[#fbfaf7] p-3">
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-slate-600 shadow-sm">
           {config.source === 'OLLAMA' ? <Cpu size={16} /> : <Cloud size={16} />}
@@ -66,7 +66,7 @@ function ModelSettingsControl({ config }: { config: BrowserModelConfig }) {
           <p className="truncate text-xs font-black text-slate-700">
             {config.source === 'OLLAMA' ? `本地 Ollama${config.model ? ` · ${config.model}` : ''}` : '线上模型'}
           </p>
-          <p className="mt-1 text-[11px] font-semibold text-slate-400">跟随个人中心的全局设置</p>
+          <p className="mt-1 text-[11px] font-semibold text-slate-400">默认值来自个人中心，可在输入框切换</p>
         </div>
       </div>
       <Link href="/me?tab=settings" className="mt-3 inline-flex text-xs font-black text-slate-900 underline decoration-slate-300 underline-offset-4">

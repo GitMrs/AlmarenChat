@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
 import { NextResponse } from 'next/server';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
@@ -14,6 +16,45 @@ import { compressConversationContext } from '@/lib/context-compression';
 import { conversationContextTargetTokens } from '@/lib/model-limits.mjs';
 
 export const runtime = 'nodejs';
+
+type AssistantImageAttachment = {
+  type: 'image';
+  url: string;
+  name?: string;
+  mimeType?: string;
+  size?: number;
+};
+
+const MAX_ASSISTANT_IMAGES = 4;
+
+function normalizeImageAttachments(value: unknown): AssistantImageAttachment[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (!item || typeof item !== 'object') return [];
+    const attachment = item as Record<string, unknown>;
+    const url = typeof attachment.url === 'string' ? attachment.url.trim() : '';
+    if (!url.startsWith('/uploads/images/')) return [];
+    const candidateMimeType = typeof attachment.mimeType === 'string' ? attachment.mimeType.trim().toLowerCase() : '';
+    const mimeType = /^image\/(?:jpeg|png|webp|gif)$/.test(candidateMimeType) ? candidateMimeType : undefined;
+    const name = typeof attachment.name === 'string' ? attachment.name.trim().slice(0, 255) : undefined;
+    const size = Number(attachment.size);
+    return [{
+      type: 'image' as const,
+      url,
+      ...(mimeType ? { mimeType } : {}),
+      ...(name ? { name } : {}),
+      ...(Number.isFinite(size) && size > 0 ? { size } : {}),
+    }];
+  }).slice(0, MAX_ASSISTANT_IMAGES);
+}
+
+async function imageAttachmentToDataUrl(attachment: AssistantImageAttachment) {
+  const fileName = path.basename(attachment.url);
+  const filePath = path.join(process.cwd(), 'public', 'uploads', 'images', fileName);
+  const bytes = await readFile(filePath);
+  const mimeType = attachment.mimeType || 'image/png';
+  return `data:${mimeType};base64,${bytes.toString('base64')}`;
+}
 
 function clientMessageId(value: unknown) {
   const id = typeof value === 'string' ? value.trim() : '';
@@ -58,8 +99,10 @@ export async function POST(request: Request) {
 
     const localMode = operation === 'prepare-local';
     const textMessage = typeof body.message === 'string' ? body.message.trim().slice(0, 50000) : '';
+    const imageAttachments = normalizeImageAttachments(body.attachments);
+    const messageForModel = textMessage || (imageAttachments.length ? '请分析这张图片。' : '');
     const webSearchEnabled = body.webSearchEnabled === true;
-    if (!textMessage) return NextResponse.json({ error: '请输入消息' }, { status: 400 });
+    if (!messageForModel) return NextResponse.json({ error: '请输入消息' }, { status: 400 });
     if (localMode && webSearchEnabled) {
       return NextResponse.json({ error: '浏览器直连 Ollama 时不能使用服务端联网搜索' }, { status: 400 });
     }
@@ -145,7 +188,7 @@ export async function POST(request: Request) {
       loadAssistantMemoryContext({
         userId,
         conversationId,
-        query: textMessage,
+        query: messageForModel,
         historyLimit: contextLimit,
         includeExperiences: conversationMode === 'MAIN',
       }),
@@ -157,7 +200,7 @@ export async function POST(request: Request) {
       }),
       buildAssistantPlatformContext(userId, contextSources),
       buildAssistantActivityContext(userId, textMessage, contextSources),
-      webSearchEnabled ? buildWebSearchContext(textMessage, userSettings.tavilyApiKey) : Promise.resolve(null),
+      webSearchEnabled ? buildWebSearchContext(messageForModel, userSettings.tavilyApiKey) : Promise.resolve(null),
     ]);
 
     const systemPrompt = buildPersonalAssistantPrompt({
@@ -182,7 +225,16 @@ export async function POST(request: Request) {
         preserveSystem: false,
       }
     ).compressedMessages;
-    const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
+    const userContent = imageAttachments.length
+      ? [
+          { type: 'text' as const, text: messageForModel },
+          ...await Promise.all(imageAttachments.map(async (attachment) => ({
+            type: 'image_url' as const,
+            image_url: { url: await imageAttachmentToDataUrl(attachment) },
+          }))),
+        ]
+      : messageForModel;
+    const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: any }> = [
       {
         role: 'system',
         content: [
@@ -195,11 +247,18 @@ export async function POST(request: Request) {
         role: item.role as 'user' | 'assistant',
         content: item.content,
       })),
-      { role: 'user', content: textMessage },
+      { role: 'user', content: userContent },
     ];
 
     await prisma.message.create({
-      data: { id: userMessageId, conversationId, role: 'user', source: 'WEB', content: textMessage },
+      data: {
+        id: userMessageId,
+        conversationId,
+        role: 'user',
+        source: 'WEB',
+        content: messageForModel,
+        attachments: imageAttachments.length ? imageAttachments : undefined,
+      },
     });
 
     if (memoryContext.history.length === 0) {

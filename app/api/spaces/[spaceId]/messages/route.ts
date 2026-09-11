@@ -35,7 +35,7 @@ const MESSAGE_PAGE_SIZE = 40;
 const READ_ONLY_WORKSPACE_TOOLS = new Set(['list_files', 'read_file', 'check_files']);
 const ACTIVE_DISCUSSION_STATUSES = ['QUEUED', 'RUNNING', 'WAITING_RESEARCH', 'CANCEL_REQUESTED'];
 const ACTIVE_RELAY_STATUSES = ['QUEUED', 'RUNNING', 'WAITING_APPROVAL', 'CANCEL_REQUESTED'];
-const PI_COORDINATION_MODES = new Set(['broadcast', 'discussion', 'review', 'decision', 'relay']);
+const PI_COORDINATION_MODES = new Set(['broadcast', 'review', 'decision', 'relay']);
 
 type PiCoordinationScope = {
   scopeId: string;
@@ -111,7 +111,7 @@ function relayStartTool(memberAgents: Array<{ id: string; name: string }>) {
     type: 'function',
     function: {
       name: 'start_relay',
-      description: '当用户明确要求两位以上成员轮流、接力或基于前一位成果继续协作时，启动一次可恢复的接力。需要读写文件、联网或执行命令的交付任务不要使用。',
+      description: '当用户明确要求两位以上成员按顺序参与同一件事时，启动一次可恢复的接力；包括让大家依次参与、每个人分别回应、轮流处理、接力推进，或基于前一位成果继续协作。只有明确要求逐员参与或顺序推进时才使用；泛泛征询意见不自动启动。用户说“大家”“所有成员”或“全员”时，必须传入全部可用普通成员，不要只选择前几位。需要读写文件、联网或执行命令的交付任务不要使用。',
       parameters: {
         type: 'object',
         additionalProperties: false,
@@ -121,12 +121,12 @@ function relayStartTool(memberAgents: Array<{ id: string; name: string }>) {
           title: { type: 'string', maxLength: 80, description: '向用户展示的简短接力标题' },
           goal: { type: 'string', maxLength: 2000, description: '成员共同推进的明确目标' },
           participantIds: {
-            type: 'array', minItems: 2, maxItems: 4, uniqueItems: true,
+            type: 'array', minItems: 2, uniqueItems: true,
             items: { type: 'string', enum: memberAgents.map((agent) => agent.id) },
             description: `按行动顺序填写成员 ID：${memberAgents.map((agent) => `${agent.name}=${agent.id}`).join('；')}`,
           },
           completionCriteria: { type: 'array', minItems: 1, maxItems: 5, items: { type: 'string' }, description: '协调者最终验收时使用的完成条件' },
-          maxTurns: { type: 'integer', minimum: 2, maximum: 225, description: '普通协作建议等于参与人数或其两倍且不超过 12；五子棋可使用更大值' },
+          maxTurns: { type: 'integer', minimum: 2, description: '普通协作至少等于参与人数，可按目标增加轮次；五子棋按对局长度设置' },
           approvalMode: { type: 'string', enum: ['AUTO', 'EACH_TURN'], description: '用户明确要求每轮确认时使用 EACH_TURN，否则使用 AUTO' },
         },
       },
@@ -707,7 +707,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
           ? '当前是多人分别回答，不是任务执行。只代表自己给出观点，不得创建任务方案，不得写文件、联网或声称已经开始执行。'
           : '你没有写入、终端和浏览器权限。普通问答、简单分析、本地只读查看或一到两次联网事实查询应直接完成；需要形成带明确数量、格式或验收要求的专业交付，或者需要修改文件、编写代码并落盘、制作网页或文档、运行命令、操作浏览器、多个步骤持续执行时，调用 propose_task 生成目标授权方案。',
         !isMultiReply ? '任务方案必须覆盖完整目标、范围、主要里程碑、预期产物和总体验收要求，但不要提前选择成员或生成固定执行链。用户确认的是目标与能力边界；运行时 Coordinator 会读取空间中的实时成员、工作状态和每轮成果，动态决定下一件任务交给谁。按可独立验收的产物描述里程碑，不要按页面结构、样式、功能点或检查阶段机械拆分。不要声称任务已经开始。' : '',
-        relayTool ? '用户明确要求多个成员轮流、接力、相互审阅并持续改进同一份文字成果时，调用 start_relay。普通多人分别回答不使用；需要文件、联网、命令、浏览器或专业交付时仍调用 propose_task。接力开始后你会作为可见的空间协调者组织开场，成员轮次由平台直接推进，结束时你再验收汇总。' : '',
+        relayTool ? '用户明确要求多个成员按顺序参与同一件事时，调用 start_relay；这包含让大家依次参与、每个人分别回应、轮流处理、接力推进、相互审阅或持续改进同一份文字成果。只有明确的逐员参与或顺序推进要求才启动，泛泛征询意见不自动启动。用户说“大家”“所有成员”或“全员”时，participantIds 必须包含全部可用普通成员；用户只要求几位成员时才选择子集。需要文件、联网、命令、浏览器或专业交付时仍调用 propose_task。讨论只能由用户从空间输入框的“发起讨论”入口手动创建和执行；用户在聊天中要求讨论时，提示这个入口，不要用 start_relay 或其他协调工具代替。接力开始后你会作为可见的空间协调者组织开场，成员轮次由平台直接推进，结束时你再验收汇总。' : '',
         !isMultiReply ? (allowWebSearch
           ? '本轮用户已开启联网权限。调用 propose_task 时必须声明 networkPolicy：任务必须依赖外部资料时为 required，只是允许执行阶段按需判断时为 allowed，完全不需要时为 forbidden。'
           : '本轮用户没有开启联网权限。调用 propose_task 时 networkPolicy 必须为 forbidden，capabilities 不得包含 web_research；即使你认为外部资料有帮助，也不得申请联网。') : '',
@@ -803,9 +803,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
                 if (!relayTool || targetAgent.id !== SPACE_COORDINATOR.id) throw new Error('当前不能启动接力协作');
                 if (relayDraft) return { ok: false, error: '本轮已经启动接力协作' };
                 const memberIds = new Set(memberAgents.map((agent) => agent.id));
-                const participantIds = Array.isArray(args.participantIds)
-                  ? [...new Set(args.participantIds.map(String))].filter((id) => memberIds.has(id)).slice(0, 4)
+                const requestedParticipantIds = Array.isArray(args.participantIds)
+                  ? [...new Set(args.participantIds.map(String))]
                   : [];
+                const participantIds = requestedParticipantIds.filter((id) => memberIds.has(id));
                 const kind = args.kind === 'gomoku' ? 'gomoku' : 'collaboration';
                 if (participantIds.length < 2 || (kind === 'gomoku' && participantIds.length !== 2)) {
                   return { ok: false, error: kind === 'gomoku' ? '五子棋必须选择两位有效成员' : '接力至少需要两位有效成员' };
@@ -819,7 +820,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
                 const requestedTurns = Math.trunc(Number(args.maxTurns) || participantIds.length);
                 const maxTurns = kind === 'gomoku'
                   ? Math.min(225, Math.max(2, requestedTurns))
-                  : Math.min(12, Math.max(participantIds.length, requestedTurns));
+                  : Math.max(participantIds.length, requestedTurns);
                 const [activeRun, activeDiscussion, activeRelay] = await Promise.all([
                   prisma.agentRun.findFirst({ where: { spaceId, status: { in: ACTIVE_AGENT_RUN_STATUSES } }, select: { id: true } }),
                   prisma.spaceDiscussion.findFirst({ where: { spaceId, status: { in: ACTIVE_DISCUSSION_STATUSES } }, select: { id: true } }),

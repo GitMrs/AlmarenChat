@@ -1,4 +1,4 @@
-import type { AgentGrowthProfile, AgentRun, AssistantConversationSummary, AssistantExperienceMessage, AssistantMemoryItem, AssistantQQBinding, AssistantReminder, AssistantReminderCandidate, Message, PersonalAssistantBootstrap, PersonalAssistantProfile, SpaceActionRequest, SpaceAutomation, SpaceConnector, SpaceDiscussion, SpaceFileShare, SpaceOperationOutcome, SpaceOperationsSummary, SpaceRelay, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal, SpaceWork } from '@/types';
+import type { AgentGrowthProfile, AgentRun, AssistantConversationSummary, AssistantExperienceMessage, AssistantMemoryItem, AssistantQQBinding, AssistantReminder, AssistantReminderCandidate, Message, MessageAttachment, PersonalAssistantBootstrap, PersonalAssistantProfile, SpaceActionRequest, SpaceAutomation, SpaceConnector, SpaceDiscussion, SpaceFileShare, SpaceOperationOutcome, SpaceOperationsSummary, SpaceRelay, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal, SpaceWork } from '@/types';
 
 const API_BASE = '/api';
 
@@ -188,6 +188,7 @@ export const assistant = {
     userMessageId: string;
     assistantMessageId: string;
     webSearchEnabled: boolean;
+    attachments?: MessageAttachment[];
     signal?: AbortSignal;
   }) => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
@@ -200,6 +201,7 @@ export const assistant = {
         userMessageId: data.userMessageId,
         assistantMessageId: data.assistantMessageId,
         webSearchEnabled: data.webSearchEnabled,
+        attachments: data.attachments,
       }),
       signal: data.signal,
     });
@@ -208,10 +210,11 @@ export const assistant = {
     message: string;
     conversationId: string;
     userMessageId: string;
+    attachments?: MessageAttachment[];
     signal?: AbortSignal;
   }) =>
     request<{
-      messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>;
+      messages: Array<{ role: 'system' | 'user' | 'assistant'; content: any }>;
       conversationId: string;
       conversationMode: 'MAIN' | 'TEMPORARY';
     }>('/assistant/messages', {
@@ -221,6 +224,7 @@ export const assistant = {
         message: data.message,
         conversationId: data.conversationId,
         userMessageId: data.userMessageId,
+        attachments: data.attachments,
         webSearchEnabled: false,
       }),
       signal: data.signal,

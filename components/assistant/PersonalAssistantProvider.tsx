@@ -2,17 +2,18 @@
 
 import { usePathname, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Bell, Check, CheckSquare, ChevronDown, ChevronUp, Clock, Cpu, Globe2, History, Loader2, MessageCircleHeart, PanelRightClose, Pin, Plus, Send, Settings2, Sparkles, Square, Trash2, X } from 'lucide-react';
+import { ArrowLeft, Bell, Check, CheckSquare, ChevronDown, ChevronUp, Clock, Cpu, Globe2, History, ImagePlus, Loader2, MessageCircleHeart, PanelRightClose, Pin, Plus, Send, Settings2, Sparkles, Square, Trash2, X } from 'lucide-react';
 import ComposerShell from '@/components/chat/ComposerShell';
 import MessageActions from '@/components/chat/MessageActions';
 import MessageBubbleFrame from '@/components/chat/MessageBubbleFrame';
 import MessageContent from '@/components/chat/MessageContent';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
-import { assistant } from '@/lib/api';
+import { assistant, uploads } from '@/lib/api';
 import { completeBrowserModel, readBrowserModelConfigForScope, streamBrowserModel } from '@/lib/browser-model';
+import type { BrowserModelSource } from '@/lib/browser-model';
 import { cn } from '@/lib/utils';
 import { shouldExtractMemorySuggestion } from '@/lib/personal-assistant/memory-intent.mjs';
-import type { AssistantConversationSummary, AssistantReminder, AssistantReminderCandidate, Message, PersonalAssistantBootstrap } from '@/types';
+import type { AssistantConversationSummary, AssistantReminder, AssistantReminderCandidate, Message, MessageAttachment, PersonalAssistantBootstrap } from '@/types';
 import { createClientId } from '@/lib/client-id';
 
 const HIDDEN_PATHS = ['/login'];
@@ -333,11 +334,15 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
     sourceMessageId: string;
   } | null>(null);
   const [creatingReminderCandidates, setCreatingReminderCandidates] = useState(false);
-  const [localModelActive, setLocalModelActive] = useState(false);
+  const [modelSource, setModelSource] = useState<BrowserModelSource>('ONLINE');
+  const [ollamaAvailable, setOllamaAvailable] = useState(false);
+  const [pendingAttachment, setPendingAttachment] = useState<MessageAttachment | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const proactiveNextCheckAtRef = useRef(0);
   const toolsRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const hidden = HIDDEN_PATHS.some((path) => pathname.startsWith(path));
 
   useEffect(() => {
@@ -374,8 +379,10 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
 
   useEffect(() => {
     if (!open) return;
-    const local = readBrowserModelConfigForScope('GLOBAL').source === 'OLLAMA';
-    setLocalModelActive(local);
+    const config = readBrowserModelConfigForScope('GLOBAL');
+    const local = config.source === 'OLLAMA';
+    setModelSource(config.source);
+    setOllamaAvailable(Boolean(config.baseUrl && config.model));
     if (local) setWebEnabled(false);
   }, [data?.conversationId, open]);
 
@@ -836,8 +843,8 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
     assistantMessage?: string;
     conversationId?: string;
   }) => {
-    const modelConfig = readBrowserModelConfigForScope('GLOBAL');
-    if (modelConfig.source !== 'OLLAMA') return assistant.extractMemories(payload);
+    const modelConfig = { ...readBrowserModelConfigForScope('GLOBAL'), source: modelSource };
+    if (modelSource !== 'OLLAMA') return assistant.extractMemories(payload);
 
     const prepared = await assistant.extractMemories({ ...payload, localOnly: true });
     if (!prepared.modelMessages?.length) return prepared;
@@ -846,8 +853,8 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
   };
 
   const parseReminderWithCurrentModel = async (userMessage: string) => {
-    const modelConfig = readBrowserModelConfigForScope('GLOBAL');
-    if (modelConfig.source !== 'OLLAMA') return assistant.parseReminder({ userMessage });
+    const modelConfig = { ...readBrowserModelConfigForScope('GLOBAL'), source: modelSource };
+    if (modelSource !== 'OLLAMA') return assistant.parseReminder({ userMessage });
 
     const prepared = await assistant.parseReminder({ userMessage, localOnly: true });
     if (!prepared.modelMessages?.length) return prepared;
@@ -855,15 +862,57 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
     return assistant.parseReminder({ userMessage, localResponse });
   };
 
+  const uploadImageFile = async (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      setError('请选择图片文件');
+      return;
+    }
+    setError('');
+    setUploadingImage(true);
+    try {
+      const { attachment } = await uploads.image(file);
+      setPendingAttachment(attachment);
+    } catch (err: any) {
+      setError(err.message || '图片上传失败');
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
+  const handleImageSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file || uploadingImage || streaming) return;
+    await uploadImageFile(file);
+  };
+
+  const handleImagePaste = async (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const file = Array.from(event.clipboardData.files).find((item) => item.type.startsWith('image/'));
+    if (!file) return;
+    event.preventDefault();
+    if (uploadingImage || streaming) return;
+    await uploadImageFile(file);
+  };
+
   const send = async () => {
     const content = input.trim();
-    if (!content || streaming || !data) return;
+    const attachment = pendingAttachment;
+    if ((!content && !attachment) || streaming || uploadingImage || !data) return;
+    const modelContent = content || '请分析这张图片。';
     proactiveNextCheckAtRef.current = 0;
     const now = new Date().toISOString();
-    const userMessage: Message = { id: createClientId(), conversationId: data.conversationId, role: 'user', content, createdAt: now };
+    const userMessage: Message = {
+      id: createClientId(),
+      conversationId: data.conversationId,
+      role: 'user',
+      content: modelContent,
+      attachments: attachment ? [attachment] : undefined,
+      createdAt: now,
+    };
     const assistantMessage: Message = { id: createClientId(), conversationId: data.conversationId, role: 'assistant', content: '', createdAt: now };
     setData({ ...data, messages: [...data.messages, userMessage, assistantMessage] });
     setInput('');
+    setPendingAttachment(null);
     setError('');
     setStreaming(true);
     const controller = new AbortController();
@@ -872,17 +921,17 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
     let localConversationId = '';
     let answer = '';
     try {
-      const modelConfig = readBrowserModelConfigForScope('GLOBAL');
-      usesLocalModel = modelConfig.source === 'OLLAMA';
-      setLocalModelActive(usesLocalModel);
+      const modelConfig = { ...readBrowserModelConfigForScope('GLOBAL'), source: modelSource };
+      usesLocalModel = modelSource === 'OLLAMA';
       if (usesLocalModel && webEnabled) throw new Error('浏览器直连 Ollama 时不能使用服务端联网搜索');
 
       let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
       if (usesLocalModel) {
         const prepared = await assistant.prepareLocalMessage({
-          message: content,
+          message: modelContent,
           conversationId: data.conversationId,
           userMessageId: userMessage.id,
+          attachments: attachment ? [attachment] : undefined,
           signal: controller.signal,
         });
         localConversationId = prepared.conversationId;
@@ -894,11 +943,12 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
         reader = stream.getReader();
       } else {
         const response = await assistant.sendMessage({
-          message: content,
+          message: modelContent,
           conversationId: data.conversationId,
           userMessageId: userMessage.id,
           assistantMessageId: assistantMessage.id,
           webSearchEnabled: webEnabled,
+          attachments: attachment ? [attachment] : undefined,
           signal: controller.signal,
         });
         if (!response.ok) {
@@ -925,7 +975,7 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
       }
 
       // 方案 A：流式结束后异步轻量提取长期记忆建议
-      if (data.conversationMode === 'MAIN' && answer && shouldExtractMemorySuggestion(content)) {
+      if (data.conversationMode === 'MAIN' && answer && shouldExtractMemorySuggestion(modelContent)) {
         extractMemoriesWithCurrentModel({
           mode: 'single',
           userMessage: content,
@@ -1539,7 +1589,7 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
                             来自 QQ
                           </div>
                         )}
-                        {message.content ? <MessageContent role={message.role} content={message.content} /> : <span className="inline-flex gap-1 py-1"><i className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-300" /><i className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-300 [animation-delay:120ms]" /><i className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-300 [animation-delay:240ms]" /></span>}
+                        {message.content ? <MessageContent role={message.role} content={message.content} attachments={message.attachments} /> : <span className="inline-flex gap-1 py-1"><i className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-300" /><i className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-300 [animation-delay:120ms]" /><i className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-300 [animation-delay:240ms]" /></span>}
                       </MessageBubbleFrame>
 
                       {/* 方案 A：建议记忆提示卡片 */}
@@ -1603,14 +1653,55 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
                     </div>
                   )}
                   {error && <p className="mb-2 px-1 text-xs font-bold text-rose-600">{error}</p>}
+                  {pendingAttachment && (
+                    <div className="mb-2 flex items-center justify-between gap-3 rounded-xl border border-black/[0.06] bg-white px-3 py-2 shadow-sm">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <img
+                          src={pendingAttachment.url}
+                          alt={pendingAttachment.name || '待发送图片'}
+                          className="h-12 w-12 shrink-0 rounded-lg object-cover"
+                        />
+                        <span className="truncate text-xs font-bold text-slate-600">{pendingAttachment.name || '已选择图片'}</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setPendingAttachment(null)}
+                        aria-label="移除图片"
+                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                      >
+                        <X size={15} />
+                      </button>
+                    </div>
+                  )}
                   <ComposerShell
                     rowClassName="gap-2"
-                    toolbar={(webEnabled || localModelActive) ? (
+                    toolbar={(webEnabled || ollamaAvailable || pendingAttachment) ? (
                       <div className="flex flex-wrap items-center gap-1.5 pb-1 pt-0.5">
-                        {localModelActive && (
-                          <div className="inline-flex h-7 items-center gap-1.5 rounded-lg bg-slate-100 px-2 text-xs font-black text-slate-700 shadow-xs">
-                            <Cpu size={12} className="shrink-0" />
-                            <span>Ollama 本地</span>
+                        {ollamaAvailable && (
+                          <div className="inline-flex h-7 items-center rounded-lg bg-slate-100 p-0.5 text-[11px] font-black" role="group" aria-label="模型来源">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setModelSource('ONLINE');
+                              }}
+                              aria-pressed={modelSource === 'ONLINE'}
+                              className={cn('inline-flex h-6 items-center gap-1 rounded-md px-2 transition', modelSource === 'ONLINE' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-500 hover:text-slate-950')}
+                            >
+                              <Globe2 size={11} />
+                              线上
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setModelSource('OLLAMA');
+                                setWebEnabled(false);
+                              }}
+                              aria-pressed={modelSource === 'OLLAMA'}
+                              className={cn('inline-flex h-6 items-center gap-1 rounded-md px-2 transition', modelSource === 'OLLAMA' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-500 hover:text-slate-950')}
+                            >
+                              <Cpu size={11} />
+                              本地
+                            </button>
                           </div>
                         )}
                         {webEnabled && (
@@ -1630,9 +1721,28 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
                       </div>
                     ) : undefined}
                   >
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,image/gif"
+                      className="hidden"
+                      onChange={handleImageSelect}
+                    />
                     <div ref={toolsRef} className="relative mb-0.5 shrink-0">
                       {toolsOpen && (
                         <div className="absolute bottom-[calc(100%+8px)] left-0 z-30 w-56 rounded-xl border border-black/[0.08] bg-white p-1.5 shadow-xl">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setToolsOpen(false);
+                              window.requestAnimationFrame(() => fileInputRef.current?.click());
+                            }}
+                            disabled={streaming || uploadingImage}
+                            className="flex min-h-10 w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-xs font-black text-slate-600 transition hover:bg-slate-50 hover:text-slate-950 disabled:opacity-40"
+                          >
+                            {uploadingImage ? <Loader2 size={16} className="animate-spin" /> : <ImagePlus size={16} />}
+                            <span className="min-w-0 flex-1">上传图片</span>
+                          </button>
                           <button
                             type="button"
                             role="switch"
@@ -1688,6 +1798,7 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
                     <textarea
                       value={input}
                       onChange={(event) => setInput(event.target.value)}
+                      onPaste={handleImagePaste}
                       onKeyDown={(event) => {
                         if (event.key === 'Enter' && !event.shiftKey) {
                           event.preventDefault();
@@ -1710,7 +1821,7 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
                     ) : (
                       <button
                         onClick={send}
-                        disabled={!input.trim() || !data}
+                        disabled={(!input.trim() && !pendingAttachment) || uploadingImage || !data}
                         aria-label="发送"
                         className="mb-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-950 text-white shadow-sm transition disabled:opacity-30"
                       >

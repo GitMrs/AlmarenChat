@@ -1,10 +1,11 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Check, Globe2, Image as ImageIcon, ImagePlus, Loader2, Plus, Send, Square, Trash2, X } from 'lucide-react';
+import { Check, Cloud, Cpu, Globe2, Image as ImageIcon, ImagePlus, Loader2, Plus, Send, Square, Trash2, X } from 'lucide-react';
 import ComposerShell from '@/components/chat/ComposerShell';
 import { cn } from '@/lib/utils';
 import type { MessageAttachment } from '@/types';
+import type { BrowserModelSource } from '@/lib/browser-model';
 
 type ChatComposerProps = {
   agentName: string;
@@ -31,6 +32,9 @@ type ChatComposerProps = {
   onModeChange: (mode: 'chat' | 'image') => void;
   onClearMessages?: () => void;
   canClearMessages?: boolean;
+  modelSource: BrowserModelSource;
+  ollamaAvailable: boolean;
+  onModelSourceChange: (source: BrowserModelSource) => void;
 };
 
 export default function ChatComposer({
@@ -58,6 +62,9 @@ export default function ChatComposer({
   onModeChange,
   onClearMessages,
   canClearMessages = false,
+  modelSource,
+  ollamaAvailable,
+  onModelSourceChange,
 }: ChatComposerProps) {
   const [toolsOpen, setToolsOpen] = useState(false);
   const toolsRef = useRef<HTMLDivElement>(null);
@@ -117,19 +124,45 @@ export default function ChatComposer({
         )}
         <ComposerShell
           rowClassName="gap-3"
-          toolbar={mode === 'image' ? (
-            <div className="inline-flex h-8 max-w-full items-center gap-2 rounded-lg bg-white px-2.5 text-xs font-black text-slate-600 shadow-sm">
-              <ImageIcon size={13} className="shrink-0" />
-              <span className="truncate">生成图片</span>
-              <button
-                type="button"
-                onClick={() => onModeChange('chat')}
-                aria-label="退出生图模式"
-                title="退出生图模式"
-                className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-900"
-              >
-                <X size={12} />
-              </button>
+          toolbar={(mode === 'image' || ollamaAvailable) ? (
+            <div className="flex flex-wrap items-center gap-2">
+              {ollamaAvailable && (
+                <div className="inline-flex h-8 items-center rounded-lg bg-white p-0.5 text-[11px] font-black shadow-sm" role="group" aria-label="模型来源">
+                  <button
+                    type="button"
+                    onClick={() => onModelSourceChange('ONLINE')}
+                    aria-pressed={modelSource === 'ONLINE'}
+                    className={cn('inline-flex h-7 items-center gap-1 rounded-md px-2.5 transition', modelSource === 'ONLINE' ? 'bg-slate-950 text-white' : 'text-slate-500 hover:text-slate-950')}
+                  >
+                    <Cloud size={12} />
+                    线上
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onModelSourceChange('OLLAMA')}
+                    aria-pressed={modelSource === 'OLLAMA'}
+                    className={cn('inline-flex h-7 items-center gap-1 rounded-md px-2.5 transition', modelSource === 'OLLAMA' ? 'bg-slate-950 text-white' : 'text-slate-500 hover:text-slate-950')}
+                  >
+                    <Cpu size={12} />
+                    本地
+                  </button>
+                </div>
+              )}
+              {mode === 'image' && (
+                <div className="inline-flex h-8 max-w-full items-center gap-2 rounded-lg bg-white px-2.5 text-xs font-black text-slate-600 shadow-sm">
+                  <ImageIcon size={13} className="shrink-0" />
+                  <span className="truncate">生成图片</span>
+                  <button
+                    type="button"
+                    onClick={() => onModeChange('chat')}
+                    aria-label="退出生图模式"
+                    title="退出生图模式"
+                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-900"
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              )}
             </div>
           ) : undefined}
         >

@@ -35,7 +35,7 @@ export default function SpaceDiscussionDialog({
   const toggle = (agentId: string) => {
     if (selectedIds.includes(agentId)) {
       onSelectedIdsChange(selectedIds.filter((id) => id !== agentId));
-    } else if (selectedIds.length < 4) {
+    } else if (selectedIds.length < 6) {
       onSelectedIdsChange([...selectedIds, agentId]);
     }
   };
@@ -78,7 +78,7 @@ export default function SpaceDiscussionDialog({
           <div>
             <div className="mb-2 flex items-center justify-between text-xs font-black text-slate-500">
               <span>参与成员</span>
-              <span className="text-slate-300">{selectedIds.length}/4</span>
+              <span className="text-slate-300">{selectedIds.length}/6</span>
             </div>
             <div className="grid grid-cols-2 gap-2">
               {agents.map((agent) => {

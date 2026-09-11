@@ -45,11 +45,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
     const requestedTurns = Math.trunc(Number(body.maxTurns) || (kind === 'gomoku' ? 60 : participantIds.length));
     const maxTurns = kind === 'gomoku'
       ? Math.min(225, Math.max(2, requestedTurns))
-      : Math.min(12, Math.max(participantIds.length, requestedTurns));
+      : Math.max(participantIds.length, requestedTurns);
 
     if (!['collaboration', 'gomoku'].includes(kind)) return NextResponse.json({ error: '不支持的接力类型' }, { status: 400 });
     if (!goal) return NextResponse.json({ error: '请输入接力目标' }, { status: 400 });
-    if (participantIds.length < 2 || participantIds.length > 4) return NextResponse.json({ error: '接力需要选择 2 至 4 位空间成员' }, { status: 400 });
+    if (participantIds.length < 2) return NextResponse.json({ error: '接力至少需要选择两位空间成员' }, { status: 400 });
     if (kind === 'gomoku' && participantIds.length !== 2) return NextResponse.json({ error: '五子棋需要选择两位空间成员' }, { status: 400 });
 
     const [activeRun, activeDiscussion, activeRelay] = await Promise.all([

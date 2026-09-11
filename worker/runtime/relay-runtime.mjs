@@ -452,7 +452,7 @@ export function createRelayRuntime({
                 currentAgent.systemPrompt || currentAgent.description || `你是 ${currentAgent.name}。`,
                 currentAgent.memoryContext || '',
                 `你正在参加由空间协调者组织的接力协作。当前只以“${currentAgent.name}”身份完成自己这一轮。`,
-                '必须承接已有成果，增加新的判断、改进或收敛，不要从头重复问题。',
+                '可以承接、补充或回应已有成果，也可以从自己的职责提出不同意见；无论采用哪种方式，都必须贡献新内容，避免机械重复或代替其他成员发言。',
                 '完成后必须调用 submit_relay_turn。不得代替其他成员发言，不得读写文件、联网、运行命令或调用 Skill。',
               ].join('\n\n'),
             },

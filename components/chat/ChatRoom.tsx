@@ -23,7 +23,7 @@ import { cn } from '@/lib/utils';
 import { CATEGORY_COLORS } from '@/types';
 import type { Agent, MessageAttachment } from '@/types';
 import type { ChatMessage, DisplayAgent } from '@/components/chat/ChatMessageItem';
-import type { BrowserModelConfig } from '@/lib/browser-model';
+import type { BrowserModelConfig, BrowserModelSource } from '@/lib/browser-model';
 
 const promptMap: Record<string, string[]> = {
   写作: ['帮我把这段话改得更有吸引力', '生成 5 个标题', '把内容改成小红书风格'],
@@ -114,6 +114,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
   const [chatMode, setChatMode] = useState<'chat' | 'image'>('chat');
   const [browserModelConfig, setBrowserModelConfig] = useState<BrowserModelConfig>({ ...DEFAULT_BROWSER_MODEL_CONFIG });
+  const [modelSource, setModelSource] = useState<BrowserModelSource>('ONLINE');
   const [hasMoreMessages, setHasMoreMessages] = useState(false);
   const [loadingMoreMessages, setLoadingMoreMessages] = useState(false);
   const [shouldStickToBottom, setShouldStickToBottom] = useState(true);
@@ -136,7 +137,9 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
   }, [messages]);
 
   useEffect(() => {
-    setBrowserModelConfig(readBrowserModelConfigForScope('GLOBAL'));
+    const config = readBrowserModelConfigForScope('GLOBAL');
+    setBrowserModelConfig(config);
+    setModelSource(config.source);
   }, []);
 
   useEffect(() => {
@@ -503,7 +506,8 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
             systemPrompt: displayAgent.systemPrompt,
           }
         : undefined;
-      const usesBrowserModel = browserModelConfig.source === 'OLLAMA';
+      const usesBrowserModel = modelSource === 'OLLAMA';
+      const activeBrowserModelConfig = { ...browserModelConfig, source: modelSource };
       let result: { stream: ReadableStream<Uint8Array>; conversationId?: string };
 
       if (requestMode === 'image') {
@@ -585,7 +589,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
 
         result = {
           stream: await streamBrowserModel({
-            config: browserModelConfig,
+            config: activeBrowserModelConfig,
             messages: modelMessages,
             signal: controller.signal,
           }),
@@ -674,7 +678,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
     abortRef.current?.abort();
     setIsStreaming(false);
     if (streamingContent) {
-      if (browserModelConfig.source === 'OLLAMA' && conversationId) {
+      if (modelSource === 'OLLAMA' && conversationId) {
         conversationsApi.sendMessage(conversationId, streamingContent, { role: 'assistant' }).catch(() => {});
       }
       setMessages((prev) => [
@@ -862,7 +866,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
         isLoggedIn={isLoggedIn}
         contextMessageLimit={contextMessageLimit}
         maxContextMessageLimit={MAX_CONTEXT_MESSAGE_LIMIT}
-        modelConfig={browserModelConfig}
+        modelConfig={{ ...browserModelConfig, source: modelSource }}
         onBack={() => router.back()}
         onToggleDetails={() => setDetailsOpen((value) => !value)}
         onOpenMobileDetails={() => setMobileDetailsOpen(true)}
@@ -1002,7 +1006,16 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
             mode={chatMode}
             onClearMessages={() => setConfirmClearOpen(true)}
             canClearMessages={messages.length > 0}
-            imageGenerationAvailable={Boolean(userSettings?.imageGenerationAvailable) && browserModelConfig.source !== 'OLLAMA'}
+            imageGenerationAvailable={Boolean(userSettings?.imageGenerationAvailable) && modelSource !== 'OLLAMA'}
+            modelSource={modelSource}
+            ollamaAvailable={Boolean(browserModelConfig.baseUrl && browserModelConfig.model)}
+            onModelSourceChange={(source) => {
+              setModelSource(source);
+              if (source === 'OLLAMA') {
+                setWebSearchEnabled(false);
+                setChatMode('chat');
+              }
+            }}
             onModeChange={(mode) => {
               setChatMode(mode);
               if (mode === 'image') setWebSearchEnabled(false);
