@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { randomUUID } from 'node:crypto';
 import { Prisma } from '@/src/generated/prisma/client';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
@@ -16,8 +17,8 @@ import { fetchWebPage } from '@/lib/web-fetch.mjs';
 import { collectChatCompletionStream, runToolLoop } from '@/lib/agent-runtime/tool-loop.mjs';
 import { normalizeTaskProposalSteps, taskProposalCapabilities, taskProposalNeedsClarification, taskProposalWithTurnNetworkAuthorization } from '@/lib/task-proposals';
 import { professionalDeliverableNeedsTask } from '@/lib/task-proposal-policy.mjs';
-import { compressConversationContext, estimateMessagesTokens } from '@/lib/context-compression';
-import { conversationContextTargetTokens } from '@/lib/model-limits.mjs';
+import { buildContextCheckpointSummary, compressConversationContext, estimateMessagesTokens } from '@/lib/context-compression';
+import { conversationContextTargetTokens, modelTokenLimits } from '@/lib/model-limits.mjs';
 import { spaceMemoryContext } from '@/lib/space-memory-policy.mjs';
 import { persistSpaceMemory, rebuildSpaceMemory, spaceMemoryNeedsTrustedRebuild } from '@/app/api/_lib/space-memory';
 import { recentRunEvidenceContext } from '@/lib/agent-run-evidence.mjs';
@@ -631,22 +632,88 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
     }
 
     const settings = await userModelSettings(userId);
-    const persistedHistory = await prisma.spaceMessage.findMany({
-      where: { spaceId },
-      orderBy: { createdAt: 'desc' },
-      take: Math.max(1, Math.min(80, settings.contextMessageLimit * 2)), // 获取更多消息以便智能压缩
-    });
+    let checkpoint = null;
+    let checkpointAvailable = true;
+    try {
+      checkpoint = await prisma.spaceContextCheckpoint.findUnique({ where: { spaceId } });
+    } catch (error: any) {
+      if (!/no such table/i.test(String(error?.message || ''))) throw error;
+      checkpointAvailable = false;
+    }
+    const persistedHistory = checkpoint
+      ? await prisma.spaceMessage.findMany({
+          where: {
+            spaceId,
+            OR: [
+              { createdAt: { gt: checkpoint.throughCreatedAt } },
+              { createdAt: checkpoint.throughCreatedAt, id: { gt: checkpoint.throughMessageId } },
+            ],
+          },
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+          take: Math.max(1, Math.min(240, settings.contextMessageLimit * 4)),
+        })
+      : await prisma.spaceMessage.findMany({
+          where: { spaceId },
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          take: Math.max(1, Math.min(240, settings.contextMessageLimit * 4)),
+        });
     const fallbackHistory = Array.isArray(history) ? history : [];
-    const rawHistory = persistedHistory.length > 0 ? persistedHistory.reverse() : fallbackHistory.slice(-settings.contextMessageLimit * 2);
+    const checkpointMessage = checkpoint ? {
+      id: `checkpoint:${checkpoint.id}`,
+      role: 'system',
+      content: checkpoint.summary,
+      speakerAgentId: null,
+      attachments: null,
+      createdAt: checkpoint.updatedAt,
+    } : null;
+    const persistedMessages = checkpoint ? persistedHistory : [...persistedHistory].reverse();
+    const rawHistory = persistedMessages.length > 0
+      ? (checkpointMessage ? [checkpointMessage, ...persistedMessages] : persistedMessages)
+      : fallbackHistory.slice(-settings.contextMessageLimit * 2);
     const pendingProposalMessage = [...rawHistory].reverse().find((item: { attachments?: unknown }) => pendingTaskProposal(item.attachments));
     const currentPendingProposal = pendingTaskProposal(pendingProposalMessage?.attachments);
 
-    // 智能上下文压缩
+    // 增量上下文压缩：压缩点之前的原始消息保留在数据库，只把摘要作为后续基线。
     let sourceHistory = rawHistory;
     const originalTokenCount = estimateMessagesTokens(rawHistory);
     const targetTokens = conversationContextTargetTokens(settings.modelName || DEFAULT_MODEL, settings.modelContextWindow);
+    const compactionTriggerTokens = modelTokenLimits(settings.modelName || DEFAULT_MODEL, settings.modelContextWindow).compactionTriggerTokens;
 
-    if (rawHistory.length > settings.contextMessageLimit || originalTokenCount > targetTokens) {
+    if (checkpointAvailable && originalTokenCount > compactionTriggerTokens && rawHistory.length > 2) {
+      const recentCount = Math.max(10, Math.min(40, Math.floor(settings.contextMessageLimit * 0.4)));
+      const boundary = Math.max(1, rawHistory.length - recentCount);
+      const checkpointSource = rawHistory.slice(0, boundary).filter((message) => !String(message.id).startsWith('checkpoint:'));
+      const recentMessages = rawHistory.slice(boundary);
+      const throughMessage = checkpointSource[checkpointSource.length - 1];
+      if (throughMessage) {
+        const summary = buildContextCheckpointSummary(checkpointSource);
+        await prisma.spaceContextCheckpoint.upsert({
+          where: { spaceId },
+          create: {
+            id: randomUUID(), spaceId, throughMessageId: throughMessage.id,
+            throughCreatedAt: new Date(throughMessage.createdAt), summary,
+            sourceMessageCount: checkpointSource.length,
+            sourceTokenCount: estimateMessagesTokens(checkpointSource),
+          },
+          update: {
+            throughMessageId: throughMessage.id,
+            throughCreatedAt: new Date(throughMessage.createdAt),
+            summary,
+            sourceMessageCount: checkpointSource.length,
+            sourceTokenCount: estimateMessagesTokens(checkpointSource),
+          },
+        });
+        sourceHistory = [{
+          id: `checkpoint:${spaceId}`,
+          role: 'system',
+          content: summary,
+          speakerAgentId: null,
+          attachments: null,
+          createdAt: new Date().toISOString(),
+        }, ...recentMessages];
+        console.log(`[Space ${spaceId}] 增量上下文压缩：归档 ${checkpointSource.length} 条消息，保留 ${recentMessages.length} 条近期消息`);
+      }
+    } else if (!checkpoint && (rawHistory.length > settings.contextMessageLimit || originalTokenCount > targetTokens)) {
       const compressionResult = compressConversationContext(rawHistory, {
         maxMessages: settings.contextMessageLimit,
         targetTokens,
@@ -654,13 +721,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
         aggressiveAfter: Math.floor(settings.contextMessageLimit * 1.5),
         preserveSystem: false,
       }, new Map(allAgents.map(agent => [agent.id, agent])));
-
       sourceHistory = compressionResult.compressedMessages;
-
-      // 记录压缩统计（可选，用于监控）
-      if (compressionResult.stats.reductionTokens > 1000) {
-        console.log(`[Space ${spaceId}] 上下文压缩: ${compressionResult.stats.originalCount}条消息 -> ${compressionResult.stats.compressedCount}条, 减少${compressionResult.stats.reductionPercentage}% tokens`);
-      }
     }
 
     const isMultiReply = interactionMode === 'multi_reply';

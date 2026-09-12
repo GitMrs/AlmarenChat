@@ -20,6 +20,12 @@ interface CompressionStats {
     compressedTokens: number;
   }>;
   messageCount: number;
+  checkpoint: {
+    updatedAt: string;
+    sourceMessageCount: number;
+    sourceTokenCount: number;
+    throughMessageId: string;
+  } | null;
 }
 
 interface UseContextCompressionOptions {

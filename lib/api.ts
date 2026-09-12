@@ -659,6 +659,12 @@ export const spaces = {
       compressionLevel: 'none' | 'light' | 'moderate' | 'aggressive';
       budgetExceeded: boolean;
       messageCount: number;
+      checkpoint: {
+        updatedAt: string;
+        sourceMessageCount: number;
+        sourceTokenCount: number;
+        throughMessageId: string;
+      } | null;
       compressionHistory: Array<{
         timestamp: string;
         reductionPercentage: number;

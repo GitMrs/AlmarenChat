@@ -142,6 +142,18 @@ export function CompressionStatusPanel({
         {/* 展开的详细信息 */}
         {showDetails && (
           <div className="border-t border-slate-200 px-4 py-3">
+            {stats.checkpoint && (
+              <div className="mb-4 rounded-lg bg-white/60 p-3 text-xs">
+                <div className="font-black text-slate-700">增量压缩检查点</div>
+                <div className="mt-1 grid grid-cols-2 gap-2 text-slate-500">
+                  <span>已归档消息：{stats.checkpoint.sourceMessageCount} 条</span>
+                  <span>已归档约：{Math.round(stats.checkpoint.sourceTokenCount / 1000)}k tokens</span>
+                </div>
+                <div className="mt-1 text-[11px] text-slate-400">
+                  下一次检查：发送下一条消息时；超过当前安全预算后继续建立检查点
+                </div>
+              </div>
+            )}
             {/* Token 使用可视化 */}
             <div className="mb-4">
               <div className="mb-2 flex items-center justify-between text-xs font-semibold text-slate-700">

@@ -833,6 +833,20 @@ try {
     `);
     if (!hasColumn('SpaceMessage', 'sourceKey')) db.exec('ALTER TABLE "SpaceMessage" ADD COLUMN "sourceKey" TEXT');
     db.exec(`
+      CREATE TABLE IF NOT EXISTS "SpaceContextCheckpoint" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "spaceId" TEXT NOT NULL UNIQUE,
+        "throughMessageId" TEXT NOT NULL,
+        "throughCreatedAt" DATETIME NOT NULL,
+        "summary" TEXT NOT NULL,
+        "sourceMessageCount" INTEGER NOT NULL DEFAULT 0,
+        "sourceTokenCount" INTEGER NOT NULL DEFAULT 0,
+        "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" DATETIME NOT NULL,
+        CONSTRAINT "SpaceContextCheckpoint_spaceId_fkey" FOREIGN KEY ("spaceId") REFERENCES "Space" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS "SpaceContextCheckpoint_spaceId_key" ON "SpaceContextCheckpoint"("spaceId");
+      CREATE INDEX IF NOT EXISTS "SpaceContextCheckpoint_throughCreatedAt_idx" ON "SpaceContextCheckpoint"("throughCreatedAt");
       CREATE TABLE IF NOT EXISTS "SpaceWorkVersion" (
         "id" TEXT NOT NULL PRIMARY KEY,
         "workId" TEXT NOT NULL,

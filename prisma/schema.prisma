@@ -126,6 +126,7 @@ model Space {
 
   members  SpaceMember[]
   messages SpaceMessage[]
+  contextCheckpoint SpaceContextCheckpoint?
   files    SpaceFile[]
   runs     AgentRun[]
   works    SpaceWork[]
@@ -370,6 +371,19 @@ model SpaceMessage {
 
   @@index([spaceId, createdAt])
   @@index([speakerAgentId])
+}
+
+model SpaceContextCheckpoint {
+  id                 String   @id @default(uuid())
+  spaceId            String   @unique
+  space              Space    @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  throughMessageId   String
+  throughCreatedAt   DateTime
+  summary            String
+  sourceMessageCount Int      @default(0)
+  sourceTokenCount   Int      @default(0)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 }
 
 model SpaceFile {

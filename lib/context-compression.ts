@@ -63,6 +63,25 @@ export function estimateMessagesTokens(messages: Pick<CompressionMessage, 'conte
   return messages.reduce((total, message) => total + estimateMessageTokens(message), 0);
 }
 
+/** Build a bounded, deterministic checkpoint without deleting the source messages. */
+export function buildContextCheckpointSummary(messages: CompressionMessage[], maxChars = 24_000): string {
+  const lines: string[] = [];
+  let used = 0;
+  for (const message of messages) {
+    const role = message.role === 'user' ? '用户' : message.role === 'assistant' ? '助手' : '系统';
+    const content = String(message.content || '').replace(/\s+/g, ' ').trim();
+    if (!content) continue;
+    const remaining = maxChars - used;
+    if (remaining <= 0) break;
+    const line = `${role}：${content.slice(0, Math.max(80, remaining - role.length - 2))}`;
+    lines.push(line);
+    used += line.length + 1;
+  }
+  return lines.length > 0
+    ? `此前对话检查点（原始消息仍保存在空间记录中，仅供上下文恢复）：\n${lines.join('\n')}`
+    : '此前对话检查点：没有可提取的正文。';
+}
+
 export function analyzeMessageImportance(
   message: CompressionMessage,
   context: {

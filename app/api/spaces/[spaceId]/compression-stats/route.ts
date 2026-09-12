@@ -23,6 +23,12 @@ export async function GET(request: Request, { params }: { params: Promise<{ spac
     }
 
     const contextMessageLimit = Math.max(1, Math.min(80, space.user.contextMessageLimit || 40));
+    let checkpoint: any = null;
+    try {
+      checkpoint = await prisma.spaceContextCheckpoint.findUnique({ where: { spaceId } });
+    } catch (error: any) {
+      if (!/no such table/i.test(String(error?.message || ''))) throw error;
+    }
 
     // 与聊天请求使用相同的候选历史窗口
     const messages = await prisma.spaceMessage.findMany({
@@ -43,6 +49,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ spac
         messageCount: 0,
         compressionHistory: [],
         lastCompressedAt: null,
+        checkpoint: null,
       });
     }
 
@@ -102,6 +109,12 @@ export async function GET(request: Request, { params }: { params: Promise<{ spac
       lastCompressedAt: compressionHistory.length > 0
         ? compressionHistory[0].timestamp
         : null,
+      checkpoint: checkpoint ? {
+        updatedAt: checkpoint.updatedAt,
+        sourceMessageCount: checkpoint.sourceMessageCount,
+        sourceTokenCount: checkpoint.sourceTokenCount,
+        throughMessageId: checkpoint.throughMessageId,
+      } : null,
     });
   } catch (e: any) {
     console.error('获取压缩统计失败:', e);
