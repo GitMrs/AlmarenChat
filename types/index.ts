@@ -230,6 +230,16 @@ export interface SpaceConnector {
   updatedAt: string;
 }
 
+export interface SpaceMcpServer {
+  id: string;
+  name: string;
+  url: string;
+  enabled: boolean;
+  hasHeaders: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface SpaceConnectorExecution {
   id: string;
   connectorId: string;
@@ -416,6 +426,7 @@ export interface SpaceFile {
   taskId?: string | null;
   workId?: string | null;
   work?: SpaceWork | null;
+  assetRole?: 'FOUNDATION' | 'INPUT' | 'SHARED' | 'OUTPUT' | 'ARCHIVE' | 'SKILL' | 'LOG' | string;
   status?: 'GENERATING' | 'WAITING_APPROVAL' | 'READY' | 'INCOMPLETE';
   shareId?: string | null;
   shareEnabled?: boolean;

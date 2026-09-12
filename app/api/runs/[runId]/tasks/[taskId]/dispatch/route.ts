@@ -6,6 +6,7 @@ import { getAgentRunForUser } from '@/app/api/_lib/agent-runs';
 import { resolveAgent } from '@/app/api/_lib/spaces';
 import { coordinatorStateAfterDispatchRejection } from '@/lib/agent-runtime-v3-policy.mjs';
 import { resolveTaskSkill } from '@/lib/agent-runtime/skill-registry.mjs';
+import { getSpaceSkill } from '@/lib/space-skills.mjs';
 
 const ACTIONS = new Set(['approve', 'reject']);
 
@@ -109,11 +110,15 @@ export async function POST(
       || title !== task.title
       || instruction !== task.instruction
       || acceptanceCriteria !== (task.acceptanceCriteria || '');
+    const spaceSkill = task.skillId?.startsWith('space:')
+      ? await getSpaceSkill({ projectRoot: process.cwd(), userId, spaceId: existing.spaceId, skillId: task.skillId })
+      : null;
     const skill = resolveTaskSkill({
       requestedSkillId: taskContentRevised ? undefined : task.skillId,
       agent,
       text: `${title}\n${instruction}\n${acceptanceCriteria}`,
       authorization,
+      additionalSkills: spaceSkill ? [spaceSkill] : [],
     });
 
     const revised = taskContentRevised

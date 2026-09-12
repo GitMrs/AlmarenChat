@@ -32,8 +32,9 @@ import {
   MAX_CONTINUATION_ITERATIONS,
 } from '@/lib/agent-wait-policy.mjs';
 import { isEditableSpaceFile, isPreviewableSpaceImage } from '@/lib/space-files';
+import { spaceAssetRoleLabel } from '@/lib/space-asset-policy.mjs';
 import { createClientId } from '@/lib/client-id';
-import type { Agent, AgentRun, AgentRunEvent, AgentTask, SpaceActionRequest, SpaceAutomation, SpaceConnector, SpaceDiscussion, SpaceFile, SpaceLearning, SpaceLearningItem, SpaceMessage, SpaceOperationOutcome, SpaceOperationsSummary, SpacePiCoordinationRequest, SpacePiExecutionActivity, SpacePiExecutionNote, SpacePiSkillApproval, SpaceRelay, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal, SpaceWork } from '@/types';
+import type { Agent, AgentRun, AgentRunEvent, AgentTask, SpaceActionRequest, SpaceAutomation, SpaceConnector, SpaceDiscussion, SpaceFile, SpaceLearning, SpaceLearningItem, SpaceMessage, SpaceMcpServer, SpaceOperationOutcome, SpaceOperationsSummary, SpacePiCoordinationRequest, SpacePiExecutionActivity, SpacePiExecutionNote, SpacePiSkillApproval, SpaceRelay, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal, SpaceWork } from '@/types';
 
 const FALLBACK_COLOR = '#4f46e5';
 const SPACE_COORDINATOR_ID = 'space-coordinator';
@@ -473,7 +474,13 @@ export default function SpaceDetailPage() {
   const [operationOutcomes, setOperationOutcomes] = useState<SpaceOperationOutcome[]>([]);
   const [operationsLoading, setOperationsLoading] = useState(false);
   const [connectors, setConnectors] = useState<SpaceConnector[]>([]);
+  const [mcpServers, setMcpServers] = useState<SpaceMcpServer[]>([]);
+  const [mcpName, setMcpName] = useState('');
+  const [mcpUrl, setMcpUrl] = useState('');
+  const [mcpHeaders, setMcpHeaders] = useState('');
+  const [mcpBusy, setMcpBusy] = useState(false);
   const [selectedWorkId, setSelectedWorkId] = useState('all');
+  const [fileAssetTab, setFileAssetTab] = useState<'all' | 'FOUNDATION' | 'INPUT' | 'OUTPUT' | 'SHARED'>('all');
   const [activeWorkId, setActiveWorkId] = useState('new');
   const [workMenuOpen, setWorkMenuOpen] = useState(false);
   const [switchingWork, setSwitchingWork] = useState(false);
@@ -669,6 +676,12 @@ export default function SpaceDetailPage() {
   const waitingTask = currentRun?.tasks.find((task) => task.status === 'WAITING') || null;
   const waitingForExecutionContinuation = Boolean(waitingTask && isExecutionBudgetWait(waitingTask.waitReason));
   const waitingForResearchSource = Boolean(waitingTask && isResearchSourceWait(waitingTask.waitReason));
+  const waitingForSkillPermission = Boolean(
+    waitingTask
+      && !waitingForExecutionContinuation
+      && !waitingForResearchSource
+      && /Skill.*脚本|脚本.*Skill|code_execute/i.test(`${waitingTask.waitQuestion || ''}\n${waitingTask.waitReason || ''}`)
+  );
   const waitingForRunContinuation = Boolean(
     currentRun?.status === 'WAITING' && !waitingTask && isRunBudgetWait(currentRun.error)
   );
@@ -784,10 +797,12 @@ export default function SpaceDetailPage() {
     ].filter(Boolean).join(' · ');
   };
   const visibleFiles = useMemo(() => {
-    if (selectedWorkId === 'all') return files;
-    if (selectedWorkId === 'legacy') return files.filter((file) => !file.workId);
-    return files.filter((file) => !file.workId || file.workId === selectedWorkId);
-  }, [files, selectedWorkId]);
+    const userFiles = files.filter((file) => !['SKILL', 'LOG'].includes(String(file.assetRole || '')));
+    const byRole = fileAssetTab === 'all' ? userFiles : userFiles.filter((file) => file.assetRole === fileAssetTab);
+    if (selectedWorkId === 'all' || fileAssetTab !== 'OUTPUT') return byRole;
+    if (selectedWorkId === 'legacy') return byRole.filter((file) => !file.workId);
+    return byRole.filter((file) => file.workId === selectedWorkId);
+  }, [files, selectedWorkId, fileAssetTab]);
   const hasPendingTaskProposal = useMemo(
     () => messages.some((message) => taskProposalOf(message)?.status === 'pending'),
     [messages]
@@ -958,7 +973,7 @@ export default function SpaceDetailPage() {
     setLoading(true);
     setError('');
     try {
-      const [spaceResult, messageResult, fileResult, runResult, workResult, automationResult, actionResult, connectorResult, discussionResult, relayResult, skillResult, learningResult, builtIn, customResult] = await Promise.all([
+      const [spaceResult, messageResult, fileResult, runResult, workResult, automationResult, actionResult, connectorResult, mcpResult, discussionResult, relayResult, skillResult, learningResult, builtIn, customResult] = await Promise.all([
         spacesApi.get(spaceId),
         spacesApi.messages(spaceId, { limit: 60 }),
         spacesApi.files(spaceId),
@@ -967,6 +982,7 @@ export default function SpaceDetailPage() {
         spacesApi.automations(spaceId),
         spacesApi.actions(spaceId),
         spacesApi.connectors(spaceId),
+        spacesApi.mcpServers(spaceId),
         spacesApi.discussions(spaceId),
         spacesApi.relays(spaceId),
         spacesApi.skills(spaceId),
@@ -1002,6 +1018,7 @@ export default function SpaceDetailPage() {
       setAutomations(automationResult.automations);
       setActionRequests(actionResult.actions);
       setConnectors(connectorResult.connectors);
+      setMcpServers(mcpResult.servers);
       setWechatAppId(connectorResult.connectors.find((connector) => connector.provider === 'WECHAT_OFFICIAL_ACCOUNT')?.publicConfig.appId || '');
       setDiscussions(discussionResult.discussions);
       setRelays(relayResult.relays);
@@ -1863,6 +1880,64 @@ export default function SpaceDetailPage() {
     }
   };
 
+  const addMcpServer = async () => {
+    if (!mcpName.trim() || !mcpUrl.trim() || mcpBusy) return;
+    let headers: Record<string, string> | undefined;
+    if (mcpHeaders.trim()) {
+      try {
+        const parsed = JSON.parse(mcpHeaders);
+        if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object' || Object.entries(parsed).some(([key, value]) => !key.trim() || typeof value !== 'string')) {
+          throw new Error('Headers 必须是字符串键值 JSON');
+        }
+        headers = parsed as Record<string, string>;
+      } catch (error: any) {
+        setError(error.message || 'Headers JSON 格式无效');
+        return;
+      }
+    }
+    setMcpBusy(true);
+    setError('');
+    try {
+      const result = await spacesApi.addMcpServer(spaceId, { name: mcpName.trim(), url: mcpUrl.trim(), headers });
+      setMcpServers((items) => [...items, result.server]);
+      setMcpName('');
+      setMcpUrl('');
+      setMcpHeaders('');
+    } catch (error: any) {
+      setError(error.message || '保存 MCP 服务失败');
+    } finally {
+      setMcpBusy(false);
+    }
+  };
+
+  const toggleMcpServer = async (server: SpaceMcpServer) => {
+    if (mcpBusy) return;
+    setMcpBusy(true);
+    setError('');
+    try {
+      await spacesApi.setMcpServerEnabled(spaceId, server.id, !server.enabled);
+      setMcpServers((items) => items.map((item) => item.id === server.id ? { ...item, enabled: !server.enabled } : item));
+    } catch (error: any) {
+      setError(error.message || '更新 MCP 服务状态失败');
+    } finally {
+      setMcpBusy(false);
+    }
+  };
+
+  const removeMcpServer = async (server: SpaceMcpServer) => {
+    if (mcpBusy || !window.confirm(`确定删除 MCP 服务“${server.name}”吗？`)) return;
+    setMcpBusy(true);
+    setError('');
+    try {
+      await spacesApi.removeMcpServer(spaceId, server.id);
+      setMcpServers((items) => items.filter((item) => item.id !== server.id));
+    } catch (error: any) {
+      setError(error.message || '删除 MCP 服务失败');
+    } finally {
+      setMcpBusy(false);
+    }
+  };
+
   const requestWechatDraft = async (articleFile: SpaceFile, coverFileId: string, themeId: string) => {
     const result = await spacesApi.requestWechatDraft(spaceId, { articleFileId: articleFile.id, coverFileId, themeId, requestId: createClientId() });
     setActionRequests((items) => [result.action, ...items.filter((item) => item.id !== result.action.id)]);
@@ -2666,16 +2741,36 @@ export default function SpaceDetailPage() {
                       <div className="mt-1 text-xs font-semibold text-slate-400">{visibleFiles.length} 个文件</div>
                     </div>
                     <div className="flex min-w-0 items-center gap-2">
-                      <select value={selectedWorkId} onChange={(event) => setSelectedWorkId(event.target.value)} aria-label="筛选成果" className="h-10 min-w-0 flex-1 rounded-lg border border-black/[0.08] bg-white px-3 text-xs font-bold text-slate-700 outline-none sm:w-64">
-                        <option value="all">全部成果</option>
-                        {works.map((work, index) => <option key={work.id} value={work.id}>{WORK_NOUNS[work.kind] || '成果'} {works.length - index} · {compactWorkTitle(work.title, 14)}</option>)}
-                        {files.some((file) => !file.workId) && <option value="legacy">公共 / 历史</option>}
-                      </select>
+                      {fileAssetTab === 'OUTPUT' && <select value={selectedWorkId} onChange={(event) => setSelectedWorkId(event.target.value)} aria-label="筛选成果" className="h-10 min-w-0 flex-1 rounded-lg border border-black/[0.08] bg-white px-3 text-xs font-bold text-slate-700 outline-none sm:w-64">
+                          <option value="all">全部成果</option>
+                          {works.map((work, index) => <option key={work.id} value={work.id}>{WORK_NOUNS[work.kind] || '成果'} {works.length - index} · {compactWorkTitle(work.title, 14)}</option>)}
+                          {files.some((file) => !file.workId) && <option value="legacy">公共 / 历史</option>}
+                        </select>}
                       <button type="button" onClick={() => fileInputRef.current?.click()} disabled={uploadingFile} className="inline-flex h-10 shrink-0 items-center gap-2 rounded-lg bg-slate-950 px-3 text-xs font-black text-white disabled:bg-slate-200">
                         {uploadingFile ? <Loader2 className="animate-spin" size={15} /> : <UploadCloud size={15} />}
                         上传
                       </button>
                     </div>
+                  </div>
+                  <div className="mt-5 flex gap-1 overflow-x-auto border-b border-black/[0.06]" role="tablist" aria-label="文件类型">
+                    {[
+                      ['all', '全部'],
+                      ['FOUNDATION', '基础资料'],
+                      ['INPUT', '待处理'],
+                      ['OUTPUT', '成果'],
+                      ['SHARED', '共享资产'],
+                    ].map(([value, label]) => (
+                      <button
+                        key={value}
+                        type="button"
+                        role="tab"
+                        aria-selected={fileAssetTab === value}
+                        onClick={() => { setFileAssetTab(value as typeof fileAssetTab); if (value !== 'OUTPUT') setSelectedWorkId('all'); }}
+                        className={`shrink-0 border-b-2 px-3 py-2.5 text-xs font-black transition ${fileAssetTab === value ? 'border-slate-950 text-slate-950' : 'border-transparent text-slate-400 hover:text-slate-700'}`}
+                      >
+                        {label}
+                      </button>
+                    ))}
                   </div>
                   {error && <div className="mt-5 rounded-lg bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-600">{error}</div>}
                   {visibleFiles.length === 0 ? (
@@ -2690,7 +2785,7 @@ export default function SpaceDetailPage() {
                               <span className="truncate text-sm font-black text-slate-800">{file.fileName}</span>
                               <FileStatus status={file.status} />
                             </div>
-                            <div className="mt-1 truncate text-xs font-semibold text-slate-400">{fileSourceLabel(file)}{file.size ? ` · ${formatBytes(file.size)}` : ''}</div>
+                            <div className="mt-1 truncate text-xs font-semibold text-slate-400">{spaceAssetRoleLabel(file.assetRole || 'OUTPUT')} · {fileSourceLabel(file)}{file.size ? ` · ${formatBytes(file.size)}` : ''}</div>
                           </button>
                           <div className="ml-auto flex shrink-0 items-center gap-0.5 sm:gap-1 sm:border-l sm:border-black/[0.06] sm:pl-3">
                             <button type="button" onClick={() => { setFileEditorInitialMode('source'); setEditingFile(file); }} disabled={!isEditableSpaceFile(file.fileName)} title="编辑文件" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-900 disabled:hidden"><FilePenLine size={16} /></button>
@@ -2875,6 +2970,16 @@ export default function SpaceDetailPage() {
                           </div>
                           {!waitingForExecutionContinuation && (
                             <>
+                              {waitingForSkillPermission && (
+                                <button
+                                  type="button"
+                                  onClick={() => { setResumeAnswer('允许本次 Skill 脚本执行'); setResumeError(''); }}
+                                  className="mt-4 inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-slate-950 px-4 text-xs font-black text-white transition hover:bg-slate-800"
+                                >
+                                  <Check size={15} />
+                                  允许本次脚本执行
+                                </button>
+                              )}
                               <label htmlFor="task-wait-answer" className="mt-4 block text-xs font-black text-slate-600">补充信息</label>
                               <textarea
                                 id="task-wait-answer"
@@ -4142,6 +4247,56 @@ export default function SpaceDetailPage() {
                         {savingInstructions ? <Loader2 className="animate-spin" size={15} /> : <Save size={15} />}
                         保存设置
                       </button>
+                      <section className="border-t border-black/[0.06] pt-5">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="flex items-center gap-2 text-sm font-black text-slate-700">
+                              <Globe2 size={16} />
+                              MCP 工具服务
+                            </div>
+                            <p className="mt-1 text-xs font-semibold leading-5 text-slate-400">
+                              为本空间的 Pi 任务提供远程工具。仅支持 HTTPS 地址，调用仍受联网授权和沙箱策略约束。
+                            </p>
+                          </div>
+                          <span className="shrink-0 text-xs font-black text-slate-400">{mcpServers.length} 个</span>
+                        </div>
+                        {mcpServers.length > 0 && (
+                          <div className="mt-3 space-y-2">
+                            {mcpServers.map((server) => (
+                              <div key={server.id} className="flex items-center gap-3 rounded-lg border border-black/[0.07] bg-[#fbfaf7] px-3 py-2.5">
+                                <div className="min-w-0 flex-1">
+                                  <div className="truncate text-xs font-black text-slate-700">{server.name}</div>
+                                  <div className="truncate text-[11px] font-semibold text-slate-400">{server.url}</div>
+                                  <div className="mt-0.5 text-[10px] font-semibold text-slate-400">{server.hasHeaders ? '已配置请求头' : '无请求头'}</div>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => toggleMcpServer(server)}
+                                  disabled={mcpBusy}
+                                  role="switch"
+                                  aria-checked={server.enabled}
+                                  aria-label={server.enabled ? `停用 ${server.name}` : `启用 ${server.name}`}
+                                  className={`relative h-6 w-10 shrink-0 rounded-full transition ${server.enabled ? 'bg-emerald-500' : 'bg-slate-200'}`}
+                                >
+                                  <span className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow-sm transition ${server.enabled ? 'left-5' : 'left-1'}`} />
+                                </button>
+                                <button type="button" onClick={() => removeMcpServer(server)} disabled={mcpBusy} aria-label={`删除 ${server.name}`} className="rounded-md p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:text-slate-200">
+                                  <Trash2 size={14} />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        <div className="mt-4 space-y-2 border-t border-black/[0.06] pt-4">
+                          <input value={mcpName} onChange={(event) => setMcpName(event.target.value)} maxLength={80} placeholder="服务名称" className="h-10 w-full rounded-lg border border-black/[0.08] bg-[#fbfaf7] px-3 text-xs font-semibold text-slate-700 outline-none focus:border-slate-300" />
+                          <input value={mcpUrl} onChange={(event) => setMcpUrl(event.target.value)} maxLength={500} placeholder="MCP HTTPS 地址，例如 https://example.com/mcp" className="h-10 w-full rounded-lg border border-black/[0.08] bg-[#fbfaf7] px-3 text-xs font-semibold text-slate-700 outline-none focus:border-slate-300" />
+                          <textarea value={mcpHeaders} onChange={(event) => setMcpHeaders(event.target.value)} rows={3} maxLength={4000} placeholder='可选请求头 JSON，例如 {"Authorization":"Bearer ..."}' className="w-full resize-y rounded-lg border border-black/[0.08] bg-[#fbfaf7] px-3 py-2.5 text-xs font-semibold leading-5 text-slate-700 outline-none focus:border-slate-300" />
+                          <button type="button" onClick={addMcpServer} disabled={!mcpName.trim() || !mcpUrl.trim() || mcpBusy} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-slate-950 px-3 text-xs font-black text-white disabled:bg-slate-200 disabled:text-slate-400">
+                            {mcpBusy ? <Loader2 className="animate-spin" size={13} /> : <Plus size={13} />}
+                            添加 MCP 服务
+                          </button>
+                        </div>
+                      </section>
                       </>}
                       {String(sidePanel) === 'operations' && actionRequests.some((action) => action.status === 'PENDING' || action.status === 'APPROVED' || (['WECHAT_CREATE_DRAFT', 'WECHAT_PUBLISH'].includes(action.kind) && ['COMPLETED', 'FAILED'].includes(action.status))) && (
                         <section className="border-t border-black/[0.06] pt-5">

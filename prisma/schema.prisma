@@ -132,11 +132,28 @@ model Space {
   automations SpaceAutomation[]
   actionRequests SpaceActionRequest[]
   connectors SpaceConnector[]
+  mcpServers SpaceMcpServer[]
   discussions SpaceDiscussion[]
   relays      SpaceRelay[]
   memory      SpaceMemory?
 
   @@index([userId, updatedAt])
+}
+
+model SpaceMcpServer {
+  id                   String   @id @default(uuid())
+  spaceId              String
+  space                Space    @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  name                 String
+  url                  String
+  headersCiphertext    String?
+  enabled              Boolean  @default(true)
+  lastError            String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@unique([spaceId, name])
+  @@index([spaceId, enabled])
 }
 
 model SpaceConnector {

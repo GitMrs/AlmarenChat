@@ -33,6 +33,13 @@ export async function ensureSpaceRoot(userId: string, spaceId: string) {
   const root = spaceRoot(userId, spaceId);
   await mkdir(path.join(root, 'files'), { recursive: true });
   await mkdir(path.join(root, 'outputs'), { recursive: true });
+  await Promise.all([
+    mkdir(path.join(root, 'workspace', 'foundation'), { recursive: true }),
+    mkdir(path.join(root, 'workspace', 'inbox'), { recursive: true }),
+    mkdir(path.join(root, 'workspace', 'shared'), { recursive: true }),
+    mkdir(path.join(root, 'workspace', 'archive'), { recursive: true }),
+    mkdir(path.join(root, 'workspace', 'logs'), { recursive: true }),
+  ]);
   return root;
 }
 

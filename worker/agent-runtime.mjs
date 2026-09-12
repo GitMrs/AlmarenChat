@@ -27,6 +27,7 @@ import { completionIdFor } from '../lib/agent-completion-policy.mjs';
 import { isExecutionBudgetWait, isResearchSourceWait } from '../lib/agent-wait-policy.mjs';
 import { appendSpaceMemory, spaceMemoryContext } from '../lib/space-memory-policy.mjs';
 import { readSpaceLearningSync, spaceLearningContext } from '../lib/space-learning.mjs';
+import { loadSpaceFoundationContext } from '../lib/space-foundation.mjs';
 import { prepareWorkspaceAttempt, readExecutionCheckpoint, saveExecutionCheckpoint } from '../lib/workspace-staging.mjs';
 import { taskSkill, validateSkillArtifacts } from '../lib/agent-runtime/skill-registry.mjs';
 import {
@@ -55,6 +56,8 @@ import { createTaskLifecycleRuntime } from './runtime/task-lifecycle-runtime.mjs
 import { advanceWorkAfterRun, completeAutomationExecution } from './runtime/work-lifecycle-store.mjs';
 import { triggerNextDueAutomation } from './runtime/space-automation-runtime.mjs';
 import { createConnectorActionRuntime } from './runtime/connector-action-runtime.mjs';
+import { parseMcpServers } from '../lib/agent-runtime/mcp-config.mjs';
+import { decryptConnectorCredential } from '../lib/connectors/credentials.mjs';
 import { loadAgentMemoryContextSync, recordAcceptedAgentExperiences } from './runtime/agent-memory-store.mjs';
 import {
   loadCoordinatorAcceptanceEvidence,
@@ -383,6 +386,23 @@ function loadRunContext(run) {
   const coordinatorState = run.runtimeVersion >= 3 ? readCoordinatorState(db, run.id) : null;
   const authorization = coordinatorState?.authorization || null;
 
+  let persistedMcpServers = [];
+  try {
+    const rows = db.prepare('SELECT "id", "name", "url", "headersCiphertext" FROM "SpaceMcpServer" WHERE "spaceId" = ? AND "enabled" = 1 ORDER BY "createdAt" ASC').all(run.spaceId);
+    persistedMcpServers = rows.flatMap((row) => {
+      try {
+        const headers = row.headersCiphertext
+          ? decryptConnectorCredential(row.headersCiphertext, { spaceId: run.spaceId, provider: `MCP_${row.name}` })
+          : {};
+        return [{ id: row.name, url: row.url, headers }];
+      } catch (error) {
+        addEvent(run.id, 'MCP_CONFIG_INVALID', `MCP 配置无法解密：${row.name}`, { serverId: row.id, error: String(error?.message || error).slice(0, 300) });
+        return [];
+      }
+    });
+  } catch {
+    // Older databases are upgraded lazily; environment configuration remains available.
+  }
   return {
     space,
     agents,
@@ -402,6 +422,7 @@ function loadRunContext(run) {
         }
       : null,
     tavilyApiKey: user.tavilyApiKey?.trim() || null,
+    mcpServers: [...persistedMcpServers, ...parseMcpServers(process.env.ALMAREN_MCP_SERVERS)].slice(0, 4),
     researchAudit: null,
     researchResultAudits: [],
     researchSources: [],
@@ -412,6 +433,7 @@ function loadRunContext(run) {
       spaceMemoryContext(memory),
       spaceLearningContext(readSpaceLearningSync({ projectRoot, userId: run.userId, spaceId: run.spaceId })),
     ].filter(Boolean).join('\n\n'),
+    foundationContext: loadSpaceFoundationContext({ projectRoot, userId: run.userId, spaceId: run.spaceId }),
     touchedPaths: new Set(),
   };
 }
@@ -957,7 +979,17 @@ async function executeTask(run, task, context, previousResults) {
           query: `${task.title}\n${task.instruction}\n${task.acceptanceCriteria || ''}`,
         }),
       }
-    : assignedAgent;
+      : assignedAgent;
+  if (run.runtimeVersion >= 3 && !context.researchContext && taskNeedsResearchContext(task, run.runtimeVersion)) {
+    context.researchContext = await buildResearchContext(run, context, {
+      task,
+      researchInput: `${task.title}\n${task.instruction}\n${task.acceptanceCriteria || ''}`,
+    });
+    if (context.researchAudit?.accepted === false) {
+      waitPendingTaskForResearchInput(run, task, context.researchAudit.issues || []);
+      return null;
+    }
+  }
   if (task.mode === 'advisor') return executeAdvisorTask(run, task, context, previousResults, agent);
   const artifactManifest = await ensureTaskArtifactManifest(run, task);
   const workspaceOptions = taskWorkspaceOptions(run, task);
@@ -1291,9 +1323,6 @@ async function processRun(run) {
         && isResearchSourceWait(task.waitReason)
         && String(task.waitAnswer || '').trim()
     );
-    const pendingResearchTask = tasks.find(
-      (task) => task.status === 'PENDING' && taskNeedsResearchContext(task, run.runtimeVersion)
-    );
     if (reusableResearch && !refreshTask && !resumedResearchTask) {
       context.researchAudit = reusableResearch.audit;
       context.researchResultAudits = reusableResearch.resultAudits;
@@ -1311,20 +1340,13 @@ async function processRun(run) {
           researchInput: `${refreshTask.title}\n${refreshTask.instruction}\n${refreshTask.acceptanceCriteria || ''}\n\n用户明确要求更新调研：${refreshTask.reviewFeedback}`,
           refreshed: true,
         })
-      : reusableResearch?.context || (
-          (run.runtimeVersion < 3 && tasks.length === 0) || pendingResearchTask
-            ? await buildResearchContext(run, context, pendingResearchTask ? {
-                task: pendingResearchTask,
-                researchInput: `${pendingResearchTask.title}\n${pendingResearchTask.instruction}\n${pendingResearchTask.acceptanceCriteria || ''}`,
-              } : {})
+    : reusableResearch?.context || (
+          run.runtimeVersion < 3 && tasks.length === 0
+            ? await buildResearchContext(run, context, {})
             : ''
         );
-    if (context.researchAudit?.accepted === false && ((run.runtimeVersion < 3 && tasks.length === 0) || pendingResearchTask)) {
+    if (context.researchAudit?.accepted === false && run.runtimeVersion < 3 && tasks.length === 0) {
       const issues = context.researchAudit.issues?.join('；') || '联网来源未达到任务要求';
-      if (run.runtimeVersion >= 3 && pendingResearchTask) {
-        waitPendingTaskForResearchInput(run, pendingResearchTask, context.researchAudit.issues || []);
-        return;
-      }
       addEvent(run.id, 'RESEARCH_BLOCKED_BEFORE_DISPATCH', '补查后来源仍未通过验收，已停止派发成员工作', { issues: context.researchAudit.issues || [] });
       throw Object.assign(new Error(`联网资料未通过验收：${issues}`), { code: 'TASK_BLOCKED' });
     }
@@ -1507,6 +1529,21 @@ async function processRun(run) {
         .map((file) => file.relativePath)
     );
     const touchedPaths = matchApprovedWorkspacePaths(context.touchedPaths, approvedFilePaths, run.workId);
+    // Pi/Skill paths can be persisted in the artifact manifest without being
+    // reflected in the in-memory touchedPaths set after a worker restart.
+    const manifestPaths = db.prepare(
+      `SELECT "entries" FROM "AgentArtifactManifest" WHERE "runId" = ? AND "status" = 'APPLIED'`
+    ).all(run.id).flatMap((manifest) => {
+      try {
+        const entries = JSON.parse(manifest.entries || '[]');
+        return Array.isArray(entries) ? entries.map((entry) => entry?.path).filter(Boolean) : [];
+      } catch {
+        return [];
+      }
+    });
+    const verifiedTouchedPaths = touchedPaths.length > 0
+      ? touchedPaths
+      : matchApprovedWorkspacePaths(new Set(manifestPaths), approvedFilePaths, run.workId);
     const intentionallySkippedFileStep = Boolean(db.prepare(
       `SELECT 1 FROM "AgentTask" WHERE "runId" = ? AND "status" IN ('SKIPPED', 'CANCELLED') LIMIT 1`
     ).get(run.id));
@@ -1514,14 +1551,14 @@ async function processRun(run) {
     const expectsWorkspaceWrite = run.runtimeVersion >= 3
       ? authorizationAllowsCapability(context.authorization, 'workspace_write')
       : wantsWorkspaceWrite(run.input);
-    if (expectsWorkspaceWrite && touchedPaths.length === 0 && !intentionallySkippedFileStep) {
+    if (expectsWorkspaceWrite && verifiedTouchedPaths.length === 0 && !intentionallySkippedFileStep) {
       finalWorkspaceIssues.push('任务要求产出或修改工作区文件，但没有提交任何净文件变化');
     }
-    for (let index = 0; index < touchedPaths.length; index += 50) {
+    for (let index = 0; index < verifiedTouchedPaths.length; index += 50) {
       const checked = await executeWorkspaceTool(
         { projectRoot, userId: run.userId, spaceId: run.spaceId, workId: run.workId, isCancelled: () => isCancelRequested(run.id) },
         'check_files',
-        { paths: touchedPaths.slice(index, index + 50) }
+        { paths: verifiedTouchedPaths.slice(index, index + 50) }
       );
       if (!checked.valid) {
         const issues = checked.files
@@ -1531,8 +1568,8 @@ async function processRun(run) {
         finalWorkspaceIssues.push(`工作区文件检查未通过：\n${issues}`);
       }
     }
-    if (touchedPaths.length > 0) {
-      addEvent(run.id, 'WORKSPACE_CHECK_COMPLETED', `已检查 ${touchedPaths.length} 个工作区文件`);
+    if (verifiedTouchedPaths.length > 0) {
+      addEvent(run.id, 'WORKSPACE_CHECK_COMPLETED', `已检查 ${verifiedTouchedPaths.length} 个工作区文件`);
     }
     const {
       tasks: completedTasks,
@@ -1559,7 +1596,7 @@ async function processRun(run) {
     if (!result) throw new Error('协调者没有返回汇总结果');
 
     const workspaceArtifacts = await Promise.all(
-      touchedPaths.map((relativePath) =>
+      verifiedTouchedPaths.map((relativePath) =>
         describeWorkspaceArtifact({ projectRoot, userId: run.userId, spaceId: run.spaceId, workId: run.workId }, relativePath)
       )
     );

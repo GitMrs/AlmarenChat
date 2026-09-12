@@ -140,3 +140,94 @@ test('Pi Worker governance exposes only Skill and authorization approved workspa
   assert.equal(names.includes('run_check'), false);
   assert.equal(names.includes('submit_task_result'), true);
 });
+
+test('Pi Worker exposes real Skill package scripts only after code execution authorization', async () => {
+  const build = createPiWorkerGovernance({ db: {}, reserveRequest: () => ({}) });
+  const baseTask = {
+    id: 'task-1', attempt: 1, title: '查询公众号趋势', instruction: '使用 Skill 脚本获取趋势',
+    skillSnapshot: {
+      id: 'gzh-creator-suite', name: '公众号爆款创作套件', version: '1', packagePath: 'creator-buddy-main',
+      allowedTools: ['list_files', 'read_file', 'check_files', 'run_skill'],
+    },
+  };
+  const authorized = await build(request({
+    workspaceOptions: { ...request().workspaceOptions, projectRoot: process.cwd() },
+    context: { model: { apiKey: 'key', baseURL: 'https://example.com/v1', name: 'model' }, space: {}, authorization: { capabilities: ['workspace_read', 'workspace_write', 'code_execute'] } },
+    task: baseTask,
+  }));
+  assert.equal(authorized.tools.some((item) => item.name === 'run_skill'), true);
+
+  const denied = await build(request({
+    workspaceOptions: { ...request().workspaceOptions, projectRoot: process.cwd() },
+    context: { model: { apiKey: 'key', baseURL: 'https://example.com/v1', name: 'model' }, space: {}, authorization: { capabilities: ['workspace_read', 'workspace_write'] } },
+    task: baseTask,
+  }));
+  assert.equal(denied.tools.some((item) => item.name === 'run_skill'), false);
+});
+
+test('Pi Worker requests one-time Skill script permission through the existing wait flow', async () => {
+  let paused = null;
+  const build = createPiWorkerGovernance({ db: {}, reserveRequest: () => ({}) });
+  const options = await build(request({
+    workspaceOptions: { ...request().workspaceOptions, projectRoot: process.cwd() },
+    pauseForInput: (value) => { paused = value; return { paused: true }; },
+    context: { model: { apiKey: 'key', baseURL: 'https://example.com/v1', name: 'model' }, space: {}, authorization: { capabilities: ['workspace_read', 'workspace_write'] } },
+    task: {
+      id: 'task-1', attempt: 1, title: '查询公众号趋势', instruction: '需要脚本', waitAnswer: '',
+      skillSnapshot: { id: 'gzh-creator-suite', name: '公众号爆款创作套件', version: '1', packagePath: 'creator-buddy-main', allowedTools: ['list_files', 'read_file', 'check_files', 'run_skill'] },
+    },
+  }));
+  const permissionTool = options.tools.find((item) => item.name === 'request_skill_permission');
+  assert.ok(permissionTool);
+  const result = await permissionTool.execute('call-permission', { script: 'gzh-Skills/gzh-explosive-content-detector/scripts/fetch_gzh_trends.py', reason: '需要运行数据采集入口' });
+  assert.equal(result.isError, false);
+  assert.equal(options.shouldStopAfterTurn(), true);
+  assert.match(paused.question, /允许本次 Skill 脚本执行/);
+});
+
+test('Pi Worker exposes controlled web search only with web research authorization', async () => {
+  const build = createPiWorkerGovernance({ db: {}, reserveRequest: () => ({}) });
+  const authorized = await build(request({
+    context: { model: { apiKey: 'key', baseURL: 'https://example.com/v1', name: 'model' }, space: {}, authorization: { capabilities: ['workspace_read', 'web_research'], networkPolicy: 'allowed' }, tavilyApiKey: null },
+  }));
+  assert.equal(authorized.tools.some((item) => item.name === 'web_search'), true);
+  const denied = await build(request({
+    context: { model: { apiKey: 'key', baseURL: 'https://example.com/v1', name: 'model' }, space: {}, authorization: { capabilities: ['workspace_read'], networkPolicy: 'forbidden' } },
+  }));
+  assert.equal(denied.tools.some((item) => item.name === 'web_search'), false);
+});
+
+test('Pi Worker discovers and invokes an authorized remote MCP tool', async () => {
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (_url, init) => {
+    const body = JSON.parse(init.body);
+    calls.push(body.method);
+    return {
+      ok: true,
+      json: async () => ({ result: body.method === 'tools/list'
+        ? { tools: [{ name: 'lookup', description: '查询资料', inputSchema: { type: 'object', properties: { q: { type: 'string' } } } }] }
+        : { content: [{ type: 'text', text: 'mcp result' }] } }),
+    };
+  };
+  try {
+    const events = [];
+    const build = createPiWorkerGovernance({ db: {}, reserveRequest: () => ({}) });
+    const options = await build(request({
+      emit: (...args) => events.push(args),
+      context: {
+        model: { apiKey: 'key', baseURL: 'https://example.com/v1', name: 'model' }, space: {},
+        authorization: { capabilities: ['workspace_read', 'web_research'], networkPolicy: 'allowed' },
+        mcpServers: [{ id: 'research', url: 'https://mcp.example.test/rpc' }],
+      },
+    }));
+    const tool = options.tools.find((item) => item.name === 'mcp_research_lookup');
+    assert.ok(tool);
+    const result = await tool.execute('mcp-call', { q: 'agent' });
+    assert.equal(result.isError, false);
+    assert.deepEqual(calls, ['tools/list', 'tools/call']);
+    assert.equal(events.some((event) => event[1] === 'MCP_TOOL_COMPLETED'), true);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

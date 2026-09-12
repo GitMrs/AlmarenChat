@@ -1,4 +1,4 @@
-import type { AgentGrowthProfile, AgentRun, AssistantConversationSummary, AssistantExperienceMessage, AssistantMemoryItem, AssistantQQBinding, AssistantReminder, AssistantReminderCandidate, Message, MessageAttachment, PersonalAssistantBootstrap, PersonalAssistantProfile, SpaceActionRequest, SpaceAutomation, SpaceConnector, SpaceDiscussion, SpaceFileShare, SpaceOperationOutcome, SpaceOperationsSummary, SpaceRelay, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal, SpaceWork } from '@/types';
+import type { AgentGrowthProfile, AgentRun, AssistantConversationSummary, AssistantExperienceMessage, AssistantMemoryItem, AssistantQQBinding, AssistantReminder, AssistantReminderCandidate, Message, MessageAttachment, PersonalAssistantBootstrap, PersonalAssistantProfile, SpaceActionRequest, SpaceAutomation, SpaceConnector, SpaceDiscussion, SpaceFileShare, SpaceOperationOutcome, SpaceOperationsSummary, SpaceRelay, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal, SpaceWork, SpaceMcpServer } from '@/types';
 
 const API_BASE = '/api';
 
@@ -575,6 +575,14 @@ export const spaces = {
     request<{ action: SpaceActionRequest }>(`/spaces/${spaceId}/actions/${actionId}/retry`, { method: 'POST' }),
   connectors: (spaceId: string) =>
     request<{ connectors: SpaceConnector[] }>(`/spaces/${spaceId}/connectors`),
+  mcpServers: (spaceId: string) =>
+    request<{ servers: SpaceMcpServer[] }>(`/spaces/${spaceId}/mcp`),
+  addMcpServer: (spaceId: string, data: { name: string; url: string; headers?: Record<string, string> }) =>
+    request<{ server: SpaceMcpServer }>(`/spaces/${spaceId}/mcp`, { method: 'POST', body: JSON.stringify(data) }),
+  setMcpServerEnabled: (spaceId: string, serverId: string, enabled: boolean) =>
+    request<{ success: true }>(`/spaces/${spaceId}/mcp/${serverId}`, { method: 'PATCH', body: JSON.stringify({ enabled }) }),
+  removeMcpServer: (spaceId: string, serverId: string) =>
+    request<{ success: true }>(`/spaces/${spaceId}/mcp/${serverId}`, { method: 'DELETE' }),
   configureWechatConnector: (spaceId: string, data: { appId: string; appSecret?: string }) =>
     request<{ connector: SpaceConnector }>(`/spaces/${spaceId}/connectors/wechat`, {
       method: 'PUT',

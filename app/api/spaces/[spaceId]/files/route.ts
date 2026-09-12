@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { ensureSpaceRoot, getSpaceForUser, resolveSpacePath } from '@/app/api/_lib/spaces';
+import { decorateSpaceFile } from '@/lib/space-asset-policy.mjs';
 
 const MAX_FILE_SIZE = 2 * 1024 * 1024;
 
@@ -26,7 +27,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ spac
     const visibleFiles = files.filter((file, index) => (
       files.findIndex((candidate) => candidate.relativePath === file.relativePath) === index
     ));
-    return NextResponse.json({ files: visibleFiles });
+    return NextResponse.json({ files: visibleFiles.map(decorateSpaceFile) });
   } catch (e: any) {
     if (e.message === 'Unauthorized') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     return NextResponse.json({ error: e.message }, { status: 500 });
@@ -51,9 +52,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
 
     await ensureSpaceRoot(userId, spaceId);
     const fileName = `${Date.now()}-${safeFileName(file.name)}`;
-    const relativePath = space.runtimeType === 'PI_CODING'
-      ? `workspace/uploads/${fileName}`
-      : `files/${fileName}`;
+    const relativePath = `workspace/inbox/${fileName}`;
     const target = resolveSpacePath(userId, spaceId, relativePath);
     const bytes = Buffer.from(await file.arrayBuffer());
     await mkdir(path.dirname(target), { recursive: true });
@@ -69,7 +68,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
       },
     });
     await prisma.space.update({ where: { id: spaceId }, data: { updatedAt: new Date() } });
-    return NextResponse.json({ file: record });
+    return NextResponse.json({ file: decorateSpaceFile(record) });
   } catch (e: any) {
     if (e.message === 'Unauthorized') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     return NextResponse.json({ error: e.message }, { status: 500 });

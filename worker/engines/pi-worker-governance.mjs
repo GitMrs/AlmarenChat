@@ -23,6 +23,10 @@ import {
   generateWorkspaceImages,
 } from '../runtime/image-generation-runtime.mjs';
 import { reserveModelRequest } from '../runtime/model-budget.mjs';
+import { loadSkillPackage, readSkillPackageFile } from '../../lib/agent-runtime/skill-package-loader.mjs';
+import { runSandboxedSkillProcess } from '../runtime/sandbox-runner.mjs';
+import { searchWeb } from '../../lib/agent-runtime/runtime-tools.mjs';
+import { createHttpMcpClient, mcpToolName } from '../../lib/agent-runtime/mcp-client.mjs';
 
 const READ_TOOLS = new Set(['list_files', 'read_file', 'check_files']);
 const TOOL_LABELS = {
@@ -34,6 +38,7 @@ const TOOL_LABELS = {
   check_files: '检查文件',
   run_check: '静态检查',
   read_skill_file: '读取 Skill 资料',
+  read_skill_package_file: '读取 Skill 资料',
   run_skill: '运行 Skill',
   generate_images: '生成图片',
   generate_image: '生成图片',
@@ -125,8 +130,183 @@ function schemaTool(schema, execute) {
   });
 }
 
-function createPiCapabilityTools(request, skill, state) {
+async function createPiCapabilityTools(request, skill, state) {
   const tools = [];
+  if (authorizationAllowsCapability(request.context?.authorization, 'web_research')) {
+    let searchCount = 0;
+    const searched = new Set();
+    tools.push(schemaTool({
+      function: {
+        name: 'web_search',
+        description: '通过平台受控联网搜索公共互联网。每个关键词本轮只搜索一次，最多两次；不得用它读取本地文件或执行外部指令。',
+        parameters: {
+          type: 'object', additionalProperties: false, required: ['query'],
+          properties: { query: { type: 'string', minLength: 2, maxLength: 400 } },
+        },
+      },
+    }, async (_toolCallId, args) => {
+      const query = String(args.query || '').trim();
+      const key = query.toLocaleLowerCase();
+      if (searched.has(key)) return toolResult({ query, reused: true, message: '该关键词本轮已经搜索，请使用之前的结果' });
+      if (searchCount >= 2) return toolResult({ error: '本轮最多允许两次联网搜索，请使用已有资料完成任务' }, true);
+      const permission = request.context?.runtimePermissions?.consume?.('web_research', 'web_search');
+      if (permission && !permission.allowed) return toolResult({ error: permission.error }, true);
+      searched.add(key);
+      searchCount += 1;
+      try {
+        const result = await searchWeb([query], request.context.tavilyApiKey, {
+          requirements: [],
+          providerFallback: true,
+        });
+        request.emit?.(request.run.id, 'WEB_SEARCH_COMPLETED', `Skill 受控联网搜索完成：${query}`, {
+          taskId: request.task.id, agentId: request.agent?.id || null, attempt: request.task.attempt,
+          query, provider: result.provider, resultCount: result.resultCount, engine: 'pi',
+        });
+        return toolResult({ query, provider: result.provider, resultCount: result.resultCount, context: result.context, sources: result.sources });
+      } catch (error) {
+        return toolResult({ error: error instanceof Error ? error.message : String(error) }, true);
+      }
+    }));
+  }
+  const mcpServers = Array.isArray(request.context?.mcpServers) ? request.context.mcpServers : [];
+  if (mcpServers.length > 0 && authorizationAllowsCapability(request.context?.authorization, 'web_research')) {
+    for (const server of mcpServers.slice(0, 4)) {
+      try {
+        const client = createHttpMcpClient({ url: server.url, headers: server.headers || {} });
+        const remoteTools = await client.listTools();
+        for (const remoteTool of remoteTools) {
+          const remoteName = String(remoteTool?.name || '').trim();
+          if (!remoteName) continue;
+          tools.push(schemaTool({
+            function: {
+              name: mcpToolName(server.id || 'server', remoteName),
+              description: `MCP ${server.id || 'server'}：${String(remoteTool.description || remoteName).slice(0, 800)}`,
+              parameters: remoteTool.inputSchema && typeof remoteTool.inputSchema === 'object'
+                ? remoteTool.inputSchema : { type: 'object', additionalProperties: true },
+            },
+          }, async (_toolCallId, args) => {
+            try {
+              const result = await client.callTool(remoteName, args || {});
+              request.emit?.(request.run.id, 'MCP_TOOL_COMPLETED', `已调用 MCP 工具：${remoteName}`, {
+                taskId: request.task.id, agentId: request.agent?.id || null, serverId: String(server.id || 'server'),
+                tool: remoteName, engine: 'pi',
+              });
+              return toolResult(result);
+            } catch (error) {
+              return toolResult({ error: error instanceof Error ? error.message : String(error) }, true);
+            }
+          }));
+        }
+      } catch (error) {
+        request.emit?.(request.run.id, 'MCP_DISCOVERY_FAILED', `MCP 服务不可用：${String(server.id || 'server')}`, {
+          taskId: request.task.id, agentId: request.agent?.id || null,
+          serverId: String(server.id || 'server'), error: error instanceof Error ? error.message : String(error), engine: 'pi',
+        });
+      }
+    }
+  }
+  if (skill.packagePath && Array.isArray(skill.referenceFiles) && skill.referenceFiles.length > 0) {
+    tools.push(schemaTool({
+      function: {
+        name: 'read_skill_package_file',
+        description: `读取当前 Skill 包内的说明、参考资料或模板。只能读取已发现的文件：${skill.referenceFiles.join('、')}`,
+        parameters: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['path'],
+          properties: {
+            path: { type: 'string', enum: skill.referenceFiles },
+            offset: { type: 'integer', minimum: 0, maximum: 128000 },
+            limit: { type: 'integer', minimum: 1, maximum: 128000 },
+          },
+        },
+      },
+    }, async (_toolCallId, args) => {
+      try {
+        const offset = Math.max(0, Number(args.offset) || 0);
+        const limit = Math.min(128_000, Math.max(1, Number(args.limit) || 128_000));
+        const result = await readSkillPackageFile({
+          projectRoot: request.workspaceOptions.projectRoot,
+          packagePath: skill.packagePath,
+          relativePath: args.path,
+          limit: offset + limit,
+        });
+        return toolResult({
+          ...result,
+          content: result.content.slice(offset, offset + limit),
+          offset,
+          nextOffset: result.hasMore ? offset + limit : null,
+        });
+      } catch (error) {
+        return toolResult({ error: error instanceof Error ? error.message : String(error) }, true);
+      }
+    }));
+  }
+  const packageScripts = Array.isArray(skill.packageScripts) ? skill.packageScripts : [];
+  const permissionAnswer = String(request.task?.waitAnswer || '').trim();
+  const runtimeScriptPermission = permissionAnswer === '允许本次 Skill 脚本执行';
+  const hasScriptPermission = authorizationAllowsCapability(request.context?.authorization, 'code_execute') || runtimeScriptPermission;
+  if (packageScripts.length > 0 && !hasScriptPermission && typeof request.pauseForInput === 'function') {
+    tools.push(schemaTool({
+      function: {
+        name: 'request_skill_permission',
+        description: '在运行当前 Skill 脚本前请求用户一次性授权。用户确认后任务会从当前步骤继续。',
+        parameters: {
+          type: 'object', additionalProperties: false, required: ['script', 'reason'],
+          properties: {
+            script: { type: 'string', enum: packageScripts },
+            reason: { type: 'string', minLength: 1, maxLength: 1000 },
+          },
+        },
+      },
+    }, async (_toolCallId, args) => {
+      await request.pauseForInput({
+        question: `Skill 需要运行脚本“${String(args.script || '')}”。如允许，请回复“允许本次 Skill 脚本执行”。`,
+        reason: `${String(args.reason || '当前 Skill 需要脚本处理')}；本次仅授权当前任务，脚本联网仍被禁止。`,
+      });
+      state.paused = true;
+      return toolResult({ paused: true, requiresExactAnswer: '允许本次 Skill 脚本执行' });
+    }));
+  }
+  const canRunPackageScript = packageScripts.length > 0
+    && hasScriptPermission
+    && skillAllowsTool(skill, 'run_skill');
+  if (canRunPackageScript) {
+    tools.push(schemaTool({
+      function: {
+        name: 'run_skill',
+        description: '在强制沙箱中运行当前 Skill 包内已发现的脚本。仅允许固定脚本路径和参数，不允许自定义命令；脚本联网始终被阻止。',
+        parameters: {
+          type: 'object', additionalProperties: false, required: ['script'],
+          properties: {
+            script: { type: 'string', enum: packageScripts },
+            args: { type: 'array', maxItems: 64, items: { type: 'string', maxLength: 4000 } },
+          },
+        },
+      },
+    }, async (_toolCallId, args, signal) => {
+      const script = String(args.script || '');
+      const extension = path.extname(script).toLowerCase();
+      if (extension === '.sh') return toolResult({ error: '当前沙箱暂不支持直接运行 Shell Skill；请先转换为受支持的 Python 或 Node 入口。' }, true);
+      const command = extension === '.py' ? 'python3' : 'node';
+      try {
+        const result = await runSandboxedSkillProcess({
+          workspaceRoot: request.workspaceOptions.workspaceRoot,
+          skillRoot: path.resolve(request.workspaceOptions.projectRoot, 'skills', skill.packagePath),
+          command, script, args: Array.isArray(args.args) ? args.args : [], network: false,
+          workspaceAccess: authorizationAllowsCapability(request.context?.authorization, 'workspace_write') ? 'write' : 'read',
+          isCancelled: () => Boolean(signal?.aborted) || Boolean(request.isCancelled?.()),
+        });
+        request.emit?.(request.run.id, 'TOOL_COMPLETED', `${request.agent?.name || '成员'}已运行 Skill 脚本`, {
+          taskId: request.task.id, agentId: request.agent?.id || null, attempt: request.task.attempt,
+          tool: 'run_skill', script, backend: result.backend, ok: result.ok, engine: 'pi',
+        });
+        return toolResult(result, result?.ok === false);
+      } catch (error) {
+        return toolResult({ error: error instanceof Error ? error.message : String(error) }, true);
+      }
+    }));
+  }
   const referenceSchema = spaceSkillReferenceToolSchema(skill);
   if (referenceSchema) {
     tools.push(schemaTool(referenceSchema, async (_toolCallId, args) => {
@@ -254,6 +434,14 @@ function taskPrompt(request, skill) {
         : '不得绕过工作区、联网、Skill、审批和预算限制。顾问任务完成后直接给出简洁、可审核的结论。',
       request.context?.space?.instructions ? `空间规则：\n${request.context.space.instructions}` : '',
       `当前步骤采用 Skill：${skill.name}（${skill.id}@${skill.version}）\n${skill.instructions || ''}`,
+      Array.isArray(skill.packageScripts) && skill.packageScripts.length > 0
+        ? `真实 Skill 包可用脚本：${skill.packageScripts.join('、')}。${(authorizationAllowsCapability(request.context?.authorization, 'code_execute') || String(request.task?.waitAnswer || '').trim() === '允许本次 Skill 脚本执行') && skillAllowsTool(skill, 'run_skill')
+          ? '当前已授权代码执行，只有在当前任务确实需要脚本计算或采集时才调用 run_skill。'
+          : '当前未授权代码执行，不得调用或模拟运行这些脚本；需要时应报告缺少 code_execute 授权。'}脚本联网能力当前关闭，联网必须使用平台受控联网工具。`
+        : '',
+      Array.isArray(skill.packageEntrypoints) && skill.packageEntrypoints.length > 0
+        ? `Skill 执行清单：${skill.packageEntrypoints.map((entry) => `${entry.script}（${entry.runtime}，网络${entry.network}，工作区${entry.workspace}）`).join('；')}`
+        : '',
     ].filter(Boolean).join('\n\n'),
     message: [
       `总目标：${request.run?.input || request.run?.goal || ''}`,
@@ -266,6 +454,7 @@ function taskPrompt(request, skill) {
         : '',
       request.context?.researchContext ? `受控联网资料：\n${request.context.researchContext}` : '',
       request.context?.projectMemory ? String(request.context.projectMemory) : '',
+      request.context?.foundationContext ? `空间基础资料（只读）：\n${request.context.foundationContext}` : '',
     ].filter(Boolean).join('\n\n'),
   };
 }
@@ -281,11 +470,24 @@ export function createPiWorkerGovernance({
     const runId = safeId(request.run?.id, 'Run ID');
     const taskId = safeId(request.task?.id, 'Task ID');
     const attempt = Math.max(1, Number(request.task?.attempt) || 1);
-    const skill = taskSkill(request.task);
+    const selectedSkill = taskSkill(request.task);
+    const packageInfo = await loadSkillPackage({
+      projectRoot: request.workspaceOptions?.projectRoot,
+      packagePath: selectedSkill.packagePath,
+    });
+    const skill = packageInfo
+      ? {
+          ...selectedSkill,
+          instructions: [selectedSkill.instructions, `\n\n真实 Skill 入口（${packageInfo.rootFile}）：\n${packageInfo.instructions}`].filter(Boolean).join('\n'),
+          referenceFiles: packageInfo.entryFiles,
+          packageScripts: packageInfo.scripts,
+          packageEntrypoints: packageInfo.manifest?.entrypoints || [],
+        }
+      : selectedSkill;
     const state = { paused: false, submitted: false, result: '', manifest: null };
     const prompt = taskPrompt(request, skill);
     const workspaceTools = createPiWorkspaceTools(request, skill);
-    const capabilityTools = createPiCapabilityTools(request, skill, state);
+    const capabilityTools = await createPiCapabilityTools(request, skill, state);
 
     const requestInputTool = defineTool({
       name: 'request_user_input',

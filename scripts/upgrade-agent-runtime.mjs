@@ -76,6 +76,22 @@ try {
       db.exec(`ALTER TABLE "Message" ADD COLUMN "source" TEXT NOT NULL DEFAULT 'WEB'`);
     }
     db.exec(`
+      CREATE TABLE IF NOT EXISTS "SpaceMcpServer" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "spaceId" TEXT NOT NULL,
+        "name" TEXT NOT NULL,
+        "url" TEXT NOT NULL,
+        "headersCiphertext" TEXT,
+        "enabled" BOOLEAN NOT NULL DEFAULT true,
+        "lastError" TEXT,
+        "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" DATETIME NOT NULL,
+        CONSTRAINT "SpaceMcpServer_spaceId_fkey" FOREIGN KEY ("spaceId") REFERENCES "Space" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+        CONSTRAINT "SpaceMcpServer_spaceId_name_key" UNIQUE ("spaceId", "name")
+      );
+      CREATE INDEX IF NOT EXISTS "SpaceMcpServer_spaceId_enabled_idx" ON "SpaceMcpServer"("spaceId", "enabled");
+    `);
+    db.exec(`
       CREATE TABLE IF NOT EXISTS "PersonalAssistantProfile" (
         "userId" TEXT NOT NULL PRIMARY KEY,
         "conversationId" TEXT NOT NULL,
