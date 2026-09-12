@@ -221,9 +221,25 @@ model SpaceWork {
   runs  AgentRun[]
   files SpaceFile[]
   actionRequests SpaceActionRequest[]
+  versions SpaceWorkVersion[]
 
   @@index([spaceId, updatedAt])
   @@index([spaceId, status, updatedAt])
+}
+
+model SpaceWorkVersion {
+  id            String    @id @default(uuid())
+  workId        String
+  work          SpaceWork @relation(fields: [workId], references: [id], onDelete: Cascade)
+  version       Int
+  summary       String?
+  manifest      Json
+  sourceRunId   String?
+  sourceTaskId  String?
+  createdAt     DateTime  @default(now())
+
+  @@unique([workId, version])
+  @@index([workId, createdAt])
 }
 
 model SpaceAutomation {

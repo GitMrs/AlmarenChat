@@ -50,6 +50,9 @@ export function loadCoordinatorDecisionContext(db, run, agents) {
     remainingTasks: Math.max(0, maxTasks - existingTasks.length),
     team: agents.map((agent) => {
       const session = sessions.get(agent.id);
+      const spaceSkills = Array.isArray(authorization.availableSkills)
+        ? authorization.availableSkills
+        : [];
       return {
         id: agent.id,
         name: agent.name,
@@ -57,6 +60,11 @@ export function loadCoordinatorDecisionContext(db, run, agents) {
         description: agent.description || '',
         availableSkills: [
           ...skillsForAgent(agent),
+          ...spaceSkills.map((skill) => ({
+            id: skill.id,
+            name: skill.name || skill.id,
+            description: skill.description || '',
+          })),
           ...(authorization.selectedSkill
             && (!authorization.selectedSkillAgentId || authorization.selectedSkillAgentId === agent.id)
             ? [authorization.selectedSkill]

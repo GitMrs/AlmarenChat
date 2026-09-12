@@ -274,6 +274,24 @@ export interface SpaceWork {
   _count?: { files: number; runs: number };
 }
 
+export interface SpaceWorkVersion {
+  id: string;
+  workId: string;
+  version: number;
+  summary?: string | null;
+  manifest: Array<{
+    relativePath: string;
+    fileName?: string;
+    mimeType?: string | null;
+    size: number;
+    sha256?: string;
+    snapshotPath?: string;
+  }>;
+  sourceRunId?: string | null;
+  sourceTaskId?: string | null;
+  createdAt: string;
+}
+
 export interface SpaceAutomationExecution {
   id: string;
   automationId: string;

@@ -1,4 +1,4 @@
-import type { AgentGrowthProfile, AgentRun, AssistantConversationSummary, AssistantExperienceMessage, AssistantMemoryItem, AssistantQQBinding, AssistantReminder, AssistantReminderCandidate, Message, MessageAttachment, PersonalAssistantBootstrap, PersonalAssistantProfile, SpaceActionRequest, SpaceAutomation, SpaceConnector, SpaceDiscussion, SpaceFileShare, SpaceOperationOutcome, SpaceOperationsSummary, SpaceRelay, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal, SpaceWork, SpaceMcpServer } from '@/types';
+import type { AgentGrowthProfile, AgentRun, AssistantConversationSummary, AssistantExperienceMessage, AssistantMemoryItem, AssistantQQBinding, AssistantReminder, AssistantReminderCandidate, Message, MessageAttachment, PersonalAssistantBootstrap, PersonalAssistantProfile, SpaceActionRequest, SpaceAutomation, SpaceConnector, SpaceDiscussion, SpaceFileShare, SpaceOperationOutcome, SpaceOperationsSummary, SpaceRelay, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal, SpaceWork, SpaceWorkVersion, SpaceMcpServer } from '@/types';
 
 const API_BASE = '/api';
 
@@ -542,6 +542,17 @@ export const spaces = {
     request<{ work: SpaceWork }>(`/spaces/${spaceId}/works/${workId}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
+    }),
+  workVersions: (spaceId: string, workId: string) =>
+    request<{ versions: SpaceWorkVersion[] }>(`/spaces/${spaceId}/works/${workId}/versions`),
+  createWorkVersion: (spaceId: string, workId: string, data: { summary?: string; runId?: string; taskId?: string } = {}) =>
+    request<{ version: SpaceWorkVersion }>(`/spaces/${spaceId}/works/${workId}/versions`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  restoreWorkVersion: (spaceId: string, workId: string, versionId: string) =>
+    request<{ restored: true; version: SpaceWorkVersion }>(`/spaces/${spaceId}/works/${workId}/versions/${versionId}/restore`, {
+      method: 'POST',
     }),
   automations: (spaceId: string) =>
     request<{ automations: SpaceAutomation[] }>(`/spaces/${spaceId}/automations`),

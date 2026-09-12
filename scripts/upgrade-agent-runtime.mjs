@@ -833,6 +833,21 @@ try {
     `);
     if (!hasColumn('SpaceMessage', 'sourceKey')) db.exec('ALTER TABLE "SpaceMessage" ADD COLUMN "sourceKey" TEXT');
     db.exec(`
+      CREATE TABLE IF NOT EXISTS "SpaceWorkVersion" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "workId" TEXT NOT NULL,
+        "version" INTEGER NOT NULL,
+        "summary" TEXT,
+        "manifest" JSONB NOT NULL,
+        "sourceRunId" TEXT,
+        "sourceTaskId" TEXT,
+        "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "SpaceWorkVersion_workId_fkey" FOREIGN KEY ("workId") REFERENCES "SpaceWork" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS "SpaceWorkVersion_workId_version_key" ON "SpaceWorkVersion"("workId", "version");
+      CREATE INDEX IF NOT EXISTS "SpaceWorkVersion_workId_createdAt_idx" ON "SpaceWorkVersion"("workId", "createdAt");
+    `);
+    db.exec(`
       CREATE INDEX IF NOT EXISTS "SpaceFile_runId_idx" ON "SpaceFile"("runId");
       CREATE INDEX IF NOT EXISTS "SpaceFile_taskId_idx" ON "SpaceFile"("taskId");
       CREATE INDEX IF NOT EXISTS "SpaceFile_workId_idx" ON "SpaceFile"("workId");

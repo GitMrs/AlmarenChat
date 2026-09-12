@@ -7,7 +7,7 @@ import { getSpaceForUser, resolveManyAgents } from '@/app/api/_lib/spaces';
 import { taskProposalNeedsClarification } from '@/lib/task-proposals';
 import { coordinatorAuthorization } from '@/lib/agent-runtime-v3-policy.mjs';
 import { taskProposalWithServerCapabilities } from '@/lib/task-proposal-policy.mjs';
-import { getSpaceSkill } from '@/lib/space-skills.mjs';
+import { getSpaceSkill, listSpaceSkills } from '@/lib/space-skills.mjs';
 import { runningWorkStage } from '@/lib/space-templates.mjs';
 
 const ACTIVE_RELAY_STATUSES = ['QUEUED', 'RUNNING', 'WAITING_APPROVAL', 'CANCEL_REQUESTED'];
@@ -144,6 +144,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
     }
     const memberAgents = await resolveManyAgents(space.members.map((member) => member.agentId), userId);
     if (memberAgents.length === 0) return NextResponse.json({ error: '空间成员不可用' }, { status: 400 });
+    const installedSpaceSkills = await listSpaceSkills({
+      projectRoot: process.cwd(), userId, spaceId,
+    });
+    const availableSpaceSkills = (await Promise.all(installedSpaceSkills.map((skill) => getSpaceSkill({
+      projectRoot: process.cwd(), userId, spaceId, skillId: skill.id,
+    })))).filter(Boolean);
     let proposalMessage = null;
     let proposal: TaskProposalAttachment | null = null;
     let validatedSkillSnapshot: Record<string, unknown> | null = null;
@@ -242,7 +248,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
         steps: [runInput],
         deliverables: [],
         artifacts: [],
+        availableSkills: availableSpaceSkills,
       });
+      if (availableSpaceSkills.length > 0 && !authorization.availableSkills) {
+        authorization.availableSkills = availableSpaceSkills;
+      }
       const modelRequestLimit = 48;
       const workTitle = String(currentProposal?.goal || runInput).split('\n')[0].trim().slice(0, 120) || '未命名成果';
       const templateSnapshot = space.templateSnapshot && typeof space.templateSnapshot === 'object'

@@ -633,7 +633,10 @@ async function coordinateNextWork(run, context, triggerEventId) {
           : null)
         || null,
       requiredSkillId: existingTasks.length === 0 ? authorization.selectedSkill?.id : null,
-      additionalSkills: authorization.selectedSkill ? [authorization.selectedSkill] : [],
+      additionalSkills: [
+        ...(Array.isArray(authorization.availableSkills) ? authorization.availableSkills : []),
+        ...(authorization.selectedSkill ? [authorization.selectedSkill] : []),
+      ],
       workspaceWriteAllowed: authorizationAllowsCapability(authorization, 'workspace_write'),
       authorization,
     }, {

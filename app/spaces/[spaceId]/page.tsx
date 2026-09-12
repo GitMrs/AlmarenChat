@@ -34,7 +34,7 @@ import {
 import { isEditableSpaceFile, isPreviewableSpaceImage } from '@/lib/space-files';
 import { spaceAssetRoleLabel } from '@/lib/space-asset-policy.mjs';
 import { createClientId } from '@/lib/client-id';
-import type { Agent, AgentRun, AgentRunEvent, AgentTask, SpaceActionRequest, SpaceAutomation, SpaceConnector, SpaceDiscussion, SpaceFile, SpaceLearning, SpaceLearningItem, SpaceMessage, SpaceMcpServer, SpaceOperationOutcome, SpaceOperationsSummary, SpacePiCoordinationRequest, SpacePiExecutionActivity, SpacePiExecutionNote, SpacePiSkillApproval, SpaceRelay, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal, SpaceWork } from '@/types';
+import type { Agent, AgentRun, AgentRunEvent, AgentTask, SpaceActionRequest, SpaceAutomation, SpaceConnector, SpaceDiscussion, SpaceFile, SpaceLearning, SpaceLearningItem, SpaceMessage, SpaceMcpServer, SpaceOperationOutcome, SpaceOperationsSummary, SpacePiCoordinationRequest, SpacePiExecutionActivity, SpacePiExecutionNote, SpacePiSkillApproval, SpaceRelay, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal, SpaceWork, SpaceWorkVersion } from '@/types';
 
 const FALLBACK_COLOR = '#4f46e5';
 const SPACE_COORDINATOR_ID = 'space-coordinator';
@@ -466,6 +466,9 @@ export default function SpaceDetailPage() {
   const [files, setFiles] = useState<SpaceFile[]>([]);
   const [runs, setRuns] = useState<AgentRun[]>([]);
   const [works, setWorks] = useState<SpaceWork[]>([]);
+  const [workVersions, setWorkVersions] = useState<SpaceWorkVersion[]>([]);
+  const [versionsOpen, setVersionsOpen] = useState(false);
+  const [versionsLoading, setVersionsLoading] = useState(false);
   const [automations, setAutomations] = useState<SpaceAutomation[]>([]);
   const [actionRequests, setActionRequests] = useState<SpaceActionRequest[]>([]);
   const [wechatPublicationActions, setWechatPublicationActions] = useState<SpaceActionRequest[]>([]);
@@ -810,6 +813,50 @@ export default function SpaceDetailPage() {
   const currentWork = activeWorkId === 'new' ? null : workById.get(activeWorkId) || null;
   const workNoun = WORK_NOUNS[space?.templateId || ''] || '成果';
   const workSelectionLocked = isStreaming || isRunActive || hasPendingTaskProposal || switchingWork;
+
+  const openWorkVersions = async () => {
+    if (!currentWork || versionsLoading) return;
+    setVersionsLoading(true);
+    setError('');
+    try {
+      const result = await spacesApi.workVersions(spaceId, currentWork.id);
+      setWorkVersions(result.versions);
+      setVersionsOpen(true);
+    } catch (err: any) {
+      setError(err.message || '读取版本记录失败');
+    } finally {
+      setVersionsLoading(false);
+    }
+  };
+
+  const createCurrentWorkVersion = async () => {
+    if (!currentWork || versionsLoading) return;
+    setVersionsLoading(true);
+    try {
+      const result = await spacesApi.createWorkVersion(spaceId, currentWork.id, { summary: '用户手动保存版本' });
+      setWorkVersions((items) => [result.version, ...items]);
+      setVersionsOpen(true);
+    } catch (err: any) {
+      setError(err.message || '保存版本失败');
+    } finally {
+      setVersionsLoading(false);
+    }
+  };
+
+  const restoreWorkVersion = async (version: SpaceWorkVersion) => {
+    if (!currentWork || versionsLoading || !window.confirm(`确认恢复到 v${version.version}？当前文件会被替换。`)) return;
+    setVersionsLoading(true);
+    try {
+      await spacesApi.restoreWorkVersion(spaceId, currentWork.id, version.id);
+      const fileResult = await spacesApi.files(spaceId);
+      setFiles(fileResult.files);
+      setVersionsOpen(false);
+    } catch (err: any) {
+      setError(err.message || '恢复版本失败');
+    } finally {
+      setVersionsLoading(false);
+    }
+  };
 
   const switchActiveWork = async (workId: string) => {
     if (workSelectionLocked || workId === activeWorkId) {
@@ -2746,12 +2793,42 @@ export default function SpaceDetailPage() {
                           {works.map((work, index) => <option key={work.id} value={work.id}>{WORK_NOUNS[work.kind] || '成果'} {works.length - index} · {compactWorkTitle(work.title, 14)}</option>)}
                           {files.some((file) => !file.workId) && <option value="legacy">公共 / 历史</option>}
                         </select>}
+                      {currentWork && fileAssetTab === 'OUTPUT' && <>
+                        <button type="button" onClick={openWorkVersions} disabled={versionsLoading} className="inline-flex h-10 shrink-0 items-center gap-2 rounded-lg border border-black/[0.08] bg-white px-3 text-xs font-black text-slate-700 hover:bg-slate-50 disabled:opacity-50" title="查看成果版本">
+                          {versionsLoading ? <Loader2 className="animate-spin" size={15} /> : <History size={15} />}
+                          版本
+                        </button>
+                        <button type="button" onClick={createCurrentWorkVersion} disabled={versionsLoading} className="inline-flex h-10 shrink-0 items-center gap-2 rounded-lg bg-slate-950 px-3 text-xs font-black text-white disabled:opacity-50" title="保存当前版本">
+                          <Save size={15} />
+                          保存
+                        </button>
+                      </>}
                       <button type="button" onClick={() => fileInputRef.current?.click()} disabled={uploadingFile} className="inline-flex h-10 shrink-0 items-center gap-2 rounded-lg bg-slate-950 px-3 text-xs font-black text-white disabled:bg-slate-200">
                         {uploadingFile ? <Loader2 className="animate-spin" size={15} /> : <UploadCloud size={15} />}
                         上传
                       </button>
                     </div>
                   </div>
+                  {versionsOpen && currentWork && fileAssetTab === 'OUTPUT' && (
+                    <div className="mt-4 rounded-lg border border-black/[0.08] bg-white p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <div className="text-sm font-black text-slate-800">{compactWorkTitle(currentWork.title, 30)} 的版本</div>
+                          <div className="mt-1 text-xs font-semibold text-slate-400">恢复版本会替换当前成果文件</div>
+                        </div>
+                        <button type="button" onClick={() => setVersionsOpen(false)} className="rounded-md p-1.5 text-slate-400 hover:bg-slate-50 hover:text-slate-700" aria-label="关闭版本记录"><X size={16} /></button>
+                      </div>
+                      <div className="mt-3 divide-y divide-black/[0.06]">
+                        {workVersions.length === 0 ? <div className="py-4 text-xs font-semibold text-slate-400">暂无版本记录，点击“保存”创建第一个版本。</div> : workVersions.map((version) => (
+                          <div key={version.id} className="flex items-center gap-3 py-3">
+                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-slate-100 text-xs font-black text-slate-600">v{version.version}</div>
+                            <div className="min-w-0 flex-1"><div className="truncate text-xs font-black text-slate-700">{version.summary || '成果版本'}</div><div className="mt-0.5 text-[11px] font-semibold text-slate-400">{new Date(version.createdAt).toLocaleString('zh-CN')} · {version.manifest?.length || 0} 个文件</div></div>
+                            <button type="button" onClick={() => restoreWorkVersion(version)} disabled={versionsLoading} className="inline-flex shrink-0 items-center gap-1 rounded-md border border-black/[0.08] px-2 py-1.5 text-[11px] font-black text-slate-600 hover:bg-slate-50 disabled:opacity-50"><RotateCcw size={13} />恢复</button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   <div className="mt-5 flex gap-1 overflow-x-auto border-b border-black/[0.06]" role="tablist" aria-label="文件类型">
                     {[
                       ['all', '全部'],

@@ -8,6 +8,7 @@ import { isEditableSpaceFile, MAX_EDITABLE_SPACE_FILE_BYTES } from '@/lib/space-
 import { workspaceAttemptFile } from '@/lib/workspace-staging.mjs';
 import { logicalWorkspaceRelativePath } from '@/lib/space-work-paths.mjs';
 import { isPiSpaceTurnActive } from '@/lib/pi-runtime/space-session.mjs';
+import { createWorkVersion } from '@/lib/work-versions.mjs';
 
 const EDIT_BLOCKING_RUN_STATUSES = ['QUEUED', 'PLANNING', 'RUNNING', 'SUMMARIZING', 'CANCEL_REQUESTED'];
 
@@ -148,6 +149,13 @@ export async function PUT(
     const fileStat = await stat(actualTarget);
     if (!fileStat.isFile()) return NextResponse.json({ error: 'File not found' }, { status: 404 });
 
+    if (file.workId) {
+      const work = await prisma.spaceWork.findFirst({ where: { id: file.workId, spaceId } });
+      if (work) await createWorkVersion({
+        prisma, userId, spaceId, work,
+        summary: `编辑 ${file.fileName} 前的版本`,
+      });
+    }
     await writeFile(actualTarget, bytes);
     const updatedAt = new Date();
     const updated = await prisma.spaceFile.update({
