@@ -63,7 +63,12 @@ export async function PATCH(request: Request) {
     }
     if (data.assistantMcpServers !== undefined) {
       const servers = parseMcpServers(data.assistantMcpServers);
-      data.assistantMcpServers = servers.map(({ id, url }) => ({ id, url }));
+      data.assistantMcpServers = servers.map(({ id, url, headers, enabled }) => ({
+        id,
+        url,
+        ...(headers && Object.keys(headers).length > 0 ? { headers } : {}),
+        enabled: enabled !== false,
+      }));
     }
     if (data.modelContextWindow !== undefined
       && data.modelContextWindow !== null

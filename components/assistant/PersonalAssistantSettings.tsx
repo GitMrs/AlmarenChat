@@ -1,10 +1,11 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Bot, Brain, ChevronDown, Eye, EyeOff, Heart, Loader2, MessageCircleHeart, Plus, RefreshCw, RotateCcw, Save, Sparkles, Trash2, Unplug, Upload } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { ArrowRight, Blocks, Bot, Brain, ChevronDown, Eye, EyeOff, Heart, Loader2, MessageCircleHeart, Plus, RefreshCw, RotateCcw, Save, Sparkles, Trash2, Unplug, Upload } from 'lucide-react';
 import Avatar from '@/components/shared/Avatar';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
-import { assistant, uploads } from '@/lib/api';
+import { assistant, uploads, user as userApi } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import type { AssistantExperience, AssistantExperienceMessage, AssistantMemoryItem, AssistantQQBinding, PersonalAssistantProfile } from '@/types';
 
@@ -72,6 +73,7 @@ const COMPANION_PRESETS: CompanionPreset[] = [
 ];
 
 export default function PersonalAssistantSettings() {
+  const router = useRouter();
   const [profile, setProfile] = useState<PersonalAssistantProfile>(EMPTY_PROFILE);
   const [memories, setMemories] = useState<AssistantMemoryItem[]>([]);
   const [experiences, setExperiences] = useState<AssistantExperience[]>([]);
@@ -85,6 +87,7 @@ export default function PersonalAssistantSettings() {
   const [memoryBusyId, setMemoryBusyId] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [mcpSummary, setMcpSummary] = useState<{ total: number; active: number } | null>(null);
   const [confirmModal, setConfirmModal] = useState<{
     title: string;
     description: React.ReactNode;
@@ -116,6 +119,13 @@ export default function PersonalAssistantSettings() {
         setQQAppId(result.binding?.appId || '');
       })
       .catch((reason: any) => setError(reason.message || '读取 QQ Bot 状态失败'));
+    userApi.get()
+      .then((res) => {
+        const servers = res.user?.assistantMcpServers || [];
+        const active = servers.filter((s: any) => s.enabled !== false).length;
+        setMcpSummary({ total: servers.length, active });
+      })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -742,6 +752,50 @@ export default function PersonalAssistantSettings() {
                 </div>
               );
             })}
+          </div>
+        </div>
+      </section>
+
+      {/* 卡片：MCP 工具总线能力 */}
+      <section className="rounded-[28px] border border-black/[0.06] bg-white p-6 sm:p-7 shadow-sm space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-black/[0.06] pb-4">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-violet-50 text-violet-600">
+              <Blocks size={16} />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-black text-slate-950">MCP 工具总线能力</h3>
+                <span className="rounded-full bg-violet-50 px-2 py-0.5 text-[11px] font-black text-violet-700">
+                  全量继承
+                </span>
+              </div>
+              <p className="text-xs text-slate-400 font-medium">小伴自动挂载并调度你在平台配置的所有可用 MCP 工具</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => router.push('/me?tab=mcp')}
+            className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-black/10 bg-white px-3.5 text-xs font-black text-slate-700 shadow-2xs hover:bg-slate-50 transition cursor-pointer self-start sm:self-auto"
+          >
+            <span>管理平台 MCP 工具</span>
+            <ArrowRight size={13} />
+          </button>
+        </div>
+
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border border-black/[0.06] bg-[#fbfaf7] p-4">
+          <div className="text-xs text-slate-600 leading-5">
+            {mcpSummary ? (
+              <>当前平台共配置 <strong className="text-slate-900 font-bold">{mcpSummary.total}</strong> 个 MCP 服务，其中 <strong className="text-emerald-600 font-bold">{mcpSummary.active}</strong> 个处于启用状态。小伴在需要时将自动调用。</>
+            ) : (
+              '小伴在回复与协助你处理任务时，可自动按需调用 MCP 工具（如天气、高德搜索、网页与外部接口）。'
+            )}
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-500">
+              <span className="h-2 w-2 rounded-full bg-emerald-500" />
+              就绪调度中
+            </span>
           </div>
         </div>
       </section>

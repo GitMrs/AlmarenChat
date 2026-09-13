@@ -266,7 +266,7 @@ export async function POST(request: Request) {
     });
 
     if (!localMode) {
-      const assistantMcpServers = parseMcpServers(userSettings.assistantMcpServers);
+      const assistantMcpServers = parseMcpServers(userSettings.assistantMcpServers).filter((s) => s.enabled !== false);
       if (assistantMcpServers.length > 0) {
         const broker = createAssistantToolBroker({ servers: assistantMcpServers });
         const assistantTools = await broker.discover();

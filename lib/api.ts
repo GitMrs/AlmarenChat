@@ -1,4 +1,4 @@
-import type { AgentGrowthProfile, AgentRun, AssistantConversationSummary, AssistantExperienceMessage, AssistantMemoryItem, AssistantQQBinding, AssistantReminder, AssistantReminderCandidate, Message, MessageAttachment, PersonalAssistantBootstrap, PersonalAssistantProfile, SpaceActionRequest, SpaceAutomation, SpaceConnector, SpaceDiscussion, SpaceFileShare, SpaceOperationOutcome, SpaceOperationsSummary, SpaceRelay, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal, SpaceWork, SpaceWorkVersion, SpaceMcpServer } from '@/types';
+import type { AgentGrowthProfile, AgentRun, AssistantConversationSummary, AssistantExperienceMessage, AssistantMemoryItem, AssistantQQBinding, AssistantReminder, AssistantReminderCandidate, Message, MessageAttachment, PersonalAssistantBootstrap, PersonalAssistantProfile, SpaceActionRequest, SpaceAutomation, SpaceConnector, SpaceDiscussion, SpaceFileShare, SpaceOperationOutcome, SpaceOperationsSummary, SpaceRelay, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal, SpaceWork, SpaceWorkVersion, SpaceMcpServer, AssistantMcpServer, McpProbeResult } from '@/types';
 
 const API_BASE = '/api';
 
@@ -908,6 +908,7 @@ export const user = {
     imageModelSize?: string | null;
     imageModelProtocol?: 'OPENAI_IMAGES' | 'OPENAI_CHAT';
     tavilyApiKey?: string | null;
+    assistantMcpServers?: AssistantMcpServer[];
     defaultStyle?: string | null;
     contextMessageLimit?: number;
   }) =>
@@ -922,6 +923,15 @@ export const user = {
     }),
   models: (data: { apiBaseUrl: string; apiKey: string }) =>
     request<{ models: string[] }>('/user/models', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+};
+
+// MCP Tools
+export const mcp = {
+  test: (data: { url: string; headers?: Record<string, string>; id?: string }) =>
+    request<McpProbeResult>('/mcp/test', {
       method: 'POST',
       body: JSON.stringify(data),
     }),

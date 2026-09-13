@@ -1,9 +1,31 @@
+export interface AssistantMcpServer {
+  id: string;
+  url: string;
+  headers?: Record<string, string>;
+  enabled?: boolean;
+}
+
+export interface McpDiscoveredTool {
+  name: string;
+  description?: string;
+  inputSchema?: Record<string, any> | null;
+}
+
+export interface McpProbeResult {
+  ok: boolean;
+  latencyMs?: number;
+  tools?: McpDiscoveredTool[];
+  count?: number;
+  error?: string;
+}
+
 export interface User {
   id: string;
   email: string;
   name: string;
   avatar?: string;
   createdAt: string;
+  assistantMcpServers?: AssistantMcpServer[];
 }
 
 export interface Agent {
