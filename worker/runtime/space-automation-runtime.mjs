@@ -34,6 +34,19 @@ function workTitle(automation, timestamp) {
   return `${automation.name} · ${stamp}`.slice(0, 120);
 }
 
+function automationExecutionInput(db, automation, prompt) {
+  const recentWorks = db.prepare(
+    `SELECT "title", "objective", "status", "updatedAt"
+     FROM "SpaceWork"
+     WHERE "spaceId" = ? AND "kind" = ? AND "status" <> 'ARCHIVED'
+     ORDER BY "updatedAt" DESC LIMIT 12`
+  ).all(automation.spaceId, automation.templateId || 'general');
+  const history = recentWorks.length > 0
+    ? recentWorks.map((work, index) => `${index + 1}. ${String(work.title || '').slice(0, 120)}${work.objective ? `：${String(work.objective).slice(0, 240)}` : ''}`).join('\n')
+    : '暂无已完成成果。';
+  return `${prompt}\n\n自动化选题推进要求：\n- 读取空间共享策略和选题池，选择一个本次尚未完成的新主题。\n- 避免与下面最近成果的主题、标题和角度重复；如果选题池已使用完，明确说明并选择最接近但不同的角度。\n- 本次只创作一篇新成果，不要重复改写历史文章。\n最近成果记录：\n${history}`.slice(0, 12_000);
+}
+
 export function triggerNextDueAutomation(db, timestamp = new Date().toISOString()) {
   return db.transaction(() => {
     const automation = db.prepare(
@@ -72,7 +85,8 @@ export function triggerNextDueAutomation(db, timestamp = new Date().toISOString(
     const executionId = randomUUID();
     const snapshot = parseSnapshot(automation.templateSnapshot);
     const authorization = automationAuthorization(automation, snapshot);
-    const input = String(automation.prompt || '').trim();
+    const prompt = String(automation.prompt || '').trim();
+    const input = automationExecutionInput(db, automation, prompt);
     let work = automation.workStrategy === 'ACTIVE_WORK' && automation.activeWorkId
       ? db.prepare(`SELECT * FROM "SpaceWork" WHERE "id" = ? AND "spaceId" = ? AND "status" <> 'ARCHIVED'`).get(
           automation.activeWorkId,

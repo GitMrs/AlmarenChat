@@ -983,14 +983,29 @@ async function executeTask(run, task, context, previousResults) {
         }),
       }
       : assignedAgent;
-  if (run.runtimeVersion >= 3 && !context.researchContext && taskNeedsResearchContext(task, run.runtimeVersion)) {
+  if (run.runtimeVersion >= 3 && !context.researchContext && wantsWebResearch(run.input) && taskNeedsResearchContext(task, run.runtimeVersion)) {
     context.researchContext = await buildResearchContext(run, context, {
       task,
       researchInput: `${task.title}\n${task.instruction}\n${task.acceptanceCriteria || ''}`,
     });
     if (context.researchAudit?.accepted === false) {
-      waitPendingTaskForResearchInput(run, task, context.researchAudit.issues || []);
-      return null;
+      const issues = context.researchAudit.issues || [];
+      if (context.automated) {
+        // Scheduled runs cannot receive an interactive answer. Keep the audit
+        // trail, but let the agent continue using local strategy/materials and
+        // explicitly disclose that external sources were not accepted.
+        addEvent(run.id, 'AUTOMATION_RESEARCH_SOURCE_SKIPPED', `${task.agentName}未找到通过验收的外部来源，自动化将基于空间资料继续`, {
+          taskId: task.id,
+          agentId: task.agentId,
+          issues,
+          actor: 'automation',
+          fallback: 'space_materials_only',
+        }, `automation-research-source-skipped:${task.id}:${task.attempt}`);
+        context.researchContext = '外部检索来源未通过相关性验收。本次自动化不得把未验证的外部信息写成事实，仅使用空间资料、账号策略和用户已提供内容继续完成任务。';
+      } else {
+        waitPendingTaskForResearchInput(run, task, issues);
+        return null;
+      }
     }
   }
   if (task.mode === 'advisor') return executeAdvisorTask(run, task, context, previousResults, agent);
@@ -1317,11 +1332,12 @@ async function processRun(run) {
       tasks = db.prepare('SELECT * FROM "AgentTask" WHERE "runId" = ? ORDER BY "sortOrder" ASC').all(run.id);
     }
     const reusableResearch = restoreReusableResearch(run.id);
+    const runRequestsResearch = wantsWebResearch(run.input);
     const refreshTask = tasks.find(
-      (task) => task.status === 'PENDING' && taskNeedsResearchContext(task, run.runtimeVersion) && shouldRefreshResearch(task.reviewFeedback)
+      (task) => runRequestsResearch && task.status === 'PENDING' && taskNeedsResearchContext(task, run.runtimeVersion) && shouldRefreshResearch(task.reviewFeedback)
     );
     const resumedResearchTask = tasks.find(
-      (task) => task.status === 'PENDING'
+      (task) => runRequestsResearch && task.status === 'PENDING'
         && taskNeedsResearchContext(task, run.runtimeVersion)
         && isResearchSourceWait(task.waitReason)
         && String(task.waitAnswer || '').trim()

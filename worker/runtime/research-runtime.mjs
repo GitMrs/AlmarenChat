@@ -241,7 +241,7 @@ export function createResearchRuntime({
     // A task field must not opt in to research. The concrete input being
     // processed is the runtime signal; callers can pass a focused research
     // request when the current action actually needs external facts.
-    if (run.runtimeVersion >= 3 && options.task && !wantsWebResearch(researchInput)) return '';
+    if (run.runtimeVersion >= 3 && options.task && !options.forceResearch && !wantsWebResearch(run.input)) return '';
     if (run.runtimeVersion >= 3 && options.task
       ? explicitlyForbidsResearchExecution(researchInput)
       : explicitlyForbidsWebResearch(researchInput)) return '';
