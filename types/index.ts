@@ -26,6 +26,8 @@ export interface User {
   avatar?: string;
   createdAt: string;
   assistantMcpServers?: AssistantMcpServer[];
+  imageApiBaseUrl?: string | null;
+  imageApiKey?: string | null;
 }
 
 export interface Agent {

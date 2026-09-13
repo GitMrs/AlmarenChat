@@ -29,12 +29,23 @@ export async function POST(
       prisma.conversation.findFirst({ where: { id: conversationId, userId, kind: 'AGENT' }, select: { id: true } }),
       prisma.user.findUnique({
         where: { id: userId },
-        select: { imageModelEnabled: true, imageModelName: true, imageModelSize: true, imageModelProtocol: true, apiBaseUrl: true, apiKey: true },
+        select: {
+          imageModelEnabled: true,
+          imageModelName: true,
+          imageModelSize: true,
+          imageModelProtocol: true,
+          imageApiBaseUrl: true,
+          imageApiKey: true,
+          apiBaseUrl: true,
+          apiKey: true,
+        },
       }),
     ]);
     if (!conversation) return NextResponse.json({ error: 'Conversation not found' }, { status: 404 });
-    if (!user?.imageModelEnabled || !user.imageModelName || !user.apiBaseUrl || !user.apiKey) {
-      return NextResponse.json({ error: '请先在账号设置中启用并完整配置图片生成模型' }, { status: 409 });
+    const imageBaseUrl = user?.imageApiBaseUrl?.trim() || user?.apiBaseUrl?.trim();
+    const imageApiKey = user?.imageApiKey?.trim() || user?.apiKey?.trim();
+    if (!user?.imageModelEnabled || !user.imageModelName || !imageBaseUrl || !imageApiKey) {
+      return NextResponse.json({ error: '请先在账号设置中启用并完整配置图片生成模型（需包含 Base URL、API Key 与模型名称）' }, { status: 409 });
     }
 
     let userMessage = null;
@@ -46,8 +57,8 @@ export async function POST(
 
     const generated = await requestGeneratedImage({
       model: {
-        apiKey: user.apiKey,
-        baseURL: user.apiBaseUrl,
+        apiKey: imageApiKey,
+        baseURL: imageBaseUrl,
         name: user.imageModelName,
         size: user.imageModelSize || '1024x1024',
         protocol: user.imageModelProtocol,

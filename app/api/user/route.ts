@@ -24,6 +24,8 @@ export async function GET(request: Request) {
         imageModelName: true,
         imageModelSize: true,
         imageModelProtocol: true,
+        imageApiBaseUrl: true,
+        imageApiKey: true,
         tavilyApiKey: true,
         assistantMcpServers: true,
         defaultStyle: true,
@@ -50,7 +52,7 @@ export async function PATCH(request: Request) {
     const userId = requireAuth(request);
     const body = await request.json();
 
-    const allowedFields = ['name', 'avatar', 'apiBaseUrl', 'apiKey', 'modelName', 'modelContextWindow', 'customModelEnabled', 'imageModelEnabled', 'imageModelName', 'imageModelSize', 'imageModelProtocol', 'tavilyApiKey', 'assistantMcpServers', 'defaultStyle', 'contextMessageLimit'] as const;
+    const allowedFields = ['name', 'avatar', 'apiBaseUrl', 'apiKey', 'modelName', 'modelContextWindow', 'customModelEnabled', 'imageModelEnabled', 'imageModelName', 'imageModelSize', 'imageModelProtocol', 'imageApiBaseUrl', 'imageApiKey', 'tavilyApiKey', 'assistantMcpServers', 'defaultStyle', 'contextMessageLimit'] as const;
     const data: Record<string, any> = {};
     for (const field of allowedFields) {
       if (body[field] !== undefined) {
@@ -99,6 +101,8 @@ export async function PATCH(request: Request) {
         imageModelName: true,
         imageModelSize: true,
         imageModelProtocol: true,
+        imageApiBaseUrl: true,
+        imageApiKey: true,
         tavilyApiKey: true,
         assistantMcpServers: true,
         defaultStyle: true,

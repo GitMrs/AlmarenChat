@@ -12,15 +12,17 @@ export async function GET(request: Request, { params }: { params: Promise<{ spac
       getSpaceForUser(spaceId, userId),
       prisma.user.findUnique({
         where: { id: userId },
-        select: { imageModelEnabled: true, imageModelName: true, apiBaseUrl: true, apiKey: true },
+        select: { imageModelEnabled: true, imageModelName: true, apiBaseUrl: true, apiKey: true, imageApiBaseUrl: true, imageApiKey: true },
       }),
     ]);
     if (!space) return NextResponse.json({ error: 'Space not found' }, { status: 404 });
+    const hasImageBaseUrl = Boolean(imageSettings?.imageApiBaseUrl?.trim() || imageSettings?.apiBaseUrl?.trim());
+    const hasImageApiKey = Boolean(imageSettings?.imageApiKey?.trim() || imageSettings?.apiKey?.trim());
     return NextResponse.json({
       space: {
         ...space,
         imageGenerationAvailable: Boolean(
-          imageSettings?.imageModelEnabled && imageSettings.imageModelName && imageSettings.apiBaseUrl && imageSettings.apiKey
+          imageSettings?.imageModelEnabled && imageSettings.imageModelName && hasImageBaseUrl && hasImageApiKey
         ),
       },
     });

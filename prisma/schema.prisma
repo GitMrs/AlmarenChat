@@ -22,6 +22,8 @@ model User {
   imageModelName String?
   imageModelSize String? @default("1024x1024")
   imageModelProtocol String @default("OPENAI_IMAGES")
+  imageApiBaseUrl String?
+  imageApiKey  String?
   tavilyApiKey String?
   assistantMcpServers Json?
   defaultStyle String?

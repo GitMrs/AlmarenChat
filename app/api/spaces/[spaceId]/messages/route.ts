@@ -247,20 +247,25 @@ async function userModelSettings(userId: string) {
       imageModelName: true,
       imageModelSize: true,
       imageModelProtocol: true,
+      imageApiBaseUrl: true,
+      imageApiKey: true,
       tavilyApiKey: true,
       contextMessageLimit: true,
     },
   });
   if (!user) throw new Error('Unauthorized');
+  const effectiveImageBaseUrl = user.imageApiBaseUrl?.trim() || user.apiBaseUrl?.trim() || null;
+  const effectiveImageApiKey = user.imageApiKey?.trim() || user.apiKey?.trim() || null;
+  const imageModelAvailable = Boolean(user.imageModelEnabled && effectiveImageBaseUrl && effectiveImageApiKey && user.imageModelName);
   return {
     apiBaseUrl: user.customModelEnabled ? user.apiBaseUrl : null,
     apiKey: user.customModelEnabled ? user.apiKey : null,
     modelName: user.customModelEnabled ? user.modelName : null,
     modelContextWindow: user.modelContextWindow,
-    imageModelAvailable: Boolean(user.imageModelEnabled && user.apiBaseUrl && user.apiKey && user.imageModelName),
-    imageModel: user.imageModelEnabled && user.apiBaseUrl && user.apiKey && user.imageModelName ? {
-      baseURL: user.apiBaseUrl,
-      apiKey: user.apiKey,
+    imageModelAvailable,
+    imageModel: imageModelAvailable && effectiveImageBaseUrl && effectiveImageApiKey ? {
+      baseURL: effectiveImageBaseUrl,
+      apiKey: effectiveImageApiKey,
       name: user.imageModelName,
       size: user.imageModelSize,
       protocol: user.imageModelProtocol,
@@ -516,9 +521,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
     if (explicitImageRequest) {
       const imageSettings = await prisma.user.findUnique({
         where: { id: userId },
-        select: { imageModelEnabled: true, imageModelName: true, apiBaseUrl: true, apiKey: true },
+        select: { imageModelEnabled: true, imageModelName: true, apiBaseUrl: true, apiKey: true, imageApiBaseUrl: true, imageApiKey: true },
       });
-      if (!imageSettings?.imageModelEnabled || !imageSettings.imageModelName || !imageSettings.apiBaseUrl || !imageSettings.apiKey) {
+      const hasImageBaseUrl = Boolean(imageSettings?.imageApiBaseUrl?.trim() || imageSettings?.apiBaseUrl?.trim());
+      const hasImageApiKey = Boolean(imageSettings?.imageApiKey?.trim() || imageSettings?.apiKey?.trim());
+      if (!imageSettings?.imageModelEnabled || !imageSettings.imageModelName || !hasImageBaseUrl || !hasImageApiKey) {
         return NextResponse.json({ error: '请先在账号设置中启用并完整配置图片生成模型' }, { status: 409 });
       }
     }

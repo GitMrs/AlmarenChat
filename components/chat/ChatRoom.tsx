@@ -189,7 +189,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
             ...(u.customModelEnabled && u.apiBaseUrl && u.apiKey && u.modelName
               ? { apiBaseUrl: u.apiBaseUrl, apiKey: u.apiKey, modelName: u.modelName }
               : {}),
-            imageGenerationAvailable: Boolean(u.imageModelEnabled && u.apiBaseUrl && u.apiKey && u.imageModelName),
+            imageGenerationAvailable: Boolean(u.imageModelEnabled && (u.imageApiBaseUrl || u.apiBaseUrl) && (u.imageApiKey || u.apiKey) && u.imageModelName),
             imageModelSize: u.imageModelSize || '1024x1024',
           });
         } catch {

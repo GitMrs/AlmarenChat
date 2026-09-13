@@ -907,6 +907,8 @@ export const user = {
     imageModelName?: string | null;
     imageModelSize?: string | null;
     imageModelProtocol?: 'OPENAI_IMAGES' | 'OPENAI_CHAT';
+    imageApiBaseUrl?: string | null;
+    imageApiKey?: string | null;
     tavilyApiKey?: string | null;
     assistantMcpServers?: AssistantMcpServer[];
     defaultStyle?: string | null;

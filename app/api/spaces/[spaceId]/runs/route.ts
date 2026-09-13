@@ -166,9 +166,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
       if (proposal.capabilities?.includes('image_generate')) {
         const imageSettings = await prisma.user.findUnique({
           where: { id: userId },
-          select: { imageModelEnabled: true, imageModelName: true, apiBaseUrl: true, apiKey: true },
+          select: { imageModelEnabled: true, imageModelName: true, apiBaseUrl: true, apiKey: true, imageApiBaseUrl: true, imageApiKey: true },
         });
-        if (!imageSettings?.imageModelEnabled || !imageSettings.imageModelName || !imageSettings.apiBaseUrl || !imageSettings.apiKey) {
+        const hasImageBaseUrl = Boolean(imageSettings?.imageApiBaseUrl?.trim() || imageSettings?.apiBaseUrl?.trim());
+        const hasImageApiKey = Boolean(imageSettings?.imageApiKey?.trim() || imageSettings?.apiKey?.trim());
+        if (!imageSettings?.imageModelEnabled || !imageSettings.imageModelName || !hasImageBaseUrl || !hasImageApiKey) {
           return NextResponse.json({ error: '图片生成模型配置不完整，请先在账号设置中完成配置' }, { status: 409 });
         }
       }

@@ -1,0 +1,2 @@
+ALTER TABLE "User" ADD COLUMN "imageApiBaseUrl" TEXT;
+ALTER TABLE "User" ADD COLUMN "imageApiKey" TEXT;

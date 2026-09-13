@@ -22,6 +22,8 @@ export async function GET(request: Request) {
         imageModelName: true,
         imageModelSize: true,
         imageModelProtocol: true,
+        imageApiBaseUrl: true,
+        imageApiKey: true,
         tavilyApiKey: true,
         defaultStyle: true,
         contextMessageLimit: true,

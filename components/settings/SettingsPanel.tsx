@@ -59,6 +59,8 @@ type ModelSnapshot = {
   imageModelName: string;
   imageModelSize: string;
   imageModelProtocol: 'OPENAI_IMAGES' | 'OPENAI_CHAT';
+  imageApiBaseUrl: string;
+  imageApiKey: string;
   contextMessageLimit: number;
 };
 
@@ -80,6 +82,11 @@ export default function SettingsPanel() {
   const [imageModelName, setImageModelName] = useState('');
   const [imageModelSize, setImageModelSize] = useState('1024x1024');
   const [imageModelProtocol, setImageModelProtocol] = useState<'OPENAI_IMAGES' | 'OPENAI_CHAT'>('OPENAI_IMAGES');
+  const [imageApiBaseUrl, setImageApiBaseUrl] = useState('');
+  const [imageApiKey, setImageApiKey] = useState('');
+  const [availableImageModels, setAvailableImageModels] = useState<string[]>([]);
+  const [fetchingImageModels, setFetchingImageModels] = useState(false);
+  const [imageModelListResult, setImageModelListResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [contextMessageLimit, setContextMessageLimit] = useState(40);
   const [tavilyApiKey, setTavilyApiKey] = useState('');
   const [initialAccount, setInitialAccount] = useState<AccountSnapshot | null>(null);
@@ -124,9 +131,11 @@ export default function SettingsPanel() {
       imageModelName: imageModelName.trim(),
       imageModelSize,
       imageModelProtocol,
+      imageApiBaseUrl: imageApiBaseUrl.trim(),
+      imageApiKey: imageApiKey.trim(),
       contextMessageLimit,
     }),
-    [apiBaseUrl, apiKey, contextMessageLimit, customModelEnabled, imageModelEnabled, imageModelName, imageModelProtocol, imageModelSize, modelContextWindow, modelName]
+    [apiBaseUrl, apiKey, contextMessageLimit, customModelEnabled, imageApiBaseUrl, imageApiKey, imageModelEnabled, imageModelName, imageModelProtocol, imageModelSize, modelContextWindow, modelName]
   );
   const hasAccountChanges = initialAccount ? JSON.stringify(currentAccount) !== JSON.stringify(initialAccount) : false;
   const hasModelChanges = initialModel ? JSON.stringify(currentModel) !== JSON.stringify(initialModel) : false;
@@ -138,7 +147,11 @@ export default function SettingsPanel() {
   const canTestModel = Boolean(apiBaseUrl.trim() && apiKey.trim() && modelName.trim());
   const canFetchModels = Boolean(apiBaseUrl.trim() && apiKey.trim());
   const modelConfigIncomplete = customModelEnabled && !canTestModel;
-  const imageModelConfigIncomplete = imageModelEnabled && !(apiBaseUrl.trim() && apiKey.trim() && imageModelName.trim());
+  const effectiveImageBaseUrl = imageApiBaseUrl.trim() || apiBaseUrl.trim();
+  const effectiveImageApiKey = imageApiKey.trim() || apiKey.trim();
+  const canFetchImageModels = Boolean(effectiveImageBaseUrl && effectiveImageApiKey);
+  const availableImageOptions = availableImageModels.length > 0 ? availableImageModels : availableModels;
+  const imageModelConfigIncomplete = imageModelEnabled && !(effectiveImageBaseUrl && effectiveImageApiKey && imageModelName.trim());
   const tokenLimits = useMemo(
     () => modelTokenLimits(modelName, modelContextWindow),
     [modelContextWindow, modelName]
@@ -175,6 +188,8 @@ export default function SettingsPanel() {
         setImageModelName(u.imageModelName || '');
         setImageModelSize(u.imageModelSize || '1024x1024');
         setImageModelProtocol(u.imageModelProtocol === 'OPENAI_CHAT' ? 'OPENAI_CHAT' : 'OPENAI_IMAGES');
+        setImageApiBaseUrl(u.imageApiBaseUrl || '');
+        setImageApiKey(u.imageApiKey || '');
         setTavilyApiKey(u.tavilyApiKey || '');
         setContextMessageLimit(u.contextMessageLimit || 40);
         setInitialAccount({ name: u.name || '' });
@@ -188,12 +203,14 @@ export default function SettingsPanel() {
           imageModelName: u.imageModelName || '',
           imageModelSize: u.imageModelSize || '1024x1024',
           imageModelProtocol: u.imageModelProtocol === 'OPENAI_CHAT' ? 'OPENAI_CHAT' : 'OPENAI_IMAGES',
+          imageApiBaseUrl: u.imageApiBaseUrl || '',
+          imageApiKey: u.imageApiKey || '',
           contextMessageLimit: u.contextMessageLimit || 40,
         });
         setInitialSearch({ tavilyApiKey: u.tavilyApiKey || '' });
       })
-      .catch((err: any) => {
-        if (err.message === 'Unauthorized') {
+      .catch((err) => {
+        if (err?.status === 401) {
           localStorage.removeItem('token');
           setNeedsLogin(true);
           return;
@@ -241,6 +258,8 @@ export default function SettingsPanel() {
         imageModelName: currentModel.imageModelName || null,
         imageModelSize: currentModel.imageModelSize,
         imageModelProtocol: currentModel.imageModelProtocol,
+        imageApiBaseUrl: currentModel.imageApiBaseUrl || null,
+        imageApiKey: currentModel.imageApiKey || null,
         contextMessageLimit: currentModel.contextMessageLimit,
       });
       setApiBaseUrl(currentModel.apiBaseUrl);
@@ -251,6 +270,8 @@ export default function SettingsPanel() {
       setImageModelName(currentModel.imageModelName);
       setImageModelSize(currentModel.imageModelSize);
       setImageModelProtocol(currentModel.imageModelProtocol);
+      setImageApiBaseUrl(currentModel.imageApiBaseUrl);
+      setImageApiKey(currentModel.imageApiKey);
       setContextMessageLimit(currentModel.contextMessageLimit);
       setInitialModel(currentModel);
       setModelSaved(true);
@@ -340,6 +361,31 @@ export default function SettingsPanel() {
       setModelListResult({ type: 'error', message: err.message || '获取模型列表失败' });
     } finally {
       setFetchingModels(false);
+    }
+  };
+
+  const handleFetchImageModels = async () => {
+    if (!canFetchImageModels || fetchingImageModels) return;
+    setFetchingImageModels(true);
+    setImageModelListResult(null);
+    try {
+      const result = await userApi.models({
+        apiBaseUrl: effectiveImageBaseUrl,
+        apiKey: effectiveImageApiKey,
+      });
+      setAvailableImageModels(result.models);
+      if (result.models.length > 0) {
+        setManualImageModelEntry(false);
+      }
+      setImageModelListResult({
+        type: 'success',
+        message: result.models.length > 0 ? `已获取 ${result.models.length} 个模型` : '服务返回的模型列表为空',
+      });
+    } catch (err: any) {
+      setAvailableImageModels([]);
+      setImageModelListResult({ type: 'error', message: err.message || '获取模型列表失败' });
+    } finally {
+      setFetchingImageModels(false);
     }
   };
 
@@ -729,7 +775,7 @@ export default function SettingsPanel() {
                     </div>
                     <div className="min-w-0">
                       <div className="text-sm font-black text-slate-900">图片生成模型</div>
-                      <p className="mt-1 text-xs leading-5 text-slate-500">用于获得授权的空间任务，使用上方在线服务的 Base URL 和 API Key。</p>
+                      <p className="mt-1 text-xs leading-5 text-slate-500">用于获得授权的空间任务，可独立配置 Base URL 和 API Key（留空则复用上方对话模型）。</p>
                     </div>
                   </div>
                   <button
@@ -744,13 +790,67 @@ export default function SettingsPanel() {
                     {imageModelEnabled ? <ToggleRight size={18} /> : <ToggleLeft size={18} />}
                   </button>
                 </div>
+                <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-2 block text-xs font-bold text-slate-600">
+                      图片模型 Base URL <span className="font-normal text-slate-400">（选填）</span>
+                    </label>
+                    <input
+                      value={imageApiBaseUrl}
+                      onChange={(e) => {
+                        setImageApiBaseUrl(e.target.value);
+                        setAvailableImageModels([]);
+                        setManualImageModelEntry(false);
+                        setImageModelListResult(null);
+                      }}
+                      placeholder={apiBaseUrl.trim() ? `留空则使用：${apiBaseUrl.trim()}` : '留空则复用上方对话模型 Base URL'}
+                      disabled={!imageModelEnabled}
+                      className="h-11 w-full rounded-xl border border-black/[0.08] bg-white px-3 text-sm font-medium text-slate-800 outline-none disabled:bg-slate-100 disabled:text-slate-400 focus:border-slate-300"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-xs font-bold text-slate-600">
+                      图片模型 API Key <span className="font-normal text-slate-400">（选填）</span>
+                    </label>
+                    <input
+                      type="password"
+                      value={imageApiKey}
+                      onChange={(e) => {
+                        setImageApiKey(e.target.value);
+                        setAvailableImageModels([]);
+                        setManualImageModelEntry(false);
+                        setImageModelListResult(null);
+                      }}
+                      placeholder={apiKey.trim() ? '留空则使用上方对话模型 API Key' : '留空则复用上方对话模型 API Key'}
+                      disabled={!imageModelEnabled}
+                      className="h-11 w-full rounded-xl border border-black/[0.08] bg-white px-3 text-sm font-medium text-slate-800 outline-none disabled:bg-slate-100 disabled:text-slate-400 focus:border-slate-300"
+                    />
+                  </div>
+                </div>
+
                 <div className="mt-4 grid gap-4 sm:grid-cols-[minmax(0,1fr)_180px_160px]">
                   <div className="block min-w-0">
-                    <span className="mb-2 block text-xs font-bold text-slate-600">图片模型名称</span>
-                    {availableModels.length > 0 && !manualImageModelEntry ? (
+                    <div className="mb-2 flex items-center justify-between gap-3">
+                      <span className="block text-xs font-bold text-slate-600">图片模型名称</span>
+                      <button
+                        type="button"
+                        onClick={handleFetchImageModels}
+                        disabled={!imageModelEnabled || !canFetchImageModels || fetchingImageModels}
+                        className={cn(
+                          'inline-flex h-7 items-center justify-center gap-1.5 rounded-lg px-2.5 text-xs font-black transition',
+                          imageModelEnabled && canFetchImageModels && !fetchingImageModels
+                            ? 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                            : 'bg-slate-50 text-slate-300'
+                        )}
+                      >
+                        <RefreshCw className={fetchingImageModels ? 'animate-spin' : ''} size={12} />
+                        获取
+                      </button>
+                    </div>
+                    {availableImageOptions.length > 0 && !manualImageModelEntry ? (
                       <SearchableSelect
                         value={imageModelName}
-                        options={availableModels}
+                        options={availableImageOptions}
                         placeholder="请选择图片模型"
                         searchPlaceholder="搜索模型"
                         emptyText="没有匹配的模型"
@@ -769,7 +869,7 @@ export default function SettingsPanel() {
                           disabled={!imageModelEnabled}
                           className="h-11 min-w-0 flex-1 rounded-xl border border-black/[0.08] bg-white px-3 text-sm font-medium text-slate-800 outline-none disabled:bg-slate-100 disabled:text-slate-400"
                         />
-                        {availableModels.length > 0 && (
+                        {availableImageOptions.length > 0 && (
                           <button
                             type="button"
                             onClick={() => setManualImageModelEntry(false)}
@@ -780,6 +880,15 @@ export default function SettingsPanel() {
                           </button>
                         )}
                       </div>
+                    )}
+                    {imageModelListResult && (
+                      <p className={cn(
+                        'mt-2 text-xs font-semibold leading-5',
+                        imageModelListResult.type === 'success' ? 'text-emerald-600' : 'text-rose-600'
+                      )}>
+                        {imageModelListResult.message}
+                        {imageModelListResult.type === 'success' && availableImageOptions.length > 0 ? '，请从下拉列表选择。' : ''}
+                      </p>
                     )}
                   </div>
                   <label className="block">
