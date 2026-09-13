@@ -14,6 +14,9 @@ import { archiveOldMainChatMessages, loadAssistantMemoryContext } from '@/lib/pe
 import { buildTimedAssistantHistory } from '@/lib/personal-assistant/history-context.mjs';
 import { compressConversationContext } from '@/lib/context-compression';
 import { conversationContextTargetTokens } from '@/lib/model-limits.mjs';
+import { parseMcpServers } from '@/lib/agent-runtime/mcp-config.mjs';
+import { createAssistantToolBroker } from '@/lib/personal-assistant/tool-broker.mjs';
+import { runAssistantToolLoop } from '@/lib/personal-assistant/tool-loop.mjs';
 
 export const runtime = 'nodejs';
 
@@ -120,6 +123,7 @@ export async function POST(request: Request) {
           modelName: true,
           modelContextWindow: true,
           tavilyApiKey: true,
+          assistantMcpServers: true,
           dailyChatLimit: true,
           contextMessageLimit: true,
         },
@@ -260,6 +264,41 @@ export async function POST(request: Request) {
         attachments: imageAttachments.length ? imageAttachments : undefined,
       },
     });
+
+    if (!localMode) {
+      const assistantMcpServers = parseMcpServers(userSettings.assistantMcpServers);
+      if (assistantMcpServers.length > 0) {
+        const broker = createAssistantToolBroker({ servers: assistantMcpServers });
+        const assistantTools = await broker.discover();
+        if (assistantTools.length > 0) {
+          const toolResult = await runAssistantToolLoop({
+            messages,
+            tools: assistantTools.map((tool) => ({ type: 'function', function: tool })),
+            broker,
+            complete: (toolMessages, tools) => client.chat.completions.create({
+              model,
+              messages: toolMessages as any,
+              tools: tools as any,
+              tool_choice: 'auto',
+            }),
+          });
+          if (toolResult.trim()) {
+            await prisma.message.create({
+              data: { id: assistantMessageId, conversationId, role: 'assistant', source: 'WEB', content: toolResult },
+            });
+            return new Response(toolResult, {
+              headers: {
+                'Content-Type': 'text/plain; charset=utf-8',
+                'Cache-Control': 'no-cache, no-transform',
+                'x-conversation-id': conversationId,
+                'x-conversation-mode': conversationMode,
+                'x-assistant-tools': 'used',
+              },
+            });
+          }
+        }
+      }
+    }
 
     if (memoryContext.history.length === 0) {
       const generatedTitle = textMessage.slice(0, 24).replace(/[\r\n]+/g, ' ').trim();

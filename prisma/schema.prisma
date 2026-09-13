@@ -23,6 +23,7 @@ model User {
   imageModelSize String? @default("1024x1024")
   imageModelProtocol String @default("OPENAI_IMAGES")
   tavilyApiKey String?
+  assistantMcpServers Json?
   defaultStyle String?
   contextMessageLimit Int @default(40)
   dailyChatLimit Int?

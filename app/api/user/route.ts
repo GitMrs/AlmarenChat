@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { MODEL_CONTEXT_WINDOW_OPTIONS } from '@/lib/model-limits.mjs';
+import { parseMcpServers } from '@/lib/agent-runtime/mcp-config.mjs';
 
 export async function GET(request: Request) {
   try {
@@ -24,6 +25,7 @@ export async function GET(request: Request) {
         imageModelSize: true,
         imageModelProtocol: true,
         tavilyApiKey: true,
+        assistantMcpServers: true,
         defaultStyle: true,
         contextMessageLimit: true,
         createdAt: true,
@@ -48,7 +50,7 @@ export async function PATCH(request: Request) {
     const userId = requireAuth(request);
     const body = await request.json();
 
-    const allowedFields = ['name', 'avatar', 'apiBaseUrl', 'apiKey', 'modelName', 'modelContextWindow', 'customModelEnabled', 'imageModelEnabled', 'imageModelName', 'imageModelSize', 'imageModelProtocol', 'tavilyApiKey', 'defaultStyle', 'contextMessageLimit'] as const;
+    const allowedFields = ['name', 'avatar', 'apiBaseUrl', 'apiKey', 'modelName', 'modelContextWindow', 'customModelEnabled', 'imageModelEnabled', 'imageModelName', 'imageModelSize', 'imageModelProtocol', 'tavilyApiKey', 'assistantMcpServers', 'defaultStyle', 'contextMessageLimit'] as const;
     const data: Record<string, any> = {};
     for (const field of allowedFields) {
       if (body[field] !== undefined) {
@@ -58,6 +60,10 @@ export async function PATCH(request: Request) {
     if (data.contextMessageLimit !== undefined) {
       const limit = Number(data.contextMessageLimit);
       data.contextMessageLimit = Math.max(1, Math.min(80, Number.isFinite(limit) ? Math.floor(limit) : 40));
+    }
+    if (data.assistantMcpServers !== undefined) {
+      const servers = parseMcpServers(data.assistantMcpServers);
+      data.assistantMcpServers = servers.map(({ id, url }) => ({ id, url }));
     }
     if (data.modelContextWindow !== undefined
       && data.modelContextWindow !== null
@@ -89,6 +95,7 @@ export async function PATCH(request: Request) {
         imageModelSize: true,
         imageModelProtocol: true,
         tavilyApiKey: true,
+        assistantMcpServers: true,
         defaultStyle: true,
         contextMessageLimit: true,
         createdAt: true,
