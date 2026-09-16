@@ -43,7 +43,7 @@ export default function MessageBubbleFrame({
         )}
         <div
           className={cn(
-            'min-w-0 max-w-full rounded-[24px] px-5 py-4 shadow-sm',
+            'min-w-0 max-w-full rounded-[24px] px-5 py-4 shadow-sm [overflow-wrap:anywhere]',
             isUser
               ? 'rounded-br-md text-white'
               : 'rounded-bl-md border border-black/[0.06] bg-white text-slate-800'

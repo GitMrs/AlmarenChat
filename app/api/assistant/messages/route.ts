@@ -7,6 +7,7 @@ import { requireAuth } from '@/app/api/_lib/auth';
 import { reserveChatQuota } from '@/lib/chat-quota';
 import { createModelClient, resolveModelName } from '@/lib/model-client';
 import { buildWebSearchContext } from '@/lib/web-search';
+import { buildWebpageContext } from '@/lib/fetch-webpage';
 import { ensurePersonalAssistant } from '@/lib/personal-assistant/profile';
 import { buildPersonalAssistantPrompt } from '@/lib/personal-assistant/prompt-builder';
 import { buildAssistantActivityContext, buildAssistantPlatformContext } from '@/lib/personal-assistant/platform-context';
@@ -188,7 +189,7 @@ export async function POST(request: Request) {
       tasks: profile.includeTaskContext,
       chats: profile.includeChatContext,
     };
-    const [memoryContext, memories, platformContext, activityContext, webContext] = await Promise.all([
+    const [memoryContext, memories, platformContext, activityContext, webContext, webpageContext] = await Promise.all([
       loadAssistantMemoryContext({
         userId,
         conversationId,
@@ -205,6 +206,7 @@ export async function POST(request: Request) {
       buildAssistantPlatformContext(userId, contextSources),
       buildAssistantActivityContext(userId, textMessage, contextSources),
       webSearchEnabled ? buildWebSearchContext(messageForModel, userSettings.tavilyApiKey) : Promise.resolve(null),
+      buildWebpageContext(messageForModel).catch(() => null),
     ]);
 
     const systemPrompt = buildPersonalAssistantPrompt({
@@ -245,6 +247,7 @@ export async function POST(request: Request) {
           systemPrompt,
           conversationMode === 'TEMPORARY' ? '【会话模式】：这是临时聊天，不将本轮内容视为长期经历。' : '',
           webContext ? `本轮联网结果：\n${webContext}` : '',
+          webpageContext ? `本轮网页正文：\n${webpageContext}` : '',
         ].filter(Boolean).join('\n\n'),
       },
       ...compressedHistory.map((item) => ({
