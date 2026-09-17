@@ -1328,46 +1328,46 @@ export default function StudioPage() {
   });
 
   return (
-    <div className="flex h-full bg-[#111114] text-gray-100 font-sans selection:bg-indigo-500 selection:text-white relative overflow-hidden">
+    <div className="flex h-full bg-[#fbfaf7] text-slate-900 font-sans selection:bg-indigo-500 selection:text-white relative overflow-hidden">
       {/* ── 1. LEFT COLUMN: Workspace List Sidebar (Knowe ConvList & Hermes Sidebar style) ── */}
       {/* Mobile Backdrop Overlay for Left Workspace Drawer */}
       {!isLeftSidebarCollapsed && (
         <div
-          className="md:hidden fixed inset-0 bg-black/70 z-40 backdrop-blur-xs animate-in fade-in duration-150"
-          onClick={() => setIsLeftSidebarCollapsed(true)}
+          className="md:hidden fixed inset-0 bg-black/40 z-40 backdrop-blur-xs animate-in fade-in duration-150"
+          onClick={() => handleToggleLeftSidebar(true)}
         />
       )}
 
       <aside
         className={cn(
-          'flex flex-col bg-[#161619] border-r border-zinc-800/80 transition-all duration-200 flex-shrink-0 select-none h-full',
+          'flex flex-col bg-white/85 backdrop-blur-md border-r border-black/[0.06] transition-all duration-200 flex-shrink-0 select-none h-full shadow-xs',
           isLeftSidebarCollapsed
             ? 'hidden'
-            : 'fixed md:relative inset-y-0 left-0 z-50 md:z-30 w-72 max-w-[85vw] md:w-64 shadow-2xl md:shadow-none animate-in slide-in-from-left duration-200 md:animate-none'
+            : 'fixed md:relative inset-y-0 left-0 z-50 md:z-30 w-72 max-w-[85vw] md:w-64 shadow-xl md:shadow-none animate-in slide-in-from-left duration-200 md:animate-none'
         )}
       >
         {/* Sidebar Header */}
-        <div className="h-14 border-b border-zinc-800/80 px-3 flex items-center justify-between w-full">
+        <div className="h-14 border-b border-black/[0.06] px-3 flex items-center justify-between w-full bg-white/50">
           <div className="flex items-center gap-2 min-w-0">
-            <div className="w-7 h-7 rounded-lg bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 flex-shrink-0">
+            <div className="w-7 h-7 rounded-lg bg-indigo-50 border border-indigo-200/60 flex items-center justify-center text-indigo-600 flex-shrink-0">
               <LayoutGrid size={15} />
             </div>
             <div className="min-w-0">
-              <h2 className="text-xs font-bold text-zinc-100 truncate tracking-tight">项目工作空间</h2>
-              <p className="text-[10px] text-zinc-500 font-mono leading-none mt-0.5">{workspaces.length} 个沙箱</p>
+              <h2 className="text-xs font-bold text-slate-900 truncate tracking-tight">项目工作空间</h2>
+              <p className="text-[10px] text-slate-400 font-mono leading-none mt-0.5">{workspaces.length} 个沙箱</p>
             </div>
           </div>
           <div className="flex items-center gap-1">
             <button
               onClick={() => setShowCreateModal(true)}
-              className="p-1.5 rounded-lg bg-indigo-600/15 hover:bg-indigo-600/30 text-indigo-400 hover:text-indigo-200 border border-indigo-500/20 transition-all cursor-pointer"
+              className="p-1.5 rounded-lg bg-slate-950 hover:bg-slate-800 text-white shadow-xs transition-all cursor-pointer"
               title="新建工作空间"
             >
-              <Plus size={14} />
+              <Plus size={13} />
             </button>
             <button
               onClick={() => handleToggleLeftSidebar(true)}
-              className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors cursor-pointer"
+              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
               title="收起工作空间侧栏"
             >
               <ChevronLeft size={16} />
@@ -1379,18 +1379,18 @@ export default function StudioPage() {
         {!isLeftSidebarCollapsed && (
           <div className="px-3 pt-3 pb-1 w-full">
             <div className="relative flex items-center w-full">
-              <Search size={13} className="absolute left-2.5 text-zinc-500 pointer-events-none" />
+              <Search size={13} className="absolute left-2.5 text-slate-400 pointer-events-none" />
               <input
                 type="text"
                 value={searchWorkspaceQuery}
                 onChange={(e) => setSearchWorkspaceQuery(e.target.value)}
                 placeholder="搜索空间..."
-                className="w-full bg-zinc-900/90 border border-zinc-800 focus:border-indigo-500/60 rounded-lg pl-8 pr-6 py-1.5 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none transition-colors font-sans"
+                className="w-full bg-[#fbfaf7] border border-black/[0.06] focus:border-indigo-500/60 focus:bg-white rounded-xl pl-8 pr-6 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none transition-all font-sans"
               />
               {searchWorkspaceQuery && (
                 <button
                   onClick={() => setSearchWorkspaceQuery('')}
-                  className="absolute right-2 text-zinc-500 hover:text-zinc-300"
+                  className="absolute right-2 text-slate-400 hover:text-slate-600"
                 >
                   <X size={12} />
                 </button>
@@ -1414,13 +1414,13 @@ export default function StudioPage() {
                   className={cn(
                     'w-10 h-10 rounded-xl flex items-center justify-center mx-auto transition-all cursor-pointer relative group',
                     isSelected
-                      ? 'bg-indigo-600/20 text-indigo-300 border border-indigo-500/50 shadow-xs'
-                      : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200'
+                      ? 'bg-slate-950 text-white shadow-sm'
+                      : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'
                   )}
                 >
-                  <Folder size={17} className={isSelected ? 'text-indigo-400' : 'text-zinc-400'} />
+                  <Folder size={17} className={isSelected ? 'text-amber-300' : 'text-slate-400'} />
                   {hasRules && (
-                    <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-indigo-400 ring-2 ring-[#161619]" />
+                    <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-indigo-500 ring-2 ring-white" />
                   )}
                 </button>
               );
@@ -1433,16 +1433,16 @@ export default function StudioPage() {
                 className={cn(
                   'group/item relative flex items-start gap-2.5 px-2.5 py-2 rounded-xl transition-all cursor-pointer border',
                   isSelected
-                    ? 'bg-indigo-600/15 border-indigo-500/35 text-white shadow-xs'
-                    : 'border-transparent text-zinc-300 hover:bg-zinc-850 hover:text-zinc-100'
+                    ? 'bg-white border-black/[0.08] shadow-xs text-slate-950 font-medium'
+                    : 'border-transparent text-slate-600 hover:bg-white/60 hover:text-slate-900'
                 )}
               >
                 <div
                   className={cn(
                     'w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5 transition-colors',
                     isSelected
-                      ? 'bg-indigo-600/25 text-indigo-400'
-                      : 'bg-zinc-800 text-zinc-400 group-hover/item:text-zinc-200'
+                      ? 'bg-amber-50 text-amber-600'
+                      : 'bg-slate-100 text-slate-400 group-hover/item:text-slate-600'
                   )}
                 >
                   <Folder size={14} />
@@ -1450,23 +1450,23 @@ export default function StudioPage() {
 
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-1">
-                    <span className={cn('text-xs font-medium truncate', isSelected && 'font-semibold text-indigo-200')}>
+                    <span className={cn('text-xs truncate', isSelected ? 'font-bold text-slate-900' : 'font-medium')}>
                       {ws.name}
                     </span>
                     {hasRules && (
-                      <span className="inline-flex items-center gap-0.5 text-[9px] px-1 py-0.2 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-mono flex-shrink-0">
+                      <span className="inline-flex items-center gap-0.5 text-[9px] px-1.5 py-0.2 rounded bg-indigo-50 text-indigo-600 border border-indigo-200/60 font-mono flex-shrink-0">
                         <Sparkles size={8} />
                         <span>规则</span>
                       </span>
                     )}
                   </div>
-                  <p className="text-[10px] text-zinc-500 truncate mt-0.5">
+                  <p className="text-[10px] text-slate-400 truncate mt-0.5">
                     {ws.description || '沙箱隔离环境'}
                   </p>
                 </div>
 
                 {/* Hover Actions */}
-                <div className="absolute right-2 top-2 hidden group-hover/item:flex items-center gap-0.5 bg-zinc-900/95 backdrop-blur-xs px-1 py-0.5 rounded-md border border-zinc-700/60 shadow-md">
+                <div className="absolute right-2 top-2 hidden group-hover/item:flex items-center gap-0.5 bg-white px-1 py-0.5 rounded-lg border border-black/[0.08] shadow-sm">
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
@@ -1475,7 +1475,7 @@ export default function StudioPage() {
                       setEditWsPrompt(ws.systemPrompt || '');
                       setShowEditModal(true);
                     }}
-                    className="p-1 hover:bg-zinc-750 rounded text-zinc-400 hover:text-zinc-200 cursor-pointer"
+                    className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-slate-800 cursor-pointer"
                     title="编辑工作区"
                   >
                     <Edit2 size={11} />
@@ -1486,7 +1486,7 @@ export default function StudioPage() {
                         e.stopPropagation();
                         handleDeleteWorkspace(ws.id, ws.name);
                       }}
-                      className="p-1 hover:bg-rose-500/20 rounded text-zinc-500 hover:text-rose-400 cursor-pointer"
+                      className="p-1 hover:bg-rose-50 rounded text-slate-400 hover:text-rose-600 cursor-pointer"
                       title="删除工作区"
                     >
                       <Trash2 size={11} />
@@ -1499,13 +1499,13 @@ export default function StudioPage() {
         </div>
 
         {/* Sidebar Footer */}
-        <div className="border-t border-zinc-800/80 p-2 flex items-center justify-between w-full">
+        <div className="border-t border-black/[0.06] p-2 flex items-center justify-between w-full bg-white/40">
           <button
             onClick={() => setShowSettingsModal(true)}
-            className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 text-xs transition-colors cursor-pointer w-full"
+            className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-100 text-xs transition-colors cursor-pointer w-full"
             title="Studio 配置与模型状态"
           >
-            <Settings size={14} className="flex-shrink-0 text-zinc-500" />
+            <Settings size={14} className="flex-shrink-0 text-slate-400" />
             <span className="text-[11px] truncate font-mono">
               {userProfile?.modelName || '默认模型'}
             </span>
@@ -1514,15 +1514,15 @@ export default function StudioPage() {
       </aside>
 
       {/* ── 2. MIDDLE COLUMN: Team Group Chat Stream & Composer ── */}
-      <main className="flex-1 flex flex-col h-full bg-[#18181b] min-w-0 relative">
+      <main className="flex-1 flex flex-col h-full bg-[#fbfaf7] min-w-0 relative">
         {/* Middle Header Bar */}
-        <header className="h-14 border-b border-zinc-800/80 bg-[#18181b]/95 backdrop-blur-md px-3 sm:px-4 flex items-center justify-between flex-shrink-0 z-20">
+        <header className="h-14 border-b border-black/[0.06] bg-[#fbfaf7]/90 backdrop-blur-md px-3 sm:px-4 flex items-center justify-between flex-shrink-0 z-20">
           <div className="flex items-center gap-1.5 sm:gap-2.5 min-w-0">
             {/* Sidebar toggle button: shown ONLY when collapsed (Mode A) */}
             {isLeftSidebarCollapsed && (
               <button
                 onClick={() => handleToggleLeftSidebar(false)}
-                className="p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer flex-shrink-0"
+                className="p-1.5 rounded-lg hover:bg-slate-200/70 text-slate-500 hover:text-slate-900 transition-colors cursor-pointer flex-shrink-0"
                 title="展开工作空间列表"
               >
                 <PanelLeft size={16} />
@@ -1530,11 +1530,11 @@ export default function StudioPage() {
             )}
 
             <div className="flex items-center gap-1 sm:gap-2 min-w-0">
-              <Folder size={15} className="text-amber-400 flex-shrink-0" />
-              <h1 className="text-xs sm:text-sm font-bold text-zinc-100 truncate tracking-tight max-w-[100px] xs:max-w-[150px] sm:max-w-none">
+              <Folder size={15} className="text-amber-500 flex-shrink-0" />
+              <h1 className="text-xs sm:text-sm font-black text-slate-900 truncate tracking-tight max-w-[100px] xs:max-w-[150px] sm:max-w-none">
                 {activeWorkspaceName}
               </h1>
-              <span className="hidden md:inline-flex text-[10px] text-zinc-500 font-mono px-2 py-0.5 rounded-full bg-zinc-800/70 border border-zinc-700/50 flex-shrink-0">
+              <span className="hidden md:inline-flex text-[10px] text-slate-500 font-mono px-2 py-0.5 rounded-full bg-white border border-black/[0.06] shadow-2xs flex-shrink-0">
                 沙箱隔离
               </span>
             </div>
@@ -1548,10 +1548,10 @@ export default function StudioPage() {
                 setShowRulesModal(true);
               }}
               className={cn(
-                'flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1 rounded-lg border text-xs transition-all cursor-pointer font-medium shadow-2xs flex-shrink-0',
+                'flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1 rounded-lg border text-xs transition-all cursor-pointer font-bold shadow-2xs flex-shrink-0',
                 activeWorkspace?.systemPrompt
-                  ? 'bg-indigo-600/15 text-indigo-300 border-indigo-500/30 hover:bg-indigo-600/25'
-                  : 'bg-zinc-800/60 text-zinc-400 border-zinc-700/60 hover:bg-zinc-750 hover:text-zinc-200'
+                  ? 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100'
+                  : 'bg-white text-slate-600 border-black/[0.08] hover:bg-slate-50 hover:text-slate-900'
               )}
               title={
                 activeWorkspace?.systemPrompt
@@ -1559,7 +1559,7 @@ export default function StudioPage() {
                   : '为当前工作区设定专属提示词与项目规范'
               }
             >
-              <Sparkles size={12} className={activeWorkspace?.systemPrompt ? 'text-indigo-400' : 'text-zinc-500'} />
+              <Sparkles size={12} className={activeWorkspace?.systemPrompt ? 'text-indigo-600' : 'text-slate-400'} />
               <span className="text-[11px] hidden sm:inline">
                 {activeWorkspace?.systemPrompt ? '空间规则 (已生效)' : '+ 空间规则'}
               </span>
@@ -1574,10 +1574,10 @@ export default function StudioPage() {
             <div className="flex items-center flex-shrink-0 animate-in fade-in duration-150">
               <button
                 onClick={() => handleToggleRightInspector(true)}
-                className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-lg border text-xs font-medium transition-all cursor-pointer bg-zinc-800/80 hover:bg-zinc-750 text-zinc-300 border-zinc-700/60 shadow-xs"
-                title="展开右侧工作台检视面板 (文件/终端/团队)"
+                className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg border text-xs font-bold transition-all cursor-pointer bg-white hover:bg-slate-50 text-slate-700 border-black/[0.08] shadow-xs"
+                title="展开右侧工作台检视面板 (文件/团队)"
               >
-                <PanelRightClose size={14} className="rotate-180 text-indigo-400" />
+                <PanelRightClose size={14} className="rotate-180 text-indigo-600" />
                 <span className="text-[11px] sm:text-xs">工作台</span>
               </button>
             </div>
@@ -1589,22 +1589,22 @@ export default function StudioPage() {
         <div className="max-w-3xl mx-auto space-y-6">
           {isLoadingMessages ? (
             <div className="flex flex-col items-center justify-center py-20 text-center space-y-3">
-              <Loader2 size={24} className="text-indigo-400 animate-spin" />
-              <div className="text-xs text-zinc-400 font-mono">
+              <Loader2 size={24} className="text-indigo-600 animate-spin" />
+              <div className="text-xs text-slate-500 font-mono">
                 正在从数据库加载工作区【{activeWorkspaceName}】历史对话记录...
               </div>
             </div>
           ) : messages.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-center space-y-5">
-              <div className="w-14 h-14 rounded-2xl bg-zinc-800/80 border border-zinc-700 flex items-center justify-center shadow-lg">
-                <LayoutGrid size={28} className="text-indigo-400" />
+              <div className="w-14 h-14 rounded-2xl bg-white border border-black/[0.06] flex items-center justify-center shadow-md">
+                <LayoutGrid size={28} className="text-indigo-600" />
               </div>
               <div className="space-y-1.5">
-                <h3 className="text-base font-semibold text-zinc-100">
+                <h3 className="text-base font-black text-slate-900">
                   协调智能体团队已就绪
                 </h3>
-                <p className="text-xs text-zinc-400 max-w-md mx-auto leading-relaxed">
-                  总指挥官能自动感知沙箱工作区文件，拆解任务架构，并实时调度 Pi、Claude Code、Codex 等专业子 Agent 协同编码。
+                <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
+                  总指挥官能自动感知沙箱工作区文件，拆解任务架构，并实时调度内置 Pi 等专业 Agent 协同编写与测试。
                 </p>
               </div>
 
@@ -1627,12 +1627,12 @@ export default function StudioPage() {
                     onClick={() => {
                       setInput(item.cmd);
                     }}
-                    className="p-3 rounded-xl bg-zinc-900/80 border border-zinc-800 hover:border-zinc-700 hover:bg-zinc-850 text-left transition-all cursor-pointer group"
+                    className="p-3 rounded-2xl bg-white/80 border border-black/[0.06] hover:border-black/[0.12] hover:bg-white text-left transition-all cursor-pointer group shadow-xs hover:shadow-sm"
                   >
-                    <div className="text-xs font-semibold text-zinc-200 group-hover:text-indigo-400 transition-colors">
+                    <div className="text-xs font-bold text-slate-800 group-hover:text-indigo-600 transition-colors">
                       {item.title}
                     </div>
-                    <div className="text-[11px] text-zinc-400 mt-1 leading-snug">
+                    <div className="text-[11px] text-slate-500 mt-1 leading-snug">
                       {item.desc}
                     </div>
                   </button>
@@ -1645,7 +1645,7 @@ export default function StudioPage() {
             if (message.role === 'user') {
               return (
                 <div key={message.id} className="flex justify-end">
-                  <div className="bg-[#27272a] text-zinc-100 px-4 py-2.5 rounded-2xl max-w-[82%] text-sm leading-relaxed shadow-sm">
+                  <div className="bg-slate-950 text-white px-4 py-2.5 rounded-2xl max-w-[82%] text-sm leading-relaxed shadow-sm font-medium">
                     {message.content}
                   </div>
                 </div>
@@ -1664,10 +1664,10 @@ export default function StudioPage() {
                         <div
                           key={tool.id}
                           className={cn(
-                            'rounded-xl transition-all max-w-2xl border overflow-hidden',
+                            'rounded-2xl transition-all max-w-2xl border overflow-hidden',
                             isExpanded
-                              ? 'border-zinc-700 bg-[#1e1e24] shadow-md shadow-black/30'
-                              : 'border-zinc-800 bg-[#202024] hover:border-zinc-700 hover:bg-[#232328]'
+                              ? 'border-black/[0.1] bg-white shadow-md'
+                              : 'border-black/[0.06] bg-white/80 hover:border-black/[0.1] hover:bg-white shadow-2xs'
                           )}
                         >
                           {/* Top Clickable Bar */}
@@ -1679,42 +1679,42 @@ export default function StudioPage() {
                               {tool.name === 'delegate' ? (
                                 <Terminal
                                   size={13}
-                                  className={cn('flex-shrink-0', isExpanded ? 'text-indigo-400' : 'text-emerald-400')}
+                                  className={cn('flex-shrink-0', isExpanded ? 'text-indigo-600' : 'text-emerald-600')}
                                 />
                               ) : (
                                 <Wrench
                                   size={13}
-                                  className={cn('flex-shrink-0', isExpanded ? 'text-indigo-300' : 'text-indigo-400')}
+                                  className={cn('flex-shrink-0', isExpanded ? 'text-indigo-600' : 'text-indigo-500')}
                                 />
                               )}
                               <span
                                 className={cn(
-                                  'font-semibold font-mono text-xs',
-                                  isExpanded ? 'text-indigo-200' : 'text-zinc-200'
+                                  'font-bold font-mono text-xs',
+                                  isExpanded ? 'text-indigo-700' : 'text-slate-800'
                                 )}
                               >
                                 {tool.name}
                                 {tool.agentId ? ` (${tool.agentId})` : ''}
                               </span>
-                              <span className="text-zinc-400 text-xs truncate max-w-[260px] sm:max-w-md">
+                              <span className="text-slate-400 text-xs truncate max-w-[260px] sm:max-w-md">
                                 {tool.preview}
                               </span>
                             </div>
 
                             <div className="flex items-center gap-2 flex-shrink-0 ml-2">
                               {tool.sessionId && (
-                                <span className="text-[10px] text-zinc-400 font-mono bg-zinc-800 px-1.5 py-0.5 rounded">
+                                <span className="text-[10px] text-slate-500 font-mono bg-slate-100 px-1.5 py-0.5 rounded-md">
                                   实时流
                                 </span>
                               )}
                               {tool.status === 'running' && (
-                                <span className="flex items-center gap-1 text-[11px] text-amber-400">
+                                <span className="flex items-center gap-1 text-[11px] text-amber-600 font-medium">
                                   <Loader2 size={12} className="animate-spin" />
                                   <span className="text-[10px]">运行中</span>
                                 </span>
                               )}
                               {tool.status === 'done' && (
-                                <span className="flex items-center gap-1 text-[10px] text-emerald-400">
+                                <span className="flex items-center gap-1 text-[10px] text-emerald-600 font-semibold">
                                   <CheckCircle size={12} />
                                 </span>
                               )}
@@ -1724,8 +1724,8 @@ export default function StudioPage() {
                               <ChevronDown
                                 size={14}
                                 className={cn(
-                                  'text-zinc-500 group-hover:text-zinc-300 transition-transform duration-200',
-                                  isExpanded && 'rotate-180 text-zinc-200'
+                                  'text-slate-400 group-hover:text-slate-700 transition-transform duration-200',
+                                  isExpanded && 'rotate-180 text-slate-800'
                                 )}
                               />
                             </div>
@@ -1733,15 +1733,15 @@ export default function StudioPage() {
 
                           {/* Inline Expanded Dropdown Panel */}
                           {isExpanded && (
-                            <div className="border-t border-zinc-800/80 bg-[#151518] p-3 space-y-2.5 animate-fadeIn text-xs">
+                            <div className="border-t border-black/[0.06] bg-[#fbfaf7]/60 p-3 space-y-2.5 animate-fadeIn text-xs">
                               {/* Parameters / Target */}
                               {tool.preview && (
                                 <div className="space-y-1">
-                                  <div className="text-[11px] font-medium text-zinc-400 flex items-center gap-1.5">
-                                    <Code size={11} className="text-zinc-500" />
+                                  <div className="text-[11px] font-bold text-slate-600 flex items-center gap-1.5">
+                                    <Code size={11} className="text-slate-400" />
                                     <span>调用参数与目标</span>
                                   </div>
-                                  <div className="bg-zinc-950/80 border border-zinc-850 rounded-lg p-2.5 font-mono text-[11px] text-zinc-300 whitespace-pre-wrap break-all leading-relaxed max-h-24 overflow-y-auto">
+                                  <div className="bg-white border border-black/[0.06] rounded-xl p-2.5 font-mono text-[11px] text-slate-700 whitespace-pre-wrap break-all leading-relaxed max-h-24 overflow-y-auto shadow-2xs">
                                     {tool.preview}
                                   </div>
                                 </div>
@@ -1749,9 +1749,9 @@ export default function StudioPage() {
 
                               {/* Result / Output Console */}
                               <div className="space-y-1">
-                                <div className="flex items-center justify-between text-[11px] font-medium text-zinc-400">
+                                <div className="flex items-center justify-between text-[11px] font-bold text-slate-600">
                                   <span className="flex items-center gap-1.5">
-                                    <Terminal size={11} className="text-emerald-400" />
+                                    <Terminal size={11} className="text-emerald-600" />
                                     <span>执行结果与输出</span>
                                   </span>
                                   {tool.result && (
@@ -1760,13 +1760,13 @@ export default function StudioPage() {
                                         e.stopPropagation();
                                         handleCopyToolResult(tool.result!);
                                       }}
-                                      className="px-2 py-0.5 rounded bg-zinc-850 hover:bg-zinc-800 text-zinc-300 text-[10px] transition-colors cursor-pointer flex items-center gap-1"
+                                      className="px-2 py-0.5 rounded-md bg-white border border-black/[0.08] hover:bg-slate-100 text-slate-600 text-[10px] transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
                                       title="复制结果"
                                     >
                                       {copiedToolResult ? (
                                         <>
-                                          <CheckCircle size={10} className="text-emerald-400" />
-                                          <span className="text-emerald-400">已复制</span>
+                                          <CheckCircle size={10} className="text-emerald-600" />
+                                          <span className="text-emerald-600 font-bold">已复制</span>
                                         </>
                                       ) : (
                                         <>
@@ -1778,18 +1778,18 @@ export default function StudioPage() {
                                   )}
                                 </div>
 
-                                <div className="bg-zinc-950 rounded-lg p-3 border border-zinc-850 font-mono text-xs max-h-60 overflow-y-auto">
+                                <div className="bg-slate-50 rounded-xl p-3 border border-black/[0.06] font-mono text-xs max-h-60 overflow-y-auto text-slate-800">
                                   {tool.result ? (
-                                    <div className="text-zinc-300 leading-relaxed whitespace-pre-wrap break-all text-[11px]">
+                                    <div className="leading-relaxed whitespace-pre-wrap break-all text-[11px] text-slate-700">
                                       {tool.result}
                                     </div>
                                   ) : tool.status === 'running' ? (
-                                    <div className="flex items-center justify-center py-6 gap-2 text-zinc-500 text-xs">
-                                      <Loader2 size={14} className="animate-spin text-indigo-400" />
+                                    <div className="flex items-center justify-center py-6 gap-2 text-slate-400 text-xs">
+                                      <Loader2 size={14} className="animate-spin text-indigo-500" />
                                       <span>正在执行中，等待输出返回...</span>
                                     </div>
                                   ) : (
-                                    <div className="text-zinc-600 text-center py-4 text-xs">
+                                    <div className="text-slate-400 text-center py-4 text-xs">
                                       该工具调用已执行完成，无控制台回显内容。
                                     </div>
                                   )}
@@ -1803,75 +1803,52 @@ export default function StudioPage() {
                   </div>
                 )}
 
-                {/* Assistant Message Bubble */}
-                {(message.content || (isStreaming && index === messages.length - 1 && (!message.tools || message.tools.length === 0))) && (
+                {/* Assistant Bubble Frame */}
+                {message.content && (
                   <div className="flex items-start gap-3">
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-600 to-zinc-900 border border-indigo-500/30 flex items-center justify-center flex-shrink-0 overflow-hidden shadow-sm">
-                      <div className="w-full h-full flex items-center justify-center text-xs font-bold text-white bg-zinc-900/60">
-                        👾
-                      </div>
+                    <div className="w-8 h-8 rounded-2xl bg-white border border-black/[0.06] shadow-xs flex items-center justify-center text-sm flex-shrink-0 mt-0.5">
+                      🤖
                     </div>
-
-                    <div className="bg-[#27272a] text-zinc-200 px-4 py-3 rounded-2xl max-w-[85%] text-sm leading-relaxed shadow-sm">
-                      {!message.content && isStreaming && (!message.tools || message.tools.length === 0) ? (
-                        <div className="flex items-center gap-2.5 text-xs text-indigo-400 py-1">
-                          <Loader2 className="w-4 h-4 animate-spin text-indigo-500" />
-                          <span className="font-medium animate-pulse">正在调度智能体，分析工作区并思考规划中...</span>
-                        </div>
-                      ) : (
-                        <div className="space-y-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="bg-white border border-black/[0.06] rounded-[24px] px-5 py-4 shadow-sm text-sm text-slate-800 leading-relaxed max-w-full">
+                        <div className="markdown-body text-slate-800">
                           <ReactMarkdown
                             remarkPlugins={[remarkGfm]}
                             components={{
-                              p: ({ children }) => <p className="mb-2.5 last:mb-0 leading-relaxed text-zinc-200">{children}</p>,
-                              h1: ({ children }) => <h1 className="text-base font-bold text-zinc-100 mt-4 mb-2 first:mt-0">{children}</h1>,
-                              h2: ({ children }) => <h2 className="text-sm font-bold text-zinc-100 mt-3 mb-1.5 first:mt-0">{children}</h2>,
-                              h3: ({ children }) => <h3 className="text-xs font-bold text-zinc-200 mt-2.5 mb-1 first:mt-0">{children}</h3>,
-                              ul: ({ children }) => <ul className="list-disc pl-5 mb-2.5 space-y-1 text-zinc-300">{children}</ul>,
-                              ol: ({ children }) => <ol className="list-decimal pl-5 mb-2.5 space-y-1 text-zinc-300">{children}</ol>,
-                              li: ({ children }) => <li className="leading-relaxed">{children}</li>,
-                              blockquote: ({ children }) => (
-                                <blockquote className="border-l-2 border-indigo-500/60 pl-3 py-0.5 my-2 text-zinc-400 italic bg-indigo-500/5 rounded-r">
-                                  {children}
-                                </blockquote>
-                              ),
-                              code: ({ inline, className, children, ...props }: any) => {
-                                if (inline) {
-                                  return (
-                                    <code className="rounded bg-zinc-800/80 px-1.5 py-0.5 text-xs font-mono text-indigo-300 border border-zinc-700/50" {...props}>
-                                      {children}
-                                    </code>
-                                  );
-                                }
-                                return (
-                                  <pre className="overflow-x-auto rounded-xl bg-zinc-950/90 p-3.5 my-2.5 border border-zinc-800 text-xs font-mono text-zinc-200">
+                              code({ inline, className, children, ...props }: any) {
+                                return inline ? (
+                                  <code className="bg-slate-100 text-indigo-600 font-mono text-xs px-1.5 py-0.5 rounded" {...props}>
+                                    {children}
+                                  </code>
+                                ) : (
+                                  <pre className="my-2 rounded-xl bg-slate-50 border border-black/[0.06] p-3 text-slate-800 font-mono text-xs overflow-x-auto">
                                     <code {...props}>{children}</code>
                                   </pre>
                                 );
                               },
                               a: ({ href, children }) => (
-                                <a href={href} target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:text-indigo-300 underline underline-offset-2">
+                                <a href={href} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:text-indigo-700 underline underline-offset-2 font-medium">
                                   {children}
                                 </a>
                               ),
                               table: ({ children }) => (
                                 <div className="overflow-x-auto my-3">
-                                  <table className="min-w-full divide-y divide-zinc-700 border border-zinc-700 text-xs">
+                                  <table className="min-w-full divide-y divide-slate-200 border border-slate-200 text-xs">
                                     {children}
                                   </table>
                                 </div>
                               ),
-                              th: ({ children }) => <th className="bg-zinc-800/70 px-3 py-2 text-left font-semibold text-zinc-200 border-b border-zinc-700">{children}</th>,
-                              td: ({ children }) => <td className="px-3 py-1.5 border-b border-zinc-800 text-zinc-300">{children}</td>,
+                              th: ({ children }) => <th className="bg-slate-50 px-3 py-2 text-left font-bold text-slate-800 border-b border-slate-200">{children}</th>,
+                              td: ({ children }) => <td className="px-3 py-1.5 border-b border-slate-100 text-slate-700">{children}</td>,
                             }}
                           >
                             {message.content}
                           </ReactMarkdown>
                           {isStreaming && index === messages.length - 1 && (
-                            <span className="inline-block w-1.5 h-3.5 bg-indigo-400 ml-0.5 animate-pulse align-middle" />
+                            <span className="inline-block w-1.5 h-3.5 bg-indigo-600 ml-0.5 animate-pulse align-middle" />
                           )}
                         </div>
-                      )}
+                      </div>
                     </div>
                   </div>
                 )}
@@ -1884,9 +1861,9 @@ export default function StudioPage() {
 
       {/* 3. Bottom Composer Box (Dev Controls + Token Bar) */}
       <div className="p-2 sm:p-4 flex-shrink-0">
-        <div className="max-w-3xl mx-auto bg-[#27272a] border border-zinc-700/70 rounded-2xl p-2.5 sm:p-3 shadow-2xl transition-all duration-200 focus-within:border-zinc-500">
+        <div className="max-w-3xl mx-auto bg-white border border-black/[0.08] rounded-3xl p-3 shadow-lg transition-all duration-200 focus-within:border-black/[0.2] focus-within:ring-4 focus-within:ring-slate-100">
           {/* Token Usage Header Row */}
-          <div className="flex items-center justify-between text-[10px] sm:text-[11px] font-mono text-zinc-400 mb-2 px-1">
+          <div className="flex items-center justify-between text-[10px] sm:text-[11px] font-mono text-slate-400 mb-2 px-1">
             <div className="flex items-center gap-1.5 sm:gap-2 truncate">
               <span>
                 {totalTokens === 0 ? '0' : formatTokens(totalTokens)} / {formatTokens(contextLength)}
@@ -1898,14 +1875,14 @@ export default function StudioPage() {
                   : `剩余 ${formatTokens(remainingTokens)}`}
               </span>
               {totalTokens > 0 && (
-                <span className="text-[10px] text-emerald-400 bg-emerald-500/10 px-1 py-0.2 rounded font-sans hidden sm:inline">
+                <span className="text-[10px] text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded font-sans hidden sm:inline border border-emerald-200">
                   模型实际返回
                 </span>
               )}
             </div>
 
             {/* Context progress bar */}
-            <div className="w-16 sm:w-24 h-1.5 rounded-full bg-zinc-700/80 overflow-hidden flex-shrink-0">
+            <div className="w-16 sm:w-24 h-1.5 rounded-full bg-slate-100 overflow-hidden flex-shrink-0">
               <div
                 className={cn(
                   'h-full rounded-full transition-all duration-300',
@@ -1913,7 +1890,7 @@ export default function StudioPage() {
                     ? 'bg-rose-500'
                     : usagePercent > 60
                     ? 'bg-amber-500'
-                    : 'bg-zinc-400'
+                    : 'bg-indigo-500'
                 )}
                 style={{ width: `${Math.max(4, usagePercent)}%` }}
               />
@@ -1928,17 +1905,17 @@ export default function StudioPage() {
             onKeyDown={handleKeyDown}
             placeholder="输入你的工程任务或规划需求... (Enter 发送, Shift+Enter 换行)"
             rows={2}
-            className="w-full bg-transparent border-0 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none resize-none leading-relaxed px-1"
+            className="w-full bg-transparent border-0 text-sm text-slate-800 placeholder-slate-400 focus:outline-none resize-none leading-relaxed px-1"
           />
 
           {/* Bottom Toolbar Controls */}
-          <div className="flex items-center justify-between pt-2 mt-1 border-t border-zinc-700/40 text-xs gap-1.5 flex-wrap sm:flex-nowrap">
+          <div className="flex items-center justify-between pt-2 mt-1 border-t border-black/[0.04] text-xs gap-1.5 flex-wrap sm:flex-nowrap">
             <div className="flex items-center gap-1 sm:gap-2 min-w-0 overflow-x-auto no-scrollbar">
               {/* Attach Button */}
               <button
                 type="button"
                 onClick={handleOpenFileExplorer}
-                className="p-1 rounded-md text-zinc-400 hover:text-zinc-200 hover:bg-zinc-750 transition-colors cursor-pointer flex-shrink-0"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer flex-shrink-0"
                 title="选择工作区文件作为上下文"
               >
                 <Plus size={16} />
@@ -1949,10 +1926,10 @@ export default function StudioPage() {
                 <button
                   type="button"
                   onClick={() => setShowReasoningMenu(!showReasoningMenu)}
-                  className="flex items-center gap-1 px-1.5 sm:px-2 py-1 rounded-md text-zinc-300 hover:bg-zinc-700/70 transition-colors cursor-pointer"
+                  className="flex items-center gap-1 px-2 py-1 rounded-lg text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer font-medium"
                 >
-                  <Brain size={14} className="text-zinc-400" />
-                  <span className="font-medium capitalize">
+                  <Brain size={14} className="text-slate-400" />
+                  <span className="capitalize">
                     {reasoningEffort === 'none'
                       ? '关闭思考'
                       : reasoningEffort === 'low'
@@ -1961,11 +1938,11 @@ export default function StudioPage() {
                       ? '中思考'
                       : '高思考'}
                   </span>
-                  <ChevronDown size={11} className="text-zinc-500" />
+                  <ChevronDown size={11} className="text-slate-400" />
                 </button>
 
                 {showReasoningMenu && (
-                  <div className="absolute left-0 bottom-full mb-1.5 w-32 rounded-xl bg-zinc-900 border border-zinc-700 p-1 shadow-xl z-50 text-xs space-y-0.5">
+                  <div className="absolute left-0 bottom-full mb-1.5 w-32 rounded-2xl bg-white border border-black/[0.08] p-1.5 shadow-xl z-50 text-xs space-y-0.5">
                     {(['none', 'low', 'medium', 'high'] as const).map((lvl) => (
                       <button
                         key={lvl}
@@ -1974,10 +1951,10 @@ export default function StudioPage() {
                           setShowReasoningMenu(false);
                         }}
                         className={cn(
-                          'w-full text-left px-2.5 py-1.5 rounded-lg transition-colors',
+                          'w-full text-left px-2.5 py-1.5 rounded-xl transition-colors font-medium',
                           reasoningEffort === lvl
-                            ? 'bg-indigo-600/30 text-indigo-400 font-semibold'
-                            : 'text-zinc-300 hover:bg-zinc-800'
+                            ? 'bg-indigo-50 text-indigo-700 font-bold'
+                            : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
                         )}
                       >
                         {lvl === 'none'
@@ -1997,14 +1974,14 @@ export default function StudioPage() {
               <button
                 type="button"
                 onClick={() => setShowSettingsModal(true)}
-                className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1 rounded-lg bg-zinc-800/90 hover:bg-zinc-750 border border-zinc-700/60 text-zinc-200 transition-colors cursor-pointer group shadow-xs flex-shrink-0 max-w-[120px] sm:max-w-none"
+                className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200/80 border border-black/[0.06] text-slate-700 transition-colors cursor-pointer group shadow-2xs flex-shrink-0 max-w-[120px] sm:max-w-none"
                 title="已自动直连您的登录账号模型配置，点击查看环境与凭据状态"
               >
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse flex-shrink-0" />
-                <span className="font-mono text-xs font-semibold text-zinc-200 tracking-tight truncate">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse flex-shrink-0" />
+                <span className="font-mono text-xs font-bold text-slate-800 tracking-tight truncate">
                   {userProfile?.modelName || '默认模型'}
                 </span>
-                <span className="text-[10px] text-emerald-400 bg-emerald-500/10 px-1 py-0.2 rounded font-sans ml-0.5 hidden sm:inline">
+                <span className="text-[10px] text-emerald-700 bg-emerald-50 px-1 py-0.2 rounded font-sans ml-0.5 hidden sm:inline border border-emerald-200">
                   账号模型
                 </span>
               </button>
@@ -2018,12 +1995,12 @@ export default function StudioPage() {
                 className={cn(
                   'p-1.5 transition-all cursor-pointer rounded-lg flex items-center justify-center',
                   isListening
-                    ? 'text-rose-400 bg-rose-500/20 animate-pulse ring-1 ring-rose-500/50'
-                    : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700/60'
+                    ? 'text-rose-600 bg-rose-50 animate-pulse ring-1 ring-rose-400'
+                    : 'text-slate-400 hover:text-slate-700 hover:bg-slate-100'
                 )}
                 title={isListening ? '正在录音识别中，点击停止' : '语音输入 (点击开始讲话)'}
               >
-                <Mic size={16} className={cn(isListening && 'text-rose-400')} />
+                <Mic size={16} className={cn(isListening && 'text-rose-600')} />
               </button>
 
               <button
@@ -2031,10 +2008,10 @@ export default function StudioPage() {
                 onClick={handleSend}
                 disabled={!input.trim() || isStreaming}
                 className={cn(
-                  'w-7 h-7 rounded-full flex items-center justify-center transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed',
+                  'w-8 h-8 rounded-full flex items-center justify-center transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shadow-xs',
                   input.trim()
-                    ? 'bg-white text-zinc-900 hover:bg-zinc-200'
-                    : 'bg-zinc-600 text-zinc-400'
+                    ? 'bg-slate-950 text-white hover:bg-slate-800'
+                    : 'bg-slate-200 text-slate-400'
                 )}
               >
                 <Send size={13} className="translate-x-0.2" />
@@ -2050,14 +2027,14 @@ export default function StudioPage() {
         <>
           {/* Mobile Backdrop Overlay */}
           <div
-            className="md:hidden fixed inset-0 bg-black/70 z-40 backdrop-blur-xs animate-in fade-in duration-150"
+            className="md:hidden fixed inset-0 bg-black/40 z-40 backdrop-blur-xs animate-in fade-in duration-150"
             onClick={() => handleToggleRightInspector(false)}
           />
 
-          <aside className="fixed md:relative inset-y-0 right-0 z-50 md:z-25 w-full sm:w-96 md:w-96 bg-[#161619] border-l border-zinc-800/80 flex flex-col flex-shrink-0 h-full select-none animate-in slide-in-from-right duration-200 shadow-2xl md:shadow-none">
+          <aside className="fixed md:relative inset-y-0 right-0 z-50 md:z-25 w-full sm:w-96 md:w-96 bg-white/85 backdrop-blur-md border-l border-black/[0.06] text-slate-900 flex flex-col flex-shrink-0 h-full select-none animate-in slide-in-from-right duration-200 shadow-2xl md:shadow-none">
           {/* Inspector Header Tabs (Sleek Segmented Switcher) */}
-          <div className="h-14 border-b border-zinc-800/80 px-3 flex items-center justify-between bg-zinc-900/50 flex-shrink-0">
-            <div className="flex items-center gap-1 bg-zinc-950/70 p-1 rounded-xl border border-zinc-800/90 shadow-inner">
+          <div className="h-14 border-b border-black/[0.06] px-3 flex items-center justify-between bg-[#fbfaf7]/70 flex-shrink-0">
+            <div className="flex items-center gap-1 bg-black/[0.04] p-1 rounded-xl border border-black/[0.06]">
               <button
                 onClick={() => {
                   setInspectorTab('files');
@@ -2066,16 +2043,16 @@ export default function StudioPage() {
                 className={cn(
                   'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer',
                   inspectorTab === 'files'
-                    ? 'bg-zinc-800 text-white shadow-xs border border-zinc-700/60 font-semibold'
-                    : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-850/50'
+                    ? 'bg-white text-slate-900 shadow-xs border border-black/[0.08] font-semibold'
+                    : 'text-slate-500 hover:text-slate-800 hover:bg-black/[0.03]'
                 )}
               >
-                <FolderOpen size={13} className={inspectorTab === 'files' ? 'text-amber-400' : 'text-zinc-400'} />
+                <FolderOpen size={13} className={inspectorTab === 'files' ? 'text-amber-500' : 'text-slate-400'} />
                 <span>文件</span>
                 {fileTree.length > 0 && (
                   <span className={cn(
                     'text-[10px] font-mono px-1 rounded',
-                    inspectorTab === 'files' ? 'bg-zinc-700/60 text-zinc-200' : 'bg-zinc-850 text-zinc-500'
+                    inspectorTab === 'files' ? 'bg-slate-100 text-slate-700 font-semibold' : 'bg-black/[0.04] text-slate-500'
                   )}>
                     {fileTree.length}
                   </span>
@@ -2091,25 +2068,25 @@ export default function StudioPage() {
                 className={cn(
                   'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer',
                   inspectorTab === 'roster'
-                    ? 'bg-indigo-600/20 text-indigo-200 shadow-xs border border-indigo-500/40 font-semibold'
-                    : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-850/50'
+                    ? 'bg-white text-indigo-600 shadow-xs border border-black/[0.08] font-semibold'
+                    : 'text-slate-500 hover:text-slate-800 hover:bg-black/[0.03]'
                 )}
               >
-                <Users size={13} className={inspectorTab === 'roster' ? 'text-indigo-400' : 'text-zinc-400'} />
+                <Users size={13} className={inspectorTab === 'roster' ? 'text-indigo-600' : 'text-slate-400'} />
                 <span>团队</span>
                 {workspaceSkills.length > 0 ? (
-                  <span className="text-[10px] text-amber-300 font-mono bg-amber-500/15 border border-amber-500/25 px-1 rounded">
+                  <span className="text-[10px] text-amber-700 font-mono bg-amber-50 border border-amber-200 px-1 rounded font-medium">
                     {workspaceSkills.length}技能
                   </span>
                 ) : (
-                  <span className="text-[10px] text-zinc-500 font-mono">3</span>
+                  <span className="text-[10px] text-slate-400 font-mono">3</span>
                 )}
               </button>
             </div>
 
             <button
               onClick={() => handleToggleRightInspector(false)}
-              className="p-1.5 rounded-lg hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer"
+              className="p-1.5 rounded-lg hover:bg-black/[0.05] text-slate-400 hover:text-slate-700 transition-colors cursor-pointer"
               title="收起检视面板"
             >
               <PanelRightClose size={15} />
@@ -2121,61 +2098,61 @@ export default function StudioPage() {
             {inspectorTab === 'roster' && (
               <div className="space-y-4">
                 {/* Coordinator Card */}
-                <div className="bg-zinc-900/80 border border-zinc-800 rounded-xl p-3 space-y-2">
+                <div className="bg-white border border-black/[0.06] rounded-xl p-3 space-y-2 shadow-2xs">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-lg bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-base">
+                      <div className="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center text-base">
                         🤖
                       </div>
                       <div>
-                        <div className="text-xs font-bold text-zinc-100 flex items-center gap-1.5">
+                        <div className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
                           <span>Almaren 协调总指挥官</span>
-                          <span className="text-[9px] px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-mono">Coordinator</span>
+                          <span className="text-[9px] px-1.5 py-0.2 rounded bg-indigo-50 text-indigo-600 border border-indigo-200/60 font-mono font-medium">Coordinator</span>
                         </div>
-                        <p className="text-[10px] text-zinc-400 font-mono">{userProfile?.modelName || '默认账号模型'}</p>
+                        <p className="text-[10px] text-slate-500 font-mono">{userProfile?.modelName || '默认账号模型'}</p>
                       </div>
                     </div>
-                    <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 font-medium">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                       <span>{isStreaming ? '规划中' : '在线就绪'}</span>
                     </span>
                   </div>
-                  <p className="text-[11px] text-zinc-400 leading-relaxed border-t border-zinc-800/80 pt-2">
+                  <p className="text-[11px] text-slate-600 leading-relaxed border-t border-black/[0.06] pt-2">
                     负责感知当前沙箱项目、拆解架构任务、指派子 Agent 并把控全局交付。
                   </p>
                 </div>
 
                 {/* Worker Agents: Pi */}
-                <div className="bg-zinc-900/80 border border-zinc-800 rounded-xl p-3 space-y-2">
+                <div className="bg-white border border-black/[0.06] rounded-xl p-3 space-y-2 shadow-2xs">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-lg bg-emerald-600/20 border border-emerald-500/30 flex items-center justify-center text-base">
+                      <div className="w-8 h-8 rounded-lg bg-emerald-50 border border-emerald-100 flex items-center justify-center text-base">
                         ⚡
                       </div>
                       <div>
-                        <div className="text-xs font-bold text-zinc-100 flex items-center gap-1.5">
+                        <div className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
                           <span>Pi 编码智能体</span>
-                          <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-mono">Worker</span>
+                          <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-50 text-emerald-700 border border-emerald-200/60 font-mono font-medium">Worker</span>
                         </div>
-                        <p className="text-[10px] text-zinc-400 font-mono">Custom CLI Agent</p>
+                        <p className="text-[10px] text-slate-500 font-mono">Custom CLI Agent</p>
                       </div>
                     </div>
-                    <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-300 border border-zinc-700">
+                    <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-black/[0.06] font-medium">
                       <span>就绪</span>
                     </span>
                   </div>
-                  <p className="text-[11px] text-zinc-400 leading-relaxed border-t border-zinc-800/80 pt-2">
-                    负责写入代码、安装依赖、运行单元测试，自动索引 <code className="text-emerald-400 font-mono">.pi/skills/</code> 技能。
+                  <p className="text-[11px] text-slate-600 leading-relaxed border-t border-black/[0.06] pt-2">
+                    负责写入代码、安装依赖、运行单元测试，自动索引 <code className="text-emerald-700 font-mono bg-emerald-50 px-1 py-0.5 rounded border border-emerald-200/60">.pi/skills/</code> 技能。
                   </p>
                 </div>
 
                 {/* Workspace Skills Management Pool */}
-                <div className="bg-zinc-900/80 border border-zinc-800 rounded-xl p-3 space-y-3">
+                <div className="bg-white border border-black/[0.06] rounded-xl p-3 space-y-3 shadow-2xs">
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5 text-xs font-semibold text-zinc-100">
-                      <BookOpen size={14} className="text-amber-400" />
+                    <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-900">
+                      <BookOpen size={14} className="text-amber-500" />
                       <span>工作区技能库 (Skills)</span>
-                      <span className="text-[10px] px-1.5 py-0.2 rounded font-mono bg-zinc-800 text-zinc-400">
+                      <span className="text-[10px] px-1.5 py-0.2 rounded font-mono bg-slate-100 text-slate-600 border border-black/[0.06]">
                         {workspaceSkills.filter((s) => s.enabled).length}/{workspaceSkills.length} 启用
                       </span>
                     </div>
@@ -2186,7 +2163,7 @@ export default function StudioPage() {
                           setSkillModalTab('presets');
                           setShowSkillModal(true);
                         }}
-                        className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 text-[10px] font-medium transition-colors cursor-pointer"
+                        className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 border border-amber-500/25 text-[10px] font-medium transition-colors cursor-pointer"
                         title="安装或创建技能"
                       >
                         <Plus size={11} />
@@ -2194,7 +2171,7 @@ export default function StudioPage() {
                       </button>
                       <button
                         onClick={() => fetchWorkspaceSkills()}
-                        className="p-1 rounded text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors cursor-pointer"
+                        className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-black/[0.04] transition-colors cursor-pointer"
                         title="刷新技能列表"
                       >
                         <RefreshCw size={11} className={isLoadingSkills ? 'animate-spin' : ''} />
@@ -2203,13 +2180,13 @@ export default function StudioPage() {
                   </div>
 
                   {isLoadingSkills && workspaceSkills.length === 0 ? (
-                    <div className="flex items-center justify-center py-6 text-zinc-500 text-xs">
-                      <Loader2 size={15} className="animate-spin text-amber-400 mr-2" />
+                    <div className="flex items-center justify-center py-6 text-slate-400 text-xs">
+                      <Loader2 size={15} className="animate-spin text-amber-500 mr-2" />
                       <span>正在扫描工作区技能...</span>
                     </div>
                   ) : workspaceSkills.length === 0 ? (
-                    <div className="p-3 rounded-lg bg-zinc-950/60 border border-zinc-850 text-center space-y-2">
-                      <p className="text-[11px] text-zinc-400 leading-relaxed">
+                    <div className="p-3 rounded-lg bg-[#fbfaf7] border border-black/[0.06] text-center space-y-2">
+                      <p className="text-[11px] text-slate-500 leading-relaxed">
                         当前沙箱尚未安装扩展技能。智能体可自主在对话中安装，您也可以一键添加常用技能。
                       </p>
                       <div className="flex items-center justify-center gap-1.5 flex-wrap pt-1">
@@ -2217,7 +2194,7 @@ export default function StudioPage() {
                           <button
                             key={p.id}
                             onClick={() => handleInstallPreset(p.id)}
-                            className="text-[10px] px-2 py-1 rounded bg-zinc-850 hover:bg-zinc-800 text-amber-300/90 border border-zinc-700/60 transition-colors cursor-pointer"
+                            className="text-[10px] px-2 py-1 rounded bg-white hover:bg-slate-50 text-amber-700 border border-black/[0.08] shadow-2xs transition-colors cursor-pointer"
                           >
                             + 安装 {p.id}
                           </button>
@@ -2232,21 +2209,21 @@ export default function StudioPage() {
                           className={cn(
                             'p-2.5 rounded-lg border transition-all space-y-1.5',
                             skill.enabled
-                              ? 'bg-zinc-950/60 border-zinc-800'
-                              : 'bg-zinc-950/30 border-zinc-850 opacity-65'
+                              ? 'bg-[#fbfaf7] border-black/[0.06]'
+                              : 'bg-slate-50/50 border-black/[0.04] opacity-65'
                           )}
                         >
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-1.5 min-w-0">
-                              <span className="font-mono text-xs font-semibold text-zinc-200 truncate">
+                              <span className="font-mono text-xs font-semibold text-slate-800 truncate">
                                 {skill.name}
                               </span>
                               <span
                                 className={cn(
-                                  'text-[9px] px-1.5 py-0.2 rounded font-mono',
+                                  'text-[9px] px-1.5 py-0.2 rounded font-mono font-medium',
                                   skill.enabled
-                                    ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-                                    : 'bg-zinc-800 text-zinc-500'
+                                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/60'
+                                    : 'bg-slate-100 text-slate-500 border border-black/[0.06]'
                                 )}
                               >
                                 {skill.enabled ? '已启用' : '已禁用'}
@@ -2260,8 +2237,8 @@ export default function StudioPage() {
                                 className={cn(
                                   'px-2 py-0.5 rounded text-[10px] font-medium transition-colors cursor-pointer flex items-center gap-1',
                                   skill.enabled
-                                    ? 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40'
-                                    : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-400 border border-zinc-700'
+                                    ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200'
+                                    : 'bg-white hover:bg-slate-50 text-slate-500 border border-black/[0.08]'
                                 )}
                                 title={skill.enabled ? '点击禁用该技能' : '点击启用该技能'}
                               >
@@ -2272,7 +2249,7 @@ export default function StudioPage() {
                               {/* View detail button */}
                               <button
                                 onClick={() => setPreviewingSkill(skill)}
-                                className="p-1 rounded text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors cursor-pointer"
+                                className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-black/[0.04] transition-colors cursor-pointer"
                                 title="查看技能定义"
                               >
                                 <Eye size={12} />
@@ -2281,7 +2258,7 @@ export default function StudioPage() {
                               {/* Delete button */}
                               <button
                                 onClick={() => handleDeleteSkill(skill.id, skill.name)}
-                                className="p-1 rounded text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
+                                className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
                                 title="卸载技能"
                               >
                                 <Trash2 size={12} />
@@ -2289,7 +2266,7 @@ export default function StudioPage() {
                             </div>
                           </div>
 
-                          <p className="text-[11px] text-zinc-400 leading-relaxed line-clamp-2">
+                          <p className="text-[11px] text-slate-500 leading-relaxed line-clamp-2">
                             {skill.description}
                           </p>
                         </div>
@@ -2299,10 +2276,10 @@ export default function StudioPage() {
                 </div>
 
                 {/* Workspace Rules & AGENTS.md Info */}
-                <div className="bg-zinc-900/60 border border-zinc-800/80 rounded-xl p-3 space-y-2.5">
+                <div className="bg-white border border-black/[0.06] rounded-xl p-3 space-y-2.5 shadow-2xs">
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5 text-xs font-semibold text-zinc-200">
-                      <Sparkles size={13} className="text-indigo-400" />
+                    <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-900">
+                      <Sparkles size={13} className="text-indigo-600" />
                       <span>空间规则 (AGENTS.md)</span>
                     </div>
                     <button
@@ -2312,17 +2289,17 @@ export default function StudioPage() {
                         setEditWsPrompt(activeWorkspace?.systemPrompt || '');
                         setShowRulesModal(true);
                       }}
-                      className="text-[10px] text-indigo-400 hover:text-indigo-300 transition-colors cursor-pointer"
+                      className="text-[10px] text-indigo-600 hover:text-indigo-700 font-medium transition-colors cursor-pointer"
                     >
                       编辑规则
                     </button>
                   </div>
                   {activeWorkspace?.systemPrompt ? (
-                    <div className="p-2 rounded-lg bg-zinc-950/70 border border-zinc-800/80 text-[11px] font-mono text-zinc-300 max-h-32 overflow-y-auto whitespace-pre-wrap leading-relaxed">
+                    <div className="p-2.5 rounded-lg bg-[#fbfaf7] border border-black/[0.06] text-[11px] font-mono text-slate-700 max-h-32 overflow-y-auto whitespace-pre-wrap leading-relaxed">
                       {activeWorkspace.systemPrompt}
                     </div>
                   ) : (
-                    <p className="text-[11px] text-zinc-500 italic">
+                    <p className="text-[11px] text-slate-400 italic">
                       当前工作区未配置专属规则，智能体将采用系统默认行为。点击上方“编辑规则”可一键引入 Next.js、Python 等项目规范。
                     </p>
                   )}
@@ -2332,19 +2309,19 @@ export default function StudioPage() {
 
             {inspectorTab === 'files' && (
               <div className="space-y-3">
-                <div className="flex items-center justify-between pb-2 border-b border-zinc-800">
-                  <span className="text-xs font-medium text-zinc-400">沙箱文件列表 ({activeWorkspaceName})</span>
+                <div className="flex items-center justify-between pb-2 border-b border-black/[0.06]">
+                  <span className="text-xs font-medium text-slate-600">沙箱文件列表 ({activeWorkspaceName})</span>
                   <div className="flex items-center gap-1">
                     <button
                       onClick={() => setIsCreatingFile(!isCreatingFile)}
-                      className="p-1 rounded hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 cursor-pointer"
+                      className="p-1 rounded hover:bg-black/[0.05] text-slate-400 hover:text-slate-700 cursor-pointer"
                       title="新建文件"
                     >
                       <FilePlus size={13} />
                     </button>
                     <button
                       onClick={() => fetchWorkspaceTree()}
-                      className="p-1 rounded hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 cursor-pointer"
+                      className="p-1 rounded hover:bg-black/[0.05] text-slate-400 hover:text-slate-700 cursor-pointer"
                       title="刷新文件树"
                     >
                       <RefreshCw size={13} className={isLoadingFiles ? 'animate-spin' : ''} />
@@ -2353,24 +2330,24 @@ export default function StudioPage() {
                 </div>
 
                 {isCreatingFile && (
-                  <div className="flex items-center gap-1.5 p-2 bg-zinc-900 rounded-lg border border-zinc-700">
+                  <div className="flex items-center gap-1.5 p-2 bg-[#fbfaf7] rounded-lg border border-black/[0.08]">
                     <input
                       type="text"
                       value={newFileName}
                       onChange={(e) => setNewFileName(e.target.value)}
                       placeholder="文件名 (如 src/app.ts)"
-                      className="flex-1 bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-xs text-zinc-200 focus:outline-none focus:border-indigo-500 font-mono"
+                      className="flex-1 bg-white border border-black/[0.08] rounded px-2 py-1 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-500 font-mono shadow-2xs"
                       autoFocus
                     />
                     <button
                       onClick={handleCreateFile}
-                      className="px-2 py-1 rounded bg-indigo-600 text-white text-xs hover:bg-indigo-500 cursor-pointer"
+                      className="px-2 py-1 rounded bg-slate-950 text-white text-xs hover:bg-slate-800 cursor-pointer shadow-xs"
                     >
                       创建
                     </button>
                     <button
                       onClick={() => setIsCreatingFile(false)}
-                      className="px-2 py-1 rounded bg-zinc-800 text-zinc-400 text-xs hover:bg-zinc-700 cursor-pointer"
+                      className="px-2 py-1 rounded bg-white border border-black/[0.08] text-slate-600 text-xs hover:bg-slate-50 cursor-pointer"
                     >
                       取消
                     </button>
@@ -2381,10 +2358,10 @@ export default function StudioPage() {
                 <div className="space-y-1 text-xs font-mono">
                   {isLoadingFiles ? (
                     <div className="flex items-center justify-center py-10">
-                      <Loader2 size={18} className="text-zinc-500 animate-spin" />
+                      <Loader2 size={18} className="text-slate-400 animate-spin" />
                     </div>
                   ) : fileTree.length === 0 ? (
-                    <div className="text-center py-10 text-zinc-500 text-xs">
+                    <div className="text-center py-10 text-slate-400 text-xs">
                       工作区当前为空，让智能体写入文件或点击上方新建
                     </div>
                   ) : (
@@ -2392,21 +2369,21 @@ export default function StudioPage() {
                       <div
                         key={node.path}
                         onClick={() => handleSelectFile(node)}
-                        className="flex items-center justify-between p-2 rounded-lg hover:bg-zinc-800 cursor-pointer group transition-colors"
+                        className="flex items-center justify-between p-2 rounded-lg hover:bg-black/[0.04] cursor-pointer group transition-colors"
                       >
                         <div className="flex items-center gap-2 min-w-0">
                           {node.isDirectory ? (
-                            <Folder size={14} className="text-amber-400 flex-shrink-0" />
+                            <Folder size={14} className="text-amber-500 flex-shrink-0" />
                           ) : (
-                            <FileText size={14} className="text-zinc-400 flex-shrink-0" />
+                            <FileText size={14} className="text-slate-400 flex-shrink-0" />
                           )}
-                          <span className="text-zinc-200 truncate">{node.name}</span>
+                          <span className="text-slate-700 group-hover:text-slate-900 truncate">{node.name}</span>
                         </div>
 
                         {!node.isDirectory && (
                           <button
                             onClick={(e) => handleDeleteFile(node.path, e)}
-                            className="opacity-0 group-hover:opacity-100 p-1 text-zinc-500 hover:text-rose-400 transition-opacity cursor-pointer"
+                            className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-rose-600 transition-opacity cursor-pointer"
                             title="删除文件"
                           >
                             <Trash2 size={12} />
@@ -2419,14 +2396,14 @@ export default function StudioPage() {
 
                 {/* File Preview */}
                 {previewFile && (
-                  <div className="mt-4 border-t border-zinc-800 pt-3 space-y-2">
+                  <div className="mt-4 border-t border-black/[0.06] pt-3 space-y-2">
                     <div className="flex items-center justify-between">
-                      <span className="text-xs font-mono text-zinc-300 font-medium truncate">{previewFile.path}</span>
-                      <button onClick={() => setPreviewFile(null)} className="text-zinc-500 hover:text-zinc-300 cursor-pointer">
+                      <span className="text-xs font-mono text-slate-700 font-medium truncate">{previewFile.path}</span>
+                      <button onClick={() => setPreviewFile(null)} className="text-slate-400 hover:text-slate-700 cursor-pointer">
                         <X size={13} />
                       </button>
                     </div>
-                    <pre className="p-2.5 rounded-lg bg-zinc-950 border border-zinc-800/80 text-[11px] font-mono text-zinc-300 overflow-x-auto max-h-56 leading-relaxed whitespace-pre-wrap">
+                    <pre className="p-2.5 rounded-lg bg-slate-50 border border-black/[0.06] text-[11px] font-mono text-slate-800 overflow-x-auto max-h-56 leading-relaxed whitespace-pre-wrap shadow-2xs">
                       {previewFile.content || '(空文件)'}
                     </pre>
                   </div>
@@ -2442,75 +2419,75 @@ export default function StudioPage() {
 
       {/* 5. Account Model & Environment Overview Modal */}
       {showSettingsModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fadeIn">
-          <div className="bg-zinc-900 border border-zinc-700 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-5">
-            <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fadeIn">
+          <div className="bg-white border border-black/[0.08] rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-5 text-slate-900">
+            <div className="flex items-center justify-between pb-3 border-b border-black/[0.06]">
               <div className="flex items-center gap-2">
-                <Settings size={18} className="text-indigo-400" />
-                <h3 className="text-base font-bold text-zinc-100">
+                <Settings size={18} className="text-indigo-600" />
+                <h3 className="text-base font-bold text-slate-900">
                   当前环境与模型状态
                 </h3>
               </div>
               <button
                 onClick={() => setShowSettingsModal(false)}
-                className="text-zinc-400 hover:text-zinc-100 text-xs font-medium cursor-pointer"
+                className="text-slate-400 hover:text-slate-700 text-xs font-medium cursor-pointer"
               >
                 关闭
               </button>
             </div>
 
             <div className="space-y-3.5 text-xs">
-              <div className="p-3.5 rounded-xl bg-zinc-800/60 border border-zinc-700/60 space-y-2.5">
-                <div className="flex items-center justify-between pb-2 border-b border-zinc-700/40">
-                  <span className="text-zinc-400">登录账号</span>
-                  <span className="font-mono text-zinc-200 font-medium">{userProfile?.email || '当前登录用户'}</span>
+              <div className="p-3.5 rounded-xl bg-[#fbfaf7] border border-black/[0.06] space-y-2.5">
+                <div className="flex items-center justify-between pb-2 border-b border-black/[0.04]">
+                  <span className="text-slate-500">登录账号</span>
+                  <span className="font-mono text-slate-800 font-medium">{userProfile?.email || '当前登录用户'}</span>
                 </div>
 
-                <div className="flex items-center justify-between pb-2 border-b border-zinc-700/40">
-                  <span className="text-zinc-400">驱动大模型</span>
-                  <span className="font-mono text-emerald-400 font-bold bg-emerald-500/10 px-2 py-0.5 rounded">
+                <div className="flex items-center justify-between pb-2 border-b border-black/[0.04]">
+                  <span className="text-slate-500">驱动大模型</span>
+                  <span className="font-mono text-emerald-700 font-bold bg-emerald-50 border border-emerald-200/80 px-2 py-0.5 rounded">
                     {userProfile?.modelName || '未指定 (系统默认)'}
                   </span>
                 </div>
 
-                <div className="flex items-center justify-between pb-2 border-b border-zinc-700/40">
-                  <span className="text-zinc-400">接口 Base URL</span>
-                  <span className="font-mono text-zinc-300 truncate max-w-[200px]" title={userProfile?.apiBaseUrl || '系统默认端点'}>
+                <div className="flex items-center justify-between pb-2 border-b border-black/[0.04]">
+                  <span className="text-slate-500">接口 Base URL</span>
+                  <span className="font-mono text-slate-700 truncate max-w-[200px]" title={userProfile?.apiBaseUrl || '系统默认端点'}>
                     {userProfile?.apiBaseUrl || '系统官方接口'}
                   </span>
                 </div>
 
-                <div className="flex items-center justify-between pb-2 border-b border-zinc-700/40">
-                  <span className="text-zinc-400">API 凭据状态</span>
-                  <span className="flex items-center gap-1 text-emerald-400 font-medium">
+                <div className="flex items-center justify-between pb-2 border-b border-black/[0.04]">
+                  <span className="text-slate-500">API 凭据状态</span>
+                  <span className="flex items-center gap-1 text-emerald-700 font-medium">
                     <CheckCircle size={12} />
                     <span>{userProfile?.apiKey ? '已配置 (已就绪)' : '未设置'}</span>
                   </span>
                 </div>
 
                 <div className="flex items-center justify-between">
-                  <span className="text-zinc-400">上下文窗口</span>
-                  <span className="font-mono text-zinc-200">{formatTokens(contextLength)} tokens</span>
+                  <span className="text-slate-500">上下文窗口</span>
+                  <span className="font-mono text-slate-800">{formatTokens(contextLength)} tokens</span>
                 </div>
               </div>
 
-              <div className="p-3 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-[11px] text-zinc-300 space-y-1">
-                <div className="font-semibold text-indigo-300 flex items-center gap-1.5">
+              <div className="p-3 rounded-xl bg-indigo-50 border border-indigo-100 text-[11px] text-slate-700 space-y-1">
+                <div className="font-semibold text-indigo-700 flex items-center gap-1.5">
                   <Sparkles size={13} />
                   <span>统一账号模型与直连机制</span>
                 </div>
-                <div className="text-zinc-400 leading-relaxed">
+                <div className="text-slate-600 leading-relaxed">
                   Studio 总指挥官与后台 Pi Coding Agent 已直接打通并继承您的账号模型配置，无需在此重复填写任何密钥或代理地址。
                 </div>
               </div>
             </div>
 
-            <div className="pt-2 flex items-center justify-between border-t border-zinc-800">
+            <div className="pt-2 flex items-center justify-between border-t border-black/[0.06]">
               <a
                 href="/settings"
                 target="_blank"
                 rel="noreferrer"
-                className="text-xs text-indigo-400 hover:text-indigo-300 hover:underline flex items-center gap-1 font-medium"
+                className="text-xs text-indigo-600 hover:text-indigo-700 hover:underline flex items-center gap-1 font-medium"
               >
                 <span>前往系统设置修改模型配置</span>
                 <ChevronRight size={13} />
@@ -2518,7 +2495,7 @@ export default function StudioPage() {
 
               <button
                 onClick={() => setShowSettingsModal(false)}
-                className="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-xs font-semibold text-zinc-200 transition-colors cursor-pointer"
+                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs font-semibold text-slate-700 transition-colors cursor-pointer"
               >
                 关闭
               </button>
@@ -2529,18 +2506,18 @@ export default function StudioPage() {
 
       {/* 5.5 Workspace System Rules Modal */}
       {showRulesModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fadeIn">
-          <div className="bg-zinc-900 border border-zinc-700/80 rounded-2xl max-w-xl w-full p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fadeIn">
+          <div className="bg-white border border-black/[0.08] rounded-2xl max-w-xl w-full p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150 text-slate-900">
+            <div className="flex items-center justify-between pb-3 border-b border-black/[0.06]">
               <div className="flex items-center gap-2">
-                <Sparkles size={18} className="text-indigo-400" />
-                <h3 className="text-base font-bold text-zinc-100">
+                <Sparkles size={18} className="text-indigo-600" />
+                <h3 className="text-base font-bold text-slate-900">
                   【{activeWorkspaceName}】空间提示词与规范
                 </h3>
               </div>
               <button
                 onClick={() => setShowRulesModal(false)}
-                className="text-zinc-400 hover:text-zinc-100 text-xs cursor-pointer"
+                className="text-slate-400 hover:text-slate-700 text-xs cursor-pointer"
               >
                 取消
               </button>
@@ -2549,10 +2526,10 @@ export default function StudioPage() {
             <form onSubmit={handleEditWorkspace} className="space-y-4">
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between text-xs">
-                  <label className="font-semibold text-zinc-300">
+                  <label className="font-semibold text-slate-800">
                     空间专属指令 (System Instructions)
                   </label>
-                  <span className="text-[10px] text-indigo-400 font-mono">自动同步沙箱 AGENTS.md</span>
+                  <span className="text-[10px] text-indigo-600 font-mono">自动同步沙箱 AGENTS.md</span>
                 </div>
                 <textarea
                   value={editWsPrompt}
@@ -2563,17 +2540,17 @@ export default function StudioPage() {
 3. 写代码或重构前必须先列出改动点；
 4. 保持代码精炼，所有模块加上简明 JSDoc 注释。"
                   rows={8}
-                  className="w-full bg-zinc-950 border border-zinc-700 rounded-xl p-3 text-xs text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-indigo-500 font-mono leading-relaxed resize-none"
+                  className="w-full bg-[#fbfaf7] border border-black/[0.1] rounded-xl p-3 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:bg-white font-mono leading-relaxed resize-none shadow-2xs"
                   autoFocus
                 />
-                <p className="text-[10px] text-zinc-500 leading-snug">
+                <p className="text-[10px] text-slate-500 leading-snug">
                   总指挥官在规划时将严格遵守该规范；保存后会在工作区根目录同步写入 AGENTS.md，Pi 等子智能体执行时亦会自动读取遵循。
                 </p>
               </div>
 
               {/* Quick Preset Badges */}
               <div className="space-y-1.5">
-                <div className="text-[11px] text-zinc-400 font-medium">快捷填入预设模板：</div>
+                <div className="text-[11px] text-slate-600 font-medium">快捷填入预设模板：</div>
                 <div className="flex flex-wrap gap-1.5">
                   {[
                     {
@@ -2593,7 +2570,7 @@ export default function StudioPage() {
                       key={preset.label}
                       type="button"
                       onClick={() => setEditWsPrompt(preset.prompt)}
-                      className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white border border-zinc-700/60 text-[11px] transition-colors cursor-pointer"
+                      className="px-2.5 py-1 rounded-lg bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 border border-black/[0.08] shadow-2xs text-[11px] transition-colors cursor-pointer"
                     >
                       {preset.label}
                     </button>
@@ -2601,18 +2578,18 @@ export default function StudioPage() {
                 </div>
               </div>
 
-              <div className="pt-3 flex items-center justify-end gap-2 border-t border-zinc-800">
+              <div className="pt-3 flex items-center justify-end gap-2 border-t border-black/[0.06]">
                 <button
                   type="button"
                   onClick={() => setShowRulesModal(false)}
-                  className="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-xs text-zinc-300 transition-colors cursor-pointer"
+                  className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs text-slate-700 transition-colors cursor-pointer"
                 >
                   取消
                 </button>
                 <button
                   type="submit"
                   disabled={isEditingWs}
-                  className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-xs font-semibold text-white transition-colors cursor-pointer flex items-center gap-1.5"
+                  className="px-4 py-2 rounded-xl bg-slate-950 hover:bg-slate-800 disabled:opacity-50 text-xs font-semibold text-white shadow-xs transition-colors cursor-pointer flex items-center gap-1.5"
                 >
                   {isEditingWs && <Loader2 size={12} className="animate-spin" />}
                   <span>保存并应用到当前空间</span>
@@ -2627,16 +2604,16 @@ export default function StudioPage() {
 
       {/* 8. Create Workspace Modal */}
       {showCreateModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-          <div className="bg-zinc-900 border border-zinc-700/80 rounded-2xl w-full max-w-md p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white border border-black/[0.08] rounded-2xl w-full max-w-md p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150 text-slate-900">
+            <div className="flex items-center justify-between pb-3 border-b border-black/[0.06]">
               <div className="flex items-center gap-2">
-                <FolderPlus size={18} className="text-indigo-400" />
-                <h3 className="text-base font-bold text-zinc-100">新建 Studio 工作空间</h3>
+                <FolderPlus size={18} className="text-indigo-600" />
+                <h3 className="text-base font-bold text-slate-900">新建 Studio 工作空间</h3>
               </div>
               <button
                 onClick={() => setShowCreateModal(false)}
-                className="text-zinc-400 hover:text-zinc-100 text-xs cursor-pointer"
+                className="text-slate-400 hover:text-slate-700 text-xs cursor-pointer"
               >
                 取消
               </button>
@@ -2644,42 +2621,42 @@ export default function StudioPage() {
 
             <form onSubmit={handleCreateWorkspace} className="space-y-4">
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-zinc-300">
-                  工作区名称 <span className="text-rose-400">*</span>
+                <label className="text-xs font-semibold text-slate-800">
+                  工作区名称 <span className="text-rose-500">*</span>
                 </label>
                 <input
                   type="text"
                   value={newWsName}
                   onChange={(e) => setNewWsName(e.target.value)}
                   placeholder="例如：web-crawler、algo-sandbox、my-project"
-                  className="w-full bg-zinc-800/80 border border-zinc-700/80 rounded-xl px-3 py-2 text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-indigo-500"
+                  className="w-full bg-[#fbfaf7] border border-black/[0.1] rounded-xl px-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:bg-white shadow-2xs"
                   autoFocus
                   required
                 />
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-zinc-300">工作区简介（可选）</label>
+                <label className="text-xs font-semibold text-slate-800">工作区简介（可选）</label>
                 <textarea
                   value={newWsDesc}
                   onChange={(e) => setNewWsDesc(e.target.value)}
                   placeholder="工作区的核心目标或业务背景..."
                   rows={2}
-                  className="w-full bg-zinc-800/80 border border-zinc-700/80 rounded-xl px-3 py-2 text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-indigo-500 resize-none"
+                  className="w-full bg-[#fbfaf7] border border-black/[0.1] rounded-xl px-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:bg-white resize-none shadow-2xs"
                 />
               </div>
 
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <label className="text-xs font-semibold text-zinc-300">空间提示词与项目规范（可选）</label>
-                  <span className="text-[10px] text-zinc-500 font-mono">自动同步 AGENTS.md</span>
+                  <label className="text-xs font-semibold text-slate-800">空间提示词与项目规范（可选）</label>
+                  <span className="text-[10px] text-slate-500 font-mono">自动同步 AGENTS.md</span>
                 </div>
                 <textarea
                   value={newWsPrompt}
                   onChange={(e) => setNewWsPrompt(e.target.value)}
                   placeholder="设定专属的角色要求、技术栈规范或开发约束，例如：使用 Next.js 15 App Router，代码必须加详细注释..."
                   rows={3}
-                  className="w-full bg-zinc-800/80 border border-zinc-700/80 rounded-xl px-3 py-2 text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-indigo-500 resize-none font-mono text-[11px]"
+                  className="w-full bg-[#fbfaf7] border border-black/[0.1] rounded-xl px-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:bg-white resize-none font-mono text-[11px] shadow-2xs"
                 />
               </div>
 
@@ -2687,14 +2664,14 @@ export default function StudioPage() {
                 <button
                   type="button"
                   onClick={() => setShowCreateModal(false)}
-                  className="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-xs text-zinc-300 transition-colors cursor-pointer"
+                  className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs text-slate-700 transition-colors cursor-pointer"
                 >
                   取消
                 </button>
                 <button
                   type="submit"
                   disabled={!newWsName.trim() || isCreatingWs}
-                  className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-xs font-semibold text-white transition-colors cursor-pointer flex items-center gap-1.5"
+                  className="px-4 py-2 rounded-xl bg-slate-950 hover:bg-slate-800 disabled:opacity-50 text-xs font-semibold text-white shadow-xs transition-colors cursor-pointer flex items-center gap-1.5"
                 >
                   {isCreatingWs && <Loader2 size={12} className="animate-spin" />}
                   <span>立即创建并切换</span>
@@ -2707,16 +2684,16 @@ export default function StudioPage() {
 
       {/* 9. Edit Workspace Modal */}
       {showEditModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-          <div className="bg-zinc-900 border border-zinc-700/80 rounded-2xl w-full max-w-md p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white border border-black/[0.08] rounded-2xl w-full max-w-md p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150 text-slate-900">
+            <div className="flex items-center justify-between pb-3 border-b border-black/[0.06]">
               <div className="flex items-center gap-2">
-                <Edit2 size={16} className="text-indigo-400" />
-                <h3 className="text-base font-bold text-zinc-100">编辑工作区信息</h3>
+                <Edit2 size={16} className="text-indigo-600" />
+                <h3 className="text-base font-bold text-slate-900">编辑工作区信息</h3>
               </div>
               <button
                 onClick={() => setShowEditModal(false)}
-                className="text-zinc-400 hover:text-zinc-100 text-xs cursor-pointer"
+                className="text-slate-400 hover:text-slate-700 text-xs cursor-pointer"
               >
                 取消
               </button>
@@ -2724,41 +2701,41 @@ export default function StudioPage() {
 
             <form onSubmit={handleEditWorkspace} className="space-y-4">
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-zinc-300">
-                  工作区名称 <span className="text-rose-400">*</span>
+                <label className="text-xs font-semibold text-slate-800">
+                  工作区名称 <span className="text-rose-500">*</span>
                 </label>
                 <input
                   type="text"
                   value={editWsName}
                   onChange={(e) => setEditWsName(e.target.value)}
-                  className="w-full bg-zinc-800/80 border border-zinc-700/80 rounded-xl px-3 py-2 text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-indigo-500"
+                  className="w-full bg-[#fbfaf7] border border-black/[0.1] rounded-xl px-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:bg-white shadow-2xs"
                   autoFocus
                   required
                 />
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-zinc-300">工作区简介</label>
+                <label className="text-xs font-semibold text-slate-800">工作区简介</label>
                 <textarea
                   value={editWsDesc}
                   onChange={(e) => setEditWsDesc(e.target.value)}
                   placeholder="工作区的核心目标或业务背景..."
                   rows={2}
-                  className="w-full bg-zinc-800/80 border border-zinc-700/80 rounded-xl px-3 py-2 text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-indigo-500 resize-none"
+                  className="w-full bg-[#fbfaf7] border border-black/[0.1] rounded-xl px-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:bg-white resize-none shadow-2xs"
                 />
               </div>
 
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <label className="text-xs font-semibold text-zinc-300">空间提示词与项目规范</label>
-                  <span className="text-[10px] text-zinc-500 font-mono">保存时自动同步至 AGENTS.md</span>
+                  <label className="text-xs font-semibold text-slate-800">空间提示词与项目规范</label>
+                  <span className="text-[10px] text-slate-500 font-mono">保存时自动同步至 AGENTS.md</span>
                 </div>
                 <textarea
                   value={editWsPrompt}
                   onChange={(e) => setEditWsPrompt(e.target.value)}
                   placeholder="设定专属的角色要求、技术栈规范或开发约束..."
                   rows={3}
-                  className="w-full bg-zinc-800/80 border border-zinc-700/80 rounded-xl px-3 py-2 text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-indigo-500 resize-none font-mono text-[11px]"
+                  className="w-full bg-[#fbfaf7] border border-black/[0.1] rounded-xl px-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:bg-white resize-none font-mono text-[11px] shadow-2xs"
                 />
               </div>
 
@@ -2766,14 +2743,14 @@ export default function StudioPage() {
                 <button
                   type="button"
                   onClick={() => setShowEditModal(false)}
-                  className="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-xs text-zinc-300 transition-colors cursor-pointer"
+                  className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs text-slate-700 transition-colors cursor-pointer"
                 >
                   取消
                 </button>
                 <button
                   type="submit"
                   disabled={!editWsName.trim() || isEditingWs}
-                  className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-xs font-semibold text-white transition-colors cursor-pointer flex items-center gap-1.5"
+                  className="px-4 py-2 rounded-xl bg-slate-950 hover:bg-slate-800 disabled:opacity-50 text-xs font-semibold text-white shadow-xs transition-colors cursor-pointer flex items-center gap-1.5"
                 >
                   {isEditingWs && <Loader2 size={12} className="animate-spin" />}
                   <span>保存修改</span>
@@ -2786,31 +2763,31 @@ export default function StudioPage() {
 
       {/* 9. Install / Create Workspace Skill Modal */}
       {showSkillModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-fadeIn">
-          <div className="bg-zinc-900 border border-zinc-700/80 rounded-2xl w-full max-w-lg p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-fadeIn">
+          <div className="bg-white border border-black/[0.08] rounded-2xl w-full max-w-lg p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150 text-slate-900">
+            <div className="flex items-center justify-between pb-3 border-b border-black/[0.06]">
               <div className="flex items-center gap-2">
-                <BookOpen size={18} className="text-amber-400" />
-                <h3 className="text-base font-bold text-zinc-100">安装与创建工作区技能</h3>
+                <BookOpen size={18} className="text-amber-500" />
+                <h3 className="text-base font-bold text-slate-900">安装与创建工作区技能</h3>
               </div>
               <button
                 onClick={() => setShowSkillModal(false)}
-                className="text-zinc-400 hover:text-zinc-100 text-xs cursor-pointer"
+                className="text-slate-400 hover:text-slate-700 text-xs cursor-pointer"
               >
                 关闭
               </button>
             </div>
 
             {/* Tab switch: Presets vs Custom */}
-            <div className="flex items-center gap-2 border-b border-zinc-800 pb-2">
+            <div className="flex items-center gap-2 border-b border-black/[0.06] pb-2">
               <button
                 type="button"
                 onClick={() => setSkillModalTab('presets')}
                 className={cn(
                   'px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer',
                   skillModalTab === 'presets'
-                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
-                    : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
+                    ? 'bg-amber-50 text-amber-800 border border-amber-200/80 shadow-2xs'
+                    : 'text-slate-500 hover:text-slate-800 hover:bg-black/[0.03]'
                 )}
               >
                 官方推荐预设库
@@ -2821,8 +2798,8 @@ export default function StudioPage() {
                 className={cn(
                   'px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer',
                   skillModalTab === 'custom'
-                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
-                    : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
+                    ? 'bg-amber-50 text-amber-800 border border-amber-200/80 shadow-2xs'
+                    : 'text-slate-500 hover:text-slate-800 hover:bg-black/[0.03]'
                 )}
               >
                 自定义编写技能
@@ -2832,7 +2809,7 @@ export default function StudioPage() {
             {skillModalTab === 'presets' ? (
               <div className="space-y-2.5 max-h-80 overflow-y-auto pr-1">
                 {skillPresets.length === 0 ? (
-                  <div className="text-center py-8 text-xs text-zinc-500">
+                  <div className="text-center py-8 text-xs text-slate-400">
                     加载中...
                   </div>
                 ) : (
@@ -2841,18 +2818,18 @@ export default function StudioPage() {
                     return (
                       <div
                         key={preset.id}
-                        className="p-3 rounded-xl bg-zinc-950/60 border border-zinc-800/80 hover:border-zinc-700/80 transition-all flex items-start justify-between gap-3"
+                        className="p-3 rounded-xl bg-[#fbfaf7] border border-black/[0.06] hover:border-black/[0.12] transition-all flex items-start justify-between gap-3 shadow-2xs"
                       >
                         <div className="space-y-1 min-w-0">
                           <div className="flex items-center gap-2">
-                            <span className="text-xs font-bold text-zinc-200 font-mono">
+                            <span className="text-xs font-bold text-slate-900 font-mono">
                               {preset.id}
                             </span>
-                            <span className="text-[10px] text-zinc-400 truncate">
+                            <span className="text-[10px] text-slate-500 truncate">
                               {preset.name}
                             </span>
                           </div>
-                          <p className="text-[11px] text-zinc-400 leading-relaxed">
+                          <p className="text-[11px] text-slate-600 leading-relaxed">
                             {preset.description}
                           </p>
                         </div>
@@ -2864,13 +2841,13 @@ export default function StudioPage() {
                           className={cn(
                             'px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors flex-shrink-0 cursor-pointer flex items-center gap-1',
                             isInstalled
-                              ? 'bg-zinc-800 text-zinc-500 border border-zinc-700/50 cursor-not-allowed'
-                              : 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30'
+                              ? 'bg-slate-100 text-slate-400 border border-black/[0.06] cursor-not-allowed'
+                              : 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-800 border border-amber-500/25 shadow-2xs font-semibold'
                           )}
                         >
                           {isInstalled ? (
                             <>
-                              <CheckCircle size={11} className="text-emerald-400" />
+                              <CheckCircle size={11} className="text-emerald-600" />
                               <span>已安装</span>
                             </>
                           ) : (
@@ -2894,36 +2871,36 @@ export default function StudioPage() {
                 className="space-y-3 text-xs"
               >
                 <div className="space-y-1">
-                  <label className="font-semibold text-zinc-300">技能目录英文标识 (ID)</label>
+                  <label className="font-semibold text-slate-800">技能目录英文标识 (ID)</label>
                   <input
                     type="text"
                     value={newSkillName}
                     onChange={(e) => setNewSkillName(e.target.value)}
                     placeholder="如: custom-parser, doc-generator"
-                    className="w-full bg-zinc-800/80 border border-zinc-700/80 rounded-xl px-3 py-2 text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-indigo-500 font-mono"
+                    className="w-full bg-[#fbfaf7] border border-black/[0.1] rounded-xl px-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:bg-white font-mono shadow-2xs"
                     required
                   />
                 </div>
 
                 <div className="space-y-1">
-                  <label className="font-semibold text-zinc-300">功能简述</label>
+                  <label className="font-semibold text-slate-800">功能简述</label>
                   <input
                     type="text"
                     value={newSkillDesc}
                     onChange={(e) => setNewSkillDesc(e.target.value)}
                     placeholder="简要说明该技能的作用与触发场景..."
-                    className="w-full bg-zinc-800/80 border border-zinc-700/80 rounded-xl px-3 py-2 text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-indigo-500"
+                    className="w-full bg-[#fbfaf7] border border-black/[0.1] rounded-xl px-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:bg-white shadow-2xs"
                   />
                 </div>
 
                 <div className="space-y-1">
-                  <label className="font-semibold text-zinc-300">SKILL.md 提示词与实现内容</label>
+                  <label className="font-semibold text-slate-800">SKILL.md 提示词与实现内容</label>
                   <textarea
                     value={newSkillContent}
                     onChange={(e) => setNewSkillContent(e.target.value)}
                     placeholder="输入技能规范说明、调用指令与步骤要求（遵循标准 Agent Skills 规范）..."
                     rows={6}
-                    className="w-full bg-zinc-800/80 border border-zinc-700/80 rounded-xl px-3 py-2 text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-indigo-500 font-mono text-[11px] leading-relaxed resize-none"
+                    className="w-full bg-[#fbfaf7] border border-black/[0.1] rounded-xl px-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:bg-white font-mono text-[11px] leading-relaxed resize-none shadow-2xs"
                   />
                 </div>
 
@@ -2931,14 +2908,14 @@ export default function StudioPage() {
                   <button
                     type="button"
                     onClick={() => setShowSkillModal(false)}
-                    className="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-xs text-zinc-300 transition-colors cursor-pointer"
+                    className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs text-slate-700 transition-colors cursor-pointer"
                   >
                     取消
                   </button>
                   <button
                     type="submit"
                     disabled={!newSkillName.trim() || isSubmittingSkill}
-                    className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-xs font-semibold text-white transition-colors cursor-pointer flex items-center gap-1.5"
+                    className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-xs font-semibold text-white shadow-xs transition-colors cursor-pointer flex items-center gap-1.5"
                   >
                     {isSubmittingSkill && <Loader2 size={12} className="animate-spin" />}
                     <span>创建技能并加载</span>
@@ -2952,56 +2929,56 @@ export default function StudioPage() {
 
       {/* 10. Preview Skill Definition Modal */}
       {previewingSkill && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-fadeIn">
-          <div className="bg-zinc-900 border border-zinc-700/80 rounded-2xl w-full max-w-lg p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-fadeIn">
+          <div className="bg-white border border-black/[0.08] rounded-2xl w-full max-w-lg p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150 text-slate-900">
+            <div className="flex items-center justify-between pb-3 border-b border-black/[0.06]">
               <div className="flex items-center gap-2">
-                <BookOpen size={17} className="text-amber-400" />
-                <h3 className="text-base font-bold text-zinc-100">
+                <BookOpen size={17} className="text-amber-500" />
+                <h3 className="text-base font-bold text-slate-900">
                   技能定义: {previewingSkill.name}
                 </h3>
               </div>
               <button
                 onClick={() => setPreviewingSkill(null)}
-                className="text-zinc-400 hover:text-zinc-100 text-xs cursor-pointer"
+                className="text-slate-400 hover:text-slate-700 text-xs cursor-pointer"
               >
                 关闭
               </button>
             </div>
 
             <div className="space-y-2">
-              <div className="flex items-center justify-between text-xs text-zinc-400">
-                <span className="font-mono text-[11px] text-zinc-500">
+              <div className="flex items-center justify-between text-xs text-slate-500">
+                <span className="font-mono text-[11px] text-slate-500">
                   路径: .pi/skills/{previewingSkill.id}/SKILL.md
                 </span>
                 <span
                   className={cn(
-                    'text-[10px] px-2 py-0.5 rounded-full font-mono',
+                    'text-[10px] px-2 py-0.5 rounded-full font-mono font-medium',
                     previewingSkill.enabled
-                      ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-                      : 'bg-zinc-800 text-zinc-500'
+                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                      : 'bg-slate-100 text-slate-500 border border-black/[0.06]'
                   )}
                 >
                   {previewingSkill.enabled ? '已启用' : '已禁用'}
                 </span>
               </div>
 
-              <pre className="p-3 rounded-xl bg-zinc-950 border border-zinc-800 text-[11px] font-mono text-zinc-300 overflow-x-auto max-h-80 leading-relaxed whitespace-pre-wrap select-text">
+              <pre className="p-3 rounded-xl bg-slate-50 border border-black/[0.06] text-[11px] font-mono text-slate-800 overflow-x-auto max-h-80 leading-relaxed whitespace-pre-wrap select-text shadow-2xs">
                 {previewingSkill.content || '(无定义内容)'}
               </pre>
             </div>
 
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-800/80">
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-black/[0.06]">
               <button
                 onClick={() => handleCopyToolResult(previewingSkill.content || '')}
-                className="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-750 text-xs text-zinc-200 transition-colors cursor-pointer flex items-center gap-1.5"
+                className="px-3 py-1.5 rounded-lg bg-white hover:bg-slate-50 border border-black/[0.08] text-xs text-slate-700 shadow-2xs transition-colors cursor-pointer flex items-center gap-1.5"
               >
                 <Copy size={12} />
                 <span>复制技能源码</span>
               </button>
               <button
                 onClick={() => setPreviewingSkill(null)}
-                className="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs text-zinc-300 transition-colors cursor-pointer"
+                className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-xs text-slate-700 transition-colors cursor-pointer"
               >
                 关闭
               </button>

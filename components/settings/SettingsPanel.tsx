@@ -16,6 +16,7 @@ import {
   PlugZap,
   RefreshCw,
   Search,
+  Sun,
   ToggleLeft,
   ToggleRight,
   User,
@@ -1015,13 +1016,18 @@ export default function SettingsPanel() {
                 <p className="text-sm text-slate-500">视觉和提醒方式。</p>
               </div>
             </div>
-            <button className="flex w-full items-center gap-3 rounded-2xl bg-[#fbfaf7] p-4 text-left">
-              <Moon size={18} className="text-slate-500" />
-              <div>
-                <div className="text-sm font-black text-slate-950">浅色 / 深色模式</div>
-                <div className="text-xs text-slate-500">后续支持跟随系统</div>
+            <div className="flex w-full items-center justify-between gap-3 rounded-2xl bg-[#fbfaf7] p-4 text-left border border-black/[0.04]">
+              <div className="flex items-center gap-3">
+                <Sun size={18} className="text-amber-500" />
+                <div>
+                  <div className="text-sm font-black text-slate-950">温暖浅色主题 (标准)</div>
+                  <div className="text-xs text-slate-500">经典象牙白基调，全站视觉统一</div>
+                </div>
               </div>
-            </button>
+              <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-700 border border-amber-500/20">
+                生效中
+              </span>
+            </div>
           </section>
 
           <section className="rounded-[28px] border border-black/[0.06] bg-white p-5 shadow-sm">
