@@ -1,7 +1,7 @@
 'use client';
 
 import { usePathname, useRouter } from 'next/navigation';
-import { Compass, Bot, PlusCircle, MessageSquare, UserRound, Sparkles, ChevronLeft, ChevronRight, PanelsTopLeft } from 'lucide-react';
+import { Compass, Bot, PlusCircle, MessageSquare, UserRound, Sparkles, ChevronLeft, ChevronRight, PanelsTopLeft, TerminalSquare } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState } from 'react';
 
@@ -9,6 +9,7 @@ const navItems = [
   { id: 'discover', label: '发现', icon: Compass, href: '/' },
   { id: 'agents', label: 'Agent 广场', icon: Bot, href: '/agents' },
   { id: 'spaces', label: '空间', icon: PanelsTopLeft, href: '/spaces' },
+  { id: 'studio', label: 'Studio 工作台', icon: TerminalSquare, href: '/studio' },
   { id: 'create', label: '创建 Agent', icon: PlusCircle, href: '/create-agent' },
   { id: 'conversations', label: '对话历史', icon: MessageSquare, href: '/conversations' },
   { id: 'me', label: '个人中心', icon: UserRound, href: '/me' },

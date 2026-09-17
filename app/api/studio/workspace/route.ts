@@ -1,0 +1,143 @@
+import { NextResponse } from 'next/server';
+import path from 'node:path';
+import { readdir, readFile, writeFile, unlink, stat } from 'node:fs/promises';
+import { requireAuth } from '@/app/api/_lib/auth';
+import { resolveStudioWorkspace } from '@/lib/coding-agents/sandbox';
+
+interface FileNode {
+  name: string;
+  path: string;
+  isDirectory: boolean;
+  size?: number;
+  updatedAt?: number;
+  children?: FileNode[];
+}
+
+async function getDirectoryTree(dir: string, baseDir: string, maxDepth = 4, currentDepth = 0): Promise<FileNode[]> {
+  if (currentDepth > maxDepth) return [];
+  try {
+    const entries = await readdir(dir, { withFileTypes: true });
+    const nodes: FileNode[] = [];
+
+    for (const entry of entries) {
+      if (entry.name === 'node_modules' || entry.name === '.git' || entry.name === '.next') {
+        continue;
+      }
+      const fullPath = path.join(dir, entry.name);
+      const relativePath = path.relative(baseDir, fullPath).replace(/\\/g, '/');
+
+      if (entry.isDirectory()) {
+        const children = await getDirectoryTree(fullPath, baseDir, maxDepth, currentDepth + 1);
+        nodes.push({
+          name: entry.name,
+          path: relativePath,
+          isDirectory: true,
+          children,
+        });
+      } else {
+        const stats = await stat(fullPath).catch(() => null);
+        nodes.push({
+          name: entry.name,
+          path: relativePath,
+          isDirectory: false,
+          size: stats?.size || 0,
+          updatedAt: stats?.mtimeMs || Date.now(),
+        });
+      }
+    }
+
+    // Sort: directories first, then alphabetical
+    return nodes.sort((a, b) => {
+      if (a.isDirectory === b.isDirectory) {
+        return a.name.localeCompare(b.name);
+      }
+      return a.isDirectory ? -1 : 1;
+    });
+  } catch {
+    return [];
+  }
+}
+
+export async function GET(request: Request) {
+  try {
+    const userId = requireAuth(request);
+    const { searchParams } = new URL(request.url);
+    const workspaceId = searchParams.get('workspaceId') || searchParams.get('spaceId') || 'default';
+    const filePath = searchParams.get('file');
+
+    const workspaceDir = await resolveStudioWorkspace(process.cwd(), userId, workspaceId);
+
+    // If requesting specific file content
+    if (filePath) {
+      const targetFile = path.resolve(workspaceDir, filePath);
+      if (!targetFile.startsWith(workspaceDir)) {
+        return NextResponse.json({ error: '禁止越权访问工作区外文件' }, { status: 403 });
+      }
+
+      const content = await readFile(targetFile, 'utf-8');
+      return NextResponse.json({ path: filePath, content });
+    }
+
+    // Otherwise return tree
+    const tree = await getDirectoryTree(workspaceDir, workspaceDir);
+    return NextResponse.json({ workspaceDir, tree });
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    const status = errorMsg === 'Unauthorized' ? 401 : 500;
+    return NextResponse.json({ error: errorMsg }, { status });
+  }
+}
+
+export async function POST(request: Request) {
+  try {
+    const userId = requireAuth(request);
+    const body = await request.json();
+    const workspaceId = body.workspaceId || body.spaceId || 'default';
+    const { file, content = '' } = body;
+
+    if (!file) {
+      return NextResponse.json({ error: '文件名不能为空' }, { status: 400 });
+    }
+
+    const workspaceDir = await resolveStudioWorkspace(process.cwd(), userId, workspaceId);
+    const targetFile = path.resolve(workspaceDir, file);
+
+    if (!targetFile.startsWith(workspaceDir)) {
+      return NextResponse.json({ error: '禁止越权写入工作区外文件' }, { status: 403 });
+    }
+
+    await writeFile(targetFile, content, 'utf-8');
+    return NextResponse.json({ success: true, path: file });
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    const status = errorMsg === 'Unauthorized' ? 401 : 500;
+    return NextResponse.json({ error: errorMsg }, { status });
+  }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    const userId = requireAuth(request);
+    const { searchParams } = new URL(request.url);
+    const workspaceId = searchParams.get('workspaceId') || searchParams.get('spaceId') || 'default';
+    const filePath = searchParams.get('file');
+
+    if (!filePath) {
+      return NextResponse.json({ error: '文件名不能为空' }, { status: 400 });
+    }
+
+    const workspaceDir = await resolveStudioWorkspace(process.cwd(), userId, workspaceId);
+    const targetFile = path.resolve(workspaceDir, filePath);
+
+    if (!targetFile.startsWith(workspaceDir)) {
+      return NextResponse.json({ error: '禁止越权删除工作区外文件' }, { status: 403 });
+    }
+
+    await unlink(targetFile);
+    return NextResponse.json({ success: true, path: filePath });
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    const status = errorMsg === 'Unauthorized' ? 401 : 500;
+    return NextResponse.json({ error: errorMsg }, { status });
+  }
+}

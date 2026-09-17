@@ -49,6 +49,7 @@ model User {
   assistantProactiveDeliveries AssistantProactiveDelivery[]
   assistantQQBinding AssistantQQBinding?
   assistantQQEvents AssistantQQEvent[]
+  studioWorkspaces  StudioWorkspace[]
 }
 
 model Agent {
@@ -912,4 +913,33 @@ model AgentRuntimeOutbox {
   @@index([status, availableAt])
   @@index([runId, kind, createdAt])
   @@index([claimedBy, claimedAt])
+}
+
+model StudioWorkspace {
+  id          String          @id @default(uuid())
+  userId      String
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name         String
+  description  String?
+  systemPrompt String?
+  createdAt    DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  messages    StudioMessage[]
+
+  @@index([userId, createdAt])
+}
+
+model StudioMessage {
+  id          String          @id @default(uuid())
+  workspaceId String
+  workspace   StudioWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  userId      String
+  role        String          // 'user' | 'assistant' | 'tool'
+  content     String?
+  tools       Json?           // JSON array of ToolInvocation: [{ id, name, preview, status, result, sessionId, agentId }]
+  tokens      Int?
+  createdAt   DateTime        @default(now())
+
+  @@index([workspaceId, createdAt])
+  @@index([userId, createdAt])
 }
