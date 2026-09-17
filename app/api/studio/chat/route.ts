@@ -1,6 +1,7 @@
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { runCoordinatorChat } from '@/lib/coding-agents/coordinator';
+import { approvalStore } from '@/lib/coding-agents/approval-store';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,6 +17,7 @@ export async function POST(request: Request) {
       modelName,
       apiBaseUrl: customBaseUrl,
       apiKey: customApiKey,
+      approvalMode = 'dangerous',
       agentKeys,
     } = await request.json();
 
@@ -113,9 +115,17 @@ export async function POST(request: Request) {
           }
         };
 
+        const runId = `run_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+        const onAbort = () => {
+          approvalStore.cancelAllByRun(runId, '客户端连接已断开');
+        };
+        request.signal?.addEventListener('abort', onAbort);
+
         try {
           await runCoordinatorChat({
             userId,
+            runId,
+            approvalMode,
             workspaceId: activeWorkspaceId,
             workspaceSystemPrompt: currentWorkspace?.systemPrompt || undefined,
             message: message.trim(),
@@ -134,8 +144,19 @@ export async function POST(request: Request) {
                 accumulatedAssistantContent += chunk;
               }
               // Aggregate tool events
-              else if (event.type === 'tool.started' && event.data?.toolCallId) {
+              else if (event.type === 'tool.approval_requested' && event.data?.toolCallId) {
                 toolsMap.set(event.data.toolCallId, {
+                  id: event.data.toolCallId,
+                  name: event.data.toolName,
+                  preview: event.data.toolPreview,
+                  status: 'waiting_approval',
+                  approvalId: event.data.approvalId,
+                  args: event.data.args,
+                });
+              } else if (event.type === 'tool.started' && event.data?.toolCallId) {
+                const existing = toolsMap.get(event.data.toolCallId) || {};
+                toolsMap.set(event.data.toolCallId, {
+                  ...existing,
                   id: event.data.toolCallId,
                   name: event.data.toolName,
                   preview: event.data.toolPreview,
@@ -157,7 +178,7 @@ export async function POST(request: Request) {
                   id: event.data.toolCallId,
                   name: event.data.toolName,
                 };
-                item.status = 'failed';
+                item.status = event.data?.isDenied ? 'denied' : 'failed';
                 item.result = event.data.error;
                 if (event.data.sessionId) item.sessionId = event.data.sessionId;
                 toolsMap.set(event.data.toolCallId, item);
@@ -179,6 +200,9 @@ export async function POST(request: Request) {
             encoder.encode(`data: ${JSON.stringify({ type: 'run.failed', data: { error: errMsg } })}\n\n`)
           );
           controller.close();
+        } finally {
+          request.signal?.removeEventListener('abort', onAbort);
+          approvalStore.cancelAllByRun(runId);
         }
       },
     });

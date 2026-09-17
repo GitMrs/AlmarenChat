@@ -2,121 +2,33 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  LayoutGrid,
   Folder,
-  ChevronDown,
-  Wrench,
-  Loader2,
-  CheckCircle,
-  Plus,
-  Brain,
-  Settings,
-  Sun,
-  Mic,
-  Send,
-  PanelRight,
-  Menu,
-  Copy,
-  Terminal,
-  FileText,
-  Trash2,
-  Square,
-  RefreshCw,
-  Eye,
-  EyeOff,
-  Save,
-  FilePlus,
-  AlertTriangle,
-  ChevronRight,
-  FolderOpen,
-  Edit2,
-  FolderPlus,
   Sparkles,
-  Users,
-  Search,
   PanelLeft,
   PanelRightClose,
-  Code,
-  Bot,
-  ExternalLink,
-  ChevronLeft,
-  X,
-  Shield,
-  Layers,
-  Cpu,
-  BookOpen,
-  Power,
-  Download,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-
-interface WorkspaceSkill {
-  id: string;
-  name: string;
-  description: string;
-  enabled: boolean;
-  content?: string;
-  updatedAt?: number;
-}
-
-interface ToolInvocation {
-  id: string;
-  name: string;
-  preview: string;
-  status: 'running' | 'done' | 'failed' | 'completed' | 'stopped';
-  result?: string;
-  sessionId?: string;
-  agentId?: string;
-  expanded?: boolean;
-}
-
-interface ChatMessage {
-  id: string;
-  role: 'user' | 'assistant' | 'tool';
-  content?: string;
-  tools?: ToolInvocation[];
-  tokens?: number | null;
-  timestamp: number;
-}
-
-interface StudioWorkspaceItem {
-  id: string;
-  name: string;
-  description?: string | null;
-  systemPrompt?: string | null;
-  createdAt: string;
-  updatedAt: string;
-  _count?: { messages: number };
-}
-
-interface FileNode {
-  name: string;
-  path: string;
-  isDirectory: boolean;
-  size?: number;
-  updatedAt?: number;
-  children?: FileNode[];
-}
-
-interface StudioConfig {
-  coordinatorBaseUrl: string;
-  coordinatorApiKey: string;
-  coordinatorModel: string;
-  anthropicApiKey: string;
-  openaiApiKey: string;
-  deepseekApiKey: string;
-}
-
-const DEFAULT_CONFIG: StudioConfig = {
-  coordinatorBaseUrl: '',
-  coordinatorApiKey: '',
-  coordinatorModel: 'DeepSeek-V4',
-  anthropicApiKey: '',
-  openaiApiKey: '',
-  deepseekApiKey: '',
-};
+import {
+  WorkspaceSkill,
+  SkillPreset,
+  ToolInvocation,
+  ChatMessage,
+  StudioWorkspaceItem,
+  FileNode,
+  StudioConfig,
+  StudioApprovalMode,
+  DEFAULT_CONFIG,
+} from './types';
+import { LeftSidebar } from './components/LeftSidebar';
+import { MessageList } from './components/MiddleChat/MessageList';
+import { Composer } from './components/MiddleChat/Composer';
+import { RightInspector } from './components/RightInspector/RightInspector';
+import { AccountModelModal } from './components/modals/AccountModelModal';
+import { WorkspaceRulesModal } from './components/modals/WorkspaceRulesModal';
+import { CreateWorkspaceModal } from './components/modals/CreateWorkspaceModal';
+import { EditWorkspaceModal } from './components/modals/EditWorkspaceModal';
+import { InstallSkillModal } from './components/modals/InstallSkillModal';
+import { SkillPreviewModal } from './components/modals/SkillPreviewModal';
 
 export default function StudioPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -161,6 +73,67 @@ export default function StudioPage() {
   const [showReasoningMenu, setShowReasoningMenu] = useState(false);
   const [selectedModel, setSelectedModel] = useState('DeepSeek-V4');
   const [showModelMenu, setShowModelMenu] = useState(false);
+
+  // Approval mode control
+  const [approvalMode, setApprovalMode] = useState<'dangerous' | 'always' | 'never'>(() => {
+    if (typeof window !== 'undefined') {
+      return (localStorage.getItem('almaren_studio_approval_mode') as any) || 'dangerous';
+    }
+    return 'dangerous';
+  });
+  const [showApprovalMenu, setShowApprovalMenu] = useState(false);
+  const [approvingToolId, setApprovingToolId] = useState<string | null>(null);
+
+  const handleSelectApprovalMode = (mode: 'dangerous' | 'always' | 'never') => {
+    setApprovalMode(mode);
+    setShowApprovalMenu(false);
+    try {
+      localStorage.setItem('almaren_studio_approval_mode', mode);
+    } catch {
+      // Ignore
+    }
+  };
+
+  const handleDecisionTool = async (approvalId: string, action: 'approve' | 'deny', toolCallId: string, reason?: string) => {
+    setApprovingToolId(approvalId);
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch('/api/studio/approval', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ approvalId, action, reason }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || '审批提交失败');
+      }
+
+      // Optimistically update message tool state
+      setMessages((prev) =>
+        prev.map((m) => ({
+          ...m,
+          tools: (m.tools || []).map((t) => {
+            if (t.id === toolCallId || t.approvalId === approvalId) {
+              return {
+                ...t,
+                status: action === 'approve' ? 'running' : 'denied',
+                result: action === 'deny' ? (reason || '用户已手动拒绝该操作') : t.result,
+              };
+            }
+            return t;
+          }),
+        }))
+      );
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      alert(msg);
+    } finally {
+      setApprovingToolId(null);
+    }
+  };
 
   // Modals & Panels
   const [showSettingsModal, setShowSettingsModal] = useState(false);
@@ -1147,6 +1120,7 @@ export default function StudioPage() {
           workspaceId: activeWorkspaceId,
           spaceId: activeWorkspaceId,
           reasoningEffort,
+          approvalMode,
           modelName: studioConfig.coordinatorModel || selectedModel,
           apiBaseUrl: studioConfig.coordinatorBaseUrl || undefined,
           apiKey: studioConfig.coordinatorApiKey || undefined,
@@ -1185,7 +1159,7 @@ export default function StudioPage() {
             try {
               const event = JSON.parse(line.slice(6));
 
-              if (event.type === 'tool.started') {
+              if (event.type === 'tool.approval_requested') {
                 setMessages((prev) =>
                   prev.map((m) =>
                     m.id === assistantMessageId
@@ -1195,16 +1169,52 @@ export default function StudioPage() {
                             ...(m.tools || []),
                             {
                               id: event.data.toolCallId,
+                              approvalId: event.data.approvalId,
                               name: event.data.toolName,
                               preview: event.data.toolPreview,
-                              sessionId: event.data.sessionId,
-                              agentId: event.data.agentId,
-                              status: 'running',
+                              args: event.data.args,
+                              status: 'waiting_approval',
                             },
                           ],
                         }
                       : m
                   )
+                );
+                // Auto expand tool card when waiting approval
+                if (event.data.toolCallId) {
+                  setExpandedToolIds((prev) => new Set(prev).add(event.data.toolCallId));
+                }
+              } else if (event.type === 'tool.started') {
+                setMessages((prev) =>
+                  prev.map((m) => {
+                    if (m.id !== assistantMessageId) return m;
+                    const existingIndex = (m.tools || []).findIndex((t) => t.id === event.data.toolCallId);
+                    if (existingIndex >= 0) {
+                      const updatedTools = [...(m.tools || [])];
+                      updatedTools[existingIndex] = {
+                        ...updatedTools[existingIndex],
+                        status: 'running',
+                        preview: event.data.toolPreview || updatedTools[existingIndex].preview,
+                        sessionId: event.data.sessionId,
+                        agentId: event.data.agentId,
+                      };
+                      return { ...m, tools: updatedTools };
+                    }
+                    return {
+                      ...m,
+                      tools: [
+                        ...(m.tools || []),
+                        {
+                          id: event.data.toolCallId,
+                          name: event.data.toolName,
+                          preview: event.data.toolPreview,
+                          sessionId: event.data.sessionId,
+                          agentId: event.data.agentId,
+                          status: 'running',
+                        },
+                      ],
+                    };
+                  })
                 );
               } else if (event.type === 'tool.completed') {
                 setMessages((prev) =>
@@ -1248,7 +1258,7 @@ export default function StudioPage() {
                             t.id === event.data.toolCallId
                               ? {
                                   ...t,
-                                  status: 'failed',
+                                  status: event.data?.isDenied ? 'denied' : 'failed',
                                   result: event.data.error,
                                   sessionId: event.data.sessionId || t.sessionId,
                                 }
@@ -1329,189 +1339,25 @@ export default function StudioPage() {
 
   return (
     <div className="flex h-full bg-[#fbfaf7] text-slate-900 font-sans selection:bg-indigo-500 selection:text-white relative overflow-hidden">
-      {/* ── 1. LEFT COLUMN: Workspace List Sidebar (Knowe ConvList & Hermes Sidebar style) ── */}
-      {/* Mobile Backdrop Overlay for Left Workspace Drawer */}
-      {!isLeftSidebarCollapsed && (
-        <div
-          className="md:hidden fixed inset-0 bg-black/40 z-40 backdrop-blur-xs animate-in fade-in duration-150"
-          onClick={() => handleToggleLeftSidebar(true)}
-        />
-      )}
-
-      <aside
-        className={cn(
-          'flex flex-col bg-white/85 backdrop-blur-md border-r border-black/[0.06] transition-all duration-200 flex-shrink-0 select-none h-full shadow-xs',
-          isLeftSidebarCollapsed
-            ? 'hidden'
-            : 'fixed md:relative inset-y-0 left-0 z-50 md:z-30 w-72 max-w-[85vw] md:w-64 shadow-xl md:shadow-none animate-in slide-in-from-left duration-200 md:animate-none'
-        )}
-      >
-        {/* Sidebar Header */}
-        <div className="h-14 border-b border-black/[0.06] px-3 flex items-center justify-between w-full bg-white/50">
-          <div className="flex items-center gap-2 min-w-0">
-            <div className="w-7 h-7 rounded-lg bg-indigo-50 border border-indigo-200/60 flex items-center justify-center text-indigo-600 flex-shrink-0">
-              <LayoutGrid size={15} />
-            </div>
-            <div className="min-w-0">
-              <h2 className="text-xs font-bold text-slate-900 truncate tracking-tight">项目工作空间</h2>
-              <p className="text-[10px] text-slate-400 font-mono leading-none mt-0.5">{workspaces.length} 个沙箱</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => setShowCreateModal(true)}
-              className="p-1.5 rounded-lg bg-slate-950 hover:bg-slate-800 text-white shadow-xs transition-all cursor-pointer"
-              title="新建工作空间"
-            >
-              <Plus size={13} />
-            </button>
-            <button
-              onClick={() => handleToggleLeftSidebar(true)}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
-              title="收起工作空间侧栏"
-            >
-              <ChevronLeft size={16} />
-            </button>
-          </div>
-        </div>
-
-        {/* Search Input (Expanded Only) */}
-        {!isLeftSidebarCollapsed && (
-          <div className="px-3 pt-3 pb-1 w-full">
-            <div className="relative flex items-center w-full">
-              <Search size={13} className="absolute left-2.5 text-slate-400 pointer-events-none" />
-              <input
-                type="text"
-                value={searchWorkspaceQuery}
-                onChange={(e) => setSearchWorkspaceQuery(e.target.value)}
-                placeholder="搜索空间..."
-                className="w-full bg-[#fbfaf7] border border-black/[0.06] focus:border-indigo-500/60 focus:bg-white rounded-xl pl-8 pr-6 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none transition-all font-sans"
-              />
-              {searchWorkspaceQuery && (
-                <button
-                  onClick={() => setSearchWorkspaceQuery('')}
-                  className="absolute right-2 text-slate-400 hover:text-slate-600"
-                >
-                  <X size={12} />
-                </button>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Workspace Items */}
-        <div className="flex-1 overflow-y-auto px-2 py-2 space-y-1 custom-scrollbar w-full">
-          {filteredWorkspaces.map((ws) => {
-            const isSelected = ws.id === activeWorkspaceId;
-            const hasRules = !!ws.systemPrompt;
-
-            if (isLeftSidebarCollapsed) {
-              return (
-                <button
-                  key={ws.id}
-                  onClick={() => handleSwitchWorkspace(ws.id)}
-                  title={`${ws.name}${hasRules ? ' (已配置规则)' : ''}`}
-                  className={cn(
-                    'w-10 h-10 rounded-xl flex items-center justify-center mx-auto transition-all cursor-pointer relative group',
-                    isSelected
-                      ? 'bg-slate-950 text-white shadow-sm'
-                      : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'
-                  )}
-                >
-                  <Folder size={17} className={isSelected ? 'text-amber-300' : 'text-slate-400'} />
-                  {hasRules && (
-                    <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-indigo-500 ring-2 ring-white" />
-                  )}
-                </button>
-              );
-            }
-
-            return (
-              <div
-                key={ws.id}
-                onClick={() => handleSwitchWorkspace(ws.id)}
-                className={cn(
-                  'group/item relative flex items-start gap-2.5 px-2.5 py-2 rounded-xl transition-all cursor-pointer border',
-                  isSelected
-                    ? 'bg-white border-black/[0.08] shadow-xs text-slate-950 font-medium'
-                    : 'border-transparent text-slate-600 hover:bg-white/60 hover:text-slate-900'
-                )}
-              >
-                <div
-                  className={cn(
-                    'w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5 transition-colors',
-                    isSelected
-                      ? 'bg-amber-50 text-amber-600'
-                      : 'bg-slate-100 text-slate-400 group-hover/item:text-slate-600'
-                  )}
-                >
-                  <Folder size={14} />
-                </div>
-
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between gap-1">
-                    <span className={cn('text-xs truncate', isSelected ? 'font-bold text-slate-900' : 'font-medium')}>
-                      {ws.name}
-                    </span>
-                    {hasRules && (
-                      <span className="inline-flex items-center gap-0.5 text-[9px] px-1.5 py-0.2 rounded bg-indigo-50 text-indigo-600 border border-indigo-200/60 font-mono flex-shrink-0">
-                        <Sparkles size={8} />
-                        <span>规则</span>
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-[10px] text-slate-400 truncate mt-0.5">
-                    {ws.description || '沙箱隔离环境'}
-                  </p>
-                </div>
-
-                {/* Hover Actions */}
-                <div className="absolute right-2 top-2 hidden group-hover/item:flex items-center gap-0.5 bg-white px-1 py-0.5 rounded-lg border border-black/[0.08] shadow-sm">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setEditWsName(ws.name);
-                      setEditWsDesc(ws.description || '');
-                      setEditWsPrompt(ws.systemPrompt || '');
-                      setShowEditModal(true);
-                    }}
-                    className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-slate-800 cursor-pointer"
-                    title="编辑工作区"
-                  >
-                    <Edit2 size={11} />
-                  </button>
-                  {workspaces.length > 1 && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDeleteWorkspace(ws.id, ws.name);
-                      }}
-                      className="p-1 hover:bg-rose-50 rounded text-slate-400 hover:text-rose-600 cursor-pointer"
-                      title="删除工作区"
-                    >
-                      <Trash2 size={11} />
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Sidebar Footer */}
-        <div className="border-t border-black/[0.06] p-2 flex items-center justify-between w-full bg-white/40">
-          <button
-            onClick={() => setShowSettingsModal(true)}
-            className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-100 text-xs transition-colors cursor-pointer w-full"
-            title="Studio 配置与模型状态"
-          >
-            <Settings size={14} className="flex-shrink-0 text-slate-400" />
-            <span className="text-[11px] truncate font-mono">
-              {userProfile?.modelName || '默认模型'}
-            </span>
-          </button>
-        </div>
-      </aside>
+      {/* ── 1. LEFT COLUMN: Workspace List Sidebar ── */}
+      <LeftSidebar
+        isLeftSidebarCollapsed={isLeftSidebarCollapsed}
+        handleToggleLeftSidebar={handleToggleLeftSidebar}
+        workspaces={workspaces}
+        activeWorkspaceId={activeWorkspaceId}
+        handleSwitchWorkspace={handleSwitchWorkspace}
+        setShowCreateModal={setShowCreateModal}
+        searchWorkspaceQuery={searchWorkspaceQuery}
+        setSearchWorkspaceQuery={setSearchWorkspaceQuery}
+        filteredWorkspaces={filteredWorkspaces}
+        setEditWsName={setEditWsName}
+        setEditWsDesc={setEditWsDesc}
+        setEditWsPrompt={setEditWsPrompt}
+        setShowEditModal={setShowEditModal}
+        handleDeleteWorkspace={handleDeleteWorkspace}
+        setShowSettingsModal={setShowSettingsModal}
+        userProfile={userProfile}
+      />
 
       {/* ── 2. MIDDLE COLUMN: Team Group Chat Stream & Composer ── */}
       <main className="flex-1 flex flex-col h-full bg-[#fbfaf7] min-w-0 relative">
@@ -1559,7 +1405,10 @@ export default function StudioPage() {
                   : '为当前工作区设定专属提示词与项目规范'
               }
             >
-              <Sparkles size={12} className={activeWorkspace?.systemPrompt ? 'text-indigo-600' : 'text-slate-400'} />
+              <Sparkles
+                size={12}
+                className={activeWorkspace?.systemPrompt ? 'text-indigo-600' : 'text-slate-400'}
+              />
               <span className="text-[11px] hidden sm:inline">
                 {activeWorkspace?.systemPrompt ? '空间规则 (已生效)' : '+ 空间规则'}
               </span>
@@ -1584,1408 +1433,161 @@ export default function StudioPage() {
           )}
         </header>
 
-      {/* 2. Message List Area */}
-      <div className="flex-1 overflow-y-auto px-4 py-6">
-        <div className="max-w-3xl mx-auto space-y-6">
-          {isLoadingMessages ? (
-            <div className="flex flex-col items-center justify-center py-20 text-center space-y-3">
-              <Loader2 size={24} className="text-indigo-600 animate-spin" />
-              <div className="text-xs text-slate-500 font-mono">
-                正在从数据库加载工作区【{activeWorkspaceName}】历史对话记录...
-              </div>
-            </div>
-          ) : messages.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 text-center space-y-5">
-              <div className="w-14 h-14 rounded-2xl bg-white border border-black/[0.06] flex items-center justify-center shadow-md">
-                <LayoutGrid size={28} className="text-indigo-600" />
-              </div>
-              <div className="space-y-1.5">
-                <h3 className="text-base font-black text-slate-900">
-                  协调智能体团队已就绪
-                </h3>
-                <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
-                  总指挥官能自动感知沙箱工作区文件，拆解任务架构，并实时调度内置 Pi 等专业 Agent 协同编写与测试。
-                </p>
-              </div>
+        {/* 2. Message List Area */}
+        <MessageList
+          messages={messages}
+          isLoadingMessages={isLoadingMessages}
+          activeWorkspaceName={activeWorkspaceName}
+          onQuickPrompt={(cmd) => setInput(cmd)}
+          expandedToolIds={expandedToolIds}
+          toggleToolExpand={toggleToolExpand}
+          approvingToolId={approvingToolId}
+          handleDecisionTool={handleDecisionTool}
+          copiedToolResult={copiedToolResult}
+          handleCopyToolResult={handleCopyToolResult}
+          isStreaming={isStreaming}
+          messagesEndRef={messagesEndRef}
+        />
 
-              {/* Quick Prompt Cards */}
-              <div className="grid grid-cols-2 gap-3 w-full max-w-md text-left pt-2">
-                {[
-                  {
-                    title: '扫描当前项目结构',
-                    desc: '感知工作区根目录与关键配置文件',
-                    cmd: '请帮我扫描当前工作区目录结构并汇报。',
-                  },
-                  {
-                    title: '调度 Pi 编写工具脚本',
-                    desc: '在沙箱中由 Pi 编写并运行统计脚本',
-                    cmd: '请让内置 Pi 智能体编写一个递归统计代码行数的脚本，输出到工作区。',
-                  },
-                ].map((item, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => {
-                      setInput(item.cmd);
-                    }}
-                    className="p-3 rounded-2xl bg-white/80 border border-black/[0.06] hover:border-black/[0.12] hover:bg-white text-left transition-all cursor-pointer group shadow-xs hover:shadow-sm"
-                  >
-                    <div className="text-xs font-bold text-slate-800 group-hover:text-indigo-600 transition-colors">
-                      {item.title}
-                    </div>
-                    <div className="text-[11px] text-slate-500 mt-1 leading-snug">
-                      {item.desc}
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : null}
-
-          {messages.map((message, index) => {
-            if (message.role === 'user') {
-              return (
-                <div key={message.id} className="flex justify-end">
-                  <div className="bg-slate-950 text-white px-4 py-2.5 rounded-2xl max-w-[82%] text-sm leading-relaxed shadow-sm font-medium">
-                    {message.content}
-                  </div>
-                </div>
-              );
-            }
-
-            return (
-              <div key={message.id} className="space-y-3">
-                {/* Embedded Tool Calls */}
-                {message.tools && message.tools.length > 0 && (
-                  <div className="space-y-2">
-                    {message.tools.map((tool) => {
-                      const isExpanded = expandedToolIds.has(tool.id);
-
-                      return (
-                        <div
-                          key={tool.id}
-                          className={cn(
-                            'rounded-2xl transition-all max-w-2xl border overflow-hidden',
-                            isExpanded
-                              ? 'border-black/[0.1] bg-white shadow-md'
-                              : 'border-black/[0.06] bg-white/80 hover:border-black/[0.1] hover:bg-white shadow-2xs'
-                          )}
-                        >
-                          {/* Top Clickable Bar */}
-                          <div
-                            onClick={() => toggleToolExpand(tool.id)}
-                            className="flex items-center justify-between px-3.5 py-2.5 cursor-pointer select-none group"
-                          >
-                            <div className="flex items-center gap-2 min-w-0">
-                              {tool.name === 'delegate' ? (
-                                <Terminal
-                                  size={13}
-                                  className={cn('flex-shrink-0', isExpanded ? 'text-indigo-600' : 'text-emerald-600')}
-                                />
-                              ) : (
-                                <Wrench
-                                  size={13}
-                                  className={cn('flex-shrink-0', isExpanded ? 'text-indigo-600' : 'text-indigo-500')}
-                                />
-                              )}
-                              <span
-                                className={cn(
-                                  'font-bold font-mono text-xs',
-                                  isExpanded ? 'text-indigo-700' : 'text-slate-800'
-                                )}
-                              >
-                                {tool.name}
-                                {tool.agentId ? ` (${tool.agentId})` : ''}
-                              </span>
-                              <span className="text-slate-400 text-xs truncate max-w-[260px] sm:max-w-md">
-                                {tool.preview}
-                              </span>
-                            </div>
-
-                            <div className="flex items-center gap-2 flex-shrink-0 ml-2">
-                              {tool.sessionId && (
-                                <span className="text-[10px] text-slate-500 font-mono bg-slate-100 px-1.5 py-0.5 rounded-md">
-                                  实时流
-                                </span>
-                              )}
-                              {tool.status === 'running' && (
-                                <span className="flex items-center gap-1 text-[11px] text-amber-600 font-medium">
-                                  <Loader2 size={12} className="animate-spin" />
-                                  <span className="text-[10px]">运行中</span>
-                                </span>
-                              )}
-                              {tool.status === 'done' && (
-                                <span className="flex items-center gap-1 text-[10px] text-emerald-600 font-semibold">
-                                  <CheckCircle size={12} />
-                                </span>
-                              )}
-                              {tool.status === 'failed' && (
-                                <span className="w-2 h-2 rounded-full bg-rose-500" />
-                              )}
-                              <ChevronDown
-                                size={14}
-                                className={cn(
-                                  'text-slate-400 group-hover:text-slate-700 transition-transform duration-200',
-                                  isExpanded && 'rotate-180 text-slate-800'
-                                )}
-                              />
-                            </div>
-                          </div>
-
-                          {/* Inline Expanded Dropdown Panel */}
-                          {isExpanded && (
-                            <div className="border-t border-black/[0.06] bg-[#fbfaf7]/60 p-3 space-y-2.5 animate-fadeIn text-xs">
-                              {/* Parameters / Target */}
-                              {tool.preview && (
-                                <div className="space-y-1">
-                                  <div className="text-[11px] font-bold text-slate-600 flex items-center gap-1.5">
-                                    <Code size={11} className="text-slate-400" />
-                                    <span>调用参数与目标</span>
-                                  </div>
-                                  <div className="bg-white border border-black/[0.06] rounded-xl p-2.5 font-mono text-[11px] text-slate-700 whitespace-pre-wrap break-all leading-relaxed max-h-24 overflow-y-auto shadow-2xs">
-                                    {tool.preview}
-                                  </div>
-                                </div>
-                              )}
-
-                              {/* Result / Output Console */}
-                              <div className="space-y-1">
-                                <div className="flex items-center justify-between text-[11px] font-bold text-slate-600">
-                                  <span className="flex items-center gap-1.5">
-                                    <Terminal size={11} className="text-emerald-600" />
-                                    <span>执行结果与输出</span>
-                                  </span>
-                                  {tool.result && (
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleCopyToolResult(tool.result!);
-                                      }}
-                                      className="px-2 py-0.5 rounded-md bg-white border border-black/[0.08] hover:bg-slate-100 text-slate-600 text-[10px] transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
-                                      title="复制结果"
-                                    >
-                                      {copiedToolResult ? (
-                                        <>
-                                          <CheckCircle size={10} className="text-emerald-600" />
-                                          <span className="text-emerald-600 font-bold">已复制</span>
-                                        </>
-                                      ) : (
-                                        <>
-                                          <Copy size={10} />
-                                          <span>复制</span>
-                                        </>
-                                      )}
-                                    </button>
-                                  )}
-                                </div>
-
-                                <div className="bg-slate-50 rounded-xl p-3 border border-black/[0.06] font-mono text-xs max-h-60 overflow-y-auto text-slate-800">
-                                  {tool.result ? (
-                                    <div className="leading-relaxed whitespace-pre-wrap break-all text-[11px] text-slate-700">
-                                      {tool.result}
-                                    </div>
-                                  ) : tool.status === 'running' ? (
-                                    <div className="flex items-center justify-center py-6 gap-2 text-slate-400 text-xs">
-                                      <Loader2 size={14} className="animate-spin text-indigo-500" />
-                                      <span>正在执行中，等待输出返回...</span>
-                                    </div>
-                                  ) : (
-                                    <div className="text-slate-400 text-center py-4 text-xs">
-                                      该工具调用已执行完成，无控制台回显内容。
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {/* Assistant Bubble Frame */}
-                {message.content && (
-                  <div className="flex items-start gap-3">
-                    <div className="w-8 h-8 rounded-2xl bg-white border border-black/[0.06] shadow-xs flex items-center justify-center text-sm flex-shrink-0 mt-0.5">
-                      🤖
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="bg-white border border-black/[0.06] rounded-[24px] px-5 py-4 shadow-sm text-sm text-slate-800 leading-relaxed max-w-full">
-                        <div className="markdown-body text-slate-800">
-                          <ReactMarkdown
-                            remarkPlugins={[remarkGfm]}
-                            components={{
-                              code({ inline, className, children, ...props }: any) {
-                                return inline ? (
-                                  <code className="bg-slate-100 text-indigo-600 font-mono text-xs px-1.5 py-0.5 rounded" {...props}>
-                                    {children}
-                                  </code>
-                                ) : (
-                                  <pre className="my-2 rounded-xl bg-slate-50 border border-black/[0.06] p-3 text-slate-800 font-mono text-xs overflow-x-auto">
-                                    <code {...props}>{children}</code>
-                                  </pre>
-                                );
-                              },
-                              a: ({ href, children }) => (
-                                <a href={href} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:text-indigo-700 underline underline-offset-2 font-medium">
-                                  {children}
-                                </a>
-                              ),
-                              table: ({ children }) => (
-                                <div className="overflow-x-auto my-3">
-                                  <table className="min-w-full divide-y divide-slate-200 border border-slate-200 text-xs">
-                                    {children}
-                                  </table>
-                                </div>
-                              ),
-                              th: ({ children }) => <th className="bg-slate-50 px-3 py-2 text-left font-bold text-slate-800 border-b border-slate-200">{children}</th>,
-                              td: ({ children }) => <td className="px-3 py-1.5 border-b border-slate-100 text-slate-700">{children}</td>,
-                            }}
-                          >
-                            {message.content}
-                          </ReactMarkdown>
-                          {isStreaming && index === messages.length - 1 && (
-                            <span className="inline-block w-1.5 h-3.5 bg-indigo-600 ml-0.5 animate-pulse align-middle" />
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-          <div ref={messagesEndRef} />
-        </div>
-      </div>
-
-      {/* 3. Bottom Composer Box (Dev Controls + Token Bar) */}
-      <div className="p-2 sm:p-4 flex-shrink-0">
-        <div className="max-w-3xl mx-auto bg-white border border-black/[0.08] rounded-3xl p-3 shadow-lg transition-all duration-200 focus-within:border-black/[0.2] focus-within:ring-4 focus-within:ring-slate-100">
-          {/* Token Usage Header Row */}
-          <div className="flex items-center justify-between text-[10px] sm:text-[11px] font-mono text-slate-400 mb-2 px-1">
-            <div className="flex items-center gap-1.5 sm:gap-2 truncate">
-              <span>
-                {totalTokens === 0 ? '0' : formatTokens(totalTokens)} / {formatTokens(contextLength)}
-              </span>
-              <span className="hidden xs:inline">·</span>
-              <span className="hidden xs:inline">
-                {totalTokens === 0
-                  ? `剩余 ${formatTokens(contextLength)} (就绪)`
-                  : `剩余 ${formatTokens(remainingTokens)}`}
-              </span>
-              {totalTokens > 0 && (
-                <span className="text-[10px] text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded font-sans hidden sm:inline border border-emerald-200">
-                  模型实际返回
-                </span>
-              )}
-            </div>
-
-            {/* Context progress bar */}
-            <div className="w-16 sm:w-24 h-1.5 rounded-full bg-slate-100 overflow-hidden flex-shrink-0">
-              <div
-                className={cn(
-                  'h-full rounded-full transition-all duration-300',
-                  usagePercent > 80
-                    ? 'bg-rose-500'
-                    : usagePercent > 60
-                    ? 'bg-amber-500'
-                    : 'bg-indigo-500'
-                )}
-                style={{ width: `${Math.max(4, usagePercent)}%` }}
-              />
-            </div>
-          </div>
-
-          {/* Textarea Input */}
-          <textarea
-            ref={textareaRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="输入你的工程任务或规划需求... (Enter 发送, Shift+Enter 换行)"
-            rows={2}
-            className="w-full bg-transparent border-0 text-sm text-slate-800 placeholder-slate-400 focus:outline-none resize-none leading-relaxed px-1"
+        {/* 3. Bottom Composer Box */}
+        <div className="p-2 sm:p-4 flex-shrink-0 relative z-20">
+          <Composer
+            totalTokens={totalTokens}
+            contextLength={contextLength}
+            remainingTokens={remainingTokens}
+            usagePercent={usagePercent}
+            formatTokens={formatTokens}
+            input={input}
+            setInput={setInput}
+            handleKeyDown={handleKeyDown}
+            textareaRef={textareaRef}
+            isStreaming={isStreaming}
+            handleOpenFileExplorer={handleOpenFileExplorer}
+            reasoningEffort={reasoningEffort}
+            setReasoningEffort={setReasoningEffort}
+            showReasoningMenu={showReasoningMenu}
+            setShowReasoningMenu={setShowReasoningMenu}
+            approvalMode={approvalMode}
+            handleSelectApprovalMode={handleSelectApprovalMode}
+            showApprovalMenu={showApprovalMenu}
+            setShowApprovalMenu={setShowApprovalMenu}
+            userProfile={userProfile}
+            setShowSettingsModal={setShowSettingsModal}
+            isListening={isListening}
+            handleToggleVoice={handleToggleVoice}
+            handleSend={handleSend}
           />
-
-          {/* Bottom Toolbar Controls */}
-          <div className="flex items-center justify-between pt-2 mt-1 border-t border-black/[0.04] text-xs gap-1.5 flex-wrap sm:flex-nowrap">
-            <div className="flex items-center gap-1 sm:gap-2 min-w-0 overflow-x-auto no-scrollbar">
-              {/* Attach Button */}
-              <button
-                type="button"
-                onClick={handleOpenFileExplorer}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer flex-shrink-0"
-                title="选择工作区文件作为上下文"
-              >
-                <Plus size={16} />
-              </button>
-
-              {/* Reasoning Effort (Thinking Level) */}
-              <div className="relative flex-shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setShowReasoningMenu(!showReasoningMenu)}
-                  className="flex items-center gap-1 px-2 py-1 rounded-lg text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer font-medium"
-                >
-                  <Brain size={14} className="text-slate-400" />
-                  <span className="capitalize">
-                    {reasoningEffort === 'none'
-                      ? '关闭思考'
-                      : reasoningEffort === 'low'
-                      ? '低思考'
-                      : reasoningEffort === 'medium'
-                      ? '中思考'
-                      : '高思考'}
-                  </span>
-                  <ChevronDown size={11} className="text-slate-400" />
-                </button>
-
-                {showReasoningMenu && (
-                  <div className="absolute left-0 bottom-full mb-1.5 w-32 rounded-2xl bg-white border border-black/[0.08] p-1.5 shadow-xl z-50 text-xs space-y-0.5">
-                    {(['none', 'low', 'medium', 'high'] as const).map((lvl) => (
-                      <button
-                        key={lvl}
-                        onClick={() => {
-                          setReasoningEffort(lvl);
-                          setShowReasoningMenu(false);
-                        }}
-                        className={cn(
-                          'w-full text-left px-2.5 py-1.5 rounded-xl transition-colors font-medium',
-                          reasoningEffort === lvl
-                            ? 'bg-indigo-50 text-indigo-700 font-bold'
-                            : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-                        )}
-                      >
-                        {lvl === 'none'
-                          ? '关闭思考'
-                          : lvl === 'low'
-                          ? '低思考'
-                          : lvl === 'medium'
-                          ? '中思考'
-                          : '高思考'}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Account Active Model Indicator */}
-              <button
-                type="button"
-                onClick={() => setShowSettingsModal(true)}
-                className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200/80 border border-black/[0.06] text-slate-700 transition-colors cursor-pointer group shadow-2xs flex-shrink-0 max-w-[120px] sm:max-w-none"
-                title="已自动直连您的登录账号模型配置，点击查看环境与凭据状态"
-              >
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse flex-shrink-0" />
-                <span className="font-mono text-xs font-bold text-slate-800 tracking-tight truncate">
-                  {userProfile?.modelName || '默认模型'}
-                </span>
-                <span className="text-[10px] text-emerald-700 bg-emerald-50 px-1 py-0.2 rounded font-sans ml-0.5 hidden sm:inline border border-emerald-200">
-                  账号模型
-                </span>
-              </button>
-            </div>
-
-            {/* Right: Mic & Send Button */}
-            <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0 ml-auto sm:ml-0">
-              <button
-                type="button"
-                onClick={handleToggleVoice}
-                className={cn(
-                  'p-1.5 transition-all cursor-pointer rounded-lg flex items-center justify-center',
-                  isListening
-                    ? 'text-rose-600 bg-rose-50 animate-pulse ring-1 ring-rose-400'
-                    : 'text-slate-400 hover:text-slate-700 hover:bg-slate-100'
-                )}
-                title={isListening ? '正在录音识别中，点击停止' : '语音输入 (点击开始讲话)'}
-              >
-                <Mic size={16} className={cn(isListening && 'text-rose-600')} />
-              </button>
-
-              <button
-                type="button"
-                onClick={handleSend}
-                disabled={!input.trim() || isStreaming}
-                className={cn(
-                  'w-8 h-8 rounded-full flex items-center justify-center transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shadow-xs',
-                  input.trim()
-                    ? 'bg-slate-950 text-white hover:bg-slate-800'
-                    : 'bg-slate-200 text-slate-400'
-                )}
-              >
-                <Send size={13} className="translate-x-0.2" />
-              </button>
-            </div>
-          </div>
         </div>
-      </div>
-    </main>
+      </main>
 
-      {/* ── 3. RIGHT COLUMN: Dockable Workspace Inspector (Knowe & Hermes Workspace Panel style) ── */}
-      {isRightInspectorOpen && (
-        <>
-          {/* Mobile Backdrop Overlay */}
-          <div
-            className="md:hidden fixed inset-0 bg-black/40 z-40 backdrop-blur-xs animate-in fade-in duration-150"
-            onClick={() => handleToggleRightInspector(false)}
-          />
+      {/* ── 3. RIGHT COLUMN: Dockable Workspace Inspector ── */}
+      <RightInspector
+        isOpen={isRightInspectorOpen}
+        onToggleOpen={handleToggleRightInspector}
+        inspectorTab={inspectorTab}
+        setInspectorTab={setInspectorTab}
+        fileTree={fileTree}
+        activeWorkspaceName={activeWorkspaceName}
+        isCreatingFile={isCreatingFile}
+        setIsCreatingFile={setIsCreatingFile}
+        newFileName={newFileName}
+        setNewFileName={setNewFileName}
+        handleCreateFile={handleCreateFile}
+        fetchWorkspaceTree={fetchWorkspaceTree}
+        isLoadingFiles={isLoadingFiles}
+        handleSelectFile={handleSelectFile}
+        handleDeleteFile={handleDeleteFile}
+        previewFile={previewFile}
+        setPreviewFile={setPreviewFile}
+        userProfile={userProfile}
+        isStreaming={isStreaming}
+        workspaceSkills={workspaceSkills}
+        isLoadingSkills={isLoadingSkills}
+        skillPresets={skillPresets}
+        activeWorkspace={activeWorkspace}
+        setShowSkillModal={setShowSkillModal}
+        setSkillModalTab={setSkillModalTab}
+        fetchWorkspaceSkills={fetchWorkspaceSkills}
+        fetchFleet={fetchFleet}
+        handleInstallPreset={handleInstallPreset}
+        handleToggleSkill={handleToggleSkill}
+        setPreviewingSkill={setPreviewingSkill}
+        handleDeleteSkill={handleDeleteSkill}
+        setEditWsName={setEditWsName}
+        setEditWsDesc={setEditWsDesc}
+        setEditWsPrompt={setEditWsPrompt}
+        setShowRulesModal={setShowRulesModal}
+      />
 
-          <aside className="fixed md:relative inset-y-0 right-0 z-50 md:z-25 w-full sm:w-96 md:w-96 bg-white/85 backdrop-blur-md border-l border-black/[0.06] text-slate-900 flex flex-col flex-shrink-0 h-full select-none animate-in slide-in-from-right duration-200 shadow-2xl md:shadow-none">
-          {/* Inspector Header Tabs (Sleek Segmented Switcher) */}
-          <div className="h-14 border-b border-black/[0.06] px-3 flex items-center justify-between bg-[#fbfaf7]/70 flex-shrink-0">
-            <div className="flex items-center gap-1 bg-black/[0.04] p-1 rounded-xl border border-black/[0.06]">
-              <button
-                onClick={() => {
-                  setInspectorTab('files');
-                  fetchWorkspaceTree();
-                }}
-                className={cn(
-                  'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer',
-                  inspectorTab === 'files'
-                    ? 'bg-white text-slate-900 shadow-xs border border-black/[0.08] font-semibold'
-                    : 'text-slate-500 hover:text-slate-800 hover:bg-black/[0.03]'
-                )}
-              >
-                <FolderOpen size={13} className={inspectorTab === 'files' ? 'text-amber-500' : 'text-slate-400'} />
-                <span>文件</span>
-                {fileTree.length > 0 && (
-                  <span className={cn(
-                    'text-[10px] font-mono px-1 rounded',
-                    inspectorTab === 'files' ? 'bg-slate-100 text-slate-700 font-semibold' : 'bg-black/[0.04] text-slate-500'
-                  )}>
-                    {fileTree.length}
-                  </span>
-                )}
-              </button>
+      {/* ── 4. Modals ── */}
+      <AccountModelModal
+        isOpen={showSettingsModal}
+        onClose={() => setShowSettingsModal(false)}
+        userProfile={userProfile}
+        contextLength={contextLength}
+        formatTokens={formatTokens}
+      />
 
-              <button
-                onClick={() => {
-                  setInspectorTab('roster');
-                  fetchFleet();
-                  fetchWorkspaceSkills();
-                }}
-                className={cn(
-                  'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer',
-                  inspectorTab === 'roster'
-                    ? 'bg-white text-indigo-600 shadow-xs border border-black/[0.08] font-semibold'
-                    : 'text-slate-500 hover:text-slate-800 hover:bg-black/[0.03]'
-                )}
-              >
-                <Users size={13} className={inspectorTab === 'roster' ? 'text-indigo-600' : 'text-slate-400'} />
-                <span>团队</span>
-                {workspaceSkills.length > 0 ? (
-                  <span className="text-[10px] text-amber-700 font-mono bg-amber-50 border border-amber-200 px-1 rounded font-medium">
-                    {workspaceSkills.length}技能
-                  </span>
-                ) : (
-                  <span className="text-[10px] text-slate-400 font-mono">3</span>
-                )}
-              </button>
-            </div>
+      <WorkspaceRulesModal
+        isOpen={showRulesModal}
+        onClose={() => setShowRulesModal(false)}
+        activeWorkspaceName={activeWorkspaceName}
+        editWsPrompt={editWsPrompt}
+        setEditWsPrompt={setEditWsPrompt}
+        onSave={handleEditWorkspace}
+        isEditingWs={isEditingWs}
+      />
 
-            <button
-              onClick={() => handleToggleRightInspector(false)}
-              className="p-1.5 rounded-lg hover:bg-black/[0.05] text-slate-400 hover:text-slate-700 transition-colors cursor-pointer"
-              title="收起检视面板"
-            >
-              <PanelRightClose size={15} />
-            </button>
-          </div>
+      <CreateWorkspaceModal
+        isOpen={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        newWsName={newWsName}
+        setNewWsName={setNewWsName}
+        newWsDesc={newWsDesc}
+        setNewWsDesc={setNewWsDesc}
+        newWsPrompt={newWsPrompt}
+        setNewWsPrompt={setNewWsPrompt}
+        onCreate={handleCreateWorkspace}
+        isCreatingWs={isCreatingWs}
+      />
 
-          {/* Inspector Body by Tab */}
-          <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
-            {inspectorTab === 'roster' && (
-              <div className="space-y-4">
-                {/* Coordinator Card */}
-                <div className="bg-white border border-black/[0.06] rounded-xl p-3 space-y-2 shadow-2xs">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center text-base">
-                        🤖
-                      </div>
-                      <div>
-                        <div className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
-                          <span>Almaren 协调总指挥官</span>
-                          <span className="text-[9px] px-1.5 py-0.2 rounded bg-indigo-50 text-indigo-600 border border-indigo-200/60 font-mono font-medium">Coordinator</span>
-                        </div>
-                        <p className="text-[10px] text-slate-500 font-mono">{userProfile?.modelName || '默认账号模型'}</p>
-                      </div>
-                    </div>
-                    <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 font-medium">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                      <span>{isStreaming ? '规划中' : '在线就绪'}</span>
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-slate-600 leading-relaxed border-t border-black/[0.06] pt-2">
-                    负责感知当前沙箱项目、拆解架构任务、指派子 Agent 并把控全局交付。
-                  </p>
-                </div>
+      <EditWorkspaceModal
+        isOpen={showEditModal}
+        onClose={() => setShowEditModal(false)}
+        editWsName={editWsName}
+        setEditWsName={setEditWsName}
+        editWsDesc={editWsDesc}
+        setEditWsDesc={setEditWsDesc}
+        editWsPrompt={editWsPrompt}
+        setEditWsPrompt={setEditWsPrompt}
+        onSave={handleEditWorkspace}
+        isEditingWs={isEditingWs}
+      />
 
-                {/* Worker Agents: Pi */}
-                <div className="bg-white border border-black/[0.06] rounded-xl p-3 space-y-2 shadow-2xs">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-lg bg-emerald-50 border border-emerald-100 flex items-center justify-center text-base">
-                        ⚡
-                      </div>
-                      <div>
-                        <div className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
-                          <span>Pi 编码智能体</span>
-                          <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-50 text-emerald-700 border border-emerald-200/60 font-mono font-medium">Worker</span>
-                        </div>
-                        <p className="text-[10px] text-slate-500 font-mono">Custom CLI Agent</p>
-                      </div>
-                    </div>
-                    <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-black/[0.06] font-medium">
-                      <span>就绪</span>
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-slate-600 leading-relaxed border-t border-black/[0.06] pt-2">
-                    负责写入代码、安装依赖、运行单元测试，自动索引 <code className="text-emerald-700 font-mono bg-emerald-50 px-1 py-0.5 rounded border border-emerald-200/60">.pi/skills/</code> 技能。
-                  </p>
-                </div>
+      <InstallSkillModal
+        isOpen={showSkillModal}
+        onClose={() => setShowSkillModal(false)}
+        skillModalTab={skillModalTab}
+        setSkillModalTab={setSkillModalTab}
+        skillPresets={skillPresets}
+        workspaceSkills={workspaceSkills}
+        isSubmittingSkill={isSubmittingSkill}
+        handleInstallPreset={handleInstallPreset}
+        newSkillName={newSkillName}
+        setNewSkillName={setNewSkillName}
+        newSkillDesc={newSkillDesc}
+        setNewSkillDesc={setNewSkillDesc}
+        newSkillContent={newSkillContent}
+        setNewSkillContent={setNewSkillContent}
+        handleCreateCustomSkill={handleCreateCustomSkill}
+      />
 
-                {/* Workspace Skills Management Pool */}
-                <div className="bg-white border border-black/[0.06] rounded-xl p-3 space-y-3 shadow-2xs">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-900">
-                      <BookOpen size={14} className="text-amber-500" />
-                      <span>工作区技能库 (Skills)</span>
-                      <span className="text-[10px] px-1.5 py-0.2 rounded font-mono bg-slate-100 text-slate-600 border border-black/[0.06]">
-                        {workspaceSkills.filter((s) => s.enabled).length}/{workspaceSkills.length} 启用
-                      </span>
-                    </div>
-
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        onClick={() => {
-                          setSkillModalTab('presets');
-                          setShowSkillModal(true);
-                        }}
-                        className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 border border-amber-500/25 text-[10px] font-medium transition-colors cursor-pointer"
-                        title="安装或创建技能"
-                      >
-                        <Plus size={11} />
-                        <span>安装技能</span>
-                      </button>
-                      <button
-                        onClick={() => fetchWorkspaceSkills()}
-                        className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-black/[0.04] transition-colors cursor-pointer"
-                        title="刷新技能列表"
-                      >
-                        <RefreshCw size={11} className={isLoadingSkills ? 'animate-spin' : ''} />
-                      </button>
-                    </div>
-                  </div>
-
-                  {isLoadingSkills && workspaceSkills.length === 0 ? (
-                    <div className="flex items-center justify-center py-6 text-slate-400 text-xs">
-                      <Loader2 size={15} className="animate-spin text-amber-500 mr-2" />
-                      <span>正在扫描工作区技能...</span>
-                    </div>
-                  ) : workspaceSkills.length === 0 ? (
-                    <div className="p-3 rounded-lg bg-[#fbfaf7] border border-black/[0.06] text-center space-y-2">
-                      <p className="text-[11px] text-slate-500 leading-relaxed">
-                        当前沙箱尚未安装扩展技能。智能体可自主在对话中安装，您也可以一键添加常用技能。
-                      </p>
-                      <div className="flex items-center justify-center gap-1.5 flex-wrap pt-1">
-                        {skillPresets.slice(0, 2).map((p) => (
-                          <button
-                            key={p.id}
-                            onClick={() => handleInstallPreset(p.id)}
-                            className="text-[10px] px-2 py-1 rounded bg-white hover:bg-slate-50 text-amber-700 border border-black/[0.08] shadow-2xs transition-colors cursor-pointer"
-                          >
-                            + 安装 {p.id}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      {workspaceSkills.map((skill) => (
-                        <div
-                          key={skill.id}
-                          className={cn(
-                            'p-2.5 rounded-lg border transition-all space-y-1.5',
-                            skill.enabled
-                              ? 'bg-[#fbfaf7] border-black/[0.06]'
-                              : 'bg-slate-50/50 border-black/[0.04] opacity-65'
-                          )}
-                        >
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-1.5 min-w-0">
-                              <span className="font-mono text-xs font-semibold text-slate-800 truncate">
-                                {skill.name}
-                              </span>
-                              <span
-                                className={cn(
-                                  'text-[9px] px-1.5 py-0.2 rounded font-mono font-medium',
-                                  skill.enabled
-                                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/60'
-                                    : 'bg-slate-100 text-slate-500 border border-black/[0.06]'
-                                )}
-                              >
-                                {skill.enabled ? '已启用' : '已禁用'}
-                              </span>
-                            </div>
-
-                            <div className="flex items-center gap-1 flex-shrink-0">
-                              {/* Enable / Disable toggle button */}
-                              <button
-                                onClick={() => handleToggleSkill(skill.id, skill.enabled)}
-                                className={cn(
-                                  'px-2 py-0.5 rounded text-[10px] font-medium transition-colors cursor-pointer flex items-center gap-1',
-                                  skill.enabled
-                                    ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200'
-                                    : 'bg-white hover:bg-slate-50 text-slate-500 border border-black/[0.08]'
-                                )}
-                                title={skill.enabled ? '点击禁用该技能' : '点击启用该技能'}
-                              >
-                                <Power size={10} />
-                                <span>{skill.enabled ? '开' : '关'}</span>
-                              </button>
-
-                              {/* View detail button */}
-                              <button
-                                onClick={() => setPreviewingSkill(skill)}
-                                className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-black/[0.04] transition-colors cursor-pointer"
-                                title="查看技能定义"
-                              >
-                                <Eye size={12} />
-                              </button>
-
-                              {/* Delete button */}
-                              <button
-                                onClick={() => handleDeleteSkill(skill.id, skill.name)}
-                                className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
-                                title="卸载技能"
-                              >
-                                <Trash2 size={12} />
-                              </button>
-                            </div>
-                          </div>
-
-                          <p className="text-[11px] text-slate-500 leading-relaxed line-clamp-2">
-                            {skill.description}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* Workspace Rules & AGENTS.md Info */}
-                <div className="bg-white border border-black/[0.06] rounded-xl p-3 space-y-2.5 shadow-2xs">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-900">
-                      <Sparkles size={13} className="text-indigo-600" />
-                      <span>空间规则 (AGENTS.md)</span>
-                    </div>
-                    <button
-                      onClick={() => {
-                        setEditWsName(activeWorkspace?.name || '');
-                        setEditWsDesc(activeWorkspace?.description || '');
-                        setEditWsPrompt(activeWorkspace?.systemPrompt || '');
-                        setShowRulesModal(true);
-                      }}
-                      className="text-[10px] text-indigo-600 hover:text-indigo-700 font-medium transition-colors cursor-pointer"
-                    >
-                      编辑规则
-                    </button>
-                  </div>
-                  {activeWorkspace?.systemPrompt ? (
-                    <div className="p-2.5 rounded-lg bg-[#fbfaf7] border border-black/[0.06] text-[11px] font-mono text-slate-700 max-h-32 overflow-y-auto whitespace-pre-wrap leading-relaxed">
-                      {activeWorkspace.systemPrompt}
-                    </div>
-                  ) : (
-                    <p className="text-[11px] text-slate-400 italic">
-                      当前工作区未配置专属规则，智能体将采用系统默认行为。点击上方“编辑规则”可一键引入 Next.js、Python 等项目规范。
-                    </p>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {inspectorTab === 'files' && (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between pb-2 border-b border-black/[0.06]">
-                  <span className="text-xs font-medium text-slate-600">沙箱文件列表 ({activeWorkspaceName})</span>
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => setIsCreatingFile(!isCreatingFile)}
-                      className="p-1 rounded hover:bg-black/[0.05] text-slate-400 hover:text-slate-700 cursor-pointer"
-                      title="新建文件"
-                    >
-                      <FilePlus size={13} />
-                    </button>
-                    <button
-                      onClick={() => fetchWorkspaceTree()}
-                      className="p-1 rounded hover:bg-black/[0.05] text-slate-400 hover:text-slate-700 cursor-pointer"
-                      title="刷新文件树"
-                    >
-                      <RefreshCw size={13} className={isLoadingFiles ? 'animate-spin' : ''} />
-                    </button>
-                  </div>
-                </div>
-
-                {isCreatingFile && (
-                  <div className="flex items-center gap-1.5 p-2 bg-[#fbfaf7] rounded-lg border border-black/[0.08]">
-                    <input
-                      type="text"
-                      value={newFileName}
-                      onChange={(e) => setNewFileName(e.target.value)}
-                      placeholder="文件名 (如 src/app.ts)"
-                      className="flex-1 bg-white border border-black/[0.08] rounded px-2 py-1 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-500 font-mono shadow-2xs"
-                      autoFocus
-                    />
-                    <button
-                      onClick={handleCreateFile}
-                      className="px-2 py-1 rounded bg-slate-950 text-white text-xs hover:bg-slate-800 cursor-pointer shadow-xs"
-                    >
-                      创建
-                    </button>
-                    <button
-                      onClick={() => setIsCreatingFile(false)}
-                      className="px-2 py-1 rounded bg-white border border-black/[0.08] text-slate-600 text-xs hover:bg-slate-50 cursor-pointer"
-                    >
-                      取消
-                    </button>
-                  </div>
-                )}
-
-                {/* Tree Area */}
-                <div className="space-y-1 text-xs font-mono">
-                  {isLoadingFiles ? (
-                    <div className="flex items-center justify-center py-10">
-                      <Loader2 size={18} className="text-slate-400 animate-spin" />
-                    </div>
-                  ) : fileTree.length === 0 ? (
-                    <div className="text-center py-10 text-slate-400 text-xs">
-                      工作区当前为空，让智能体写入文件或点击上方新建
-                    </div>
-                  ) : (
-                    fileTree.map((node) => (
-                      <div
-                        key={node.path}
-                        onClick={() => handleSelectFile(node)}
-                        className="flex items-center justify-between p-2 rounded-lg hover:bg-black/[0.04] cursor-pointer group transition-colors"
-                      >
-                        <div className="flex items-center gap-2 min-w-0">
-                          {node.isDirectory ? (
-                            <Folder size={14} className="text-amber-500 flex-shrink-0" />
-                          ) : (
-                            <FileText size={14} className="text-slate-400 flex-shrink-0" />
-                          )}
-                          <span className="text-slate-700 group-hover:text-slate-900 truncate">{node.name}</span>
-                        </div>
-
-                        {!node.isDirectory && (
-                          <button
-                            onClick={(e) => handleDeleteFile(node.path, e)}
-                            className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-rose-600 transition-opacity cursor-pointer"
-                            title="删除文件"
-                          >
-                            <Trash2 size={12} />
-                          </button>
-                        )}
-                      </div>
-                    ))
-                  )}
-                </div>
-
-                {/* File Preview */}
-                {previewFile && (
-                  <div className="mt-4 border-t border-black/[0.06] pt-3 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-mono text-slate-700 font-medium truncate">{previewFile.path}</span>
-                      <button onClick={() => setPreviewFile(null)} className="text-slate-400 hover:text-slate-700 cursor-pointer">
-                        <X size={13} />
-                      </button>
-                    </div>
-                    <pre className="p-2.5 rounded-lg bg-slate-50 border border-black/[0.06] text-[11px] font-mono text-slate-800 overflow-x-auto max-h-56 leading-relaxed whitespace-pre-wrap shadow-2xs">
-                      {previewFile.content || '(空文件)'}
-                    </pre>
-                  </div>
-                )}
-              </div>
-            )}
-
-
-          </div>
-        </aside>
-      </>
-    )}
-
-      {/* 5. Account Model & Environment Overview Modal */}
-      {showSettingsModal && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fadeIn">
-          <div className="bg-white border border-black/[0.08] rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-5 text-slate-900">
-            <div className="flex items-center justify-between pb-3 border-b border-black/[0.06]">
-              <div className="flex items-center gap-2">
-                <Settings size={18} className="text-indigo-600" />
-                <h3 className="text-base font-bold text-slate-900">
-                  当前环境与模型状态
-                </h3>
-              </div>
-              <button
-                onClick={() => setShowSettingsModal(false)}
-                className="text-slate-400 hover:text-slate-700 text-xs font-medium cursor-pointer"
-              >
-                关闭
-              </button>
-            </div>
-
-            <div className="space-y-3.5 text-xs">
-              <div className="p-3.5 rounded-xl bg-[#fbfaf7] border border-black/[0.06] space-y-2.5">
-                <div className="flex items-center justify-between pb-2 border-b border-black/[0.04]">
-                  <span className="text-slate-500">登录账号</span>
-                  <span className="font-mono text-slate-800 font-medium">{userProfile?.email || '当前登录用户'}</span>
-                </div>
-
-                <div className="flex items-center justify-between pb-2 border-b border-black/[0.04]">
-                  <span className="text-slate-500">驱动大模型</span>
-                  <span className="font-mono text-emerald-700 font-bold bg-emerald-50 border border-emerald-200/80 px-2 py-0.5 rounded">
-                    {userProfile?.modelName || '未指定 (系统默认)'}
-                  </span>
-                </div>
-
-                <div className="flex items-center justify-between pb-2 border-b border-black/[0.04]">
-                  <span className="text-slate-500">接口 Base URL</span>
-                  <span className="font-mono text-slate-700 truncate max-w-[200px]" title={userProfile?.apiBaseUrl || '系统默认端点'}>
-                    {userProfile?.apiBaseUrl || '系统官方接口'}
-                  </span>
-                </div>
-
-                <div className="flex items-center justify-between pb-2 border-b border-black/[0.04]">
-                  <span className="text-slate-500">API 凭据状态</span>
-                  <span className="flex items-center gap-1 text-emerald-700 font-medium">
-                    <CheckCircle size={12} />
-                    <span>{userProfile?.apiKey ? '已配置 (已就绪)' : '未设置'}</span>
-                  </span>
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-500">上下文窗口</span>
-                  <span className="font-mono text-slate-800">{formatTokens(contextLength)} tokens</span>
-                </div>
-              </div>
-
-              <div className="p-3 rounded-xl bg-indigo-50 border border-indigo-100 text-[11px] text-slate-700 space-y-1">
-                <div className="font-semibold text-indigo-700 flex items-center gap-1.5">
-                  <Sparkles size={13} />
-                  <span>统一账号模型与直连机制</span>
-                </div>
-                <div className="text-slate-600 leading-relaxed">
-                  Studio 总指挥官与后台 Pi Coding Agent 已直接打通并继承您的账号模型配置，无需在此重复填写任何密钥或代理地址。
-                </div>
-              </div>
-            </div>
-
-            <div className="pt-2 flex items-center justify-between border-t border-black/[0.06]">
-              <a
-                href="/settings"
-                target="_blank"
-                rel="noreferrer"
-                className="text-xs text-indigo-600 hover:text-indigo-700 hover:underline flex items-center gap-1 font-medium"
-              >
-                <span>前往系统设置修改模型配置</span>
-                <ChevronRight size={13} />
-              </a>
-
-              <button
-                onClick={() => setShowSettingsModal(false)}
-                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs font-semibold text-slate-700 transition-colors cursor-pointer"
-              >
-                关闭
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 5.5 Workspace System Rules Modal */}
-      {showRulesModal && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-fadeIn">
-          <div className="bg-white border border-black/[0.08] rounded-2xl max-w-xl w-full p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150 text-slate-900">
-            <div className="flex items-center justify-between pb-3 border-b border-black/[0.06]">
-              <div className="flex items-center gap-2">
-                <Sparkles size={18} className="text-indigo-600" />
-                <h3 className="text-base font-bold text-slate-900">
-                  【{activeWorkspaceName}】空间提示词与规范
-                </h3>
-              </div>
-              <button
-                onClick={() => setShowRulesModal(false)}
-                className="text-slate-400 hover:text-slate-700 text-xs cursor-pointer"
-              >
-                取消
-              </button>
-            </div>
-
-            <form onSubmit={handleEditWorkspace} className="space-y-4">
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between text-xs">
-                  <label className="font-semibold text-slate-800">
-                    空间专属指令 (System Instructions)
-                  </label>
-                  <span className="text-[10px] text-indigo-600 font-mono">自动同步沙箱 AGENTS.md</span>
-                </div>
-                <textarea
-                  value={editWsPrompt}
-                  onChange={(e) => setEditWsPrompt(e.target.value)}
-                  placeholder="在此输入当前工作空间的专属指令与规范。例如：
-1. 本项目采用 Next.js 15 App Router + TailwindCSS；
-2. 代码必须严格使用 TypeScript，拒绝 any 类型；
-3. 写代码或重构前必须先列出改动点；
-4. 保持代码精炼，所有模块加上简明 JSDoc 注释。"
-                  rows={8}
-                  className="w-full bg-[#fbfaf7] border border-black/[0.1] rounded-xl p-3 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:bg-white font-mono leading-relaxed resize-none shadow-2xs"
-                  autoFocus
-                />
-                <p className="text-[10px] text-slate-500 leading-snug">
-                  总指挥官在规划时将严格遵守该规范；保存后会在工作区根目录同步写入 AGENTS.md，Pi 等子智能体执行时亦会自动读取遵循。
-                </p>
-              </div>
-
-              {/* Quick Preset Badges */}
-              <div className="space-y-1.5">
-                <div className="text-[11px] text-slate-600 font-medium">快捷填入预设模板：</div>
-                <div className="flex flex-wrap gap-1.5">
-                  {[
-                    {
-                      label: 'Next.js 全栈规范',
-                      prompt: '【项目规范】：\n1. 技术栈：Next.js 15 (App Router) + TailwindCSS + TypeScript；\n2. 拒绝使用 any，所有数据接口和 Props 必须严格定义类型；\n3. 组件优先使用函数式组件，保持 UI 极简科技暗黑风格；\n4. 修改或新建文件前，先简要说明改动方案。',
-                    },
-                    {
-                      label: 'Python 算法与爬虫',
-                      prompt: '【项目规范】：\n1. 技术栈：Python 3.12，遵守 PEP8 代码规范；\n2. 网络请求与并发必须包含超时重试与异常捕获；\n3. 涉及数据分析时优先使用 Pandas，图表必须配置中文字体；\n4. 产出脚本需在代码顶部注明使用方式与参数说明。',
-                    },
-                    {
-                      label: '自媒体脚本创作',
-                      prompt: '【项目角色设定】：\n你是一位资深新媒体与短视频策划导师。在此空间中，请使用网感强、结构清晰的脚本分镜语言回复我；每次输出文案时，提供黄金前3秒钩子、核心干货展开以及结尾行动号召。',
-                    },
-                  ].map((preset) => (
-                    <button
-                      key={preset.label}
-                      type="button"
-                      onClick={() => setEditWsPrompt(preset.prompt)}
-                      className="px-2.5 py-1 rounded-lg bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 border border-black/[0.08] shadow-2xs text-[11px] transition-colors cursor-pointer"
-                    >
-                      {preset.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="pt-3 flex items-center justify-end gap-2 border-t border-black/[0.06]">
-                <button
-                  type="button"
-                  onClick={() => setShowRulesModal(false)}
-                  className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs text-slate-700 transition-colors cursor-pointer"
-                >
-                  取消
-                </button>
-                <button
-                  type="submit"
-                  disabled={isEditingWs}
-                  className="px-4 py-2 rounded-xl bg-slate-950 hover:bg-slate-800 disabled:opacity-50 text-xs font-semibold text-white shadow-xs transition-colors cursor-pointer flex items-center gap-1.5"
-                >
-                  {isEditingWs && <Loader2 size={12} className="animate-spin" />}
-                  <span>保存并应用到当前空间</span>
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-
-
-      {/* 8. Create Workspace Modal */}
-      {showCreateModal && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-          <div className="bg-white border border-black/[0.08] rounded-2xl w-full max-w-md p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150 text-slate-900">
-            <div className="flex items-center justify-between pb-3 border-b border-black/[0.06]">
-              <div className="flex items-center gap-2">
-                <FolderPlus size={18} className="text-indigo-600" />
-                <h3 className="text-base font-bold text-slate-900">新建 Studio 工作空间</h3>
-              </div>
-              <button
-                onClick={() => setShowCreateModal(false)}
-                className="text-slate-400 hover:text-slate-700 text-xs cursor-pointer"
-              >
-                取消
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateWorkspace} className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-800">
-                  工作区名称 <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={newWsName}
-                  onChange={(e) => setNewWsName(e.target.value)}
-                  placeholder="例如：web-crawler、algo-sandbox、my-project"
-                  className="w-full bg-[#fbfaf7] border border-black/[0.1] rounded-xl px-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:bg-white shadow-2xs"
-                  autoFocus
-                  required
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-800">工作区简介（可选）</label>
-                <textarea
-                  value={newWsDesc}
-                  onChange={(e) => setNewWsDesc(e.target.value)}
-                  placeholder="工作区的核心目标或业务背景..."
-                  rows={2}
-                  className="w-full bg-[#fbfaf7] border border-black/[0.1] rounded-xl px-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:bg-white resize-none shadow-2xs"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-semibold text-slate-800">空间提示词与项目规范（可选）</label>
-                  <span className="text-[10px] text-slate-500 font-mono">自动同步 AGENTS.md</span>
-                </div>
-                <textarea
-                  value={newWsPrompt}
-                  onChange={(e) => setNewWsPrompt(e.target.value)}
-                  placeholder="设定专属的角色要求、技术栈规范或开发约束，例如：使用 Next.js 15 App Router，代码必须加详细注释..."
-                  rows={3}
-                  className="w-full bg-[#fbfaf7] border border-black/[0.1] rounded-xl px-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:bg-white resize-none font-mono text-[11px] shadow-2xs"
-                />
-              </div>
-
-              <div className="pt-2 flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowCreateModal(false)}
-                  className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs text-slate-700 transition-colors cursor-pointer"
-                >
-                  取消
-                </button>
-                <button
-                  type="submit"
-                  disabled={!newWsName.trim() || isCreatingWs}
-                  className="px-4 py-2 rounded-xl bg-slate-950 hover:bg-slate-800 disabled:opacity-50 text-xs font-semibold text-white shadow-xs transition-colors cursor-pointer flex items-center gap-1.5"
-                >
-                  {isCreatingWs && <Loader2 size={12} className="animate-spin" />}
-                  <span>立即创建并切换</span>
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* 9. Edit Workspace Modal */}
-      {showEditModal && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-          <div className="bg-white border border-black/[0.08] rounded-2xl w-full max-w-md p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150 text-slate-900">
-            <div className="flex items-center justify-between pb-3 border-b border-black/[0.06]">
-              <div className="flex items-center gap-2">
-                <Edit2 size={16} className="text-indigo-600" />
-                <h3 className="text-base font-bold text-slate-900">编辑工作区信息</h3>
-              </div>
-              <button
-                onClick={() => setShowEditModal(false)}
-                className="text-slate-400 hover:text-slate-700 text-xs cursor-pointer"
-              >
-                取消
-              </button>
-            </div>
-
-            <form onSubmit={handleEditWorkspace} className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-800">
-                  工作区名称 <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={editWsName}
-                  onChange={(e) => setEditWsName(e.target.value)}
-                  className="w-full bg-[#fbfaf7] border border-black/[0.1] rounded-xl px-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:bg-white shadow-2xs"
-                  autoFocus
-                  required
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-800">工作区简介</label>
-                <textarea
-                  value={editWsDesc}
-                  onChange={(e) => setEditWsDesc(e.target.value)}
-                  placeholder="工作区的核心目标或业务背景..."
-                  rows={2}
-                  className="w-full bg-[#fbfaf7] border border-black/[0.1] rounded-xl px-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:bg-white resize-none shadow-2xs"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-semibold text-slate-800">空间提示词与项目规范</label>
-                  <span className="text-[10px] text-slate-500 font-mono">保存时自动同步至 AGENTS.md</span>
-                </div>
-                <textarea
-                  value={editWsPrompt}
-                  onChange={(e) => setEditWsPrompt(e.target.value)}
-                  placeholder="设定专属的角色要求、技术栈规范或开发约束..."
-                  rows={3}
-                  className="w-full bg-[#fbfaf7] border border-black/[0.1] rounded-xl px-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:bg-white resize-none font-mono text-[11px] shadow-2xs"
-                />
-              </div>
-
-              <div className="pt-2 flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowEditModal(false)}
-                  className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs text-slate-700 transition-colors cursor-pointer"
-                >
-                  取消
-                </button>
-                <button
-                  type="submit"
-                  disabled={!editWsName.trim() || isEditingWs}
-                  className="px-4 py-2 rounded-xl bg-slate-950 hover:bg-slate-800 disabled:opacity-50 text-xs font-semibold text-white shadow-xs transition-colors cursor-pointer flex items-center gap-1.5"
-                >
-                  {isEditingWs && <Loader2 size={12} className="animate-spin" />}
-                  <span>保存修改</span>
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* 9. Install / Create Workspace Skill Modal */}
-      {showSkillModal && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-fadeIn">
-          <div className="bg-white border border-black/[0.08] rounded-2xl w-full max-w-lg p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150 text-slate-900">
-            <div className="flex items-center justify-between pb-3 border-b border-black/[0.06]">
-              <div className="flex items-center gap-2">
-                <BookOpen size={18} className="text-amber-500" />
-                <h3 className="text-base font-bold text-slate-900">安装与创建工作区技能</h3>
-              </div>
-              <button
-                onClick={() => setShowSkillModal(false)}
-                className="text-slate-400 hover:text-slate-700 text-xs cursor-pointer"
-              >
-                关闭
-              </button>
-            </div>
-
-            {/* Tab switch: Presets vs Custom */}
-            <div className="flex items-center gap-2 border-b border-black/[0.06] pb-2">
-              <button
-                type="button"
-                onClick={() => setSkillModalTab('presets')}
-                className={cn(
-                  'px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer',
-                  skillModalTab === 'presets'
-                    ? 'bg-amber-50 text-amber-800 border border-amber-200/80 shadow-2xs'
-                    : 'text-slate-500 hover:text-slate-800 hover:bg-black/[0.03]'
-                )}
-              >
-                官方推荐预设库
-              </button>
-              <button
-                type="button"
-                onClick={() => setSkillModalTab('custom')}
-                className={cn(
-                  'px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer',
-                  skillModalTab === 'custom'
-                    ? 'bg-amber-50 text-amber-800 border border-amber-200/80 shadow-2xs'
-                    : 'text-slate-500 hover:text-slate-800 hover:bg-black/[0.03]'
-                )}
-              >
-                自定义编写技能
-              </button>
-            </div>
-
-            {skillModalTab === 'presets' ? (
-              <div className="space-y-2.5 max-h-80 overflow-y-auto pr-1">
-                {skillPresets.length === 0 ? (
-                  <div className="text-center py-8 text-xs text-slate-400">
-                    加载中...
-                  </div>
-                ) : (
-                  skillPresets.map((preset) => {
-                    const isInstalled = workspaceSkills.some((s) => s.id === preset.id);
-                    return (
-                      <div
-                        key={preset.id}
-                        className="p-3 rounded-xl bg-[#fbfaf7] border border-black/[0.06] hover:border-black/[0.12] transition-all flex items-start justify-between gap-3 shadow-2xs"
-                      >
-                        <div className="space-y-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-bold text-slate-900 font-mono">
-                              {preset.id}
-                            </span>
-                            <span className="text-[10px] text-slate-500 truncate">
-                              {preset.name}
-                            </span>
-                          </div>
-                          <p className="text-[11px] text-slate-600 leading-relaxed">
-                            {preset.description}
-                          </p>
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={() => handleInstallPreset(preset.id)}
-                          disabled={isInstalled || isSubmittingSkill}
-                          className={cn(
-                            'px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors flex-shrink-0 cursor-pointer flex items-center gap-1',
-                            isInstalled
-                              ? 'bg-slate-100 text-slate-400 border border-black/[0.06] cursor-not-allowed'
-                              : 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-800 border border-amber-500/25 shadow-2xs font-semibold'
-                          )}
-                        >
-                          {isInstalled ? (
-                            <>
-                              <CheckCircle size={11} className="text-emerald-600" />
-                              <span>已安装</span>
-                            </>
-                          ) : (
-                            <>
-                              <Download size={11} />
-                              <span>一键安装</span>
-                            </>
-                          )}
-                        </button>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            ) : (
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  handleCreateCustomSkill();
-                }}
-                className="space-y-3 text-xs"
-              >
-                <div className="space-y-1">
-                  <label className="font-semibold text-slate-800">技能目录英文标识 (ID)</label>
-                  <input
-                    type="text"
-                    value={newSkillName}
-                    onChange={(e) => setNewSkillName(e.target.value)}
-                    placeholder="如: custom-parser, doc-generator"
-                    className="w-full bg-[#fbfaf7] border border-black/[0.1] rounded-xl px-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:bg-white font-mono shadow-2xs"
-                    required
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="font-semibold text-slate-800">功能简述</label>
-                  <input
-                    type="text"
-                    value={newSkillDesc}
-                    onChange={(e) => setNewSkillDesc(e.target.value)}
-                    placeholder="简要说明该技能的作用与触发场景..."
-                    className="w-full bg-[#fbfaf7] border border-black/[0.1] rounded-xl px-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:bg-white shadow-2xs"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="font-semibold text-slate-800">SKILL.md 提示词与实现内容</label>
-                  <textarea
-                    value={newSkillContent}
-                    onChange={(e) => setNewSkillContent(e.target.value)}
-                    placeholder="输入技能规范说明、调用指令与步骤要求（遵循标准 Agent Skills 规范）..."
-                    rows={6}
-                    className="w-full bg-[#fbfaf7] border border-black/[0.1] rounded-xl px-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:bg-white font-mono text-[11px] leading-relaxed resize-none shadow-2xs"
-                  />
-                </div>
-
-                <div className="pt-2 flex items-center justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowSkillModal(false)}
-                    className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs text-slate-700 transition-colors cursor-pointer"
-                  >
-                    取消
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={!newSkillName.trim() || isSubmittingSkill}
-                    className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-xs font-semibold text-white shadow-xs transition-colors cursor-pointer flex items-center gap-1.5"
-                  >
-                    {isSubmittingSkill && <Loader2 size={12} className="animate-spin" />}
-                    <span>创建技能并加载</span>
-                  </button>
-                </div>
-              </form>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* 10. Preview Skill Definition Modal */}
-      {previewingSkill && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-fadeIn">
-          <div className="bg-white border border-black/[0.08] rounded-2xl w-full max-w-lg p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150 text-slate-900">
-            <div className="flex items-center justify-between pb-3 border-b border-black/[0.06]">
-              <div className="flex items-center gap-2">
-                <BookOpen size={17} className="text-amber-500" />
-                <h3 className="text-base font-bold text-slate-900">
-                  技能定义: {previewingSkill.name}
-                </h3>
-              </div>
-              <button
-                onClick={() => setPreviewingSkill(null)}
-                className="text-slate-400 hover:text-slate-700 text-xs cursor-pointer"
-              >
-                关闭
-              </button>
-            </div>
-
-            <div className="space-y-2">
-              <div className="flex items-center justify-between text-xs text-slate-500">
-                <span className="font-mono text-[11px] text-slate-500">
-                  路径: .pi/skills/{previewingSkill.id}/SKILL.md
-                </span>
-                <span
-                  className={cn(
-                    'text-[10px] px-2 py-0.5 rounded-full font-mono font-medium',
-                    previewingSkill.enabled
-                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                      : 'bg-slate-100 text-slate-500 border border-black/[0.06]'
-                  )}
-                >
-                  {previewingSkill.enabled ? '已启用' : '已禁用'}
-                </span>
-              </div>
-
-              <pre className="p-3 rounded-xl bg-slate-50 border border-black/[0.06] text-[11px] font-mono text-slate-800 overflow-x-auto max-h-80 leading-relaxed whitespace-pre-wrap select-text shadow-2xs">
-                {previewingSkill.content || '(无定义内容)'}
-              </pre>
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-black/[0.06]">
-              <button
-                onClick={() => handleCopyToolResult(previewingSkill.content || '')}
-                className="px-3 py-1.5 rounded-lg bg-white hover:bg-slate-50 border border-black/[0.08] text-xs text-slate-700 shadow-2xs transition-colors cursor-pointer flex items-center gap-1.5"
-              >
-                <Copy size={12} />
-                <span>复制技能源码</span>
-              </button>
-              <button
-                onClick={() => setPreviewingSkill(null)}
-                className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-xs text-slate-700 transition-colors cursor-pointer"
-              >
-                关闭
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <SkillPreviewModal
+        skill={previewingSkill}
+        onClose={() => setPreviewingSkill(null)}
+        onCopy={handleCopyToolResult}
+      />
     </div>
   );
 }
+

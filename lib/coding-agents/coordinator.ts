@@ -5,10 +5,14 @@ import { safeJoinReal } from './safe-path';
 import { agentSupervisor } from './supervisor';
 import { CodingAgentId } from './types';
 import { createModelClient, resolveModelName } from '../model-client';
+import { approvalStore, StudioApprovalMode } from './approval-store';
+
+export type { StudioApprovalMode };
 
 export interface CoordinatorEvent {
   type:
     | 'run.started'
+    | 'tool.approval_requested'
     | 'tool.started'
     | 'tool.completed'
     | 'tool.failed'
@@ -22,6 +26,7 @@ export interface CoordinatorEvent {
 
 export interface CoordinatorRunOptions {
   userId: string;
+  runId?: string;
   spaceId?: string;
   workspaceId?: string;
   workspaceSystemPrompt?: string;
@@ -32,6 +37,7 @@ export interface CoordinatorRunOptions {
   modelContextWindow?: number;
   apiBaseUrl?: string;
   apiKey?: string;
+  approvalMode?: StudioApprovalMode;
   agentKeys?: {
     anthropicApiKey?: string;
     openaiApiKey?: string;
@@ -138,9 +144,17 @@ async function scanWorkspace(dir: string, currentDepth = 0, maxDepth = 2): Promi
   }
 }
 
+function shouldRequireApproval(toolName: string, mode: StudioApprovalMode = 'dangerous'): boolean {
+  if (mode === 'never') return false;
+  if (mode === 'always') return true;
+  // dangerous 模式：写文件与委托执行 Shell 智能体必须人工确认
+  return toolName === 'write_file' || toolName === 'delegate_task';
+}
+
 export async function runCoordinatorChat(options: CoordinatorRunOptions): Promise<void> {
   const {
     userId,
+    runId,
     spaceId = 'default',
     workspaceId,
     message,
@@ -150,6 +164,7 @@ export async function runCoordinatorChat(options: CoordinatorRunOptions): Promis
     modelContextWindow,
     apiBaseUrl,
     apiKey,
+    approvalMode = 'dangerous',
     agentKeys,
     onEvent,
     signal,
@@ -202,6 +217,8 @@ ${workspaceRules}
   1. 将该 Skill 克隆/放置在工作区的 \`.pi/skills/<skill-name>/\` 目录下（例如：git clone <url> .pi/skills/<skill-name>）；
   2. 确认其内部包含合规的 \`SKILL.md\`（含 name 与 description 元数据）；
   3. 如此后续系统与 Pi 即可自动感知、自动索引并在匹配任务时按需自动调用该技能；
+- 【安全与人机审批机制】：
+  当涉及写入文件 (write_file) 或委派执行子智能体 (delegate_task) 时，系统可能等待用户手动批准确认。如果用户在界面中拒绝了某项工具调用，工具结果中将包含明确的拒绝原因。收到拒绝后，切勿重复发起相同的受拒操作，请体谅用户意愿，向用户汇报情况并探讨替代方案或询问新的指令；
 - 在最终回复中，以条理清晰、专业有力的风格给用户汇报整体交付进度和结论。`;
 
   const messages: any[] = [
@@ -277,7 +294,55 @@ ${workspaceRules}
         let delegatedSessionId: string | undefined = undefined;
         let delegatedAgentId: string | undefined = undefined;
 
-        // If delegate_task, launch session early to get sessionId for live streaming
+        // Human-in-the-loop: Check if tool execution requires approval
+        if (shouldRequireApproval(fnName, approvalMode)) {
+          const { approvalId, promise } = approvalStore.createApproval({
+            runId: runId || `run_${Date.now()}`,
+            userId,
+            toolCallId,
+            toolName: fnName,
+            toolPreview: preview,
+            args,
+            timeoutMs: 300_000,
+          });
+
+          onEvent({
+            type: 'tool.approval_requested',
+            data: {
+              approvalId,
+              toolCallId,
+              toolName: fnName === 'write_file' ? 'write' : 'delegate',
+              toolPreview: preview,
+              args,
+              timeoutMs: 300_000,
+              timestamp: Date.now(),
+            },
+          });
+
+          const decision = await promise;
+
+          if (decision.action === 'deny') {
+            const denyReason = decision.reason || '用户在界面上手动拒绝执行该工具操作';
+            onEvent({
+              type: 'tool.failed',
+              data: {
+                toolCallId,
+                toolName: fnName === 'write_file' ? 'write' : 'delegate',
+                error: denyReason,
+                isDenied: true,
+                timestamp: Date.now(),
+              },
+            });
+            messages.push({
+              role: 'tool',
+              tool_call_id: toolCallId,
+              content: `【操作已被用户拒绝】：${denyReason}。请尊重用户的决定，不要再次重复发起相同的受拒操作，请向用户说明受阻情况并提供其他替代方案。`,
+            });
+            continue;
+          }
+        }
+
+        // If delegate_task, launch session after approval to get sessionId for live streaming
         if (fnName === 'delegate_task') {
           delegatedAgentId = (args.agent as CodingAgentId) || 'pi';
           let customApiKey: string | undefined = apiKey;
