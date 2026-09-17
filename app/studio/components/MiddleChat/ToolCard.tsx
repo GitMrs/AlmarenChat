@@ -150,14 +150,36 @@ export const ToolCard: React.FC<ToolCardProps> = ({
                       </span>
                     </div>
                   )}
-                  {tool.args.task && (
+                  {tool.args.goal && (
                     <div className="flex items-baseline gap-2">
                       <span className="text-slate-500 font-medium w-16 flex-shrink-0">任务目标:</span>
-                      <span className="text-slate-700 break-all leading-relaxed">
-                        {tool.args.task}
+                      <span className="text-slate-700 break-all leading-relaxed flex-1 min-w-0">
+                        {tool.args.goal}
                       </span>
                     </div>
                   )}
+                  {tool.args.context && (
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-slate-500 font-medium w-16 flex-shrink-0">补充背景:</span>
+                      <span className="text-slate-600 break-all leading-relaxed flex-1 min-w-0">
+                        {tool.args.context}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* write_file content preview — approving a write means reviewing what gets written */}
+              {typeof tool.args?.content === 'string' && tool.args.content.length > 0 && (
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between text-[10px] font-bold text-slate-500">
+                    <span>拟写入内容（共 {tool.args.content.length} 字符）:</span>
+                    <span className="font-normal text-slate-400">前 1500 字符预览</span>
+                  </div>
+                  <pre className="bg-white/90 border border-amber-200/60 rounded-xl p-2.5 font-mono text-[10px] text-slate-700 whitespace-pre-wrap break-all leading-relaxed max-h-44 overflow-y-auto custom-scrollbar">
+                    {tool.args.content.slice(0, 1500)}
+                    {tool.args.content.length > 1500 ? '\n…（内容已截断，完整内容请谨慎评估后决定）' : ''}
+                  </pre>
                 </div>
               )}
 

@@ -1300,6 +1300,15 @@ export default function StudioPage() {
                 setTotalTokens(event.data.totalTokens);
                 setContextLength(event.data.contextLength);
                 setRemainingTokens(event.data.remainingTokens);
+              } else if (event.type === 'run.failed') {
+                const failMsg = event.data?.error || '运行中断，请稍后重试';
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === assistantMessageId
+                      ? { ...m, content: (m.content || '') + `\n\n> ⚠️ 运行失败: ${failMsg}` }
+                      : m
+                  )
+                );
               }
             } catch {
               // Ignore line parse error
@@ -1310,11 +1319,17 @@ export default function StudioPage() {
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
       setMessages((prev) =>
-        prev.map((m) =>
-          m.id === assistantMessageId
-            ? { ...m, content: (m.content || '') + `\n\n> ⚠️ 执行出错: ${errMsg}` }
-            : m
-        )
+        prev.map((m) => {
+          if (m.id !== assistantMessageId) return m;
+          // Connection dropped while awaiting approval — the server-side run
+          // was aborted too, so the pending buttons would 404 on click
+          const tools = (m.tools || []).map((t) =>
+            t.status === 'waiting_approval'
+              ? { ...t, status: 'denied' as const, result: '连接中断，本次审批已自动取消' }
+              : t
+          );
+          return { ...m, tools, content: (m.content || '') + `\n\n> ⚠️ 执行出错: ${errMsg}` };
+        })
       );
     } finally {
       setIsStreaming(false);
