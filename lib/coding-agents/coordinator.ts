@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { readdir, readFile, writeFile } from 'node:fs/promises';
 import { resolveUserWorkspace, resolveStudioWorkspace } from './sandbox';
+import { safeJoinReal } from './safe-path';
 import { agentSupervisor } from './supervisor';
 import { CodingAgentId } from './types';
 import { createModelClient, resolveModelName } from '../model-client';
@@ -330,11 +331,17 @@ ${workspaceRules}
             const list = await scanWorkspace(workspaceDir, 0, args.depth || 2);
             resultText = `工作区根目录 [${path.basename(workspaceDir)}]:\n${list.join('\n')}`;
           } else if (fnName === 'read_file') {
-            const filePath = path.join(workspaceDir, args.path);
+            const filePath = await safeJoinReal(workspaceDir, args.path);
+            if (!filePath) {
+              throw new Error(`禁止越权读取工作区外文件: ${args.path}`);
+            }
             const content = await readFile(filePath, 'utf-8');
             resultText = content.slice(0, 8000);
           } else if (fnName === 'write_file') {
-            const filePath = path.join(workspaceDir, args.path);
+            const filePath = await safeJoinReal(workspaceDir, args.path);
+            if (!filePath) {
+              throw new Error(`禁止越权写入工作区外文件: ${args.path}`);
+            }
             await writeFile(filePath, args.content || '', 'utf-8');
             resultText = `已成功写入文件: ${args.path} (${args.content?.length || 0} 字符)`;
           } else if (fnName === 'delegate_task' && delegatedSessionId) {

@@ -3,6 +3,7 @@ import path from 'node:path';
 import { readdir, readFile, writeFile, unlink, stat } from 'node:fs/promises';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { resolveStudioWorkspace } from '@/lib/coding-agents/sandbox';
+import { safeJoinReal } from '@/lib/coding-agents/safe-path';
 
 interface FileNode {
   name: string;
@@ -69,8 +70,8 @@ export async function GET(request: Request) {
 
     // If requesting specific file content
     if (filePath) {
-      const targetFile = path.resolve(workspaceDir, filePath);
-      if (!targetFile.startsWith(workspaceDir)) {
+      const targetFile = await safeJoinReal(workspaceDir, filePath);
+      if (!targetFile) {
         return NextResponse.json({ error: '禁止越权访问工作区外文件' }, { status: 403 });
       }
 
@@ -100,9 +101,9 @@ export async function POST(request: Request) {
     }
 
     const workspaceDir = await resolveStudioWorkspace(process.cwd(), userId, workspaceId);
-    const targetFile = path.resolve(workspaceDir, file);
+    const targetFile = await safeJoinReal(workspaceDir, file);
 
-    if (!targetFile.startsWith(workspaceDir)) {
+    if (!targetFile) {
       return NextResponse.json({ error: '禁止越权写入工作区外文件' }, { status: 403 });
     }
 
@@ -127,9 +128,9 @@ export async function DELETE(request: Request) {
     }
 
     const workspaceDir = await resolveStudioWorkspace(process.cwd(), userId, workspaceId);
-    const targetFile = path.resolve(workspaceDir, filePath);
+    const targetFile = await safeJoinReal(workspaceDir, filePath);
 
-    if (!targetFile.startsWith(workspaceDir)) {
+    if (!targetFile) {
       return NextResponse.json({ error: '禁止越权删除工作区外文件' }, { status: 403 });
     }
 

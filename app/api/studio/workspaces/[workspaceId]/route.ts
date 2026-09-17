@@ -75,14 +75,14 @@ export async function DELETE(
     });
 
     if (!existing) {
-      return NextResponse.json({ error: '???????????' }, { status: 404 });
+      return NextResponse.json({ error: '工作区不存在或无权访问' }, { status: 404 });
     }
 
     const totalCount = await prisma.studioWorkspace.count({
       where: { userId },
     });
     if (totalCount <= 1) {
-      return NextResponse.json({ error: '??????????????????????' }, { status: 400 });
+      return NextResponse.json({ error: '至少需要保留一个工作区，无法删除最后一个' }, { status: 400 });
     }
 
     await prisma.studioWorkspace.delete({

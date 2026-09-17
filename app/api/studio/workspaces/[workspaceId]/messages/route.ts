@@ -15,7 +15,7 @@ export async function GET(
     });
 
     if (!workspace) {
-      return NextResponse.json({ error: '???????????' }, { status: 404 });
+      return NextResponse.json({ error: '工作区不存在或无权访问' }, { status: 404 });
     }
 
     const messages = await prisma.studioMessage.findMany({
@@ -44,7 +44,7 @@ export async function DELETE(
     });
 
     if (!workspace) {
-      return NextResponse.json({ error: '???????????' }, { status: 404 });
+      return NextResponse.json({ error: '工作区不存在或无权访问' }, { status: 404 });
     }
 
     await prisma.studioMessage.deleteMany({
