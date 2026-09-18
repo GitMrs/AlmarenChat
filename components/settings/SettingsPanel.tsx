@@ -213,6 +213,7 @@ export default function SettingsPanel() {
       .catch((err) => {
         if (err?.status === 401) {
           localStorage.removeItem('token');
+          window.dispatchEvent(new Event('almaren-auth-change'));
           setNeedsLogin(true);
           return;
         }
@@ -392,6 +393,7 @@ export default function SettingsPanel() {
 
   const handleLogout = () => {
     localStorage.removeItem('token');
+    window.dispatchEvent(new Event('almaren-auth-change'));
     router.push('/login');
   };
 

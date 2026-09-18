@@ -5,9 +5,10 @@ import { ACTIVE_AGENT_RUN_STATUSES } from '@/app/api/_lib/agent-runs';
 import { getSpaceForUser } from '@/app/api/_lib/spaces';
 import { createCollaborationState } from '@/lib/relay/collaboration.mjs';
 import { createGomokuState } from '@/lib/relay/gomoku.mjs';
+import { relayStagePolicy } from '@/lib/relay/stage-policy.mjs';
 
 const ACTIVE_DISCUSSION_STATUSES = ['QUEUED', 'RUNNING', 'WAITING_RESEARCH', 'CANCEL_REQUESTED'];
-const ACTIVE_RELAY_STATUSES = ['QUEUED', 'RUNNING', 'WAITING_APPROVAL', 'CANCEL_REQUESTED'];
+const ACTIVE_RELAY_STATUSES = ['QUEUED', 'RUNNING', 'PAUSE_REQUESTED', 'WAITING_APPROVAL', 'PAUSED', 'CANCEL_REQUESTED'];
 
 export async function GET(request: Request, { params }: { params: Promise<{ spaceId: string }> }) {
   try {
@@ -42,7 +43,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
     const requestedIds = Array.isArray(body.participantIds) ? body.participantIds.map(String).filter(Boolean) : [];
     const memberIds = new Set(space.members.map((member) => member.agentId));
     const participantIds = [...new Set<string>(requestedIds)].filter((id) => memberIds.has(id));
-    const requestedTurns = Math.trunc(Number(body.maxTurns) || (kind === 'gomoku' ? 60 : participantIds.length));
+    const requestedTurns = Math.trunc(Number(body.maxTurns) || relayStagePolicy(kind)?.size || participantIds.length);
     const maxTurns = kind === 'gomoku'
       ? Math.min(225, Math.max(2, requestedTurns))
       : Math.max(participantIds.length, requestedTurns);

@@ -87,6 +87,35 @@ test('automatic relay applies one action and advances to the next member', async
   current.db.close();
 });
 
+test('pause requested during a turn preserves the completed move and pauses before the next', async () => {
+  let db;
+  const current = fixture({ runLoop: async ({ executeTool }) => {
+    db.prepare(`UPDATE "SpaceRelay" SET "status" = 'PAUSE_REQUESTED'`).run();
+    await executeTool('submit_relay_action', { row: 8, column: 8 });
+  } });
+  db = current.db;
+  await current.runtime.processRelay(insertRelay(db));
+  const saved = db.prepare('SELECT * FROM "SpaceRelay"').get();
+  assert.equal(saved.status, 'PAUSED');
+  assert.equal(saved.turnCount, 1);
+  assert.equal(JSON.parse(saved.state).board[7 * 15 + 7], 1);
+  db.close();
+});
+
+test('stage limit takes precedence over a pause request without losing the decision', async () => {
+  let db;
+  const current = fixture({ runLoop: async ({ executeTool }) => {
+    db.prepare(`UPDATE "SpaceRelay" SET "status" = 'PAUSE_REQUESTED'`).run();
+    await executeTool('submit_relay_action', { row: 8, column: 8 });
+  } });
+  db = current.db;
+  await current.runtime.processRelay(insertRelay(db, { maxTurns: 1 }));
+  const saved = db.prepare('SELECT * FROM "SpaceRelay"').get();
+  assert.equal(saved.status, 'PAUSED');
+  assert.equal(JSON.parse(saved.pendingAction).type, 'stage_limit');
+  db.close();
+});
+
 test('per-turn approval stores an action without changing game state', async () => {
   const current = fixture();
   const before = insertRelay(current.db, { approvalMode: 'EACH_TURN' });
@@ -180,13 +209,13 @@ test('cancellation during a turn produces a terminal cancelled state', async () 
   current.db.close();
 });
 
-test('the maximum turn limit completes the relay after the applied action', async () => {
+test('the maximum turn limit waits for the user before continuing or ending', async () => {
   const current = fixture();
   await current.runtime.processRelay(insertRelay(current.db, { maxTurns: 1 }));
   const saved = current.db.prepare('SELECT * FROM "SpaceRelay"').get();
-  assert.equal(saved.status, 'COMPLETED');
+  assert.equal(saved.status, 'WAITING_APPROVAL');
   assert.equal(saved.turnCount, 1);
-  assert.match(saved.result, /1 轮上限/);
+  assert.equal(JSON.parse(saved.pendingAction).type, 'stage_limit');
   current.db.close();
 });
 

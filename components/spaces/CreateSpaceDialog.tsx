@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, BookOpen, Check, ChevronRight, ClipboardList, FileText, GraduationCap, LayoutGrid, Lightbulb, Loader2, PanelsTopLeft, Search, Trash2, UsersRound, Video, X } from 'lucide-react';
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, BookOpen, Check, ChevronRight, ClipboardList, FileText, GraduationCap, LayoutGrid, Lightbulb, Loader2, PanelsTopLeft, Search, Sparkles, Trash2, UsersRound, Video, X } from 'lucide-react';
 import Avatar from '@/components/shared/Avatar';
 import { getSpaceTemplate, SPACE_TEMPLATES, spaceTemplateInstructions } from '@/lib/space-templates.mjs';
 import type { Agent } from '@/types';
@@ -52,6 +52,9 @@ export default function CreateSpaceDialog({
   const [category, setCategory] = useState('全部');
   const [showAllTemplates, setShowAllTemplates] = useState(false);
   const [selectionError, setSelectionError] = useState('');
+  const [generatingInstructions, setGeneratingInstructions] = useState(false);
+  const [instructionsError, setInstructionsError] = useState('');
+  const [replaceInstructions, setReplaceInstructions] = useState(false);
   const [viewport, setViewport] = useState<{ height: number; offsetTop: number } | null>(null);
   const [memberColumnCount, setMemberColumnCount] = useState(1);
   const memberListRef = useRef<HTMLDivElement>(null);
@@ -190,6 +193,32 @@ export default function CreateSpaceDialog({
     });
   };
 
+  const generateInstructions = async (replace = false) => {
+    if (!name.trim() || generatingInstructions) return;
+    if (instructions.trim() && !replace) {
+      setReplaceInstructions(true);
+      return;
+    }
+    setGeneratingInstructions(true);
+    setInstructionsError('');
+    setReplaceInstructions(false);
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch('/api/spaces/generate-instructions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ name, description }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || '生成空间规则失败');
+      setInstructions(result.instructions || '');
+    } catch (error: any) {
+      setInstructionsError(error.message || '生成空间规则失败');
+    } finally {
+      setGeneratingInstructions(false);
+    }
+  };
+
   if (typeof document === 'undefined') return null;
 
   return createPortal(
@@ -313,7 +342,16 @@ export default function CreateSpaceDialog({
                   <ChevronRight className="text-slate-300 transition-transform group-open:rotate-90" size={16} />
                 </summary>
                 <label className="block pb-4">
-                  <span className="mb-2 block text-xs font-black text-slate-500">空间规则</span>
+                  <div className="mb-2 flex items-center justify-between gap-3">
+                    <span className="text-xs font-black text-slate-500">空间规则</span>
+                    <div className="flex items-center gap-2">
+                      {replaceInstructions && <>
+                        <button type="button" onClick={() => setReplaceInstructions(false)} className="text-[11px] font-black text-slate-400">取消</button>
+                        <button type="button" onClick={() => generateInstructions(true)} disabled={generatingInstructions} className="text-[11px] font-black text-slate-700">替换现有规则</button>
+                      </>}
+                      {!replaceInstructions && <button type="button" onClick={() => generateInstructions()} disabled={generatingInstructions || !name.trim()} className="inline-flex items-center gap-1 text-[11px] font-black text-slate-600 hover:text-slate-950 disabled:text-slate-300"><Sparkles size={13} />{generatingInstructions ? '生成中…' : instructions.trim() ? '重新生成' : 'AI 生成规则'}</button>}
+                    </div>
+                  </div>
                   <textarea
                     value={instructions}
                     onChange={(event) => setInstructions(event.target.value)}
@@ -322,6 +360,7 @@ export default function CreateSpaceDialog({
                     placeholder="例如：所有结论标注依据；输出使用中文。"
                     className="w-full resize-y rounded-lg border border-black/[0.08] bg-[#fbfaf7] px-3 py-3 text-sm font-medium leading-6 text-slate-800 outline-none focus:border-slate-300"
                   />
+                  {instructionsError && <div className="mt-2 text-xs font-semibold text-rose-600">{instructionsError}</div>}
                 </label>
               </details>
             </div>

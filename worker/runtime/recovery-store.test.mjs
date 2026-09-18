@@ -72,11 +72,14 @@ test('recovery requeues interrupted relays and finalizes cancellation requests',
       VALUES ('relay-1', 'RUNNING', NULL, 'now');
     INSERT INTO "SpaceRelay" ("id", "status", "pendingAction", "updatedAt")
       VALUES ('relay-2', 'CANCEL_REQUESTED', '{"row":8}', 'now');
+    INSERT INTO "SpaceRelay" ("id", "status", "pendingAction", "updatedAt")
+      VALUES ('relay-3', 'PAUSE_REQUESTED', NULL, 'now');
   `);
-  assert.deepEqual(recoverInterruptedRelays(db, '2026-09-07'), { queued: 1, cancelled: 1 });
+  assert.deepEqual(recoverInterruptedRelays(db, '2026-09-07'), { queued: 1, cancelled: 1, paused: 1 });
   assert.equal(db.prepare(`SELECT "status" FROM "SpaceRelay" WHERE "id" = 'relay-1'`).get().status, 'QUEUED');
   const cancelled = db.prepare(`SELECT "status", "pendingAction" FROM "SpaceRelay" WHERE "id" = 'relay-2'`).get();
   assert.equal(cancelled.status, 'CANCELLED');
   assert.equal(cancelled.pendingAction, null);
+  assert.equal(db.prepare(`SELECT "status" FROM "SpaceRelay" WHERE "id" = 'relay-3'`).get().status, 'PAUSED');
   db.close();
 });

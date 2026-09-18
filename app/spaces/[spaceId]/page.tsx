@@ -648,7 +648,7 @@ export default function SpaceDetailPage() {
     ? latestDiscussion
     : null;
   const latestRelay = relays[0] || null;
-  const activeRelay = relays.find((relay) => ['QUEUED', 'RUNNING', 'WAITING_APPROVAL', 'CANCEL_REQUESTED'].includes(relay.status)) || null;
+  const activeRelay = relays.find((relay) => ['QUEUED', 'RUNNING', 'PAUSE_REQUESTED', 'WAITING_APPROVAL', 'PAUSED', 'CANCEL_REQUESTED'].includes(relay.status)) || null;
   const activeRelayState = activeRelay?.state && typeof activeRelay.state === 'object'
     ? activeRelay.state as Record<string, unknown>
     : null;
@@ -1660,7 +1660,7 @@ export default function SpaceDetailPage() {
     sendMessage(prompt);
   };
 
-  const updateRelay = async (relay: SpaceRelay, action: 'cancel' | 'approve' | 'reject') => {
+  const updateRelay = async (relay: SpaceRelay, action: 'cancel' | 'pause' | 'resume' | 'approve' | 'reject' | 'continue' | 'stop') => {
     if (relayBusy) return;
     setRelayBusy(true);
     setError('');

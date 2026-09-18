@@ -32,7 +32,37 @@ export default function AppShell({
   const [isLoggedIn, setIsLoggedIn] = useState(false);
 
   useEffect(() => {
-    setIsLoggedIn(!!localStorage.getItem('token'));
+    let cancelled = false;
+    const syncAuth = async () => {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        setIsLoggedIn(false);
+        return;
+      }
+      try {
+        const response = await fetch('/api/auth/me', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (cancelled) return;
+        if (response.status === 401) {
+          localStorage.removeItem('token');
+          setIsLoggedIn(false);
+          return;
+        }
+        setIsLoggedIn(response.ok);
+      } catch {
+        // Keep the local login indicator during temporary network failures.
+      }
+    };
+    const handleAuthChange = () => { void syncAuth(); };
+    window.addEventListener('storage', handleAuthChange);
+    window.addEventListener('almaren-auth-change', handleAuthChange);
+    void syncAuth();
+    return () => {
+      cancelled = true;
+      window.removeEventListener('storage', handleAuthChange);
+      window.removeEventListener('almaren-auth-change', handleAuthChange);
+    };
   }, []);
 
   const isActive = (href: string) => {

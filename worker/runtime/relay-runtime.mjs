@@ -8,6 +8,7 @@ import {
   gomokuStateText,
   validateGomokuAction,
 } from '../../lib/relay/gomoku.mjs';
+import { relayStageDecision } from '../../lib/relay/stage-policy.mjs';
 
 const RELAY_ACTION_TOOL = {
   type: 'function',
@@ -142,7 +143,7 @@ export function createRelayRuntime({
         `UPDATE "SpaceRelay" SET "status" = 'COMPLETED', "state" = ?, "transcript" = ?,
          "pendingAction" = NULL, "turnCount" = "turnCount" + ?,
          "result" = ?, "completedAt" = ?, "updatedAt" = ?
-         WHERE "id" = ? AND "status" = 'RUNNING'`
+         WHERE "id" = ? AND "status" IN ('RUNNING', 'PAUSE_REQUESTED')`
       ).run(JSON.stringify(state), JSON.stringify(transcript), incrementTurn ? 1 : 0, result, timestamp, timestamp, relay.id);
       if (changed.changes !== 1) return;
       db.prepare(
@@ -311,7 +312,7 @@ export function createRelayRuntime({
           lastContent: actionRecord.action.content,
           coordinatorInstruction: null,
         };
-    if (relay.kind === 'gomoku') await writeStateFiles(relay, nextState, relay.turnCount === 0);
+    if (relay.kind === 'gomoku') await writeStateFiles(relay, nextState, true);
     const transcript = [
       ...parseJson(relay.transcript, []),
       {
@@ -333,10 +334,10 @@ export function createRelayRuntime({
       const timestamp = now();
       db.transaction(() => {
         const changed = db.prepare(
-          `UPDATE "SpaceRelay" SET "status" = 'QUEUED', "state" = ?, "transcript" = ?,
+          `UPDATE "SpaceRelay" SET "status" = CASE WHEN "status" = 'PAUSE_REQUESTED' THEN 'PAUSED' ELSE 'QUEUED' END, "state" = ?, "transcript" = ?,
            "pendingAction" = NULL, "turnCount" = "turnCount" + 1,
            "currentIndex" = ?, "error" = NULL, "updatedAt" = ?
-           WHERE "id" = ? AND "status" = 'RUNNING'`
+           WHERE "id" = ? AND "status" IN ('RUNNING', 'PAUSE_REQUESTED')`
         ).run(
           JSON.stringify(persistedState), JSON.stringify(transcript),
           terminal ? relay.currentIndex : (relay.currentIndex + 1) % participants.length,
@@ -354,19 +355,32 @@ export function createRelayRuntime({
       })();
       return;
     }
-    const terminalResult = relay.kind === 'gomoku'
-      ? gomokuResult(nextState) || (relay.turnCount + 1 >= relay.maxTurns ? `已达到 ${relay.maxTurns} 轮上限，接力自动停止。` : '')
-      : '';
+    const terminalResult = relay.kind === 'gomoku' ? gomokuResult(nextState) : '';
     if (terminalResult) {
       completeRelay(relay, nextState, transcript, terminalResult);
       return;
     }
     const timestamp = now();
+    const nextTurnCount = relay.turnCount + 1;
+    const stageDecision = nextTurnCount >= relay.maxTurns
+      ? relayStageDecision(relay.kind, nextTurnCount) : null;
+    if (stageDecision) {
+      db.prepare(
+        `UPDATE "SpaceRelay" SET "status" = CASE WHEN "status" = 'PAUSE_REQUESTED' THEN 'PAUSED' ELSE 'WAITING_APPROVAL' END, "state" = ?, "transcript" = ?,
+         "pendingAction" = ?, "turnCount" = ?, "currentIndex" = ("currentIndex" + 1) % ?,
+         "error" = NULL, "updatedAt" = ? WHERE "id" = ? AND "status" IN ('RUNNING', 'PAUSE_REQUESTED')`
+      ).run(
+        JSON.stringify(nextState), JSON.stringify(transcript),
+        JSON.stringify(stageDecision),
+        nextTurnCount, participants.length, timestamp, relay.id
+      );
+      return;
+    }
     db.prepare(
-      `UPDATE "SpaceRelay" SET "status" = 'QUEUED', "state" = ?, "transcript" = ?,
+      `UPDATE "SpaceRelay" SET "status" = CASE WHEN "status" = 'PAUSE_REQUESTED' THEN 'PAUSED' ELSE 'QUEUED' END, "state" = ?, "transcript" = ?,
        "pendingAction" = NULL, "turnCount" = "turnCount" + 1,
        "currentIndex" = ("currentIndex" + 1) % ?, "error" = NULL, "updatedAt" = ?
-       WHERE "id" = ? AND "status" = 'RUNNING'`
+       WHERE "id" = ? AND "status" IN ('RUNNING', 'PAUSE_REQUESTED')`
     ).run(JSON.stringify(nextState), JSON.stringify(transcript), participants.length, timestamp, relay.id);
   }
 
@@ -375,6 +389,7 @@ export function createRelayRuntime({
     let currentAgent = null;
     try {
       if (!['collaboration', 'gomoku'].includes(relay.kind)) throw new Error(`不支持的接力适配器：${relay.kind}`);
+      if (relay.status === 'PAUSED') return;
       const context = loadRunContext(relay);
       const participants = parseJson(relay.participantIds, []);
       const agentById = new Map(context.agents.map((agent) => [agent.id, agent]));
@@ -509,8 +524,8 @@ export function createRelayRuntime({
       if (!submittedAction) throw new Error('成员没有提交有效接力动作');
       if (relay.approvalMode === 'EACH_TURN') {
         db.prepare(
-          `UPDATE "SpaceRelay" SET "status" = 'WAITING_APPROVAL', "pendingAction" = ?,
-           "error" = NULL, "updatedAt" = ? WHERE "id" = ? AND "status" = 'RUNNING'`
+          `UPDATE "SpaceRelay" SET "status" = CASE WHEN "status" = 'PAUSE_REQUESTED' THEN 'PAUSED' ELSE 'WAITING_APPROVAL' END, "pendingAction" = ?,
+           "error" = NULL, "updatedAt" = ? WHERE "id" = ? AND "status" IN ('RUNNING', 'PAUSE_REQUESTED')`
         ).run(JSON.stringify(submittedAction), now(), relay.id);
         return;
       }

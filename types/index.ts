@@ -688,7 +688,8 @@ export interface SpaceRelayTranscriptEntry {
 }
 
 export interface SpaceRelayPendingAction {
-  type?: 'coordinator_continue';
+  type?: 'coordinator_continue' | 'stage_limit';
+  increment?: number;
   agentId?: string;
   agentName?: string;
   expectedVersion?: number;
@@ -708,7 +709,7 @@ export interface SpaceRelay {
   goal: string;
   participantIds: string[];
   approvalMode: 'AUTO' | 'EACH_TURN';
-  status: 'QUEUED' | 'RUNNING' | 'WAITING_APPROVAL' | 'CANCEL_REQUESTED' | 'CANCELLED' | 'COMPLETED' | 'FAILED';
+  status: 'QUEUED' | 'RUNNING' | 'PAUSE_REQUESTED' | 'WAITING_APPROVAL' | 'PAUSED' | 'CANCEL_REQUESTED' | 'CANCELLED' | 'COMPLETED' | 'FAILED';
   currentIndex: number;
   turnCount: number;
   maxTurns: number;

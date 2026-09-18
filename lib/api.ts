@@ -482,7 +482,7 @@ export const spaces = {
     method: 'POST',
     body: JSON.stringify(data),
   }),
-  updateRelay: (spaceId: string, relayId: string, action: 'cancel' | 'approve' | 'reject') =>
+  updateRelay: (spaceId: string, relayId: string, action: 'cancel' | 'pause' | 'resume' | 'approve' | 'reject' | 'continue' | 'stop') =>
     request<{ relay: SpaceRelay }>(`/spaces/${spaceId}/relays/${relayId}`, {
       method: 'PATCH',
       body: JSON.stringify({ action }),

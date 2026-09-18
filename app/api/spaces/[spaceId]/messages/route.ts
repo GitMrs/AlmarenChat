@@ -31,13 +31,14 @@ import { runPiSpaceTurn } from '@/lib/pi-runtime/space-session.mjs';
 import { selectRelevantProjectMemory } from '@/lib/pi-runtime/working-memory.mjs';
 import { createCollaborationState } from '@/lib/relay/collaboration.mjs';
 import { createGomokuState } from '@/lib/relay/gomoku.mjs';
+import { relayStagePolicy } from '@/lib/relay/stage-policy.mjs';
 import { loadAgentMemoryContext } from '@/lib/agent-memory';
 import { createRuntimePermissionBroker } from '@/lib/runtime-permission-broker.mjs';
 
 const MESSAGE_PAGE_SIZE = 40;
 const READ_ONLY_WORKSPACE_TOOLS = new Set(['list_files', 'read_file', 'check_files']);
 const ACTIVE_DISCUSSION_STATUSES = ['QUEUED', 'RUNNING', 'WAITING_RESEARCH', 'CANCEL_REQUESTED'];
-const ACTIVE_RELAY_STATUSES = ['QUEUED', 'RUNNING', 'WAITING_APPROVAL', 'CANCEL_REQUESTED'];
+const ACTIVE_RELAY_STATUSES = ['QUEUED', 'RUNNING', 'PAUSE_REQUESTED', 'WAITING_APPROVAL', 'PAUSED', 'CANCEL_REQUESTED'];
 const PI_COORDINATION_MODES = new Set(['broadcast', 'review', 'decision', 'relay']);
 
 type PiCoordinationScope = {
@@ -126,7 +127,7 @@ function relayStartTool(memberAgents: Array<{ id: string; name: string }>) {
       parameters: {
         type: 'object',
         additionalProperties: false,
-        required: ['kind', 'title', 'goal', 'participantIds', 'completionCriteria', 'maxTurns', 'approvalMode'],
+        required: ['kind', 'title', 'goal', 'participantIds', 'completionCriteria', 'approvalMode'],
         properties: {
           kind: { type: 'string', enum: ['collaboration', 'gomoku'], description: '只有明确要求下五子棋时使用 gomoku，其他协作都使用 collaboration' },
           title: { type: 'string', maxLength: 80, description: '向用户展示的简短接力标题' },
@@ -137,7 +138,7 @@ function relayStartTool(memberAgents: Array<{ id: string; name: string }>) {
             description: `按行动顺序填写成员 ID：${memberAgents.map((agent) => `${agent.name}=${agent.id}`).join('；')}`,
           },
           completionCriteria: { type: 'array', minItems: 1, maxItems: 5, items: { type: 'string' }, description: '协调者最终验收时使用的完成条件' },
-          maxTurns: { type: 'integer', minimum: 2, description: '普通协作至少等于参与人数，可按目标增加轮次；五子棋按对局长度设置' },
+          maxTurns: { type: 'integer', minimum: 2, default: 40, description: '可选。普通协作至少等于参与人数；五子棋默认 40 手，只有用户明确指定其他手数时才修改，不要自行填写 60 等数值' },
           approvalMode: { type: 'string', enum: ['AUTO', 'EACH_TURN'], description: '用户明确要求每轮确认时使用 EACH_TURN，否则使用 AUTO' },
         },
       },
@@ -913,7 +914,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
                   ? args.completionCriteria.map(String).map((item) => item.trim()).filter(Boolean).slice(0, 5)
                   : [];
                 if (!title || !goal || completionCriteria.length === 0) return { ok: false, error: '接力安排缺少目标或完成条件' };
-                const requestedTurns = Math.trunc(Number(args.maxTurns) || participantIds.length);
+                const requestedTurns = Math.trunc(Number(args.maxTurns) || relayStagePolicy(kind)?.size || participantIds.length);
                 const maxTurns = kind === 'gomoku'
                   ? Math.min(225, Math.max(2, requestedTurns))
                   : Math.max(participantIds.length, requestedTurns);

@@ -31,6 +31,7 @@ export default function LoginScreen({ onLogin }: LoginScreenProps) {
         result = await auth.login({ email, password });
       }
       localStorage.setItem('token', result.token);
+      window.dispatchEvent(new Event('almaren-auth-change'));
       onLogin(result.token, result.user);
     } catch (err: any) {
       setError(err.message || '操作失败');

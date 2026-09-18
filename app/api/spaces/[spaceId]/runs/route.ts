@@ -10,7 +10,7 @@ import { taskProposalWithServerCapabilities } from '@/lib/task-proposal-policy.m
 import { getSpaceSkill, listSpaceSkills } from '@/lib/space-skills.mjs';
 import { runningWorkStage } from '@/lib/space-templates.mjs';
 
-const ACTIVE_RELAY_STATUSES = ['QUEUED', 'RUNNING', 'WAITING_APPROVAL', 'CANCEL_REQUESTED'];
+const ACTIVE_RELAY_STATUSES = ['QUEUED', 'RUNNING', 'PAUSE_REQUESTED', 'WAITING_APPROVAL', 'PAUSED', 'CANCEL_REQUESTED'];
 
 type TaskProposalAttachment = {
   type: 'task_proposal';
