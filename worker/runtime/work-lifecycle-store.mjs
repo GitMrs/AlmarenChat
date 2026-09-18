@@ -62,6 +62,7 @@ export function requestAutomatedWorkFinalization(db, { executionId, runId, times
     throw error;
   }
   if (!context?.spaceId || !context?.workId) return null;
+  if (context.completionAction === 'WEBHOOK_NOTIFY') return null;
   let snapshot = null;
   try {
     snapshot = typeof context.templateSnapshot === 'string' ? JSON.parse(context.templateSnapshot) : context.templateSnapshot;
@@ -82,8 +83,8 @@ export function requestAutomatedWorkFinalization(db, { executionId, runId, times
     workTitle: context.workTitle || '自动化成果',
     defaultArtifacts: Array.isArray(snapshot?.defaultArtifacts) ? snapshot.defaultArtifacts : [],
     completionCriteria: Array.isArray(snapshot?.completionCriteria) ? snapshot.completionCriteria : [],
-    completionAction: context.completionAction === 'WECHAT_CREATE_DRAFT' ? 'WECHAT_CREATE_DRAFT' : 'NONE',
-    completionConfig: context.completionAction === 'WECHAT_CREATE_DRAFT' ? completionConfig : null,
+    completionAction: ['WECHAT_CREATE_DRAFT', 'WEBHOOK_NOTIFY'].includes(context.completionAction) ? context.completionAction : 'NONE',
+    completionConfig: ['WECHAT_CREATE_DRAFT', 'WEBHOOK_NOTIFY'].includes(context.completionAction) ? completionConfig : null,
   });
   const inserted = db.prepare(
     `INSERT OR IGNORE INTO "SpaceActionRequest"

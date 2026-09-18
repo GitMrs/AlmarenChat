@@ -45,7 +45,12 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ sp
       data.networkPolicy = body.networkPolicy;
     }
     if (body?.completionAction !== undefined || body?.completionConfig !== undefined) {
-      Object.assign(data, normalizeAutomationCompletion(body, automation.space.templateId, automation));
+      const completion = normalizeAutomationCompletion(body, automation.space.templateId, automation);
+      if (completion.completionAction === 'WEBHOOK_NOTIFY' && completion.completionConfig?.target === 'CUSTOM_WEBHOOK') {
+        const webhook = await prisma.spaceWebhook.findFirst({ where: { id: completion.completionConfig.webhookId, spaceId, enabled: true }, select: { id: true } });
+        if (!webhook) return NextResponse.json({ error: '请选择当前空间中已启用的通知 Webhook' }, { status: 400 });
+      }
+      Object.assign(data, completion);
     }
     if (body?.enabled !== undefined) data.enabled = body.enabled === true;
     if (body?.nextRunAt !== undefined) {

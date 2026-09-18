@@ -171,6 +171,9 @@ export interface AssistantQQBinding {
   connectedAt?: string | null;
   lastInboundAt?: string | null;
   conversationId: string;
+  webhookConfigured?: boolean;
+  webhookCreatedAt?: string | null;
+  webhookLastUsedAt?: string | null;
 }
 
 export interface AssistantConversationSummary {
@@ -264,6 +267,19 @@ export interface SpaceMcpServer {
   updatedAt: string;
 }
 
+export interface SpaceWebhook {
+  id: string;
+  spaceId: string;
+  name: string;
+  url: string;
+  bodyTemplate: Record<string, unknown> | unknown[];
+  enabled: boolean;
+  lastError?: string | null;
+  lastUsedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface SpaceConnectorExecution {
   id: string;
   connectorId: string;
@@ -341,8 +357,8 @@ export interface SpaceAutomation {
   weekdays?: number[] | null;
   workStrategy: 'NEW_WORK' | 'ACTIVE_WORK';
   networkPolicy: 'forbidden' | 'allowed' | 'required';
-  completionAction: 'NONE' | 'WECHAT_CREATE_DRAFT';
-  completionConfig?: { themeId?: string } | null;
+  completionAction: 'NONE' | 'WECHAT_CREATE_DRAFT' | 'WEBHOOK_NOTIFY';
+  completionConfig?: { themeId?: string; target?: 'PERSONAL_QQ' | 'CUSTOM_WEBHOOK'; webhookId?: string } | null;
   enabled: boolean;
   nextRunAt: string;
   lastRunAt?: string | null;

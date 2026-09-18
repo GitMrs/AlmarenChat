@@ -34,7 +34,7 @@ import {
 import { isEditableSpaceFile, isPreviewableSpaceImage } from '@/lib/space-files';
 import { spaceAssetRoleLabel } from '@/lib/space-asset-policy.mjs';
 import { createClientId } from '@/lib/client-id';
-import type { Agent, AgentRun, AgentRunEvent, AgentTask, SpaceActionRequest, SpaceAutomation, SpaceConnector, SpaceDiscussion, SpaceFile, SpaceLearning, SpaceLearningItem, SpaceMessage, SpaceMcpServer, SpaceOperationOutcome, SpaceOperationsSummary, SpacePiCoordinationRequest, SpacePiExecutionActivity, SpacePiExecutionNote, SpacePiSkillApproval, SpaceRelay, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal, SpaceWork, SpaceWorkVersion } from '@/types';
+import type { Agent, AgentRun, AgentRunEvent, AgentTask, SpaceActionRequest, SpaceAutomation, SpaceConnector, SpaceDiscussion, SpaceFile, SpaceLearning, SpaceLearningItem, SpaceMessage, SpaceMcpServer, SpaceOperationOutcome, SpaceOperationsSummary, SpacePiCoordinationRequest, SpacePiExecutionActivity, SpacePiExecutionNote, SpacePiSkillApproval, SpaceRelay, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal, SpaceWebhook, SpaceWork, SpaceWorkVersion } from '@/types';
 
 const FALLBACK_COLOR = '#4f46e5';
 const SPACE_COORDINATOR_ID = 'space-coordinator';
@@ -478,6 +478,12 @@ export default function SpaceDetailPage() {
   const [operationsLoading, setOperationsLoading] = useState(false);
   const [connectors, setConnectors] = useState<SpaceConnector[]>([]);
   const [mcpServers, setMcpServers] = useState<SpaceMcpServer[]>([]);
+  const [webhooks, setWebhooks] = useState<SpaceWebhook[]>([]);
+  const [webhookName, setWebhookName] = useState('');
+  const [webhookUrl, setWebhookUrl] = useState('');
+  const [webhookTemplate, setWebhookTemplate] = useState('');
+  const [editingWebhookId, setEditingWebhookId] = useState('');
+  const [webhookBusy, setWebhookBusy] = useState(false);
   const [mcpName, setMcpName] = useState('');
   const [mcpUrl, setMcpUrl] = useState('');
   const [mcpHeaders, setMcpHeaders] = useState('');
@@ -500,7 +506,9 @@ export default function SpaceDetailPage() {
   const [automationWeekdays, setAutomationWeekdays] = useState<number[]>([1, 2, 3, 4, 5]);
   const [automationWorkStrategy, setAutomationWorkStrategy] = useState<'NEW_WORK' | 'ACTIVE_WORK'>('NEW_WORK');
   const [automationNetworkPolicy, setAutomationNetworkPolicy] = useState<'forbidden' | 'allowed' | 'required'>('forbidden');
-  const [automationCompletionAction, setAutomationCompletionAction] = useState<'NONE' | 'WECHAT_CREATE_DRAFT'>('NONE');
+  const [automationCompletionAction, setAutomationCompletionAction] = useState<'NONE' | 'WECHAT_CREATE_DRAFT' | 'WEBHOOK_NOTIFY'>('NONE');
+  const [automationWebhookTarget, setAutomationWebhookTarget] = useState<'PERSONAL_QQ' | 'CUSTOM_WEBHOOK'>('PERSONAL_QQ');
+  const [automationWebhookId, setAutomationWebhookId] = useState('');
   const [automationWechatTheme, setAutomationWechatTheme] = useState('fresh-green');
   const [automationEnableOnCreate, setAutomationEnableOnCreate] = useState(false);
   const [automationBusyId, setAutomationBusyId] = useState('');
@@ -514,7 +522,7 @@ export default function SpaceDetailPage() {
   const [mode, setMode] = useState<'chat' | 'task'>('chat');
   const [workspaceView, setWorkspaceView] = useState<'chat' | 'files' | 'operations'>('chat');
   const [operationsTab, setOperationsTab] = useState<SpaceOperationsTab>('overview');
-  const [sidePanel, setSidePanel] = useState<'members' | 'files' | 'skills' | 'runs' | 'operations' | 'publications' | 'settings' | 'automation' | 'connector' | null>(null);
+  const [sidePanel, setSidePanel] = useState<'members' | 'files' | 'skills' | 'runs' | 'operations' | 'publications' | 'settings' | 'automation' | 'notifications' | 'connector' | null>(null);
   const [loading, setLoading] = useState(true);
   const [needsLogin, setNeedsLogin] = useState(false);
   const [error, setError] = useState('');
@@ -596,6 +604,7 @@ export default function SpaceDetailPage() {
   const [dismissedRelayIds, setDismissedRelayIds] = useState<string[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const forceScrollToBottomRef = useRef(true);
+  const followMessagesRef = useRef(true);
   const abortRef = useRef<AbortController | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const skillZipInputRef = useRef<HTMLInputElement>(null);
@@ -1020,7 +1029,7 @@ export default function SpaceDetailPage() {
     setLoading(true);
     setError('');
     try {
-      const [spaceResult, messageResult, fileResult, runResult, workResult, automationResult, actionResult, connectorResult, mcpResult, discussionResult, relayResult, skillResult, learningResult, builtIn, customResult] = await Promise.all([
+      const [spaceResult, messageResult, fileResult, runResult, workResult, automationResult, actionResult, connectorResult, mcpResult, webhookResult, discussionResult, relayResult, skillResult, learningResult, builtIn, customResult] = await Promise.all([
         spacesApi.get(spaceId),
         spacesApi.messages(spaceId, { limit: 60 }),
         spacesApi.files(spaceId),
@@ -1030,6 +1039,7 @@ export default function SpaceDetailPage() {
         spacesApi.actions(spaceId),
         spacesApi.connectors(spaceId),
         spacesApi.mcpServers(spaceId),
+        spacesApi.webhooks(spaceId).catch(() => ({ webhooks: [] })),
         spacesApi.discussions(spaceId),
         spacesApi.relays(spaceId),
         spacesApi.skills(spaceId),
@@ -1066,6 +1076,7 @@ export default function SpaceDetailPage() {
       setActionRequests(actionResult.actions);
       setConnectors(connectorResult.connectors);
       setMcpServers(mcpResult.servers);
+      setWebhooks(webhookResult.webhooks);
       setWechatAppId(connectorResult.connectors.find((connector) => connector.provider === 'WECHAT_OFFICIAL_ACCOUNT')?.publicConfig.appId || '');
       setDiscussions(discussionResult.discussions);
       setRelays(relayResult.relays);
@@ -1106,12 +1117,19 @@ export default function SpaceDetailPage() {
     const container = scrollRef.current;
     if (!container) return;
     const shouldJump = forceScrollToBottomRef.current;
+    if (!shouldJump && !followMessagesRef.current) return;
     container.scrollTo({
       top: container.scrollHeight,
       behavior: shouldJump || isStreaming ? 'auto' : 'smooth',
     });
     forceScrollToBottomRef.current = false;
   }, [messages, streamingContent, isStreaming]);
+
+  const handleMessagesScroll = () => {
+    const container = scrollRef.current;
+    if (!container) return;
+    followMessagesRef.current = container.scrollHeight - container.scrollTop - container.clientHeight <= 80;
+  };
 
   const openTaskRun = (runId: string, followRetries = false) => {
     const target = followRetries ? latestRunInRetryChain(runs, runId) : null;
@@ -1726,15 +1744,20 @@ export default function SpaceDetailPage() {
         weekdays: automationScheduleType === 'WEEKLY' ? automationWeekdays : undefined,
         workStrategy: automationWorkStrategy,
         networkPolicy: automationNetworkPolicy,
-        completionAction: space?.templateId === 'wechat-article' ? automationCompletionAction : 'NONE',
-        completionConfig: space?.templateId === 'wechat-article' && automationCompletionAction === 'WECHAT_CREATE_DRAFT'
-          ? { themeId: automationWechatTheme }
-          : null,
+        completionAction: automationCompletionAction,
+        completionConfig: automationCompletionAction === 'WEBHOOK_NOTIFY'
+          ? { target: automationWebhookTarget, ...(automationWebhookTarget === 'CUSTOM_WEBHOOK' ? { webhookId: automationWebhookId } : {}) }
+          : space?.templateId === 'wechat-article' && automationCompletionAction === 'WECHAT_CREATE_DRAFT'
+            ? { themeId: automationWechatTheme }
+            : null,
         enabled: automationEnableOnCreate,
       });
       setAutomations((items) => [result.automation, ...items]);
       setAutomationName('');
       setAutomationPrompt('');
+      setAutomationCompletionAction('NONE');
+      setAutomationWebhookTarget('PERSONAL_QQ');
+      setAutomationWebhookId('');
       setAutomationEnableOnCreate(false);
     } catch (err: any) {
       setError(err.message || '创建自动化失败');
@@ -1982,6 +2005,70 @@ export default function SpaceDetailPage() {
       setError(error.message || '删除 MCP 服务失败');
     } finally {
       setMcpBusy(false);
+    }
+  };
+
+  const saveWebhook = async () => {
+    if (!webhookName.trim() || !webhookUrl.trim() || !webhookTemplate.trim() || webhookBusy) return;
+    setWebhookBusy(true);
+    setError('');
+    try {
+      const result = editingWebhookId
+        ? await spacesApi.updateWebhook(spaceId, editingWebhookId, { name: webhookName.trim(), url: webhookUrl.trim(), bodyTemplate: webhookTemplate })
+        : await spacesApi.createWebhook(spaceId, { name: webhookName.trim(), url: webhookUrl.trim(), bodyTemplate: webhookTemplate });
+      setWebhooks((items) => editingWebhookId
+        ? items.map((item) => item.id === editingWebhookId ? result.webhook : item)
+        : [...items, result.webhook]);
+      setWebhookName('');
+      setWebhookUrl('');
+      setWebhookTemplate('');
+      setEditingWebhookId('');
+    } catch (error: any) {
+      setError(error.message || '保存通知 Webhook 失败');
+    } finally {
+      setWebhookBusy(false);
+    }
+  };
+
+  const editWebhook = (webhook: SpaceWebhook) => {
+    setEditingWebhookId(webhook.id);
+    setWebhookName(webhook.name);
+    setWebhookUrl(webhook.url);
+    setWebhookTemplate(JSON.stringify(webhook.bodyTemplate, null, 2));
+  };
+
+  const toggleWebhook = async (webhook: SpaceWebhook) => {
+    if (webhookBusy) return;
+    setWebhookBusy(true);
+    setError('');
+    try {
+      const result = await spacesApi.updateWebhook(spaceId, webhook.id, { enabled: !webhook.enabled });
+      setWebhooks((items) => items.map((item) => item.id === webhook.id ? result.webhook : item));
+    } catch (error: any) {
+      setError(error.message || '更新通知 Webhook 状态失败');
+    } finally {
+      setWebhookBusy(false);
+    }
+  };
+
+  const removeWebhook = async (webhook: SpaceWebhook) => {
+    if (webhookBusy || !window.confirm(`确定删除通知 Webhook“${webhook.name}”吗？`)) return;
+    setWebhookBusy(true);
+    setError('');
+    try {
+      await spacesApi.deleteWebhook(spaceId, webhook.id);
+      setWebhooks((items) => items.filter((item) => item.id !== webhook.id));
+      if (automationWebhookId === webhook.id) setAutomationWebhookId('');
+      if (editingWebhookId === webhook.id) {
+        setEditingWebhookId('');
+        setWebhookName('');
+        setWebhookUrl('');
+        setWebhookTemplate('');
+      }
+    } catch (error: any) {
+      setError(error.message || '删除通知 Webhook 失败');
+    } finally {
+      setWebhookBusy(false);
     }
   };
 
@@ -2641,6 +2728,22 @@ export default function SpaceDetailPage() {
                 </section>
               )}
 
+              {!isPiSpace && (
+                <section className="border-b border-black/[0.06] px-6 py-5">
+                  <div className="mb-3 flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-xs font-black text-slate-500">
+                      <Globe2 size={15} />
+                      通知 Webhook
+                      <span className="text-slate-300">{webhooks.length}</span>
+                    </div>
+                    <button type="button" onClick={() => setSidePanel('notifications')} className="text-xs font-black text-slate-400 transition hover:text-slate-950">管理</button>
+                  </div>
+                  <p className="text-xs font-semibold leading-5 text-slate-400">
+                    {webhooks.length > 0 ? `${webhooks.filter((webhook) => webhook.enabled).length} 个已启用，可供自动化任务复用。` : '配置后可供多个自动化任务复用。'}
+                  </p>
+                </section>
+              )}
+
               <section className="px-6 py-5">
                 <div className="mb-3 flex items-center justify-between">
                   <div className="flex items-center gap-2 text-xs font-black text-slate-500">
@@ -2727,6 +2830,16 @@ export default function SpaceDetailPage() {
                 className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-950"
               >
                 <History size={17} />
+              </button>}
+              {!isPiSpace && <button
+                type="button"
+                onClick={() => setSidePanel('notifications')}
+                aria-expanded={sidePanel === 'notifications'}
+                aria-label="通知 Webhook"
+                title="通知 Webhook"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-950"
+              >
+                <Globe2 size={17} />
               </button>}
               <button
                 type="button"
@@ -2912,7 +3025,7 @@ export default function SpaceDetailPage() {
               />
             ) : (
               <>
-            <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-[#fbfaf7] px-4 py-5 sm:px-6 lg:px-10 lg:py-6">
+            <div ref={scrollRef} onScroll={handleMessagesScroll} className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-[#fbfaf7] px-4 py-5 sm:px-6 lg:px-10 lg:py-6">
               <div className="mx-auto max-w-4xl space-y-5">
                 {error && <div className="rounded-2xl bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-600">{error}</div>}
                 {!isPiSpace && mode === 'task' && (
@@ -3860,8 +3973,8 @@ export default function SpaceDetailPage() {
               <aside className="absolute inset-y-0 right-0 z-20 flex w-full flex-col border-l border-black/[0.06] bg-white shadow-[-16px_0_40px_-24px_rgba(15,23,42,0.35)] sm:w-[360px]">
                 <div className="flex h-[65px] shrink-0 items-center justify-between border-b border-black/[0.06] px-5">
                   <div className="flex items-center gap-2 text-sm font-black text-slate-800">
-                    {sidePanel === 'members' ? <UsersRound size={17} /> : sidePanel === 'skills' ? <BookOpen size={17} /> : sidePanel === 'runs' ? <History size={17} /> : sidePanel === 'automation' ? <CalendarClock size={17} /> : sidePanel === 'connector' ? <Globe2 size={17} /> : <Settings2 size={17} />}
-                    {sidePanel === 'members' ? '空间成员' : sidePanel === 'skills' ? 'Space Skills' : sidePanel === 'runs' ? '历史任务' : sidePanel === 'automation' ? '新建自动化' : sidePanel === 'connector' ? '微信连接设置' : '空间设置'}
+                    {sidePanel === 'members' ? <UsersRound size={17} /> : sidePanel === 'skills' ? <BookOpen size={17} /> : sidePanel === 'runs' ? <History size={17} /> : sidePanel === 'automation' ? <CalendarClock size={17} /> : sidePanel === 'notifications' ? <Globe2 size={17} /> : sidePanel === 'connector' ? <Globe2 size={17} /> : <Settings2 size={17} />}
+                    {sidePanel === 'members' ? '空间成员' : sidePanel === 'skills' ? 'Space Skills' : sidePanel === 'runs' ? '历史任务' : sidePanel === 'automation' ? '新建自动化' : sidePanel === 'notifications' ? '通知 Webhook' : sidePanel === 'connector' ? '微信连接设置' : '空间设置'}
                   </div>
                   <button
                     type="button"
@@ -4552,6 +4665,44 @@ export default function SpaceDetailPage() {
                           草稿创建与正式发布将在独立高风险审批后执行，自动执行模式不能跳过该确认。
                         </p>
                       </section>}
+                      {sidePanel === 'notifications' && !isPiSpace && <section>
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="flex items-center gap-2 text-sm font-black text-slate-700"><Globe2 size={16} />通知 Webhook</div>
+                            <p className="mt-1 text-xs font-semibold leading-5 text-slate-400">自定义通知目标只允许公开 HTTPS 地址，JSON 模板支持安全变量替换。</p>
+                          </div>
+                          <span className="shrink-0 text-xs font-black text-slate-400">{webhooks.length} 个</span>
+                        </div>
+                        <div className="mt-4 space-y-2">
+                          {webhooks.map((webhook) => (
+                            <div key={webhook.id} className="rounded-lg border border-black/[0.07] bg-[#fbfaf7] px-3 py-2.5">
+                              <div className="flex items-center gap-3">
+                                <div className="min-w-0 flex-1">
+                                  <div className="truncate text-xs font-black text-slate-700">{webhook.name}</div>
+                                  <div className="truncate text-[11px] font-semibold text-slate-400">{webhook.url}</div>
+                                </div>
+                                <button type="button" onClick={() => toggleWebhook(webhook)} disabled={webhookBusy} role="switch" aria-checked={webhook.enabled} aria-label={webhook.enabled ? `停用 ${webhook.name}` : `启用 ${webhook.name}`} className={`relative h-6 w-10 shrink-0 rounded-full transition ${webhook.enabled ? 'bg-emerald-500' : 'bg-slate-200'}`}>
+                                  <span className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow-sm transition ${webhook.enabled ? 'left-5' : 'left-1'}`} />
+                                </button>
+                                <button type="button" onClick={() => editWebhook(webhook)} disabled={webhookBusy} aria-label={`编辑 ${webhook.name}`} title="编辑" className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-800 disabled:text-slate-200"><FilePenLine size={14} /></button>
+                                <button type="button" onClick={() => removeWebhook(webhook)} disabled={webhookBusy} aria-label={`删除 ${webhook.name}`} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-300 hover:bg-rose-50 hover:text-rose-600 disabled:text-slate-200"><Trash2 size={14} /></button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="mt-4 space-y-2 border-t border-black/[0.06] pt-4">
+                          <input value={webhookName} onChange={(event) => setWebhookName(event.target.value)} maxLength={80} placeholder="通知名称，例如飞书日报" className="h-10 w-full rounded-lg border border-black/[0.08] bg-[#fbfaf7] px-3 text-xs font-semibold text-slate-700 outline-none focus:border-slate-300" />
+                          <input value={webhookUrl} onChange={(event) => setWebhookUrl(event.target.value)} maxLength={2048} placeholder="https://example.com/webhook" className="h-10 w-full rounded-lg border border-black/[0.08] bg-[#fbfaf7] px-3 text-xs font-semibold text-slate-700 outline-none focus:border-slate-300" />
+                          <textarea value={webhookTemplate} onChange={(event) => setWebhookTemplate(event.target.value)} rows={5} maxLength={12_000} placeholder={'{"content":"{{content.text}}"}'} className="w-full resize-y rounded-lg border border-black/[0.08] bg-white px-3 py-2.5 text-[11px] font-mono leading-5 text-slate-700 outline-none" />
+                          <p className="text-[10px] font-semibold leading-4 text-slate-400">变量：&#123;&#123;content.text&#125;&#125;、&#123;&#123;content.markdown&#125;&#125;、&#123;&#123;source.automationName&#125;&#125;、&#123;&#123;run.status&#125;&#125;。</p>
+                          <div className="flex items-center gap-2">
+                            <button type="button" onClick={saveWebhook} disabled={!webhookName.trim() || !webhookUrl.trim() || !webhookTemplate.trim() || webhookBusy} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-slate-950 px-3 text-xs font-black text-white disabled:bg-slate-200 disabled:text-slate-400">
+                              {webhookBusy ? <Loader2 className="animate-spin" size={13} /> : editingWebhookId ? <Save size={13} /> : <Plus size={13} />}{editingWebhookId ? '保存修改' : '添加通知 Webhook'}
+                            </button>
+                            {editingWebhookId && <button type="button" onClick={() => { setEditingWebhookId(''); setWebhookName(''); setWebhookUrl(''); setWebhookTemplate(''); }} className="h-9 rounded-lg px-3 text-xs font-black text-slate-500 hover:bg-slate-100">取消</button>}
+                          </div>
+                        </div>
+                      </section>}
                       {sidePanel === 'automation' && !isPiSpace && <section>
                         <div className="flex items-start justify-between gap-3">
                           <div>
@@ -4667,39 +4818,66 @@ export default function SpaceDetailPage() {
                             <option value="allowed">允许按需联网</option>
                             <option value="required">必须联网</option>
                           </select>
-                          {space?.templateId === 'wechat-article' && (
-                            <div className="rounded-lg border border-black/[0.06] bg-slate-50/70 p-3">
-                              <label htmlFor="automation-completion-action" className="mb-2 block text-xs font-black text-slate-600">成果定稿后</label>
-                              <div className="grid grid-cols-2 gap-2">
+                          <div className="rounded-lg border border-black/[0.06] bg-slate-50/70 p-3">
+                            <label htmlFor="automation-completion-action" className="mb-2 block text-xs font-black text-slate-600">任务完成后</label>
+                            <div className="grid grid-cols-2 gap-2">
+                              <select
+                                id="automation-completion-action"
+                                value={automationCompletionAction}
+                                onChange={(event) => setAutomationCompletionAction(event.target.value as 'NONE' | 'WECHAT_CREATE_DRAFT' | 'WEBHOOK_NOTIFY')}
+                                className="h-10 min-w-0 rounded-lg border border-black/[0.08] bg-white px-3 text-xs font-bold text-slate-700 outline-none"
+                              >
+                                <option value="NONE">仅完成成果</option>
+                                <option value="WEBHOOK_NOTIFY">通知 Webhook</option>
+                                {space?.templateId === 'wechat-article' && <option value="WECHAT_CREATE_DRAFT">准备微信草稿</option>}
+                              </select>
+                              {automationCompletionAction === 'WECHAT_CREATE_DRAFT' && (
                                 <select
-                                  id="automation-completion-action"
-                                  value={automationCompletionAction}
-                                  onChange={(event) => setAutomationCompletionAction(event.target.value as 'NONE' | 'WECHAT_CREATE_DRAFT')}
+                                  value={automationWechatTheme}
+                                  onChange={(event) => setAutomationWechatTheme(event.target.value)}
+                                  aria-label="微信排版主题"
                                   className="h-10 min-w-0 rounded-lg border border-black/[0.08] bg-white px-3 text-xs font-bold text-slate-700 outline-none"
                                 >
-                                  <option value="NONE">仅完成成果</option>
-                                  <option value="WECHAT_CREATE_DRAFT">准备微信草稿</option>
+                                  <option value="fresh-green">清新绿</option>
+                                  <option value="editorial-red">编辑红</option>
+                                  <option value="midnight-gold">午夜金</option>
                                 </select>
-                                {automationCompletionAction === 'WECHAT_CREATE_DRAFT' && (
-                                  <select
-                                    value={automationWechatTheme}
-                                    onChange={(event) => setAutomationWechatTheme(event.target.value)}
-                                    aria-label="微信排版主题"
-                                    className="h-10 min-w-0 rounded-lg border border-black/[0.08] bg-white px-3 text-xs font-bold text-slate-700 outline-none"
-                                  >
-                                    <option value="fresh-green">清新绿</option>
-                                    <option value="editorial-red">编辑红</option>
-                                    <option value="midnight-gold">午夜金</option>
-                                  </select>
-                                )}
-                              </div>
-                              {automationCompletionAction === 'WECHAT_CREATE_DRAFT' && (
-                                <p className="mt-2 text-[11px] font-semibold leading-5 text-slate-400">
-                                  定稿后会生成独立审批，仍需你确认才创建微信草稿，不会自动发布。
-                                </p>
                               )}
                             </div>
-                          )}
+                            {automationCompletionAction === 'WECHAT_CREATE_DRAFT' && (
+                              <p className="mt-2 text-[11px] font-semibold leading-5 text-slate-400">
+                                定稿后会生成独立审批，仍需你确认才创建微信草稿，不会自动发布。
+                              </p>
+                            )}
+                            {automationCompletionAction === 'WEBHOOK_NOTIFY' && (
+                              <div className="mt-2 space-y-2">
+                                <select
+                                  value={automationWebhookTarget}
+                                  onChange={(event) => setAutomationWebhookTarget(event.target.value as 'PERSONAL_QQ' | 'CUSTOM_WEBHOOK')}
+                                  aria-label="Webhook 通知目标"
+                                  className="h-9 w-full rounded-md border border-black/[0.08] bg-white px-2.5 text-[11px] font-bold text-slate-700 outline-none"
+                                >
+                                  <option value="PERSONAL_QQ">个人中心 QQ</option>
+                                  <option value="CUSTOM_WEBHOOK">自定义 HTTPS Webhook</option>
+                                </select>
+                                {automationWebhookTarget === 'CUSTOM_WEBHOOK' ? (
+                                  <select
+                                    value={automationWebhookId}
+                                    onChange={(event) => setAutomationWebhookId(event.target.value)}
+                                    aria-label="自定义 Webhook"
+                                    className="h-9 w-full rounded-md border border-black/[0.08] bg-white px-2.5 text-[11px] font-bold text-slate-700 outline-none"
+                                  >
+                                    <option value="">选择已配置的 Webhook</option>
+                                    {webhooks.filter((webhook) => webhook.enabled).map((webhook) => (
+                                      <option key={webhook.id} value={webhook.id}>{webhook.name}</option>
+                                    ))}
+                                  </select>
+                                ) : (
+                                  <p className="text-[11px] font-semibold leading-5 text-slate-400">使用个人中心已绑定的 QQ Webhook；需要先完成 QQ 私聊绑定。</p>
+                                )}
+                              </div>
+                            )}
+                          </div>
                           <div className="flex items-center justify-between gap-3">
                             <label className="flex items-center gap-2 text-xs font-bold text-slate-500">
                               <input
@@ -4713,7 +4891,7 @@ export default function SpaceDetailPage() {
                             <button
                               type="button"
                               onClick={createAutomation}
-                              disabled={!automationName.trim() || !automationPrompt.trim() || (automationScheduleType === 'WEEKLY' && automationWeekdays.length === 0) || Boolean(automationBusyId)}
+                              disabled={!automationName.trim() || !automationPrompt.trim() || (automationCompletionAction === 'WEBHOOK_NOTIFY' && automationWebhookTarget === 'CUSTOM_WEBHOOK' && !automationWebhookId) || (automationScheduleType === 'WEEKLY' && automationWeekdays.length === 0) || Boolean(automationBusyId)}
                               className="inline-flex h-10 items-center gap-2 rounded-lg bg-slate-950 px-4 text-xs font-black text-white disabled:bg-slate-200 disabled:text-slate-400"
                             >
                               {automationBusyId === 'new' ? <Loader2 className="animate-spin" size={14} /> : <Plus size={14} />}
@@ -4737,6 +4915,11 @@ export default function SpaceDetailPage() {
                                   {automation.completionAction === 'WECHAT_CREATE_DRAFT' && (
                                     <div className="mt-1 text-[11px] font-bold text-emerald-600">
                                       定稿后准备微信草稿 · {automation.completionConfig?.themeId === 'editorial-red' ? '编辑红' : automation.completionConfig?.themeId === 'midnight-gold' ? '午夜金' : '清新绿'}
+                                    </div>
+                                  )}
+                                  {automation.completionAction === 'WEBHOOK_NOTIFY' && (
+                                    <div className="mt-1 text-[11px] font-bold text-sky-600">
+                                      完成后通知 Webhook · {automation.completionConfig?.target === 'CUSTOM_WEBHOOK' ? '自定义地址' : '个人中心 QQ'}
                                     </div>
                                   )}
                                   {automation.lastError && (

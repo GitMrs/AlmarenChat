@@ -52,6 +52,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
     const workStrategy = body?.workStrategy === 'ACTIVE_WORK' ? 'ACTIVE_WORK' : 'NEW_WORK';
     const networkPolicy = ['forbidden', 'allowed', 'required'].includes(body?.networkPolicy) ? body.networkPolicy : 'forbidden';
     const completion = normalizeAutomationCompletion(body, space.templateId);
+    if (completion.completionAction === 'WEBHOOK_NOTIFY' && completion.completionConfig?.target === 'CUSTOM_WEBHOOK') {
+      const webhookId = completion.completionConfig.webhookId;
+      const webhook = await prisma.spaceWebhook.findFirst({ where: { id: webhookId, spaceId, enabled: true }, select: { id: true } });
+      if (!webhook) return NextResponse.json({ error: '请选择当前空间中已启用的通知 Webhook' }, { status: 400 });
+    }
     const nextRunAt = parseDate(body?.nextRunAt, initialAutomationRunAt(schedule));
     const automation = await prisma.spaceAutomation.create({
       data: {

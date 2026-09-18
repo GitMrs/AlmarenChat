@@ -1,4 +1,4 @@
-import type { AgentGrowthProfile, AgentRun, AssistantConversationSummary, AssistantExperienceMessage, AssistantMemoryItem, AssistantQQBinding, AssistantReminder, AssistantReminderCandidate, Message, MessageAttachment, PersonalAssistantBootstrap, PersonalAssistantProfile, SpaceActionRequest, SpaceAutomation, SpaceConnector, SpaceDiscussion, SpaceFileShare, SpaceOperationOutcome, SpaceOperationsSummary, SpaceRelay, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal, SpaceWork, SpaceWorkVersion, SpaceMcpServer, AssistantMcpServer, McpProbeResult } from '@/types';
+import type { AgentGrowthProfile, AgentRun, AssistantConversationSummary, AssistantExperienceMessage, AssistantMemoryItem, AssistantQQBinding, AssistantReminder, AssistantReminderCandidate, Message, MessageAttachment, PersonalAssistantBootstrap, PersonalAssistantProfile, SpaceActionRequest, SpaceAutomation, SpaceConnector, SpaceDiscussion, SpaceFileShare, SpaceOperationOutcome, SpaceOperationsSummary, SpaceRelay, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal, SpaceWork, SpaceWorkVersion, SpaceMcpServer, SpaceWebhook, AssistantMcpServer, McpProbeResult } from '@/types';
 
 const API_BASE = '/api';
 
@@ -59,8 +59,8 @@ export const assistant = {
   getQQBinding: () => request<{ binding: AssistantQQBinding | null }>('/assistant/qq'),
   saveQQBinding: (data: { appId: string; appSecret: string }) =>
     request<{ binding: AssistantQQBinding }>('/assistant/qq', { method: 'PUT', body: JSON.stringify(data) }),
-  updateQQBinding: (data: { enabled?: boolean; action?: 'reset-peer' }) =>
-    request<{ binding: AssistantQQBinding }>('/assistant/qq', { method: 'PATCH', body: JSON.stringify(data) }),
+  updateQQBinding: (data: { enabled?: boolean; action?: 'reset-peer' | 'generate-webhook' | 'rotate-webhook' | 'revoke-webhook' }) =>
+    request<{ binding: AssistantQQBinding; webhookUrl?: string }>('/assistant/qq', { method: 'PATCH', body: JSON.stringify(data) }),
   deleteQQBinding: () => request<{ success: true }>('/assistant/qq', { method: 'DELETE' }),
   listConversations: () =>
     request<{ conversations: AssistantConversationSummary[]; currentConversationId: string }>('/assistant/conversations'),
@@ -556,7 +556,7 @@ export const spaces = {
     }),
   automations: (spaceId: string) =>
     request<{ automations: SpaceAutomation[] }>(`/spaces/${spaceId}/automations`),
-  createAutomation: (spaceId: string, data: { name: string; prompt: string; scheduleType: 'INTERVAL' | 'DAILY' | 'WEEKLY'; intervalMinutes: number; timeZone: string; scheduleHour?: number; scheduleMinute?: number; weekdays?: number[]; workStrategy: 'NEW_WORK' | 'ACTIVE_WORK'; networkPolicy: 'forbidden' | 'allowed' | 'required'; completionAction?: 'NONE' | 'WECHAT_CREATE_DRAFT'; completionConfig?: { themeId?: string } | null; enabled: boolean }) =>
+  createAutomation: (spaceId: string, data: { name: string; prompt: string; scheduleType: 'INTERVAL' | 'DAILY' | 'WEEKLY'; intervalMinutes: number; timeZone: string; scheduleHour?: number; scheduleMinute?: number; weekdays?: number[]; workStrategy: 'NEW_WORK' | 'ACTIVE_WORK'; networkPolicy: 'forbidden' | 'allowed' | 'required'; completionAction?: 'NONE' | 'WECHAT_CREATE_DRAFT' | 'WEBHOOK_NOTIFY'; completionConfig?: { themeId?: string; target?: 'PERSONAL_QQ' | 'CUSTOM_WEBHOOK'; webhookId?: string } | null; enabled: boolean }) =>
     request<{ automation: SpaceAutomation }>(`/spaces/${spaceId}/automations`, {
       method: 'POST',
       body: JSON.stringify(data),
@@ -588,6 +588,14 @@ export const spaces = {
     request<{ connectors: SpaceConnector[] }>(`/spaces/${spaceId}/connectors`),
   mcpServers: (spaceId: string) =>
     request<{ servers: SpaceMcpServer[] }>(`/spaces/${spaceId}/mcp`),
+  webhooks: (spaceId: string) =>
+    request<{ webhooks: SpaceWebhook[] }>(`/spaces/${spaceId}/webhooks`),
+  createWebhook: (spaceId: string, data: { name: string; url: string; bodyTemplate: string; enabled?: boolean }) =>
+    request<{ webhook: SpaceWebhook }>(`/spaces/${spaceId}/webhooks`, { method: 'POST', body: JSON.stringify(data) }),
+  updateWebhook: (spaceId: string, webhookId: string, data: Partial<{ name: string; url: string; bodyTemplate: string; enabled: boolean }>) =>
+    request<{ webhook: SpaceWebhook }>(`/spaces/${spaceId}/webhooks/${webhookId}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  deleteWebhook: (spaceId: string, webhookId: string) =>
+    request<{ success: true }>(`/spaces/${spaceId}/webhooks/${webhookId}`, { method: 'DELETE' }),
   addMcpServer: (spaceId: string, data: { name: string; url: string; headers?: Record<string, string> }) =>
     request<{ server: SpaceMcpServer }>(`/spaces/${spaceId}/mcp`, { method: 'POST', body: JSON.stringify(data) }),
   setMcpServerEnabled: (spaceId: string, serverId: string, enabled: boolean) =>

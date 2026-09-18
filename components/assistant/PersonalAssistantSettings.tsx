@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowRight, Blocks, Bot, Brain, ChevronDown, Eye, EyeOff, Heart, Loader2, MessageCircleHeart, Plus, RefreshCw, RotateCcw, Save, Sparkles, Trash2, Unplug, Upload } from 'lucide-react';
+import { ArrowRight, Blocks, Bot, Brain, ChevronDown, Copy, Eye, EyeOff, Heart, Loader2, MessageCircleHeart, Plus, RefreshCw, RotateCcw, Save, Sparkles, Trash2, Unplug, Upload } from 'lucide-react';
 import Avatar from '@/components/shared/Avatar';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import { assistant, uploads, user as userApi } from '@/lib/api';
@@ -102,6 +102,7 @@ export default function PersonalAssistantSettings() {
   const [qqAppSecret, setQQAppSecret] = useState('');
   const [qqSecretVisible, setQQSecretVisible] = useState(false);
   const [qqBusy, setQQBusy] = useState(false);
+  const [qqWebhookUrl, setQQWebhookUrl] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -401,6 +402,49 @@ export default function PersonalAssistantSettings() {
     }
   };
 
+  const generateQQWebhook = async (rotate = false) => {
+    if (!qqBinding || qqBusy) return;
+    setQQBusy(true);
+    setError('');
+    setNotice('');
+    try {
+      const result = await assistant.updateQQBinding({ action: rotate ? 'rotate-webhook' : 'generate-webhook' });
+      setQQBinding(result.binding);
+      setQQWebhookUrl(result.webhookUrl || '');
+      setNotice(rotate ? 'QQ Webhook 已重新生成，旧地址已失效' : 'QQ Webhook 已生成，请复制并妥善保存');
+    } catch (reason: any) {
+      setError(reason.message || '生成 QQ Webhook 失败');
+    } finally {
+      setQQBusy(false);
+    }
+  };
+
+  const revokeQQWebhook = async () => {
+    if (!qqBinding || qqBusy) return;
+    setQQBusy(true);
+    setError('');
+    try {
+      const result = await assistant.updateQQBinding({ action: 'revoke-webhook' });
+      setQQBinding(result.binding);
+      setQQWebhookUrl('');
+      setNotice('QQ Webhook 已禁用，使用它的空间将不再发送通知');
+    } catch (reason: any) {
+      setError(reason.message || '禁用 QQ Webhook 失败');
+    } finally {
+      setQQBusy(false);
+    }
+  };
+
+  const copyQQWebhook = async () => {
+    if (!qqWebhookUrl) return;
+    try {
+      await navigator.clipboard.writeText(qqWebhookUrl);
+      setNotice('QQ Webhook 地址已复制');
+    } catch {
+      setError('复制 QQ Webhook 地址失败');
+    }
+  };
+
   const requestDeleteQQBinding = () => {
     if (!qqBinding) return;
     setConfirmModal({
@@ -417,6 +461,7 @@ export default function PersonalAssistantSettings() {
           setQQBinding(null);
           setQQAppId('');
           setQQAppSecret('');
+          setQQWebhookUrl('');
           setNotice('已解除 QQ Bot 配置');
         } catch (reason: any) {
           setError(reason.message || '解除 QQ Bot 配置失败');
@@ -890,6 +935,62 @@ export default function PersonalAssistantSettings() {
                 )} />
               </button>
             </div>
+          </div>
+        )}
+
+        {qqBinding && (
+          <div className="rounded-2xl border border-sky-100 bg-sky-50/60 p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0">
+                <h4 className="text-sm font-black text-slate-800">空间通知 Webhook</h4>
+                <p className="mt-1 text-xs font-medium leading-5 text-slate-500">
+                  一个用户级地址，多个空间可以共用。它独立于平台登录 Token，重新生成后旧地址立即失效。
+                </p>
+                {qqBinding.webhookConfigured && !qqWebhookUrl && (
+                  <p className="mt-2 text-xs font-bold text-emerald-700">已生成 Webhook，完整地址只在生成时显示。</p>
+                )}
+              </div>
+              <div className="flex shrink-0 flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => generateQQWebhook(Boolean(qqBinding.webhookConfigured))}
+                  disabled={qqBusy}
+                  className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-white px-3 text-xs font-black text-sky-700 shadow-sm transition hover:bg-sky-100 disabled:opacity-40"
+                >
+                  {qqBusy ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+                  {qqBinding.webhookConfigured ? '重新生成' : '生成地址'}
+                </button>
+                {qqBinding.webhookConfigured && (
+                  <button
+                    type="button"
+                    onClick={revokeQQWebhook}
+                    disabled={qqBusy}
+                    className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-rose-100 bg-white px-3 text-xs font-black text-rose-600 transition hover:bg-rose-50 disabled:opacity-40"
+                  >
+                    <Unplug size={13} />
+                    禁用
+                  </button>
+                )}
+              </div>
+            </div>
+            {qqWebhookUrl && (
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                <input
+                  readOnly
+                  value={qqWebhookUrl}
+                  aria-label="QQ Webhook 地址"
+                  className="h-10 min-w-0 flex-1 rounded-xl border border-sky-100 bg-white px-3 text-xs font-semibold text-slate-600 outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={copyQQWebhook}
+                  className="inline-flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-xl bg-slate-950 px-3 text-xs font-black text-white transition hover:bg-slate-800"
+                >
+                  <Copy size={13} />
+                  复制地址
+                </button>
+              </div>
+            )}
           </div>
         )}
 

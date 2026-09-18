@@ -29,9 +29,17 @@ QQ 不能直接连接用户电脑上的 `127.0.0.1:11434`，因此不会使用�
 QQ_ASSISTANT_SECRET="至少 32 位的随机字符串"
 QQ_ASSISTANT_INTERNAL_URL="http://127.0.0.1:8001/api/internal/assistant/qq/messages"
 QQ_ASSISTANT_POLL_MS="5000"
+QQ_ASSISTANT_WEBHOOK_PUBLIC_URL=""
+QQ_ASSISTANT_WEBHOOK_INTERNAL_URL="http://127.0.0.1:8787"
+QQ_ASSISTANT_WEBHOOK_PORT="8787"
+QQ_ASSISTANT_WEBHOOK_HOST="127.0.0.1"
 ```
 
 `QQ_ASSISTANT_SECRET` 是 Web 内部接口鉴权密钥，不是 QQ Bot 的 AppSecret。该值必须在 Web 服务和 QQ Worker 环境中保持一致。
+
+个人中心可以生成一个独立的用户级 QQ Webhook。它不复用平台登录 Token，也不暴露 QQ AppSecret；同一用户的多个空间可以共用。生成时默认读取当前公开请求的协议、域名和端口，自动拼接 Webhook 路径；`QQ_ASSISTANT_WEBHOOK_PUBLIC_URL` 只用于反向代理地址与浏览器地址不一致时的覆盖。空间自动化选择“通知 Webhook → 个人中心 QQ”后，Agent Worker 会直接调用这个地址，QQ Worker 校验地址并立即发送，不建立待发送消息队列。Webhook 地址需要使用 HTTPS 或内网地址，并在泄露后通过个人中心重新生成。
+
+空间自动化也支持统一的 Webhook 通知事件。空间侧栏的“通知 Webhook”中可以保存、编辑、启用或删除自定义目标及 JSON 请求体模板；自动化只引用已启用的目标。模板只支持安全变量替换，例如 `{{content.text}}`、`{{content.markdown}}`、`{{source.automationName}}` 和 `{{run.status}}`，不执行脚本；自定义地址不会访问本机或内网。QQ 目标仍由 QQ Worker 转换为 QQ 私聊消息。
 
 ## 启动
 

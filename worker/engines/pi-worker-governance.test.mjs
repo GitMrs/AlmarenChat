@@ -197,6 +197,36 @@ test('Pi Worker exposes controlled web search only with web research authorizati
   assert.equal(denied.tools.some((item) => item.name === 'web_search'), false);
 });
 
+test('Pi Worker exposes controlled web fetch for explicit public URLs', async () => {
+  const originalFetch = globalThis.fetch;
+  const events = [];
+  globalThis.fetch = async (url) => ({
+    ok: true,
+    status: 200,
+    headers: new Map(),
+    text: async () => JSON.stringify({ url: String(url), items: [{ title: '示例' }] }),
+  });
+  try {
+    const build = createPiWorkerGovernance({ db: {}, reserveRequest: () => ({}) });
+    const options = await build(request({
+      emit: (...args) => events.push(args),
+      context: {
+        model: { apiKey: 'key', baseURL: 'https://example.com/v1', name: 'model' },
+        space: {},
+        authorization: { capabilities: ['workspace_read', 'web_research'], networkPolicy: 'allowed' },
+      },
+    }));
+    const tool = options.tools.find((item) => item.name === 'web_fetch');
+    assert.ok(tool);
+    const result = await tool.execute('fetch-1', { url: 'https://example.com/hot.json' });
+    assert.equal(result.isError, false);
+    assert.match(result.content[0].text, /示例/);
+    assert.equal(events.some((event) => event[1] === 'WEB_FETCH_COMPLETED'), true);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('Pi Worker discovers and invokes an authorized remote MCP tool', async () => {
   const originalFetch = globalThis.fetch;
   const calls = [];

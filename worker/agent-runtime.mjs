@@ -8,6 +8,7 @@ import {
   describeWorkspaceArtifact,
   executeWorkspaceTool,
   snapshotWorkspace,
+  wantsWebResearch,
   wantsWorkspaceWrite,
 } from '../lib/agent-runtime/runtime-tools.mjs';
 import {
@@ -54,6 +55,7 @@ import { createRelayRuntime } from './runtime/relay-runtime.mjs';
 import { createWorkspaceRecoveryRuntime } from './runtime/workspace-recovery-runtime.mjs';
 import { createTaskLifecycleRuntime } from './runtime/task-lifecycle-runtime.mjs';
 import { advanceWorkAfterRun, completeAutomationExecution } from './runtime/work-lifecycle-store.mjs';
+import { notifyWebhookCompletion, qqWebhookError } from './runtime/qq-webhook.mjs';
 import { triggerNextDueAutomation } from './runtime/space-automation-runtime.mjs';
 import { createConnectorActionRuntime } from './runtime/connector-action-runtime.mjs';
 import { parseMcpServers } from '../lib/agent-runtime/mcp-config.mjs';
@@ -1701,6 +1703,16 @@ async function processRun(run) {
           refId: run.id,
         }], timestamp);
     })();
+    try {
+      const notification = await notifyWebhookCompletion(db, { runId: run.id, status: outcome.status, result });
+      if (notification.sent) {
+        addEvent(run.id, 'WEBHOOK_NOTIFICATION_SENT', '空间成果已通过 Webhook 发送', { channel: notification.target || 'WEBHOOK' });
+      } else if (notification.reason) {
+        addEvent(run.id, 'WEBHOOK_NOTIFICATION_SKIPPED', notification.reason, { channel: notification.target || 'WEBHOOK' });
+      }
+    } catch (error) {
+      addEvent(run.id, 'WEBHOOK_NOTIFICATION_FAILED', `空间成果 Webhook 发送失败：${qqWebhookError(error)}`, { channel: 'WEBHOOK' });
+    }
     try {
       recordAcceptedAgentExperiences(db, {
         run,

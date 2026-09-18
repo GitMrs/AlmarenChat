@@ -13,6 +13,8 @@ module.exports = {
         HOSTNAME: '0.0.0.0',
         DATABASE_URL: process.env.DATABASE_URL || 'file:./data/dev.db',
         SPACE_CONNECTOR_SECRET: process.env.SPACE_CONNECTOR_SECRET || '',
+        QQ_ASSISTANT_SECRET: process.env.QQ_ASSISTANT_SECRET || '',
+        QQ_ASSISTANT_WEBHOOK_PUBLIC_URL: process.env.QQ_ASSISTANT_WEBHOOK_PUBLIC_URL || '',
       },
     },
     {
@@ -31,6 +33,9 @@ module.exports = {
         AGENT_WORKER_POLL_MS: process.env.AGENT_WORKER_POLL_MS || 1200,
         AGENT_MODEL_TIMEOUT_MS: process.env.AGENT_MODEL_TIMEOUT_MS || 180000,
         SPACE_CONNECTOR_SECRET: process.env.SPACE_CONNECTOR_SECRET || '',
+        QQ_ASSISTANT_SECRET: process.env.QQ_ASSISTANT_SECRET || '',
+        QQ_ASSISTANT_WEBHOOK_INTERNAL_URL: process.env.QQ_ASSISTANT_WEBHOOK_INTERNAL_URL || '',
+        QQ_ASSISTANT_WEBHOOK_PUBLIC_URL: process.env.QQ_ASSISTANT_WEBHOOK_PUBLIC_URL || '',
       },
     },
     {
@@ -50,6 +55,8 @@ module.exports = {
         QQ_ASSISTANT_SECRET: process.env.QQ_ASSISTANT_SECRET || '',
         QQ_ASSISTANT_INTERNAL_URL: process.env.QQ_ASSISTANT_INTERNAL_URL || '',
         QQ_ASSISTANT_POLL_MS: process.env.QQ_ASSISTANT_POLL_MS || 5000,
+        QQ_ASSISTANT_WEBHOOK_PORT: process.env.QQ_ASSISTANT_WEBHOOK_PORT || 8787,
+        QQ_ASSISTANT_WEBHOOK_HOST: process.env.QQ_ASSISTANT_WEBHOOK_HOST || '127.0.0.1',
       },
     },
   ],

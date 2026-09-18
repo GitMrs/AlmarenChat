@@ -26,6 +26,7 @@ import { reserveModelRequest } from '../runtime/model-budget.mjs';
 import { loadSkillPackage, readSkillPackageFile } from '../../lib/agent-runtime/skill-package-loader.mjs';
 import { runSandboxedSkillProcess } from '../runtime/sandbox-runner.mjs';
 import { searchWeb } from '../../lib/agent-runtime/runtime-tools.mjs';
+import { fetchWebPage } from '../../lib/web-fetch.mjs';
 import { createHttpMcpClient, mcpToolName } from '../../lib/agent-runtime/mcp-client.mjs';
 
 const READ_TOOLS = new Set(['list_files', 'read_file', 'check_files']);
@@ -42,6 +43,8 @@ const TOOL_LABELS = {
   run_skill: '运行 Skill',
   generate_images: '生成图片',
   generate_image: '生成图片',
+  web_search: '联网搜索',
+  web_fetch: '读取网页',
 };
 
 function safeId(value, label) {
@@ -133,8 +136,9 @@ function schemaTool(schema, execute) {
 async function createPiCapabilityTools(request, skill, state) {
   const tools = [];
   if (authorizationAllowsCapability(request.context?.authorization, 'web_research')) {
-    let searchCount = 0;
+    let webOperationCount = 0;
     const searched = new Set();
+    const fetched = new Set();
     tools.push(schemaTool({
       function: {
         name: 'web_search',
@@ -148,11 +152,11 @@ async function createPiCapabilityTools(request, skill, state) {
       const query = String(args.query || '').trim();
       const key = query.toLocaleLowerCase();
       if (searched.has(key)) return toolResult({ query, reused: true, message: '该关键词本轮已经搜索，请使用之前的结果' });
-      if (searchCount >= 2) return toolResult({ error: '本轮最多允许两次联网搜索，请使用已有资料完成任务' }, true);
+      if (webOperationCount >= 2) return toolResult({ error: '本轮最多允许两次联网操作，请使用已有资料完成任务' }, true);
       const permission = request.context?.runtimePermissions?.consume?.('web_research', 'web_search');
       if (permission && !permission.allowed) return toolResult({ error: permission.error }, true);
       searched.add(key);
-      searchCount += 1;
+      webOperationCount += 1;
       try {
         const result = await searchWeb([query], request.context.tavilyApiKey, {
           requirements: [],
@@ -167,6 +171,36 @@ async function createPiCapabilityTools(request, skill, state) {
         return toolResult({ error: error instanceof Error ? error.message : String(error) }, true);
       }
     }));
+    tools.push(schemaTool({
+      function: {
+        name: 'web_fetch',
+        description: '直接读取用户提供的公开 HTTPS 网页或 JSON 接口。每个地址本轮只读取一次；禁止本机、内网和工作区地址。需要精确读取 JSON 或网页正文时优先使用。',
+        parameters: {
+          type: 'object', additionalProperties: false, required: ['url'],
+          properties: { url: { type: 'string', minLength: 1, maxLength: 2000 } },
+        },
+      },
+    }, async (_toolCallId, args, signal) => {
+        const url = String(args.url || '').trim();
+        const key = url.toLocaleLowerCase();
+        if (fetched.has(key)) return toolResult({ url, reused: true, message: '该地址本轮已经读取，请使用之前的结果' });
+        if (webOperationCount >= 2) return toolResult({ error: '本轮最多允许两次联网操作，请使用已有资料完成任务' }, true);
+        const permission = request.context?.runtimePermissions?.consume?.('web_research', 'web_fetch');
+        if (permission && !permission.allowed) return toolResult({ error: permission.error }, true);
+        fetched.add(key);
+        webOperationCount += 1;
+        try {
+          const result = await fetchWebPage(url, { signal });
+          request.emit?.(request.run.id, 'WEB_FETCH_COMPLETED', `Skill 受控网页读取完成：${result.url}`, {
+            taskId: request.task.id, agentId: request.agent?.id || null, attempt: request.task.attempt,
+            url: result.url, truncated: result.truncated, totalChars: result.totalChars, engine: 'pi',
+          });
+          return toolResult(result);
+        } catch (error) {
+          return toolResult({ error: error instanceof Error ? error.message : String(error), url }, true);
+        }
+      }
+    ));
   }
   const mcpServers = Array.isArray(request.context?.mcpServers) ? request.context.mcpServers : [];
   if (mcpServers.length > 0 && authorizationAllowsCapability(request.context?.authorization, 'web_research')) {
@@ -441,6 +475,9 @@ function taskPrompt(request, skill) {
         : '',
       Array.isArray(skill.packageEntrypoints) && skill.packageEntrypoints.length > 0
         ? `Skill 执行清单：${skill.packageEntrypoints.map((entry) => `${entry.script}（${entry.runtime}，网络${entry.network}，工作区${entry.workspace}）`).join('；')}`
+        : '',
+      authorizationAllowsCapability(request.context?.authorization, 'web_research')
+        ? '当目标提供具体 HTTPS 网页或 JSON 地址时，优先使用 web_fetch 直接读取；只有需要发现资料或补充来源时才使用 web_search。'
         : '',
     ].filter(Boolean).join('\n\n'),
     message: [

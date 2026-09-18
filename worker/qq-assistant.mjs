@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import { createServer } from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -8,6 +9,7 @@ import {
   messageFilter,
 } from '@tencent-connect/qqbot-nodejs';
 import { decryptQQCredential } from '../lib/qq-assistant/credentials.mjs';
+import { hashQQWebhookToken, QQ_WEBHOOK_PATH } from '../lib/qq-assistant/webhook.mjs';
 import {
   classifyQQCommand,
   qqImageAttachments,
@@ -23,10 +25,14 @@ const secret = process.env.QQ_ASSISTANT_SECRET || '';
 const internalUrl = process.env.QQ_ASSISTANT_INTERNAL_URL
   || `http://127.0.0.1:${process.env.PORT || 8001}/api/internal/assistant/qq/messages`;
 const pollMs = Math.max(2_000, Number(process.env.QQ_ASSISTANT_POLL_MS) || 5_000);
+const webhookPort = Math.max(0, Number(process.env.QQ_ASSISTANT_WEBHOOK_PORT) || 0);
+const webhookHost = process.env.QQ_ASSISTANT_WEBHOOK_HOST || '127.0.0.1';
 const db = openWorkerDatabase(resolveWorkerDatabasePath(projectRoot));
 const clients = new Map();
+const recentWebhookEvents = new Map();
 let stopping = false;
 let reminderLoopRunning = false;
+let webhookServer = null;
 
 function shortError(error) {
   return (error instanceof Error ? error.message : String(error)).slice(0, 500);
@@ -404,11 +410,145 @@ async function deliverDueReminders() {
   }
 }
 
+function writeJson(response, statusCode, payload) {
+  response.writeHead(statusCode, { 'content-type': 'application/json; charset=utf-8' });
+  response.end(JSON.stringify(payload));
+}
+
+function readJsonRequest(request, maxBytes = 64 * 1024) {
+  return new Promise((resolve, reject) => {
+    let size = 0;
+    let body = '';
+    request.setEncoding('utf8');
+    request.on('data', (chunk) => {
+      size += Buffer.byteLength(chunk);
+      if (size > maxBytes) {
+        reject(Object.assign(new Error('请求内容过大'), { statusCode: 413 }));
+        request.destroy();
+        return;
+      }
+      body += chunk;
+    });
+    request.on('end', () => {
+      try {
+        resolve(body ? JSON.parse(body) : {});
+      } catch {
+        reject(Object.assign(new Error('请求内容不是有效 JSON'), { statusCode: 400 }));
+      }
+    });
+    request.on('error', reject);
+  });
+}
+
+function cleanupWebhookEvents(now = Date.now()) {
+  for (const [key, expiresAt] of recentWebhookEvents) {
+    if (expiresAt <= now) recentWebhookEvents.delete(key);
+  }
+}
+
+async function handleWebhookRequest(request, response) {
+  const url = new URL(request.url || '/', 'http://localhost');
+  const prefix = `${QQ_WEBHOOK_PATH}/`;
+  if (request.method !== 'POST' || !url.pathname.startsWith(prefix)) {
+    writeJson(response, 404, { error: 'Not found' });
+    return;
+  }
+
+  let token;
+  try {
+    token = decodeURIComponent(url.pathname.slice(prefix.length));
+  } catch {
+    writeJson(response, 404, { error: 'Webhook 地址无效' });
+    return;
+  }
+  if (!token || token.includes('/')) {
+    writeJson(response, 404, { error: 'Webhook 地址无效' });
+    return;
+  }
+  const binding = db.prepare('SELECT * FROM "AssistantQQBinding" WHERE "webhookTokenHash" = ? LIMIT 1')
+    .get(hashQQWebhookToken(token));
+  if (!binding) {
+    writeJson(response, 401, { error: 'Webhook 地址无效或已失效' });
+    return;
+  }
+  if (!binding.enabled) {
+    writeJson(response, 409, { error: 'QQ Bot 已停用' });
+    return;
+  }
+
+  let body;
+  try {
+    body = await readJsonRequest(request);
+  } catch (error) {
+    writeJson(response, error?.statusCode || 400, { error: shortError(error) });
+    return;
+  }
+
+  const content = typeof body.content === 'string'
+    ? body.content.trim().slice(0, 12_000)
+    : typeof body.content?.text === 'string' ? body.content.text.trim().slice(0, 12_000) : '';
+  if (!content) {
+    writeJson(response, 400, { error: '通知内容不能为空' });
+    return;
+  }
+  const idempotencyKey = typeof body.idempotencyKey === 'string' ? body.idempotencyKey.trim().slice(0, 240) : '';
+  cleanupWebhookEvents();
+  const eventKey = idempotencyKey ? `${binding.userId}:${idempotencyKey}` : '';
+  if (eventKey && recentWebhookEvents.has(eventKey)) {
+    writeJson(response, 200, { sent: true, deduplicated: true });
+    return;
+  }
+
+  const entry = clients.get(binding.userId);
+  if (!entry?.ready || !binding.qqOpenId) {
+    writeJson(response, 409, { error: binding.qqOpenId ? 'QQ Bot 当前未连接' : '请先在 QQ 中私聊机器人完成接收方绑定' });
+    return;
+  }
+
+  const title = typeof body.title === 'string' && body.title.trim()
+    ? body.title.trim().slice(0, 160)
+    : typeof body.content?.title === 'string' && body.content.title.trim()
+      ? body.content.title.trim().slice(0, 160) : '空间任务通知';
+  const status = typeof body.status === 'string' && body.status.trim()
+    ? body.status.trim().slice(0, 40)
+    : typeof body.run?.status === 'string' && body.run.status.trim()
+      ? body.run.status.trim().slice(0, 40) : 'COMPLETED';
+  const message = `【空间通知】${title}\n状态：${status}\n\n${content}`;
+  try {
+    const sent = await entry.bot.sendWakeup(
+      { scope: 'c2c', targetId: binding.qqOpenId },
+      message
+    );
+    const now = sqliteDate();
+    updateBinding(binding.userId, { webhookLastUsedAt: now });
+    if (eventKey) recentWebhookEvents.set(eventKey, Date.now() + 10 * 60_000);
+    writeJson(response, 200, { sent: true, messageId: sent?.ext_info?.ref_idx || sent?.id || null });
+  } catch (error) {
+    updateBinding(binding.userId, { lastError: shortError(error) });
+    writeJson(response, 502, { error: shortError(error) });
+  }
+}
+
+function startWebhookServer() {
+  if (!webhookPort) return;
+  webhookServer = createServer((request, response) => {
+    void handleWebhookRequest(request, response).catch((error) => {
+      if (!response.headersSent) writeJson(response, 500, { error: shortError(error) });
+      else response.end();
+    });
+  });
+  webhookServer.on('error', (error) => console.error('[qq-assistant] Webhook server error:', error));
+  webhookServer.listen(webhookPort, webhookHost, () => {
+    console.info(`[qq-assistant] Webhook listening on http://${webhookHost}:${webhookPort}${QQ_WEBHOOK_PATH}/...`);
+  });
+}
+
 function shutdown() {
   if (stopping) return;
   stopping = true;
   clearInterval(bindingTimer);
   clearInterval(reminderTimer);
+  webhookServer?.close();
   for (const entry of clients.values()) entry.bot.stop();
   clients.clear();
   db.close();
@@ -423,5 +563,6 @@ if (secret.length < 32) {
 
 const bindingTimer = setInterval(reconcileBindings, pollMs);
 const reminderTimer = setInterval(() => void deliverDueReminders(), pollMs);
+startWebhookServer();
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
