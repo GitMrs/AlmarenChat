@@ -511,6 +511,7 @@ export default function SpaceDetailPage() {
   const [automationWebhookId, setAutomationWebhookId] = useState('');
   const [automationWechatTheme, setAutomationWechatTheme] = useState('fresh-green');
   const [automationEnableOnCreate, setAutomationEnableOnCreate] = useState(false);
+  const [editingAutomationId, setEditingAutomationId] = useState('');
   const [automationBusyId, setAutomationBusyId] = useState('');
   const [actionBusyId, setActionBusyId] = useState('');
   const [wechatAppId, setWechatAppId] = useState('');
@@ -1728,12 +1729,52 @@ export default function SpaceDetailPage() {
     }
   };
 
-  const createAutomation = async () => {
+  const resetAutomationForm = () => {
+    setEditingAutomationId('');
+    setAutomationName('');
+    setAutomationPrompt('');
+    setAutomationInterval(1440);
+    setAutomationScheduleType('DAILY');
+    setAutomationTimeZone('Asia/Shanghai');
+    setAutomationTime('09:00');
+    setAutomationWeekdays([1, 2, 3, 4, 5]);
+    setAutomationWorkStrategy('NEW_WORK');
+    setAutomationNetworkPolicy('forbidden');
+    setAutomationCompletionAction('NONE');
+    setAutomationWebhookTarget('PERSONAL_QQ');
+    setAutomationWebhookId('');
+    setAutomationWechatTheme('fresh-green');
+    setAutomationEnableOnCreate(false);
+  };
+
+  const openEditAutomation = (automation: SpaceAutomation) => {
+    setEditingAutomationId(automation.id);
+    setAutomationName(automation.name);
+    setAutomationPrompt(automation.prompt);
+    setAutomationInterval(automation.intervalMinutes || 1440);
+    setAutomationScheduleType(automation.scheduleType || 'DAILY');
+    setAutomationTimeZone(automation.timeZone || 'Asia/Shanghai');
+    const hour = String(automation.scheduleHour ?? 9).padStart(2, '0');
+    const minute = String(automation.scheduleMinute ?? 0).padStart(2, '0');
+    setAutomationTime(`${hour}:${minute}`);
+    setAutomationWeekdays(Array.isArray(automation.weekdays) ? automation.weekdays : [1, 2, 3, 4, 5]);
+    setAutomationWorkStrategy(automation.workStrategy || 'NEW_WORK');
+    setAutomationNetworkPolicy(automation.networkPolicy || 'forbidden');
+    setAutomationCompletionAction(automation.completionAction || 'NONE');
+    setAutomationWebhookTarget(automation.completionConfig?.target || 'PERSONAL_QQ');
+    setAutomationWebhookId(automation.completionConfig?.webhookId || '');
+    setAutomationWechatTheme(automation.completionConfig?.themeId || 'fresh-green');
+    setAutomationEnableOnCreate(automation.enabled);
+    setSidePanel('automation');
+  };
+
+  const saveAutomation = async () => {
     if (!automationName.trim() || !automationPrompt.trim() || automationBusyId) return;
-    setAutomationBusyId('new');
+    const isEditing = Boolean(editingAutomationId);
+    setAutomationBusyId(isEditing ? editingAutomationId : 'new');
     setError('');
     try {
-      const result = await spacesApi.createAutomation(spaceId, {
+      const payload = {
         name: automationName.trim(),
         prompt: automationPrompt.trim(),
         intervalMinutes: automationInterval,
@@ -1750,17 +1791,19 @@ export default function SpaceDetailPage() {
           : space?.templateId === 'wechat-article' && automationCompletionAction === 'WECHAT_CREATE_DRAFT'
             ? { themeId: automationWechatTheme }
             : null,
-        enabled: automationEnableOnCreate,
-      });
-      setAutomations((items) => [result.automation, ...items]);
-      setAutomationName('');
-      setAutomationPrompt('');
-      setAutomationCompletionAction('NONE');
-      setAutomationWebhookTarget('PERSONAL_QQ');
-      setAutomationWebhookId('');
-      setAutomationEnableOnCreate(false);
+        enabled: isEditing ? undefined : automationEnableOnCreate,
+      };
+
+      if (isEditing) {
+        const result = await spacesApi.updateAutomation(spaceId, editingAutomationId, payload as any);
+        setAutomations((items) => items.map((item) => item.id === editingAutomationId ? result.automation : item));
+      } else {
+        const result = await spacesApi.createAutomation(spaceId, payload as any);
+        setAutomations((items) => [result.automation, ...items]);
+      }
+      resetAutomationForm();
     } catch (err: any) {
-      setError(err.message || '创建自动化失败');
+      setError(err.message || (isEditing ? '保存自动化修改失败' : '创建自动化失败'));
     } finally {
       setAutomationBusyId('');
     }
@@ -3012,7 +3055,8 @@ export default function SpaceDetailPage() {
                 }}
                 onRefreshOverview={openOperations}
                 onRefreshPublications={openWechatPublications}
-                onOpenAutomationEditor={() => setSidePanel('automation')}
+                onOpenAutomationEditor={() => { resetAutomationForm(); setSidePanel('automation'); }}
+                onEditAutomation={openEditAutomation}
                 onOpenConnectorSettings={() => setSidePanel('connector')}
                 onToggleAutomation={toggleAutomation}
                 onTriggerAutomation={triggerAutomation}
@@ -3974,7 +4018,7 @@ export default function SpaceDetailPage() {
                 <div className="flex h-[65px] shrink-0 items-center justify-between border-b border-black/[0.06] px-5">
                   <div className="flex items-center gap-2 text-sm font-black text-slate-800">
                     {sidePanel === 'members' ? <UsersRound size={17} /> : sidePanel === 'skills' ? <BookOpen size={17} /> : sidePanel === 'runs' ? <History size={17} /> : sidePanel === 'automation' ? <CalendarClock size={17} /> : sidePanel === 'notifications' ? <Globe2 size={17} /> : sidePanel === 'connector' ? <Globe2 size={17} /> : <Settings2 size={17} />}
-                    {sidePanel === 'members' ? '空间成员' : sidePanel === 'skills' ? 'Space Skills' : sidePanel === 'runs' ? '历史任务' : sidePanel === 'automation' ? '新建自动化' : sidePanel === 'notifications' ? '通知 Webhook' : sidePanel === 'connector' ? '微信连接设置' : '空间设置'}
+                    {sidePanel === 'members' ? '空间成员' : sidePanel === 'skills' ? 'Space Skills' : sidePanel === 'runs' ? '历史任务' : sidePanel === 'automation' ? (editingAutomationId ? '编辑自动化' : '新建自动化') : sidePanel === 'notifications' ? '通知 Webhook' : sidePanel === 'connector' ? '微信连接设置' : '空间设置'}
                   </div>
                   <button
                     type="button"
@@ -4886,17 +4930,28 @@ export default function SpaceDetailPage() {
                                 onChange={(event) => setAutomationEnableOnCreate(event.target.checked)}
                                 className="h-4 w-4 rounded border-slate-300"
                               />
-                              创建后启用
+                              {editingAutomationId ? '保持启用' : '创建后启用'}
                             </label>
-                            <button
-                              type="button"
-                              onClick={createAutomation}
-                              disabled={!automationName.trim() || !automationPrompt.trim() || (automationCompletionAction === 'WEBHOOK_NOTIFY' && automationWebhookTarget === 'CUSTOM_WEBHOOK' && !automationWebhookId) || (automationScheduleType === 'WEEKLY' && automationWeekdays.length === 0) || Boolean(automationBusyId)}
-                              className="inline-flex h-10 items-center gap-2 rounded-lg bg-slate-950 px-4 text-xs font-black text-white disabled:bg-slate-200 disabled:text-slate-400"
-                            >
-                              {automationBusyId === 'new' ? <Loader2 className="animate-spin" size={14} /> : <Plus size={14} />}
-                              创建规则
-                            </button>
+                            <div className="flex items-center gap-2">
+                              {editingAutomationId && (
+                                <button
+                                  type="button"
+                                  onClick={resetAutomationForm}
+                                  className="h-10 rounded-lg px-3 text-xs font-black text-slate-500 hover:bg-slate-100"
+                                >
+                                  取消
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={saveAutomation}
+                                disabled={!automationName.trim() || !automationPrompt.trim() || (automationCompletionAction === 'WEBHOOK_NOTIFY' && automationWebhookTarget === 'CUSTOM_WEBHOOK' && !automationWebhookId) || (automationScheduleType === 'WEEKLY' && automationWeekdays.length === 0) || Boolean(automationBusyId)}
+                                className="inline-flex h-10 items-center gap-2 rounded-lg bg-slate-950 px-4 text-xs font-black text-white disabled:bg-slate-200 disabled:text-slate-400"
+                              >
+                                {automationBusyId === (editingAutomationId || 'new') ? <Loader2 className="animate-spin" size={14} /> : editingAutomationId ? <Save size={14} /> : <Plus size={14} />}
+                                {editingAutomationId ? '保存修改' : '创建规则'}
+                              </button>
+                            </div>
                           </div>
                         </div>
 
@@ -4949,6 +5004,16 @@ export default function SpaceDetailPage() {
                                   className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-800 disabled:text-slate-200"
                                 >
                                   {automationBusyId === automation.id ? <Loader2 className="animate-spin" size={14} /> : <Play size={14} />}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => openEditAutomation(automation)}
+                                  disabled={Boolean(automationBusyId)}
+                                  aria-label={`编辑${automation.name}`}
+                                  title="编辑自动化"
+                                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-800 disabled:text-slate-200"
+                                >
+                                  <FilePenLine size={14} />
                                 </button>
                                 <button
                                   type="button"

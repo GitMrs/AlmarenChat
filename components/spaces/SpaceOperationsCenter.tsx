@@ -10,6 +10,7 @@ import {
   Globe2,
   Loader2,
   Newspaper,
+  Pencil,
   Play,
   Plus,
   RotateCcw,
@@ -50,6 +51,7 @@ type Props = {
   onRefreshOverview: () => void;
   onRefreshPublications: () => void;
   onOpenAutomationEditor: () => void;
+  onEditAutomation: (automation: SpaceAutomation) => void;
   onOpenConnectorSettings: () => void;
   onToggleAutomation: (automation: SpaceAutomation) => void;
   onTriggerAutomation: (automation: SpaceAutomation) => void;
@@ -259,6 +261,7 @@ export default function SpaceOperationsCenter(props: Props) {
                       <button type="button" onClick={() => props.onTriggerAutomation(automation)} disabled={Boolean(props.automationBusyId)} title="立即运行" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-white hover:text-slate-900 disabled:text-slate-200">
                         {props.automationBusyId === automation.id ? <Loader2 className="animate-spin" size={14} /> : <Play size={14} />}
                       </button>
+                      <button type="button" onClick={() => props.onEditAutomation(automation)} disabled={Boolean(props.automationBusyId)} title="编辑自动化" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-white hover:text-slate-900 disabled:text-slate-200"><Pencil size={14} /></button>
                       <button type="button" onClick={() => props.onDeleteAutomation(automation)} disabled={Boolean(props.automationBusyId)} title="删除自动化" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-300 hover:bg-rose-50 hover:text-rose-600 disabled:text-slate-200"><Trash2 size={14} /></button>
                     </div>
                   </div>
