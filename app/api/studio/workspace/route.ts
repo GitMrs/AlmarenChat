@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import path from 'node:path';
-import { readdir, readFile, writeFile, unlink, stat } from 'node:fs/promises';
+import { readdir, readFile, writeFile, rm, stat, mkdir } from 'node:fs/promises';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { resolveStudioWorkspace } from '@/lib/coding-agents/sandbox';
 import { safeJoinReal } from '@/lib/coding-agents/safe-path';
@@ -21,7 +21,15 @@ async function getDirectoryTree(dir: string, baseDir: string, maxDepth = 4, curr
     const nodes: FileNode[] = [];
 
     for (const entry of entries) {
-      if (entry.name === 'node_modules' || entry.name === '.git' || entry.name === '.next') {
+      if (
+        entry.name === 'node_modules' ||
+        entry.name === '.git' ||
+        entry.name === '.next' ||
+        entry.name === '.turbo' ||
+        entry.name === '.cache' ||
+        entry.name === '.DS_Store' ||
+        entry.name === 'Thumbs.db'
+      ) {
         continue;
       }
       const fullPath = path.join(dir, entry.name);
@@ -107,6 +115,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: '禁止越权写入工作区外文件' }, { status: 403 });
     }
 
+    await mkdir(path.dirname(targetFile), { recursive: true });
     await writeFile(targetFile, content, 'utf-8');
     return NextResponse.json({ success: true, path: file });
   } catch (err: unknown) {
@@ -134,7 +143,7 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: '禁止越权删除工作区外文件' }, { status: 403 });
     }
 
-    await unlink(targetFile);
+    await rm(targetFile, { recursive: true, force: true });
     return NextResponse.json({ success: true, path: filePath });
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : String(err);

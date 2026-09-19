@@ -75,6 +75,18 @@ function formatReminderDue(dueTimeStr: string | null) {
   return `${due.getMonth() + 1}/${due.getDate()} ${timeStr}`;
 }
 
+const LAUNCHER_STORAGE_KEY = 'almaren_assistant_launcher_pos_v1';
+const BUTTON_SIZE = 44;
+const EDGE_MARGIN_DESKTOP = 24;
+const EDGE_MARGIN_MOBILE = 16;
+const TOP_MARGIN = 64;
+
+interface LauncherPos {
+  x: number;
+  y: number;
+  side: 'left' | 'right';
+}
+
 function AssistantLauncher({
   open,
   onClick,
@@ -103,30 +115,197 @@ function AssistantLauncher({
   pendingCount?: number;
 }) {
   const [mobile, setMobile] = useState(false);
+  const [pos, setPos] = useState<LauncherPos | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [hasMoved, setHasMoved] = useState(false);
+
+  const dragRef = useRef<{
+    startX: number;
+    startY: number;
+    startPosX: number;
+    startPosY: number;
+    active: boolean;
+    moved: boolean;
+  }>({
+    startX: 0,
+    startY: 0,
+    startPosX: 0,
+    startPosY: 0,
+    active: false,
+    moved: false,
+  });
+
   useEffect(() => {
     const query = window.matchMedia('(max-width: 767px)');
-    const update = () => setMobile(query.matches);
-    update();
-    query.addEventListener('change', update);
-    return () => query.removeEventListener('change', update);
+    const isMobileNow = query.matches;
+    setMobile(isMobileNow);
+
+    const margin = isMobileNow ? EDGE_MARGIN_MOBILE : EDGE_MARGIN_DESKTOP;
+    const bottomMargin = isMobileNow ? 80 : 24;
+    const minY = TOP_MARGIN;
+    const maxY = typeof window !== 'undefined' ? window.innerHeight - BUTTON_SIZE - bottomMargin : 600;
+
+    try {
+      const saved = localStorage.getItem(LAUNCHER_STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (typeof parsed.y === 'number' && (parsed.side === 'left' || parsed.side === 'right')) {
+          const x = parsed.side === 'left' ? margin : window.innerWidth - BUTTON_SIZE - margin;
+          const y = Math.max(minY, Math.min(maxY, parsed.y));
+          setPos({ x, y, side: parsed.side });
+          return;
+        }
+      }
+    } catch {}
+
+    if (typeof window !== 'undefined') {
+      setPos({
+        x: window.innerWidth - BUTTON_SIZE - margin,
+        y: Math.max(minY, window.innerHeight - BUTTON_SIZE - bottomMargin),
+        side: 'right',
+      });
+    }
+
+    const handleResize = () => {
+      const currentIsMobile = query.matches;
+      setMobile(currentIsMobile);
+      setPos((prev) => {
+        if (!prev) return prev;
+        const currentMargin = currentIsMobile ? EDGE_MARGIN_MOBILE : EDGE_MARGIN_DESKTOP;
+        const currentBottomMargin = currentIsMobile ? 80 : 24;
+        const currentMaxY = window.innerHeight - BUTTON_SIZE - currentBottomMargin;
+        const newX = prev.side === 'left' ? currentMargin : window.innerWidth - BUTTON_SIZE - currentMargin;
+        const newY = Math.max(TOP_MARGIN, Math.min(currentMaxY, prev.y));
+        return { x: newX, y: newY, side: prev.side };
+      });
+    };
+
+    window.addEventListener('resize', handleResize);
+    query.addEventListener('change', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      query.removeEventListener('change', handleResize);
+    };
   }, []);
+
+  const handlePointerDown = (e: React.PointerEvent) => {
+    if (e.button !== 0) return;
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    const margin = mobile ? EDGE_MARGIN_MOBILE : EDGE_MARGIN_DESKTOP;
+    const bottomMargin = mobile ? 80 : 24;
+    const currentPos = pos || {
+      x: window.innerWidth - BUTTON_SIZE - margin,
+      y: window.innerHeight - BUTTON_SIZE - bottomMargin,
+      side: 'right' as const,
+    };
+    dragRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      startPosX: currentPos.x,
+      startPosY: currentPos.y,
+      active: true,
+      moved: false,
+    };
+    setIsDragging(true);
+  };
+
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (!dragRef.current.active) return;
+    const dx = e.clientX - dragRef.current.startX;
+    const dy = e.clientY - dragRef.current.startY;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist > 4) {
+      dragRef.current.moved = true;
+      setHasMoved(true);
+    }
+
+    const margin = mobile ? EDGE_MARGIN_MOBILE : EDGE_MARGIN_DESKTOP;
+    const bottomMargin = mobile ? 80 : 24;
+    const minX = margin;
+    const maxX = window.innerWidth - BUTTON_SIZE - margin;
+    const minY = TOP_MARGIN;
+    const maxY = window.innerHeight - BUTTON_SIZE - bottomMargin;
+
+    const newX = Math.max(minX, Math.min(maxX, dragRef.current.startPosX + dx));
+    const newY = Math.max(minY, Math.min(maxY, dragRef.current.startPosY + dy));
+    const side = newX < window.innerWidth / 2 ? 'left' : 'right';
+
+    setPos({ x: newX, y: newY, side });
+  };
+
+  const handlePointerUp = (e: React.PointerEvent) => {
+    if (!dragRef.current.active) return;
+    dragRef.current.active = false;
+    setIsDragging(false);
+    try {
+      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+    } catch {}
+
+    if (dragRef.current.moved) {
+      const margin = mobile ? EDGE_MARGIN_MOBILE : EDGE_MARGIN_DESKTOP;
+      const bottomMargin = mobile ? 80 : 24;
+      const minY = TOP_MARGIN;
+      const maxY = window.innerHeight - BUTTON_SIZE - bottomMargin;
+
+      const currentPos = pos || {
+        x: window.innerWidth - BUTTON_SIZE - margin,
+        y: window.innerHeight - BUTTON_SIZE - bottomMargin,
+        side: 'right' as const,
+      };
+
+      const isLeft = currentPos.x < window.innerWidth / 2;
+      const snappedX = isLeft ? margin : window.innerWidth - BUTTON_SIZE - margin;
+      const clampedY = Math.max(minY, Math.min(maxY, currentPos.y));
+      const side = isLeft ? 'left' : 'right';
+
+      const finalPos: LauncherPos = { x: snappedX, y: clampedY, side };
+      setPos(finalPos);
+      try {
+        localStorage.setItem(LAUNCHER_STORAGE_KEY, JSON.stringify(finalPos));
+      } catch {}
+
+      setTimeout(() => {
+        setHasMoved(false);
+      }, 60);
+    } else {
+      setHasMoved(false);
+    }
+  };
+
+  const isLeft = pos?.side === 'left';
+  const isNearTop = (pos?.y ?? 999) < 200;
 
   return (
     <div
       style={{
-        bottom: mobile ? 'calc(80px + env(safe-area-inset-bottom, 0px))' : '24px',
         position: 'fixed',
-        right: mobile ? '16px' : '24px',
+        left: pos ? `${pos.x}px` : undefined,
+        top: pos ? `${pos.y}px` : undefined,
+        right: pos ? undefined : (mobile ? '16px' : '24px'),
+        bottom: pos ? undefined : (mobile ? 'calc(80px + env(safe-area-inset-bottom, 0px))' : '24px'),
         zIndex: 65,
+        touchAction: 'none',
+        transition: isDragging
+          ? 'none'
+          : 'left 0.3s cubic-bezier(0.2, 0.8, 0.2, 1), top 0.3s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.2s, transform 0.2s',
       }}
-      className={cn('fixed right-4 z-[65] md:right-6', open && 'pointer-events-none scale-90 opacity-0')}
+      className={cn('fixed z-[65] select-none', open && 'pointer-events-none scale-90 opacity-0')}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerUp}
     >
       {/* 待办闹钟专属微光弹窗（优先级最高） */}
       {activeReminderAlert ? (
         <div
           role="alert"
           aria-live="assertive"
-          className="absolute bottom-14 right-0 w-76 rounded-2xl border border-orange-300 bg-white/98 p-3.5 shadow-2xl backdrop-blur-md transition animate-in fade-in slide-in-from-bottom-2 duration-300 text-left z-10 cursor-default"
+          onPointerDown={(e) => e.stopPropagation()}
+          className={cn(
+            'absolute w-76 rounded-2xl border border-orange-300 bg-white/98 p-3.5 shadow-2xl backdrop-blur-md transition animate-in fade-in duration-300 text-left z-10 cursor-default',
+            isNearTop ? 'top-14 slide-in-from-top-2' : 'bottom-14 slide-in-from-bottom-2',
+            isLeft ? 'left-0' : 'right-0'
+          )}
         >
           <div className="flex items-center justify-between gap-1.5 pb-1 text-[11px] font-black text-orange-950">
             <div className="flex items-center gap-1.5">
@@ -167,15 +346,26 @@ function AssistantLauncher({
               💤 延后10分钟
             </button>
           </div>
-          <div className="absolute -bottom-1.5 right-4 h-3 w-3 rotate-45 border-b border-r border-orange-300 bg-white" />
+          <div
+            className={cn(
+              'absolute h-3 w-3 rotate-45 border-orange-300 bg-white',
+              isNearTop ? '-top-1.5 border-t border-l' : '-bottom-1.5 border-b border-r',
+              isLeft ? 'left-4' : 'right-4'
+            )}
+          />
         </div>
       ) : proactiveGreeting && !proactiveGreetingCollapsed ? (
         /* 柔和微光的主动关怀悬浮气泡 */
         <div
           role="status"
           aria-live="polite"
+          onPointerDown={(e) => e.stopPropagation()}
           onClick={() => onAcceptGreeting?.(proactiveGreeting.text, proactiveGreeting.deliveryId)}
-          className="absolute bottom-14 right-0 w-72 rounded-2xl border border-amber-200/90 bg-white/95 p-3.5 shadow-xl backdrop-blur-md transition animate-in fade-in slide-in-from-bottom-2 duration-300 text-left cursor-pointer group hover:border-amber-300"
+          className={cn(
+            'absolute w-72 rounded-2xl border border-amber-200/90 bg-white/95 p-3.5 shadow-xl backdrop-blur-md transition animate-in fade-in duration-300 text-left cursor-pointer group hover:border-amber-300',
+            isNearTop ? 'top-14 slide-in-from-top-2' : 'bottom-14 slide-in-from-bottom-2',
+            isLeft ? 'left-0' : 'right-0'
+          )}
         >
           <div className="flex items-center justify-between gap-1.5 pb-1 text-[11px] font-black text-amber-900">
             <div className="flex items-center gap-1.5">
@@ -207,13 +397,23 @@ function AssistantLauncher({
             <span className="text-slate-300">8s 后自动收起</span>
           </div>
           {/* 小气泡尖角 */}
-          <div className="absolute -bottom-1.5 right-4 h-3 w-3 rotate-45 border-b border-r border-amber-200/90 bg-white" />
+          <div
+            className={cn(
+              'absolute h-3 w-3 rotate-45 border-amber-200/90 bg-white',
+              isNearTop ? '-top-1.5 border-t border-l' : '-bottom-1.5 border-b border-r',
+              isLeft ? 'left-4' : 'right-4'
+            )}
+          />
         </div>
       ) : null}
 
       <button
         type="button"
-        onClick={() => {
+        onClick={(e) => {
+          if (hasMoved || dragRef.current.moved) {
+            e.stopPropagation();
+            return;
+          }
           if (proactiveGreeting && proactiveGreetingCollapsed && !activeReminderAlert) {
             onAcceptGreeting?.(proactiveGreeting.text, proactiveGreeting.deliveryId);
             return;
@@ -225,13 +425,14 @@ function AssistantLauncher({
           ? `⏰ 提醒：${activeReminderAlert.content}`
           : proactiveGreeting && proactiveGreetingCollapsed
             ? '有一条未读问候'
-            : proactiveEnabled ? '小伴在线陪伴中' : '小伴待命中'}
+            : proactiveEnabled ? '小伴在线陪伴中（按住可拖动位置）' : '小伴待命中（按住可拖动位置）'}
         className={cn(
-          'flex h-11 w-11 items-center justify-center rounded-full border bg-white text-slate-700 shadow-lg transition hover:-translate-y-0.5 hover:text-slate-950 cursor-pointer',
+          'flex h-11 w-11 items-center justify-center rounded-full border bg-white text-slate-700 shadow-lg transition hover:-translate-y-0.5 hover:text-slate-950',
+          isDragging ? 'cursor-grabbing scale-105 shadow-2xl' : 'cursor-grab',
           activeReminderAlert ? 'border-orange-400 ring-4 ring-orange-200 animate-bounce' : 'border-black/10'
         )}
       >
-        <div className="relative flex items-center justify-center">
+        <div className="relative flex items-center justify-center pointer-events-none">
           {activeReminderAlert ? (
             <Bell size={21} className="text-orange-600 animate-pulse" />
           ) : (

@@ -679,6 +679,33 @@ export default function StudioPage() {
     }
   };
 
+  const handleSaveFile = async (filePath: string, content: string): Promise<boolean> => {
+    if (!activeWorkspaceId || !filePath) return false;
+    try {
+      const token = getAuthToken();
+      const res = await fetch('/api/studio/workspace', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          workspaceId: activeWorkspaceId,
+          file: filePath,
+          content,
+        }),
+      });
+      if (res.ok) {
+        setPreviewFile({ path: filePath, content });
+        fetchWorkspaceTree();
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  };
+
   const handleCreateFile = async () => {
     if (!newFileName.trim() || !activeWorkspaceId) return;
     try {
@@ -1514,6 +1541,7 @@ export default function StudioPage() {
         handleDeleteFile={handleDeleteFile}
         previewFile={previewFile}
         setPreviewFile={setPreviewFile}
+        handleSaveFile={handleSaveFile}
         userProfile={userProfile}
         isStreaming={isStreaming}
         workspaceSkills={workspaceSkills}

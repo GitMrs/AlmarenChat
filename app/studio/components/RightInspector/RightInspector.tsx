@@ -28,6 +28,7 @@ interface RightInspectorProps {
   handleDeleteFile: (path: string, e: React.MouseEvent) => void;
   previewFile: { path: string; content: string } | null;
   setPreviewFile: (v: { path: string; content: string } | null) => void;
+  handleSaveFile: (path: string, content: string) => Promise<boolean>;
   // Roster tab props
   userProfile: any;
   isStreaming: boolean;
@@ -67,6 +68,7 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
   handleDeleteFile,
   previewFile,
   setPreviewFile,
+  handleSaveFile,
   userProfile,
   isStreaming,
   workspaceSkills,
@@ -111,24 +113,13 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
                   ? 'bg-white text-slate-900 shadow-xs border border-black/[0.08] font-semibold'
                   : 'text-slate-500 hover:text-slate-800 hover:bg-black/[0.03]'
               )}
+              title="工作区文件管理"
             >
               <FolderOpen
                 size={13}
                 className={inspectorTab === 'files' ? 'text-amber-500' : 'text-slate-400'}
               />
               <span>文件</span>
-              {fileTree.length > 0 && (
-                <span
-                  className={cn(
-                    'text-[10px] font-mono px-1 rounded',
-                    inspectorTab === 'files'
-                      ? 'bg-slate-100 text-slate-700 font-semibold'
-                      : 'bg-black/[0.04] text-slate-500'
-                  )}
-                >
-                  {fileTree.length}
-                </span>
-              )}
             </button>
 
             <button
@@ -143,18 +134,20 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
                   ? 'bg-white text-indigo-600 shadow-xs border border-black/[0.08] font-semibold'
                   : 'text-slate-500 hover:text-slate-800 hover:bg-black/[0.03]'
               )}
+              title="智能体协同团队与技能库"
             >
               <Users
                 size={13}
                 className={inspectorTab === 'roster' ? 'text-indigo-600' : 'text-slate-400'}
               />
               <span>团队</span>
-              {workspaceSkills.length > 0 ? (
-                <span className="text-[10px] text-amber-700 font-mono bg-amber-50 border border-amber-200 px-1 rounded font-medium">
-                  {workspaceSkills.length}技能
+              {workspaceSkills.length > 0 && (
+                <span
+                  className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-amber-50 text-amber-700 border border-amber-200/60 font-medium"
+                  title={`已装配 ${workspaceSkills.length} 个工作区技能`}
+                >
+                  {workspaceSkills.length} 技能
                 </span>
-              ) : (
-                <span className="text-[10px] text-slate-400 font-mono">3</span>
               )}
             </button>
           </div>
@@ -205,6 +198,7 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
               handleDeleteFile={handleDeleteFile}
               previewFile={previewFile}
               setPreviewFile={setPreviewFile}
+              handleSaveFile={handleSaveFile}
             />
           )}
         </div>

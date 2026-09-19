@@ -23,6 +23,7 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   Sparkles,
+  Terminal,
   Trash2,
 } from 'lucide-react';
 import AppShell from '@/components/layout/AppShell';
@@ -213,15 +214,29 @@ function MeContent() {
               </p>
             </div>
 
-            {activeTab === 'assets' && (
-              <button
-                onClick={() => router.push('/create-agent')}
-                className="inline-flex w-fit cursor-pointer items-center justify-center gap-2 rounded-full bg-slate-950 px-5 py-3 text-sm font-black text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg"
+            <div className="flex flex-wrap items-center gap-3">
+              <a
+                href="/studio"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex w-fit cursor-pointer items-center justify-center gap-2 rounded-full border border-indigo-200/80 bg-indigo-50/70 px-5 py-3 text-sm font-black text-indigo-700 shadow-2xs transition hover:-translate-y-0.5 hover:bg-indigo-100 hover:text-indigo-900 hover:shadow-md"
+                title="在新标签页打开 Almaren Studio 沙箱工作台"
               >
-                <Plus size={17} />
-                创建新 Agent
-              </button>
-            )}
+                <Terminal size={17} className="text-indigo-600" />
+                <span>进入 Studio</span>
+                <ExternalLink size={14} className="text-indigo-400" />
+              </a>
+
+              {activeTab === 'assets' && (
+                <button
+                  onClick={() => router.push('/create-agent')}
+                  className="inline-flex w-fit cursor-pointer items-center justify-center gap-2 rounded-full bg-slate-950 px-5 py-3 text-sm font-black text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg"
+                >
+                  <Plus size={17} />
+                  创建新 Agent
+                </button>
+              )}
+            </div>
           </div>
         </section>
 
