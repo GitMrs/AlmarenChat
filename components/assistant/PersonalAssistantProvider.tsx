@@ -266,9 +266,16 @@ function AssistantLauncher({
 
       setTimeout(() => {
         setHasMoved(false);
+        dragRef.current.moved = false;
       }, 60);
     } else {
       setHasMoved(false);
+      dragRef.current.moved = false;
+      if (proactiveGreeting && proactiveGreetingCollapsed && !activeReminderAlert) {
+        onAcceptGreeting?.(proactiveGreeting.text, proactiveGreeting.deliveryId);
+      } else {
+        onClick();
+      }
     }
   };
 
@@ -597,14 +604,27 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
   }, [toolsOpen]);
 
   useEffect(() => {
-    setLoggedIn(Boolean(localStorage.getItem('token')));
+    const syncAuth = () => {
+      setLoggedIn(Boolean(localStorage.getItem('token')));
+    };
+    syncAuth();
+    window.addEventListener('storage', syncAuth);
+    window.addEventListener('almaren-auth-change', syncAuth);
+    return () => {
+      window.removeEventListener('storage', syncAuth);
+      window.removeEventListener('almaren-auth-change', syncAuth);
+    };
   }, [pathname]);
+
   useEffect(() => {
     const invalidate = () => {
       failedAtRef.current = 0;
       setData(null);
     };
-    const handleOpen = () => setOpen(true);
+    const handleOpen = () => {
+      setLoggedIn(Boolean(localStorage.getItem('token')));
+      setOpen(true);
+    };
     window.addEventListener('personal-assistant-updated', invalidate);
     window.addEventListener('open-personal-assistant', handleOpen);
     return () => {

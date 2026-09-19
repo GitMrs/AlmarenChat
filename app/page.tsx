@@ -86,6 +86,10 @@ export default function HomePage() {
   };
 
   const handleOpenAssistant = () => {
+    if (!localStorage.getItem('token')) {
+      router.push('/login');
+      return;
+    }
     window.dispatchEvent(new CustomEvent('open-personal-assistant'));
   };
 
