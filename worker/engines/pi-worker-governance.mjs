@@ -621,7 +621,20 @@ export function createPiWorkerGovernance({
         if (status === 'cancelled') return '';
         if (state.paused) return '';
         if (request.mode === 'advisor') return finalContent;
-        if (!state.submitted) throw new Error('Pi 没有通过 submit_task_result 提交任务结果');
+        if (!state.submitted) {
+          if (typeof request.validateSubmission === 'function') {
+            return Promise.resolve(request.validateSubmission(finalContent || '')).then((validation) => {
+              if (validation?.ok) {
+                state.submitted = true;
+                state.result = (finalContent || '').trim() || '任务已生成目标产物并已通过平台验收。';
+                state.manifest = validation.manifest || null;
+                return state.result;
+              }
+              throw new Error('Pi 没有通过 submit_task_result 提交任务结果');
+            });
+          }
+          throw new Error('Pi 没有通过 submit_task_result 提交任务结果');
+        }
         return state.result || finalContent;
       },
       resolveExecutionResult: (sessionResult) => ({

@@ -1802,6 +1802,7 @@ export default function SpaceDetailPage() {
         setAutomations((items) => [result.automation, ...items]);
       }
       resetAutomationForm();
+      setSidePanel(null);
     } catch (err: any) {
       setError(err.message || (isEditing ? '保存自动化修改失败' : '创建自动化失败'));
     } finally {
@@ -4933,15 +4934,16 @@ export default function SpaceDetailPage() {
                               {editingAutomationId ? '保持启用' : '创建后启用'}
                             </label>
                             <div className="flex items-center gap-2">
-                              {editingAutomationId && (
-                                <button
-                                  type="button"
-                                  onClick={resetAutomationForm}
-                                  className="h-10 rounded-lg px-3 text-xs font-black text-slate-500 hover:bg-slate-100"
-                                >
-                                  取消
-                                </button>
-                              )}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  resetAutomationForm();
+                                  setSidePanel(null);
+                                }}
+                                className="h-10 rounded-lg px-3 text-xs font-black text-slate-500 hover:bg-slate-100"
+                              >
+                                取消
+                              </button>
                               <button
                                 type="button"
                                 onClick={saveAutomation}
@@ -4953,101 +4955,6 @@ export default function SpaceDetailPage() {
                               </button>
                             </div>
                           </div>
-                        </div>
-
-                        <div className="mt-3 space-y-2">
-                          {automations.length === 0 ? (
-                            <div className="py-5 text-center text-xs font-semibold text-slate-400">暂无自动化规则</div>
-                          ) : automations.map((automation) => (
-                            <div key={automation.id} className="border-b border-black/[0.06] px-1 py-3 last:border-b-0">
-                              <div className="flex items-start gap-3">
-                                <div className="min-w-0 flex-1">
-                                  <div className="truncate text-sm font-black text-slate-700">{automation.name}</div>
-                                  <div className="mt-1 line-clamp-2 text-xs font-semibold leading-5 text-slate-400">{automation.prompt}</div>
-                                  <div className="mt-1 text-[11px] font-bold text-slate-400">
-                                    {automationScheduleLabel(automation)} · {automation.enabled ? `下次：${new Date(automation.nextRunAt).toLocaleString('zh-CN')}` : '已停用'}
-                                  </div>
-                                  {automation.completionAction === 'WECHAT_CREATE_DRAFT' && (
-                                    <div className="mt-1 text-[11px] font-bold text-emerald-600">
-                                      定稿后准备微信草稿 · {automation.completionConfig?.themeId === 'editorial-red' ? '编辑红' : automation.completionConfig?.themeId === 'midnight-gold' ? '午夜金' : '清新绿'}
-                                    </div>
-                                  )}
-                                  {automation.completionAction === 'WEBHOOK_NOTIFY' && (
-                                    <div className="mt-1 text-[11px] font-bold text-sky-600">
-                                      完成后通知 Webhook · {automation.completionConfig?.target === 'CUSTOM_WEBHOOK' ? '自定义地址' : '个人中心 QQ'}
-                                    </div>
-                                  )}
-                                  {automation.lastError && (
-                                    <div className="mt-2 rounded-md bg-rose-50 px-2.5 py-2 text-[11px] font-semibold leading-5 text-rose-600">
-                                      已暂停：{automation.lastError}
-                                    </div>
-                                  )}
-                                </div>
-                                <button
-                                  type="button"
-                                  onClick={() => toggleAutomation(automation)}
-                                  disabled={Boolean(automationBusyId)}
-                                  role="switch"
-                                  aria-checked={automation.enabled}
-                                  aria-label={`${automation.enabled ? '停用' : '启用'}${automation.name}`}
-                                  title={automation.enabled ? '停用' : '启用'}
-                                  className={`relative mt-1 h-6 w-10 shrink-0 rounded-full transition ${automation.enabled ? 'bg-emerald-500' : 'bg-slate-200'}`}
-                                >
-                                  <span className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow-sm transition ${automation.enabled ? 'left-5' : 'left-1'}`} />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => triggerAutomation(automation)}
-                                  disabled={Boolean(automationBusyId)}
-                                  aria-label={`立即运行${automation.name}`}
-                                  title={automation.enabled ? '立即运行' : '恢复并立即运行'}
-                                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-800 disabled:text-slate-200"
-                                >
-                                  {automationBusyId === automation.id ? <Loader2 className="animate-spin" size={14} /> : <Play size={14} />}
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => openEditAutomation(automation)}
-                                  disabled={Boolean(automationBusyId)}
-                                  aria-label={`编辑${automation.name}`}
-                                  title="编辑自动化"
-                                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-800 disabled:text-slate-200"
-                                >
-                                  <FilePenLine size={14} />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => deleteAutomation(automation)}
-                                  disabled={Boolean(automationBusyId)}
-                                  aria-label={`删除${automation.name}`}
-                                  title="删除自动化"
-                                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-300 transition hover:bg-rose-50 hover:text-rose-600 disabled:text-slate-200"
-                                >
-                                  <Trash2 size={14} />
-                                </button>
-                              </div>
-                              {automation.executions && automation.executions.length > 0 && (
-                                <div className="mt-2 space-y-1 border-t border-black/[0.05] pt-2">
-                                  {automation.executions.slice(0, 3).map((execution) => (
-                                    <button
-                                      key={execution.id}
-                                      type="button"
-                                      disabled={!execution.runId}
-                                      onClick={() => {
-                                        if (!execution.runId) return;
-                                        setSidePanel(null);
-                                        openTaskRun(execution.runId);
-                                      }}
-                                      className="flex w-full items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left text-[11px] font-semibold text-slate-400 hover:bg-slate-50 hover:text-slate-700 disabled:hover:bg-transparent"
-                                    >
-                                      <span>{new Date(execution.scheduledFor).toLocaleString('zh-CN')}</span>
-                                      <span className="shrink-0 font-black">{RUN_STATUS_LABELS[execution.run?.status || ''] || (execution.status === 'TRIGGERED' ? '已触发' : execution.status)}</span>
-                                    </button>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          ))}
                         </div>
                       </section>}
                       {String(sidePanel) === 'operations' && !isPiSpace && <section className="border-t border-black/[0.06] pt-5">

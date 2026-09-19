@@ -3,7 +3,7 @@ function normalizePath(value) {
 }
 
 export function explicitlyAllowsFullRewrite(value) {
-  return /(?:重写|整体覆盖|完全替换|从头重做|重新生成(?:整个|全部)?|overwrite|replace\s+the\s+entire|rewrite)/i.test(String(value || ''));
+  return /(?:重写|整体覆盖|完全替换|从头重做|重新生成(?:整个|全部)?|追加(?:写入|更新)?|overwrite|replace\s+the\s+entire|rewrite|append)/i.test(String(value || ''));
 }
 
 export function blocksUnapprovedFullOverwrite(path, existingPaths, approvedRequest) {

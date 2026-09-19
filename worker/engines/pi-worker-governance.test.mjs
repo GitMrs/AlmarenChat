@@ -78,6 +78,19 @@ test('Pi Worker governance rejects an unstructured executor ending', async () =>
   );
 });
 
+test('Pi Worker governance auto-recovers when valid artifacts were produced', async () => {
+  const manifest = { entries: [{ path: 'article.md' }], validation: { valid: true } };
+  const build = createPiWorkerGovernance({ db: {}, reserveRequest: () => ({}) });
+  const options = await build(request({
+    validateSubmission: async () => ({ ok: true, manifest }),
+  }));
+  const resolved = await options.resolveResult({ finalContent: '已自动写入文件', status: 'completed' });
+  assert.equal(resolved, '已自动写入文件');
+  assert.deepEqual(options.resolveExecutionResult(), {
+    status: 'completed', paused: false, result: '已自动写入文件', manifest,
+  });
+});
+
 test('Pi Worker governance lets advisor tasks return reviewed text without submit tool', async () => {
   const build = createPiWorkerGovernance({ db: {}, reserveRequest: () => ({}) });
   const options = await build(request({ mode: 'advisor' }));
