@@ -1,11 +1,13 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import {
   Folder,
   Sparkles,
   PanelLeft,
   PanelRightClose,
+  Trash2,
+  Loader2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -15,6 +17,7 @@ import {
   ChatMessage,
   StudioWorkspaceItem,
   FileNode,
+  PreviewFile,
   StudioConfig,
   StudioApprovalMode,
   DEFAULT_CONFIG,
@@ -34,6 +37,7 @@ export default function StudioPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
+  const [isClearingMessages, setIsClearingMessages] = useState(false);
 
   // Studio Workspaces state
   const [workspaces, setWorkspaces] = useState<StudioWorkspaceItem[]>([]);
@@ -179,7 +183,7 @@ export default function StudioPage() {
   const [showFileExplorer, setShowFileExplorer] = useState(false);
   const [fileTree, setFileTree] = useState<FileNode[]>([]);
   const [isLoadingFiles, setIsLoadingFiles] = useState(false);
-  const [previewFile, setPreviewFile] = useState<{ path: string; content: string } | null>(null);
+  const [previewFile, setPreviewFile] = useState<PreviewFile | null>(null);
   const [newFileName, setNewFileName] = useState('');
   const [isCreatingFile, setIsCreatingFile] = useState(false);
 
@@ -187,6 +191,12 @@ export default function StudioPage() {
   const [isListening, setIsListening] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const isHistoryJumpNeededRef = useRef<boolean>(true);
+  const prependedScrollDataRef = useRef<{ prevScrollHeight: number; prevScrollTop: number } | null>(null);
+  const isPrependingRef = useRef<boolean>(false);
+  const [hasMoreMessages, setHasMoreMessages] = useState(false);
+  const [isLoadingMoreMessages, setIsLoadingMoreMessages] = useState(false);
   const terminalEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const recognitionRef = useRef<any>(null);
@@ -366,17 +376,84 @@ export default function StudioPage() {
     }
   };
 
+  // Pre-paint scroll management:
+  // 1. If older messages were prepended at top -> anchor scroll position (scrollTop = prevScrollTop + delta)
+  // 2. If initial load / workspace switch -> jump to bottom (scrollTop = scrollHeight)
+  useLayoutEffect(() => {
+    if (!scrollContainerRef.current) return;
+    const container = scrollContainerRef.current;
+
+    if (prependedScrollDataRef.current) {
+      const { prevScrollHeight, prevScrollTop } = prependedScrollDataRef.current;
+      const newScrollHeight = container.scrollHeight;
+      const heightDelta = newScrollHeight - prevScrollHeight;
+
+      // Lock scroll position precisely before browser paint
+      container.scrollTop = prevScrollTop + heightDelta;
+      prependedScrollDataRef.current = null;
+      return;
+    }
+
+    if (isHistoryJumpNeededRef.current && messages.length > 0) {
+      container.scrollTop = container.scrollHeight;
+    }
+  }, [messages, isLoadingMessages]);
+
+  // Scroll management:
+  // - Instant jump to bottom on page refresh / workspace switch (no smooth animation)
+  // - Smooth scroll on subsequent conversation / user prompts
+  // - Skip scroll-to-bottom if older messages were prepended at top
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (!messagesEndRef.current) return;
+
+    if (isPrependingRef.current) {
+      isPrependingRef.current = false;
+      return;
+    }
+
+    if (isHistoryJumpNeededRef.current) {
+      if (messages.length > 0) {
+        if (scrollContainerRef.current) {
+          scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+        }
+        messagesEndRef.current.scrollIntoView({ behavior: 'auto' });
+
+        // Subsequent frame to guarantee layout is pinned to bottom after markdown/tool cards render
+        const raf = requestAnimationFrame(() => {
+          if (scrollContainerRef.current) {
+            scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+          }
+          messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
+        });
+
+        const timer = setTimeout(() => {
+          if (scrollContainerRef.current) {
+            scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+          }
+          messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
+          isHistoryJumpNeededRef.current = false;
+        }, 80);
+
+        return () => {
+          cancelAnimationFrame(raf);
+          clearTimeout(timer);
+        };
+      }
+    } else {
+      messagesEndRef.current.scrollIntoView({ behavior: isStreaming ? 'auto' : 'smooth' });
+    }
   }, [messages, isStreaming]);
 
-  // Load Messages for a Studio Workspace
+  // Load Messages for a Studio Workspace (Initial batch: latest 30 messages)
   const loadWorkspaceMessages = async (wsId: string) => {
     if (!wsId) return;
+    isHistoryJumpNeededRef.current = true;
+    prependedScrollDataRef.current = null;
+    isPrependingRef.current = false;
     setIsLoadingMessages(true);
     try {
       const token = getAuthToken();
-      const res = await fetch(`/api/studio/workspaces/${wsId}/messages`, {
+      const res = await fetch(`/api/studio/workspaces/${wsId}/messages?limit=30`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
@@ -390,9 +467,12 @@ export default function StudioPage() {
           timestamp: new Date(m.createdAt).getTime(),
         }));
         setMessages(loaded);
+        setHasMoreMessages(data.hasMore ?? false);
 
-        // Compute total tokens used in this workspace
-        const sumTokens = loaded.reduce((acc, cur) => acc + (cur.tokens || 0), 0);
+        // Compute total tokens used in this workspace (use server-side aggregation when available)
+        const sumTokens = typeof data.totalTokens === 'number'
+          ? data.totalTokens
+          : loaded.reduce((acc, cur) => acc + (cur.tokens || 0), 0);
         setTotalTokens(sumTokens);
         setRemainingTokens(Math.max(0, contextLength - sumTokens));
       }
@@ -400,6 +480,59 @@ export default function StudioPage() {
       console.error('Failed to load workspace messages:', err);
     } finally {
       setIsLoadingMessages(false);
+    }
+  };
+
+  // Load Older Messages (Pagination: prepends older batch while anchoring viewport height)
+  const loadMoreWorkspaceMessages = async () => {
+    if (!activeWorkspaceId || isLoadingMoreMessages || !hasMoreMessages || messages.length === 0) {
+      return;
+    }
+
+    const oldestMessage = messages[0];
+    if (!oldestMessage) return;
+
+    const container = scrollContainerRef.current;
+    if (container) {
+      prependedScrollDataRef.current = {
+        prevScrollHeight: container.scrollHeight,
+        prevScrollTop: container.scrollTop,
+      };
+    }
+    isPrependingRef.current = true;
+    setIsLoadingMoreMessages(true);
+
+    try {
+      const token = getAuthToken();
+      const res = await fetch(
+        `/api/studio/workspaces/${activeWorkspaceId}/messages?limit=30&before=${oldestMessage.id}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+      if (res.ok) {
+        const data = await res.json();
+        const olderList: ChatMessage[] = (data.messages || []).map((m: any) => ({
+          id: m.id,
+          role: m.role as 'user' | 'assistant' | 'tool',
+          content: m.content || '',
+          tools: Array.isArray(m.tools) ? m.tools : [],
+          tokens: m.tokens,
+          timestamp: new Date(m.createdAt).getTime(),
+        }));
+
+        setHasMoreMessages(data.hasMore ?? false);
+        setMessages((prev) => [...olderList, ...prev]);
+      } else {
+        prependedScrollDataRef.current = null;
+        isPrependingRef.current = false;
+      }
+    } catch (err) {
+      console.error('Failed to load older messages:', err);
+      prependedScrollDataRef.current = null;
+      isPrependingRef.current = false;
+    } finally {
+      setIsLoadingMoreMessages(false);
     }
   };
 
@@ -1073,10 +1206,15 @@ export default function StudioPage() {
   };
 
   const handleResetChat = async () => {
-    if (!activeWorkspaceId) return;
-    if (!confirm(`确认清空当前工作区【${activeWorkspaceName}】的全部历史聊天记录？`)) {
+    if (!activeWorkspaceId || isClearingMessages || messages.length === 0) return;
+    if (
+      !confirm(
+        `确定要清空当前工作区【${activeWorkspaceName}】的所有聊天记录吗？\n\n注意：工作区沙箱内的代码文件、系统规则和已安装技能将完整保留，仅重置对话流与 Token 消耗。`
+      )
+    ) {
       return;
     }
+    setIsClearingMessages(true);
     try {
       const token = getAuthToken();
       const res = await fetch(`/api/studio/workspaces/${activeWorkspaceId}/messages`, {
@@ -1085,12 +1223,83 @@ export default function StudioPage() {
       });
       if (res.ok) {
         setMessages([]);
+        setHasMoreMessages(false);
+        setIsLoadingMoreMessages(false);
+        prependedScrollDataRef.current = null;
+        isPrependingRef.current = false;
         setTotalTokens(0);
         setRemainingTokens(contextLength);
+        setIsStreaming(false);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error || '清空聊天记录失败');
       }
     } catch (err) {
       alert('清空聊天记录失败: ' + String(err));
+    } finally {
+      setIsClearingMessages(false);
     }
+  };
+
+  // Delete single message from workspace
+  const handleDeleteMessage = async (messageId: string, silent = false) => {
+    if (!activeWorkspaceId) return;
+    if (!silent && !confirm('确定要删除该条对话消息吗？')) {
+      return;
+    }
+
+    try {
+      const token = getAuthToken();
+      const res = await fetch(
+        `/api/studio/workspaces/${activeWorkspaceId}/messages?messageId=${messageId}`,
+        {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+      if (res.ok) {
+        setMessages((prev) => {
+          const updated = prev.filter((m) => m.id !== messageId);
+          const sumTokens = updated.reduce((acc, cur) => acc + (cur.tokens || 0), 0);
+          setTotalTokens(sumTokens);
+          setRemainingTokens(Math.max(0, contextLength - sumTokens));
+          return updated;
+        });
+      } else {
+        const err = await res.json().catch(() => ({}));
+        if (!silent) alert(err.error || '删除消息失败');
+      }
+    } catch (err) {
+      if (!silent) alert('删除消息出错: ' + String(err));
+    }
+  };
+
+  // Retry / Regenerate assistant message
+  const handleRetryAssistantMessage = async (assistantMsgId: string) => {
+    if (isStreaming || !activeWorkspaceId) return;
+    const asstIdx = messages.findIndex((m) => m.id === assistantMsgId);
+    if (asstIdx === -1) return;
+
+    // Find the user prompt immediately preceding this assistant message
+    let userPrompt = '';
+    let precedingUserMsgId = '';
+    for (let i = asstIdx - 1; i >= 0; i--) {
+      if (messages[i].role === 'user' && messages[i].content) {
+        userPrompt = messages[i].content || '';
+        precedingUserMsgId = messages[i].id;
+        break;
+      }
+    }
+    if (!userPrompt) return;
+
+    // Silently remove the current assistant message and the preceding user message
+    await handleDeleteMessage(assistantMsgId, true);
+    if (precedingUserMsgId) {
+      await handleDeleteMessage(precedingUserMsgId, true);
+    }
+
+    // Trigger re-send
+    handleSend(userPrompt);
   };
 
   const formatTokens = (n: number) => {
@@ -1102,11 +1311,14 @@ export default function StudioPage() {
   const usagePercent = Math.min(100, Math.round((totalTokens / contextLength) * 100));
 
   // Send Message & Stream Response
-  const handleSend = async () => {
-    const text = input.trim();
+  const handleSend = async (textToSend?: string) => {
+    const text = (typeof textToSend === 'string' ? textToSend : input).trim();
     if (!text || isStreaming) return;
 
-    setInput('');
+    isHistoryJumpNeededRef.current = false;
+    if (!textToSend) {
+      setInput('');
+    }
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
     }
@@ -1460,19 +1672,37 @@ export default function StudioPage() {
             </button>
           </div>
 
-          {/* Right Controls: Workstation Panel Toggle (Shown only when inspector is closed) */}
-          {!isRightInspectorOpen && (
-            <div className="flex items-center flex-shrink-0 animate-in fade-in duration-150">
+          {/* Right Controls: Clear Chat & Workstation Panel Toggle */}
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
+            {messages.length > 0 && (
               <button
-                onClick={() => handleToggleRightInspector(true)}
-                className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg border text-xs font-bold transition-all cursor-pointer bg-white hover:bg-slate-50 text-slate-700 border-black/[0.08] shadow-xs"
-                title="展开右侧工作台检视面板 (文件/团队)"
+                onClick={handleResetChat}
+                disabled={isClearingMessages}
+                className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-lg border text-xs font-medium transition-all cursor-pointer bg-white hover:bg-rose-50 text-slate-500 hover:text-rose-600 border-black/[0.08] hover:border-rose-200/80 shadow-2xs group"
+                title="清空当前工作区的聊天记录（保留沙箱文件与已装配技能）"
               >
-                <PanelRightClose size={14} className="rotate-180 text-indigo-600" />
-                <span className="text-[11px] sm:text-xs">工作台</span>
+                {isClearingMessages ? (
+                  <Loader2 size={13} className="animate-spin text-rose-500" />
+                ) : (
+                  <Trash2 size={13} className="text-slate-400 group-hover:text-rose-600 transition-colors" />
+                )}
+                <span className="hidden sm:inline">清空记录</span>
               </button>
-            </div>
-          )}
+            )}
+
+            {!isRightInspectorOpen && (
+              <div className="flex items-center flex-shrink-0 animate-in fade-in duration-150">
+                <button
+                  onClick={() => handleToggleRightInspector(true)}
+                  className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg border text-xs font-bold transition-all cursor-pointer bg-white hover:bg-slate-50 text-slate-700 border-black/[0.08] shadow-xs"
+                  title="展开右侧工作台检视面板 (文件/团队)"
+                >
+                  <PanelRightClose size={14} className="rotate-180 text-indigo-600" />
+                  <span className="text-[11px] sm:text-xs">工作台</span>
+                </button>
+              </div>
+            )}
+          </div>
         </header>
 
         {/* 2. Message List Area */}
@@ -1489,6 +1719,12 @@ export default function StudioPage() {
           handleCopyToolResult={handleCopyToolResult}
           isStreaming={isStreaming}
           messagesEndRef={messagesEndRef}
+          scrollContainerRef={scrollContainerRef}
+          onDeleteMessage={handleDeleteMessage}
+          onRetryMessage={handleRetryAssistantMessage}
+          hasMoreMessages={hasMoreMessages}
+          isLoadingMoreMessages={isLoadingMoreMessages}
+          onLoadMoreMessages={loadMoreWorkspaceMessages}
         />
 
         {/* 3. Bottom Composer Box */}

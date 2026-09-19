@@ -335,5 +335,12 @@ class AgentSupervisor {
   }
 }
 
-// Global supervisor singleton
-export const agentSupervisor = new AgentSupervisor();
+// Global supervisor singleton (attached to globalThis for Next.js cross-route consistency)
+const globalForSupervisor = globalThis as unknown as {
+  almarenAgentSupervisor?: AgentSupervisor;
+};
+
+export const agentSupervisor =
+  globalForSupervisor.almarenAgentSupervisor ?? new AgentSupervisor();
+
+globalForSupervisor.almarenAgentSupervisor = agentSupervisor;

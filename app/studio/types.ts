@@ -1,4 +1,4 @@
-﻿export type StudioApprovalMode = 'dangerous' | 'always' | 'never';
+export type StudioApprovalMode = 'dangerous' | 'always' | 'never';
 
 export interface WorkspaceSkill {
   id: string;
@@ -55,6 +55,15 @@ export interface FileNode {
   size?: number;
   updatedAt?: number;
   children?: FileNode[];
+}
+
+export interface PreviewFile {
+  path: string;
+  content: string;
+  isImage?: boolean;
+  dataUrl?: string;
+  mimeType?: string;
+  size?: number;
 }
 
 export interface StudioConfig {

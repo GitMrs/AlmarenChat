@@ -21,6 +21,7 @@ interface ToolCardProps {
   onDecision: (approvalId: string, action: 'approve' | 'deny', toolId: string) => void;
   copiedToolResult: boolean;
   onCopyResult: (text: string) => void;
+  timestamp?: number;
 }
 
 export const ToolCard: React.FC<ToolCardProps> = ({
@@ -31,6 +32,7 @@ export const ToolCard: React.FC<ToolCardProps> = ({
   onDecision,
   copiedToolResult,
   onCopyResult,
+  timestamp,
 }) => {
   return (
     <div className="rounded-2xl border border-black/[0.08] bg-white overflow-hidden shadow-2xs transition-all hover:border-black/[0.14]">
@@ -65,6 +67,14 @@ export const ToolCard: React.FC<ToolCardProps> = ({
         </div>
 
         <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+          {timestamp ? (
+            <span
+              className="text-[10px] text-slate-400 font-mono hidden xs:inline"
+              title={new Date(timestamp).toLocaleString('zh-CN')}
+            >
+              {new Date(timestamp).toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit' })}
+            </span>
+          ) : null}
           {tool.sessionId && (
             <span className="text-[10px] text-slate-500 font-mono bg-slate-100 px-1.5 py-0.5 rounded-md">
               实时流
@@ -233,9 +243,23 @@ export const ToolCard: React.FC<ToolCardProps> = ({
           {/* Parameters / Target */}
           {tool.preview && (
             <div className="space-y-1">
-              <div className="text-[11px] font-bold text-slate-600 flex items-center gap-1.5">
-                <Code size={11} className="text-slate-400" />
-                <span>调用参数与目标</span>
+              <div className="flex items-center justify-between text-[11px] font-bold text-slate-600">
+                <span className="flex items-center gap-1.5">
+                  <Code size={11} className="text-slate-400" />
+                  <span>调用参数与目标</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onCopyResult(tool.preview);
+                  }}
+                  className="px-2 py-0.5 rounded-md bg-white border border-black/[0.08] hover:bg-slate-100 text-slate-600 text-[10px] transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
+                  title="复制参数"
+                >
+                  <Copy size={10} />
+                  <span>复制</span>
+                </button>
               </div>
               <div className="bg-white border border-black/[0.06] rounded-xl p-2.5 font-mono text-[11px] text-slate-700 whitespace-pre-wrap break-all leading-relaxed max-h-24 overflow-y-auto shadow-2xs">
                 {tool.preview}

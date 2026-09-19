@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import CodeMirror from '@uiw/react-codemirror';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import {
   FilePlus,
   RefreshCw,
@@ -22,8 +24,14 @@ import {
   Copy,
   Maximize2,
   Minimize2,
+  Image as ImageIcon,
+  Globe,
+  Code,
+  Download,
+  ExternalLink,
+  BookOpen,
 } from 'lucide-react';
-import { FileNode } from '../../types';
+import { FileNode, PreviewFile } from '../../types';
 
 interface FilesTabProps {
   activeWorkspaceName: string;
@@ -37,8 +45,8 @@ interface FilesTabProps {
   fileTree: FileNode[];
   handleSelectFile: (node: FileNode) => void;
   handleDeleteFile: (path: string, e: React.MouseEvent) => void;
-  previewFile: { path: string; content: string } | null;
-  setPreviewFile: (v: { path: string; content: string } | null) => void;
+  previewFile: PreviewFile | null;
+  setPreviewFile: (v: PreviewFile | null) => void;
   handleSaveFile: (path: string, content: string) => Promise<boolean>;
 }
 
@@ -47,6 +55,63 @@ function formatFileSize(bytes?: number): string {
   const units = ['B', 'KB', 'MB'];
   const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
   return `${(bytes / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
+}
+
+export type FilePreviewKind = 'image' | 'markdown' | 'html' | 'code';
+
+export function getFilePreviewKind(filePath: string, isImage?: boolean): FilePreviewKind {
+  if (isImage) return 'image';
+  const lower = filePath.toLowerCase();
+  if (
+    lower.endsWith('.png') ||
+    lower.endsWith('.jpg') ||
+    lower.endsWith('.jpeg') ||
+    lower.endsWith('.gif') ||
+    lower.endsWith('.webp') ||
+    lower.endsWith('.ico') ||
+    lower.endsWith('.bmp') ||
+    lower.endsWith('.svg')
+  ) {
+    return 'image';
+  }
+  if (lower.endsWith('.md') || lower.endsWith('.markdown')) {
+    return 'markdown';
+  }
+  if (lower.endsWith('.html') || lower.endsWith('.htm')) {
+    return 'html';
+  }
+  return 'code';
+}
+
+function getFileIcon(name: string, isSelected: boolean) {
+  const lower = name.toLowerCase();
+  if (
+    lower.endsWith('.png') ||
+    lower.endsWith('.jpg') ||
+    lower.endsWith('.jpeg') ||
+    lower.endsWith('.gif') ||
+    lower.endsWith('.webp') ||
+    lower.endsWith('.ico') ||
+    lower.endsWith('.bmp') ||
+    lower.endsWith('.svg')
+  ) {
+    return <ImageIcon size={14} className={isSelected ? 'text-purple-600 flex-shrink-0' : 'text-purple-400 flex-shrink-0'} />;
+  }
+  if (lower.endsWith('.html') || lower.endsWith('.htm')) {
+    return <Globe size={14} className={isSelected ? 'text-emerald-600 flex-shrink-0' : 'text-emerald-400 flex-shrink-0'} />;
+  }
+  if (lower.endsWith('.md') || lower.endsWith('.markdown')) {
+    return <BookOpen size={14} className={isSelected ? 'text-blue-600 flex-shrink-0' : 'text-blue-400 flex-shrink-0'} />;
+  }
+  if (lower.endsWith('.json') || lower.endsWith('.ts') || lower.endsWith('.js') || lower.endsWith('.py')) {
+    return <Code size={14} className={isSelected ? 'text-amber-600 flex-shrink-0' : 'text-amber-500/70 flex-shrink-0'} />;
+  }
+  return (
+    <FileText
+      size={14}
+      className={isSelected ? 'text-amber-600 flex-shrink-0' : 'text-slate-400 flex-shrink-0'}
+    />
+  );
 }
 
 /**
@@ -246,16 +311,7 @@ const FileTreeItem: React.FC<FileTreeItemProps> = ({
       title={`${node.path}${node.size ? ` (${formatFileSize(node.size)})` : ''}`}
     >
       <div className="flex items-center gap-1.5 min-w-0">
-        <FileText
-          size={14}
-          className={
-            isSelected
-              ? 'text-amber-600 flex-shrink-0'
-              : systemBadge
-              ? 'text-slate-400 flex-shrink-0'
-              : 'text-slate-400 flex-shrink-0'
-          }
-        />
+        {getFileIcon(node.name, isSelected)}
         <span className={`truncate ${systemBadge ? 'text-slate-500' : ''}`}>{node.name}</span>
         {systemBadge && (
           <span
@@ -314,6 +370,7 @@ export const FilesTab: React.FC<FilesTabProps> = ({
   // Editor states
   const [editContent, setEditContent] = useState<string>('');
   const [isEditing, setIsEditing] = useState<boolean>(false);
+  const [activeTabMode, setActiveTabMode] = useState<'code' | 'preview'>('preview');
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [saveSuccess, setSaveSuccess] = useState<boolean>(false);
   const [copied, setCopied] = useState<boolean>(false);
@@ -340,19 +397,53 @@ export const FilesTab: React.FC<FilesTabProps> = ({
     return filterTree(fileTree, showHiddenFiles);
   }, [fileTree, showHiddenFiles]);
 
-  // Sync editContent when previewFile changes
+  const previewKind = useMemo(() => {
+    if (!previewFile) return 'code';
+    return getFilePreviewKind(previewFile.path, previewFile.isImage);
+  }, [previewFile]);
+
+  const isSvg = useMemo(() => {
+    return previewFile?.path?.toLowerCase().endsWith('.svg') || false;
+  }, [previewFile?.path]);
+
+  // Sync editContent and default active tab mode when previewFile changes
+  // Check if content has unsaved changes
+  const isDirty = useMemo(() => {
+    if (!previewFile) return false;
+    return editContent !== (previewFile.content || '');
+  }, [editContent, previewFile?.content]);
+
+  // Close preview modal with unsaved confirmation
+  const handleClosePreview = () => {
+    if (isDirty && !confirm('检测到有未保存的代码修改，确认关闭？')) {
+      return;
+    }
+    setIsFullScreen(false);
+    setPreviewFile(null);
+  };
+
+  // Sync editContent, default active tab mode, and auto-open full modal when previewFile changes
   useEffect(() => {
     if (previewFile) {
       setEditContent(previewFile.content || '');
       setSaveSuccess(false);
       setCopied(false);
+      setIsFullScreen(true);
+      const kind = getFilePreviewKind(previewFile.path, previewFile.isImage);
+      if (kind === 'image' || kind === 'markdown' || kind === 'html') {
+        setActiveTabMode('preview');
+        setIsEditing(false);
+      } else {
+        setActiveTabMode('code');
+        setIsEditing(false);
+      }
     } else {
       setEditContent('');
       setIsFullScreen(false);
     }
-  }, [previewFile?.path, previewFile?.content]);
+  }, [previewFile?.path, previewFile?.content, previewFile?.isImage]);
 
-  // Lock background scroll when full-screen modal is open
+  // Lock background scroll when modal is open
   useEffect(() => {
     if (!isFullScreen || typeof document === 'undefined') return;
     const originalOverflow = document.body.style.overflow;
@@ -362,23 +453,17 @@ export const FilesTab: React.FC<FilesTabProps> = ({
     };
   }, [isFullScreen]);
 
-  // Global Escape key listener to exit full screen
+  // Global Escape key listener to exit modal
   useEffect(() => {
     if (!isFullScreen) return;
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        setIsFullScreen(false);
+        handleClosePreview();
       }
     };
     window.addEventListener('keydown', handleGlobalKeyDown);
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-  }, [isFullScreen]);
-
-  // Check if content has unsaved changes
-  const isDirty = useMemo(() => {
-    if (!previewFile) return false;
-    return editContent !== (previewFile.content || '');
-  }, [editContent, previewFile?.content]);
+  }, [isFullScreen, isDirty]);
 
   // File extension
   const fileExt = useMemo(() => {
@@ -460,13 +545,21 @@ export const FilesTab: React.FC<FilesTabProps> = ({
     }
   };
 
-  // Close preview with unsaved confirmation
-  const handleClosePreview = () => {
-    if (isDirty && !confirm('检测到有未保存的代码修改，确认关闭？')) {
-      return;
-    }
-    setIsFullScreen(false);
-    setPreviewFile(null);
+  // Open HTML in new browser tab
+  const handleOpenHtmlNewTab = () => {
+    if (!editContent) return;
+    const blob = new Blob([editContent], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    window.open(url, '_blank');
+  };
+
+  // Download image file
+  const handleDownloadImage = () => {
+    if (!previewFile?.dataUrl) return;
+    const link = document.createElement('a');
+    link.href = previewFile.dataUrl;
+    link.download = previewFile.path.split('/').pop() || 'image';
+    link.click();
   };
 
   // Textarea keydown for shortcuts (Ctrl+S)
@@ -596,148 +689,39 @@ export const FilesTab: React.FC<FilesTabProps> = ({
         )}
       </div>
 
-      {/* Inline File Preview & Editor with CodeMirror (Shown in sidebar when not in full-screen) */}
-      {previewFile && !isFullScreen && (
-        <div className="mt-4 border-t border-black/[0.06] pt-3 space-y-2 select-text">
-          {/* File Action Bar */}
-          <div className="flex items-center justify-between gap-1.5">
-            <div className="flex items-center gap-1.5 min-w-0">
-              <span
-                className="text-xs font-mono text-slate-800 font-medium truncate"
-                title={previewFile.path}
-              >
-                {previewFile.path}
-              </span>
-              {isDirty && (
-                <span className="flex items-center gap-1 text-[10px] text-amber-700 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200/60 font-sans flex-shrink-0">
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-                  已修改
-                </span>
-              )}
-              {saveSuccess && (
-                <span className="flex items-center gap-1 text-[10px] text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200/60 font-sans flex-shrink-0">
-                  <Check size={10} />
-                  已保存
-                </span>
-              )}
-            </div>
-
-            <div className="flex items-center gap-0.5 flex-shrink-0">
-              {/* Toggle Mode */}
-              <button
-                onClick={() => setIsEditing(!isEditing)}
-                className={`p-1 rounded cursor-pointer transition-colors ${
-                  isEditing
-                    ? 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100'
-                    : 'text-slate-400 hover:text-slate-700 hover:bg-black/[0.04]'
-                }`}
-                title={isEditing ? '切换为只读查看' : '编辑文件'}
-              >
-                {isEditing ? <Eye size={13} /> : <Edit3 size={13} />}
-              </button>
-
-              {/* Save Button */}
-              {isEditing && (
-                <button
-                  onClick={onSave}
-                  disabled={isSaving || !isDirty}
-                  className={`p-1 rounded cursor-pointer transition-colors ${
-                    isDirty
-                      ? 'bg-slate-900 text-white hover:bg-slate-800 shadow-2xs'
-                      : 'text-slate-300 hover:text-slate-400 cursor-not-allowed'
-                  }`}
-                  title="保存 (Ctrl+S)"
-                >
-                  {isSaving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
-                </button>
-              )}
-
-              {/* Copy Button */}
-              <button
-                onClick={onCopy}
-                className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-black/[0.04] cursor-pointer transition-colors"
-                title={copied ? '已复制！' : '复制代码'}
-              >
-                {copied ? <Check size={13} className="text-emerald-600" /> : <Copy size={13} />}
-              </button>
-
-              {/* Maximize Button */}
-              <button
-                onClick={() => setIsFullScreen(true)}
-                className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-black/[0.04] cursor-pointer transition-colors"
-                title="全屏大窗口查看与编辑"
-              >
-                <Maximize2 size={13} />
-              </button>
-
-              {/* Close Preview */}
-              <button
-                onClick={handleClosePreview}
-                className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-black/[0.04] cursor-pointer transition-colors"
-                title="关闭"
-              >
-                <X size={13} />
-              </button>
-            </div>
-          </div>
-
-          {/* Professional CodeMirror Editor & Viewer */}
-          <div className="rounded-xl border border-black/[0.08] overflow-hidden bg-white shadow-2xs">
-            {mounted ? (
-              <CodeMirror
-                value={editContent}
-                height="260px"
-                maxHeight="260px"
-                readOnly={!isEditing}
-                editable={isEditing}
-                onChange={(val) => setEditContent(val)}
-                onKeyDown={handleEditorKeyDown}
-                basicSetup={{
-                  lineNumbers: true,
-                  foldGutter: true,
-                  highlightActiveLine: isEditing,
-                  highlightActiveLineGutter: isEditing,
-                  dropCursor: true,
-                  allowMultipleSelections: true,
-                  indentOnInput: true,
-                  bracketMatching: true,
-                  closeBrackets: true,
-                  tabSize: 2,
-                }}
-                className="text-xs font-mono"
-              />
-            ) : (
-              <div className="p-3 text-xs text-slate-400 font-mono">加载中...</div>
-            )}
-          </div>
-
-          <div className="flex items-center justify-between text-[10px] text-slate-400 pt-0.5 font-mono">
-            <span>{lineCount} 行 · {editContent.length} 字符</span>
-            <span>{isEditing ? 'Ctrl+S 保存 · Tab 缩进' : '只读查看中'}</span>
-          </div>
-        </div>
-      )}
-
       {/* Full-Screen CodeMirror Editor & Viewer Modal (Portaled directly to document.body) */}
       {mounted && previewFile && isFullScreen && typeof document !== 'undefined' && createPortal(
         <div
-          className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-fadeIn select-text"
+          className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-xs flex items-center justify-center p-0 sm:p-6 animate-fadeIn select-text"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
-              if (isDirty && !confirm('检测到有未保存的代码修改，确认退出全屏？')) return;
-              setIsFullScreen(false);
+              handleClosePreview();
             }
           }}
         >
-          <div className="bg-white rounded-2xl border border-black/[0.1] shadow-2xl w-full max-w-6xl h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-150">
+          <div className="bg-white rounded-none sm:rounded-2xl border-0 sm:border border-black/[0.1] shadow-2xl w-full max-w-6xl h-full sm:h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-150">
             {/* Modal Header */}
-            <div className="h-14 px-4 sm:px-6 border-b border-black/[0.06] bg-[#fbfaf7] flex items-center justify-between flex-shrink-0">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <div className="p-1.5 rounded-lg bg-amber-50 border border-amber-200/60 text-amber-700 flex-shrink-0">
-                  <FileText size={16} />
+            <div className="h-13 sm:h-14 px-3 sm:px-6 border-b border-black/[0.06] bg-[#fbfaf7] flex items-center justify-between flex-shrink-0 gap-2">
+              <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
+                <div className={`p-1.5 rounded-lg border flex-shrink-0 ${
+                  previewKind === 'image'
+                    ? 'bg-purple-50 border-purple-200/60 text-purple-700'
+                    : previewKind === 'markdown'
+                    ? 'bg-blue-50 border-blue-200/60 text-blue-700'
+                    : previewKind === 'html'
+                    ? 'bg-emerald-50 border-emerald-200/60 text-emerald-700'
+                    : 'bg-amber-50 border-amber-200/60 text-amber-700'
+                }`}>
+                  {previewKind === 'image' && <ImageIcon size={16} />}
+                  {previewKind === 'markdown' && <BookOpen size={16} />}
+                  {previewKind === 'html' && <Globe size={16} />}
+                  {previewKind === 'code' && <FileText size={16} />}
                 </div>
-                <div className="min-w-0 flex items-center gap-2">
-                  <span className="font-mono text-xs sm:text-sm font-semibold text-slate-900 truncate">
+                <div className="min-w-0 flex items-center gap-1.5 sm:gap-2">
+                  <span
+                    className="font-mono text-xs sm:text-sm font-semibold text-slate-900 truncate max-w-[130px] sm:max-w-md"
+                    title={previewFile.path}
+                  >
                     {previewFile.path}
                   </span>
                   {fileExt && (
@@ -747,136 +731,344 @@ export const FilesTab: React.FC<FilesTabProps> = ({
                   )}
                 </div>
 
-                {isDirty && (
-                  <span className="flex items-center gap-1.5 text-[11px] text-amber-800 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200 font-sans font-medium flex-shrink-0">
+                {isDirty && activeTabMode === 'code' && (
+                  <span className="flex items-center gap-1 sm:gap-1.5 text-[11px] text-amber-800 bg-amber-50 px-1.5 sm:px-2 py-0.5 rounded-full border border-amber-200 font-sans font-medium flex-shrink-0" title="未保存修改">
                     <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-                    未保存修改
+                    <span className="hidden sm:inline">未保存修改</span>
                   </span>
                 )}
                 {saveSuccess && (
-                  <span className="flex items-center gap-1 text-[11px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 font-sans font-medium flex-shrink-0">
+                  <span className="flex items-center gap-1 text-[11px] text-emerald-700 bg-emerald-50 px-1.5 sm:px-2 py-0.5 rounded-full border border-emerald-200 font-sans font-medium flex-shrink-0" title="已成功保存">
                     <Check size={12} />
-                    已成功保存
+                    <span className="hidden sm:inline">已成功保存</span>
                   </span>
                 )}
               </div>
 
-              <div className="flex items-center gap-2 flex-shrink-0">
-                {/* Mode Switcher */}
-                <div className="flex items-center bg-slate-100/80 rounded-xl p-1 border border-black/[0.04]">
-                  <button
-                    onClick={() => setIsEditing(false)}
-                    className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium cursor-pointer transition-all ${
-                      !isEditing ? 'bg-white text-slate-900 shadow-2xs font-semibold' : 'text-slate-500 hover:text-slate-800'
-                    }`}
-                  >
-                    <Eye size={13} />
-                    <span>查看</span>
-                  </button>
-                  <button
-                    onClick={() => setIsEditing(true)}
-                    className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium cursor-pointer transition-all ${
-                      isEditing ? 'bg-white text-slate-900 shadow-2xs font-semibold' : 'text-slate-500 hover:text-slate-800'
-                    }`}
-                  >
-                    <Edit3 size={13} />
-                    <span>编辑</span>
-                  </button>
-                </div>
+              <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
+                {/* Kind-specific Mode Switcher */}
+                {previewKind === 'markdown' && (
+                  <div className="flex items-center bg-slate-100/80 rounded-xl p-0.5 sm:p-1 border border-black/[0.04]">
+                    <button
+                      onClick={() => setActiveTabMode('preview')}
+                      className={`flex items-center gap-1.5 px-2 sm:px-3 py-1 rounded-lg text-xs font-medium cursor-pointer transition-all ${
+                        activeTabMode === 'preview' ? 'bg-white text-slate-900 shadow-2xs font-semibold' : 'text-slate-500 hover:text-slate-800'
+                      }`}
+                      title="渲染预览"
+                    >
+                      <BookOpen size={13} />
+                      <span className="hidden sm:inline">渲染预览</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        setActiveTabMode('code');
+                        setIsEditing(true);
+                      }}
+                      className={`flex items-center gap-1.5 px-2 sm:px-3 py-1 rounded-lg text-xs font-medium cursor-pointer transition-all ${
+                        activeTabMode === 'code' ? 'bg-white text-slate-900 shadow-2xs font-semibold' : 'text-slate-500 hover:text-slate-800'
+                      }`}
+                      title="源码编辑"
+                    >
+                      <Code size={13} />
+                      <span className="hidden sm:inline">源码编辑</span>
+                    </button>
+                  </div>
+                )}
 
-                {/* Save Button */}
-                <button
-                  onClick={onSave}
-                  disabled={isSaving || !isDirty}
-                  className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-medium cursor-pointer transition-all ${
-                    isDirty
-                      ? 'bg-slate-950 text-white hover:bg-slate-800 shadow-xs'
-                      : 'bg-slate-100 text-slate-400 cursor-not-allowed border border-black/[0.04]'
-                  }`}
-                  title="保存文件 (Ctrl+S)"
-                >
-                  {isSaving ? (
-                    <Loader2 size={13} className="animate-spin" />
-                  ) : (
-                    <Save size={13} />
-                  )}
-                  <span>保存</span>
-                </button>
+                {previewKind === 'html' && (
+                  <>
+                    <div className="flex items-center bg-slate-100/80 rounded-xl p-0.5 sm:p-1 border border-black/[0.04]">
+                      <button
+                        onClick={() => setActiveTabMode('preview')}
+                        className={`flex items-center gap-1.5 px-2 sm:px-3 py-1 rounded-lg text-xs font-medium cursor-pointer transition-all ${
+                          activeTabMode === 'preview' ? 'bg-white text-slate-900 shadow-2xs font-semibold' : 'text-slate-500 hover:text-slate-800'
+                        }`}
+                        title="网页预览"
+                      >
+                        <Globe size={13} />
+                        <span className="hidden sm:inline">网页预览</span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          setActiveTabMode('code');
+                          setIsEditing(true);
+                        }}
+                        className={`flex items-center gap-1.5 px-2 sm:px-3 py-1 rounded-lg text-xs font-medium cursor-pointer transition-all ${
+                          activeTabMode === 'code' ? 'bg-white text-slate-900 shadow-2xs font-semibold' : 'text-slate-500 hover:text-slate-800'
+                        }`}
+                        title="HTML源码"
+                      >
+                        <Code size={13} />
+                        <span className="hidden sm:inline">HTML源码</span>
+                      </button>
+                    </div>
+                    <button
+                      onClick={handleOpenHtmlNewTab}
+                      className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs text-slate-600 hover:text-slate-900 hover:bg-black/[0.04] border border-black/[0.06] cursor-pointer transition-colors"
+                      title="在浏览器独立标签页打开"
+                    >
+                      <ExternalLink size={13} />
+                      <span>新标签页打开</span>
+                    </button>
+                  </>
+                )}
 
-                {/* Copy Button */}
-                <button
-                  onClick={onCopy}
-                  className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs text-slate-600 hover:text-slate-900 hover:bg-black/[0.04] border border-black/[0.06] cursor-pointer transition-colors"
-                  title="复制代码"
-                >
-                  {copied ? <Check size={13} className="text-emerald-600" /> : <Copy size={13} />}
-                  <span>{copied ? '已复制' : '复制'}</span>
-                </button>
+                {previewKind === 'image' && (
+                  <>
+                    {isSvg && (
+                      <div className="flex items-center bg-slate-100/80 rounded-xl p-0.5 sm:p-1 border border-black/[0.04]">
+                        <button
+                          onClick={() => setActiveTabMode('preview')}
+                          className={`flex items-center gap-1.5 px-2 sm:px-3 py-1 rounded-lg text-xs font-medium cursor-pointer transition-all ${
+                            activeTabMode === 'preview' ? 'bg-white text-slate-900 shadow-2xs font-semibold' : 'text-slate-500 hover:text-slate-800'
+                          }`}
+                          title="视觉预览"
+                        >
+                          <ImageIcon size={13} />
+                          <span className="hidden sm:inline">视觉预览</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            setActiveTabMode('code');
+                            setIsEditing(true);
+                          }}
+                          className={`flex items-center gap-1.5 px-2 sm:px-3 py-1 rounded-lg text-xs font-medium cursor-pointer transition-all ${
+                            activeTabMode === 'code' ? 'bg-white text-slate-900 shadow-2xs font-semibold' : 'text-slate-500 hover:text-slate-800'
+                          }`}
+                          title="SVG源码"
+                        >
+                          <Code size={13} />
+                          <span className="hidden sm:inline">SVG源码</span>
+                        </button>
+                      </div>
+                    )}
+                    {previewFile.dataUrl && (
+                      <button
+                        onClick={handleDownloadImage}
+                        className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs text-slate-600 hover:text-slate-900 hover:bg-black/[0.04] border border-black/[0.06] cursor-pointer transition-colors"
+                        title="下载原图"
+                      >
+                        <Download size={13} />
+                        <span className="hidden sm:inline">下载原图</span>
+                      </button>
+                    )}
+                  </>
+                )}
+
+                {previewKind === 'code' && (
+                  <div className="flex items-center bg-slate-100/80 rounded-xl p-0.5 sm:p-1 border border-black/[0.04]">
+                    <button
+                      onClick={() => setIsEditing(false)}
+                      className={`flex items-center gap-1.5 px-2 sm:px-3 py-1 rounded-lg text-xs font-medium cursor-pointer transition-all ${
+                        !isEditing ? 'bg-white text-slate-900 shadow-2xs font-semibold' : 'text-slate-500 hover:text-slate-800'
+                      }`}
+                      title="查看代码"
+                    >
+                      <Eye size={13} />
+                      <span className="hidden sm:inline">查看</span>
+                    </button>
+                    <button
+                      onClick={() => setIsEditing(true)}
+                      className={`flex items-center gap-1.5 px-2 sm:px-3 py-1 rounded-lg text-xs font-medium cursor-pointer transition-all ${
+                        isEditing ? 'bg-white text-slate-900 shadow-2xs font-semibold' : 'text-slate-500 hover:text-slate-800'
+                      }`}
+                      title="编辑代码"
+                    >
+                      <Edit3 size={13} />
+                      <span className="hidden sm:inline">编辑</span>
+                    </button>
+                  </div>
+                )}
+
+                {/* Save Button (when in code mode) */}
+                {activeTabMode === 'code' && (
+                  <button
+                    onClick={onSave}
+                    disabled={isSaving || !isDirty}
+                    className={`flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 rounded-xl text-xs font-medium cursor-pointer transition-all ${
+                      isDirty
+                        ? 'bg-slate-950 text-white hover:bg-slate-800 shadow-xs'
+                        : 'bg-slate-100 text-slate-400 cursor-not-allowed border border-black/[0.04]'
+                    }`}
+                    title="保存文件 (Ctrl+S)"
+                  >
+                    {isSaving ? (
+                      <Loader2 size={13} className="animate-spin" />
+                    ) : (
+                      <Save size={13} />
+                    )}
+                    <span className="hidden sm:inline">保存</span>
+                  </button>
+                )}
+
+                {/* Copy Button (for text/code) */}
+                {(previewKind !== 'image' || isSvg) && (
+                  <button
+                    onClick={onCopy}
+                    className="flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs text-slate-600 hover:text-slate-900 hover:bg-black/[0.04] border border-black/[0.06] cursor-pointer transition-colors"
+                    title="复制代码/内容"
+                  >
+                    {copied ? <Check size={13} className="text-emerald-600" /> : <Copy size={13} />}
+                    <span className="hidden sm:inline">{copied ? '已复制' : '复制'}</span>
+                  </button>
+                )}
 
                 <div className="h-4 w-px bg-black/[0.08] mx-0.5" />
 
-                {/* Minimize / Back to sidebar */}
-                <button
-                  onClick={() => setIsFullScreen(false)}
-                  className="p-1.5 rounded-xl text-slate-500 hover:text-slate-900 hover:bg-black/[0.04] cursor-pointer transition-colors"
-                  title="退出全屏 (Esc)"
-                >
-                  <Minimize2 size={16} />
-                </button>
-
-                {/* Close file */}
+                {/* Close modal */}
                 <button
                   onClick={handleClosePreview}
-                  className="p-1.5 rounded-xl text-slate-500 hover:text-slate-900 hover:bg-black/[0.04] cursor-pointer transition-colors"
-                  title="关闭文件"
+                  className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs text-slate-600 hover:text-slate-900 hover:bg-black/[0.05] border border-black/[0.06] cursor-pointer transition-colors font-medium"
+                  title="关闭窗口 (Esc)"
                 >
-                  <X size={16} />
+                  <X size={15} />
+                  <span className="hidden sm:inline">关闭</span>
                 </button>
               </div>
             </div>
 
-            {/* Modal Body: 100% Full-height CodeMirror */}
-            <div className="flex-1 min-h-0 overflow-hidden bg-white">
-              <CodeMirror
-                value={editContent}
-                height="100%"
-                readOnly={!isEditing}
-                editable={isEditing}
-                onChange={(val) => setEditContent(val)}
-                onKeyDown={handleEditorKeyDown}
-                basicSetup={{
-                  lineNumbers: true,
-                  foldGutter: true,
-                  highlightActiveLine: isEditing,
-                  highlightActiveLineGutter: isEditing,
-                  dropCursor: true,
-                  allowMultipleSelections: true,
-                  indentOnInput: true,
-                  bracketMatching: true,
-                  closeBrackets: true,
-                  tabSize: 2,
+            {/* Modal Body: Multimodal Preview or CodeMirror */}
+            {activeTabMode === 'preview' && previewKind === 'image' && (
+              <div
+                className="flex-1 min-h-0 overflow-auto flex items-center justify-center p-6 select-none"
+                style={{
+                  backgroundColor: '#f8fafc',
+                  backgroundImage: `linear-gradient(45deg, #e2e8f0 25%, transparent 25%), linear-gradient(-45deg, #e2e8f0 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #e2e8f0 75%), linear-gradient(-45deg, transparent 75%, #e2e8f0 75%)`,
+                  backgroundSize: '20px 20px',
+                  backgroundPosition: '0 0, 0 10px, 10px -10px, -10px 0px',
                 }}
-                className="h-full text-xs sm:text-sm font-mono [&_.cm-editor]:h-full [&_.cm-scroller]:h-full [&_.cm-scroller]:overflow-auto"
-              />
-            </div>
+              >
+                {previewFile.dataUrl ? (
+                  <img
+                    src={previewFile.dataUrl}
+                    alt={previewFile.path}
+                    className="max-w-full max-h-full object-contain rounded-lg shadow-md border border-black/10 bg-white"
+                  />
+                ) : (
+                  <div className="text-sm text-slate-400">无法加载图片数据</div>
+                )}
+              </div>
+            )}
+
+            {activeTabMode === 'preview' && previewKind === 'markdown' && (
+              <div className="flex-1 min-h-0 overflow-y-auto bg-white p-6 sm:p-12 select-text">
+                <div className="markdown-body max-w-4xl mx-auto">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    {editContent || '*（空 Markdown 文档）*'}
+                  </ReactMarkdown>
+                </div>
+              </div>
+            )}
+
+            {activeTabMode === 'preview' && previewKind === 'html' && (
+              <div className="flex-1 min-h-0 overflow-hidden bg-white">
+                <iframe
+                  srcDoc={editContent}
+                  title="HTML Preview"
+                  sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+                  className="w-full h-full border-0 bg-white"
+                />
+              </div>
+            )}
+
+            {activeTabMode === 'code' && (
+              <div className="flex-1 min-h-0 overflow-hidden bg-white">
+                <CodeMirror
+                  value={editContent}
+                  height="100%"
+                  readOnly={!isEditing}
+                  editable={isEditing}
+                  onChange={(val) => setEditContent(val)}
+                  onKeyDown={handleEditorKeyDown}
+                  basicSetup={{
+                    lineNumbers: true,
+                    foldGutter: true,
+                    highlightActiveLine: isEditing,
+                    highlightActiveLineGutter: isEditing,
+                    dropCursor: true,
+                    allowMultipleSelections: true,
+                    indentOnInput: true,
+                    bracketMatching: true,
+                    closeBrackets: true,
+                    tabSize: 2,
+                  }}
+                  className="h-full text-xs sm:text-sm font-mono [&_.cm-editor]:h-full [&_.cm-scroller]:h-full [&_.cm-scroller]:overflow-auto"
+                />
+              </div>
+            )}
 
             {/* Modal Footer */}
-            <div className="h-10 px-4 sm:px-6 border-t border-black/[0.06] bg-[#fbfaf7] flex items-center justify-between text-[11px] font-mono text-slate-400 flex-shrink-0 select-none">
-              <div className="flex items-center gap-3">
-                <span>{lineCount} 行</span>
-                <span>·</span>
-                <span>{editContent.length} 字符</span>
-                <span>·</span>
-                <span>{formatFileSize(editContent.length)}</span>
+            {activeTabMode === 'preview' && previewKind === 'image' && (
+              <div className="min-h-[38px] py-1.5 px-3 sm:px-6 border-t border-black/[0.06] bg-[#fbfaf7] flex items-center justify-between text-[10px] sm:text-[11px] font-mono text-slate-400 flex-shrink-0 select-none pb-[max(0.375rem,env(safe-area-inset-bottom))]">
+                <div className="flex items-center gap-2 sm:gap-3">
+                  <span>{previewFile.mimeType || '图片'}</span>
+                  <span>·</span>
+                  <span>{previewFile.size ? formatFileSize(previewFile.size) : '原图'}</span>
+                </div>
+                <div className="flex items-center gap-2 sm:gap-3">
+                  <button onClick={handleDownloadImage} className="hover:text-slate-700 cursor-pointer transition-colors flex items-center gap-1 text-slate-500">
+                    <Download size={12} />
+                    <span>下载原图</span>
+                  </button>
+                  <span className="hidden sm:inline text-slate-300">·</span>
+                  <span className="hidden sm:inline"><kbd className="px-1.5 py-0.5 rounded bg-slate-200/80 text-slate-700">Esc</kbd> 关闭窗口</span>
+                </div>
               </div>
-              <div className="flex items-center gap-3 hidden sm:flex">
-                <span>快捷键: <kbd className="px-1.5 py-0.5 rounded bg-slate-200/80 text-slate-700">Ctrl+S</kbd> 保存</span>
-                <span>·</span>
-                <span><kbd className="px-1.5 py-0.5 rounded bg-slate-200/80 text-slate-700">Tab</kbd> 缩进 (2空格)</span>
-                <span>·</span>
-                <span><kbd className="px-1.5 py-0.5 rounded bg-slate-200/80 text-slate-700">Esc</kbd> 退出全屏</span>
+            )}
+
+            {activeTabMode === 'preview' && previewKind === 'markdown' && (
+              <div className="min-h-[38px] py-1.5 px-3 sm:px-6 border-t border-black/[0.06] bg-[#fbfaf7] flex items-center justify-between text-[10px] sm:text-[11px] font-mono text-slate-400 flex-shrink-0 select-none pb-[max(0.375rem,env(safe-area-inset-bottom))]">
+                <div className="flex items-center gap-2 sm:gap-3">
+                  <span>{lineCount} 行</span>
+                  <span>·</span>
+                  <span>{editContent.length} 字符</span>
+                  <span className="hidden sm:inline">·</span>
+                  <span className="hidden sm:inline">Markdown 渲染视图</span>
+                </div>
+                <div className="flex items-center gap-3 hidden sm:flex">
+                  <span>切换到「源码编辑」可实时修改内容</span>
+                  <span>·</span>
+                  <span><kbd className="px-1.5 py-0.5 rounded bg-slate-200/80 text-slate-700">Esc</kbd> 关闭窗口</span>
+                </div>
               </div>
-            </div>
+            )}
+
+            {activeTabMode === 'preview' && previewKind === 'html' && (
+              <div className="min-h-[38px] py-1.5 px-3 sm:px-6 border-t border-black/[0.06] bg-[#fbfaf7] flex items-center justify-between text-[10px] sm:text-[11px] font-mono text-slate-400 flex-shrink-0 select-none pb-[max(0.375rem,env(safe-area-inset-bottom))]">
+                <div className="flex items-center gap-2 sm:gap-3">
+                  <span>HTML 沙箱网页</span>
+                  <span>·</span>
+                  <span>{formatFileSize(editContent.length)}</span>
+                </div>
+                <div className="flex items-center gap-2 sm:gap-3">
+                  <button onClick={handleOpenHtmlNewTab} className="hover:text-slate-700 cursor-pointer transition-colors flex items-center gap-1 text-slate-500">
+                    <ExternalLink size={12} />
+                    <span>新标签打开</span>
+                  </button>
+                  <span className="hidden sm:inline text-slate-300">·</span>
+                  <span className="hidden sm:inline"><kbd className="px-1.5 py-0.5 rounded bg-slate-200/80 text-slate-700">Esc</kbd> 关闭窗口</span>
+                </div>
+              </div>
+            )}
+
+            {activeTabMode === 'code' && (
+              <div className="min-h-[38px] py-1.5 px-3 sm:px-6 border-t border-black/[0.06] bg-[#fbfaf7] flex items-center justify-between text-[10px] sm:text-[11px] font-mono text-slate-400 flex-shrink-0 select-none pb-[max(0.375rem,env(safe-area-inset-bottom))]">
+                <div className="flex items-center gap-2 sm:gap-3">
+                  <span>{lineCount} 行</span>
+                  <span>·</span>
+                  <span>{editContent.length} 字符</span>
+                  <span>·</span>
+                  <span>{formatFileSize(editContent.length)}</span>
+                </div>
+                <div className="flex items-center gap-3 hidden sm:flex">
+                  <span>快捷键: <kbd className="px-1.5 py-0.5 rounded bg-slate-200/80 text-slate-700">Ctrl+S</kbd> 保存</span>
+                  <span>·</span>
+                  <span><kbd className="px-1.5 py-0.5 rounded bg-slate-200/80 text-slate-700">Tab</kbd> 缩进 (2空格)</span>
+                  <span>·</span>
+                  <span><kbd className="px-1.5 py-0.5 rounded bg-slate-200/80 text-slate-700">Esc</kbd> 关闭窗口</span>
+                </div>
+              </div>
+            )}
           </div>
         </div>,
         document.body

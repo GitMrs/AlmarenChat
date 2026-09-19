@@ -5,7 +5,7 @@ import {
   PanelRightClose,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { FileNode, WorkspaceSkill, SkillPreset, StudioWorkspaceItem } from '../../types';
+import { FileNode, PreviewFile, WorkspaceSkill, SkillPreset, StudioWorkspaceItem } from '../../types';
 import { FilesTab } from './FilesTab';
 import { RosterTab } from './RosterTab';
 
@@ -26,8 +26,8 @@ interface RightInspectorProps {
   isLoadingFiles: boolean;
   handleSelectFile: (node: FileNode) => void;
   handleDeleteFile: (path: string, e: React.MouseEvent) => void;
-  previewFile: { path: string; content: string } | null;
-  setPreviewFile: (v: { path: string; content: string } | null) => void;
+  previewFile: PreviewFile | null;
+  setPreviewFile: (v: PreviewFile | null) => void;
   handleSaveFile: (path: string, content: string) => Promise<boolean>;
   // Roster tab props
   userProfile: any;

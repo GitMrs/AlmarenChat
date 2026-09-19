@@ -121,6 +121,16 @@ export async function POST(request: Request) {
         };
         request.signal?.addEventListener('abort', onAbort);
 
+        let isStreamActive = true;
+        const heartbeatTimer = setInterval(() => {
+          if (!isStreamActive) return;
+          try {
+            controller.enqueue(encoder.encode(': ping\n\n'));
+          } catch {
+            clearInterval(heartbeatTimer);
+          }
+        }, 10000);
+
         try {
           await runCoordinatorChat({
             userId,
@@ -201,6 +211,8 @@ export async function POST(request: Request) {
           );
           controller.close();
         } finally {
+          isStreamActive = false;
+          clearInterval(heartbeatTimer);
           request.signal?.removeEventListener('abort', onAbort);
           approvalStore.cancelAllByRun(runId);
         }

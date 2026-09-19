@@ -83,6 +83,32 @@ export async function GET(request: Request) {
         return NextResponse.json({ error: '禁止越权访问工作区外文件' }, { status: 403 });
       }
 
+      const ext = path.extname(targetFile).toLowerCase();
+      const imageMimes: Record<string, string> = {
+        '.png': 'image/png',
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.gif': 'image/gif',
+        '.webp': 'image/webp',
+        '.ico': 'image/x-icon',
+        '.bmp': 'image/bmp',
+        '.svg': 'image/svg+xml',
+      };
+
+      if (imageMimes[ext]) {
+        const buffer = await readFile(targetFile);
+        const dataUrl = `data:${imageMimes[ext]};base64,${buffer.toString('base64')}`;
+        const content = ext === '.svg' ? buffer.toString('utf-8') : '';
+        return NextResponse.json({
+          path: filePath,
+          content,
+          isImage: true,
+          dataUrl,
+          mimeType: imageMimes[ext],
+          size: buffer.length,
+        });
+      }
+
       const content = await readFile(targetFile, 'utf-8');
       return NextResponse.json({ path: filePath, content });
     }
