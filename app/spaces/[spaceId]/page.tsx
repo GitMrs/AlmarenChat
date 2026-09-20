@@ -111,6 +111,8 @@ const WORK_NOUNS: Record<string, string> = {
   'product-requirements': '需求',
   'course-training': '课程',
   'simple-webpage': '页面',
+  'mystery-puzzle': '案卷',
+  'podcast-dialogue': '节目',
 };
 const WORK_STAGE_LABELS: Record<string, string> = {
   brief: '需求确认',
