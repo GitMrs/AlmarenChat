@@ -53,7 +53,11 @@ export default function SpacesPage() {
       setSpaces(spaceResult.spaces);
       setAgents([...customResult.agents, ...builtIn]);
     } catch (err: any) {
-      setError(err.message || '加载空间失败');
+      if (err.status === 401 || err.message === 'Unauthorized' || !localStorage.getItem('token')) {
+        setNeedsLogin(true);
+      } else {
+        setError(err.message || '加载空间失败');
+      }
     } finally {
       setLoading(false);
     }
@@ -61,6 +65,9 @@ export default function SpacesPage() {
 
   useEffect(() => {
     load();
+    const handleAuthChange = () => { void load(); };
+    window.addEventListener('almaren-auth-change', handleAuthChange);
+    return () => window.removeEventListener('almaren-auth-change', handleAuthChange);
   }, []);
 
   const agentById = useMemo(() => new Map(agents.map((agent) => [agent.id, agent])), [agents]);

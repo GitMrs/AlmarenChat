@@ -22,8 +22,8 @@ export async function GET(request: Request) {
       const defaultWs = await prisma.studioWorkspace.create({
         data: {
           userId,
-          name: '?????',
-          description: '????????????????',
+          name: '默认工作区',
+          description: '系统自动初始化的默认独立工作空间',
         },
       });
       await resolveStudioWorkspace(process.cwd(), userId, defaultWs.id);

@@ -46,7 +46,13 @@ export default function ConversationsPage() {
     conversationsApi
       .list()
       .then((result) => setConversationList(result.conversations))
-      .catch((err: any) => setError(err.message || '加载会话失败'))
+      .catch((err: any) => {
+        if (err.status === 401 || err.message === 'Unauthorized' || !localStorage.getItem('token')) {
+          setNeedsLogin(true);
+        } else {
+          setError(err.message || '加载会话失败');
+        }
+      })
       .finally(() => setLoading(false));
   }, []);
 

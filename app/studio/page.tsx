@@ -32,8 +32,17 @@ import { CreateWorkspaceModal } from './components/modals/CreateWorkspaceModal';
 import { EditWorkspaceModal } from './components/modals/EditWorkspaceModal';
 import { InstallSkillModal } from './components/modals/InstallSkillModal';
 import { SkillPreviewModal } from './components/modals/SkillPreviewModal';
+import { useRouter } from 'next/navigation';
+import LoginRequired from '@/components/auth/LoginRequired';
 
 export default function StudioPage() {
+  const router = useRouter();
+  const [needsLogin, setNeedsLogin] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return !localStorage.getItem('token');
+    }
+    return false;
+  });
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
@@ -201,9 +210,21 @@ export default function StudioPage() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const recognitionRef = useRef<any>(null);
 
+  const handleAuthFailure = () => {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('token');
+      window.dispatchEvent(new Event('almaren-auth-change'));
+    }
+    setNeedsLogin(true);
+  };
+
   const getAuthToken = () => {
     if (typeof window === 'undefined') return '';
-    return localStorage.getItem('token') || '';
+    const token = localStorage.getItem('token') || '';
+    if (!token) {
+      setNeedsLogin(true);
+    }
+    return token;
   };
 
   // Sync active workspace to URL query (?workspace=...) without triggering a full page reload
@@ -315,30 +336,40 @@ export default function StudioPage() {
   }, []);
 
   // Fetch logged in user profile & model configuration
-  useEffect(() => {
-    const fetchUserProfile = async () => {
-      try {
-        const token = getAuthToken();
-        const res = await fetch('/api/auth/me', {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.user) {
-            setUserProfile(data.user);
-            if (data.user.modelName) {
-              setSelectedModel(data.user.modelName);
-            }
-            if (data.user.modelContextWindow) {
-              setContextLength(data.user.modelContextWindow);
-              setRemainingTokens(Math.max(0, data.user.modelContextWindow - totalTokens));
-            }
+  const fetchUserProfile = async () => {
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      if (!token) {
+        setNeedsLogin(true);
+        return;
+      }
+      const res = await fetch('/api/auth/me', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.status === 401) {
+        handleAuthFailure();
+        return;
+      }
+      if (res.ok) {
+        setNeedsLogin(false);
+        const data = await res.json();
+        if (data.user) {
+          setUserProfile(data.user);
+          if (data.user.modelName) {
+            setSelectedModel(data.user.modelName);
+          }
+          if (data.user.modelContextWindow) {
+            setContextLength(data.user.modelContextWindow);
+            setRemainingTokens(Math.max(0, data.user.modelContextWindow - totalTokens));
           }
         }
-      } catch {
-        // Ignore
       }
-    };
+    } catch {
+      // Ignore
+    }
+  };
+
+  useEffect(() => {
     fetchUserProfile();
   }, []);
 
@@ -453,9 +484,14 @@ export default function StudioPage() {
     setIsLoadingMessages(true);
     try {
       const token = getAuthToken();
+      if (!token) return;
       const res = await fetch(`/api/studio/workspaces/${wsId}/messages?limit=30`, {
         headers: { Authorization: `Bearer ${token}` },
       });
+      if (res.status === 401) {
+        handleAuthFailure();
+        return;
+      }
       if (res.ok) {
         const data = await res.json();
         const loaded: ChatMessage[] = (data.messages || []).map((m: any) => ({
@@ -504,12 +540,17 @@ export default function StudioPage() {
 
     try {
       const token = getAuthToken();
+      if (!token) return;
       const res = await fetch(
         `/api/studio/workspaces/${activeWorkspaceId}/messages?limit=30&before=${oldestMessage.id}`,
         {
           headers: { Authorization: `Bearer ${token}` },
         }
       );
+      if (res.status === 401) {
+        handleAuthFailure();
+        return;
+      }
       if (res.ok) {
         const data = await res.json();
         const olderList: ChatMessage[] = (data.messages || []).map((m: any) => ({
@@ -538,15 +579,51 @@ export default function StudioPage() {
 
   // Fetch Studio Workspaces
   const fetchWorkspaces = async () => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    if (!token) {
+      setNeedsLogin(true);
+      setIsLoadingWorkspaces(false);
+      return;
+    }
     setIsLoadingWorkspaces(true);
     try {
-      const token = getAuthToken();
       const res = await fetch('/api/studio/workspaces', {
         headers: { Authorization: `Bearer ${token}` },
       });
+      if (res.status === 401) {
+        handleAuthFailure();
+        return;
+      }
       if (res.ok) {
+        setNeedsLogin(false);
         const data = await res.json();
-        const list: StudioWorkspaceItem[] = data.workspaces || [];
+        let list: StudioWorkspaceItem[] = data.workspaces || [];
+
+        // Double safety fallback: if backend returned empty, auto-create default workspace
+        if (list.length === 0) {
+          try {
+            const createRes = await fetch('/api/studio/workspaces', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({
+                name: '默认工作区',
+                description: '系统自动初始化的默认独立工作空间',
+              }),
+            });
+            if (createRes.ok) {
+              const createdData = await createRes.json();
+              if (createdData.workspace) {
+                list = [createdData.workspace];
+              }
+            }
+          } catch {
+            // Ignore
+          }
+        }
+
         setWorkspaces(list);
 
         if (list.length > 0) {
@@ -592,6 +669,18 @@ export default function StudioPage() {
 
   useEffect(() => {
     fetchWorkspaces();
+    const handleAuthChange = () => {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        setNeedsLogin(true);
+      } else {
+        setNeedsLogin(false);
+        void fetchUserProfile();
+        void fetchWorkspaces();
+      }
+    };
+    window.addEventListener('almaren-auth-change', handleAuthChange);
+    return () => window.removeEventListener('almaren-auth-change', handleAuthChange);
   }, []);
 
   // Listen for browser navigation (forward / backward buttons)
@@ -656,6 +745,10 @@ export default function StudioPage() {
           systemPrompt: newWsPrompt.trim() || undefined,
         }),
       });
+      if (res.status === 401) {
+        handleAuthFailure();
+        return;
+      }
       if (res.ok) {
         const data = await res.json();
         const created: StudioWorkspaceItem = data.workspace;
@@ -663,14 +756,17 @@ export default function StudioPage() {
         setActiveWorkspaceId(created.id);
         localStorage.setItem('almaren_studio_active_workspace', created.id);
         syncWorkspaceToUrl(created.id, false);
+
         setMessages([]);
-        setTotalTokens(0);
-        setRemainingTokens(contextLength);
-        setShowCreateModal(false);
         setNewWsName('');
         setNewWsDesc('');
         setNewWsPrompt('');
-        setShowWorkspaceMenu(false);
+        setShowCreateModal(false);
+
+        fetchWorkspaceSkills(created.id);
+        if (showFileExplorer) {
+          fetchWorkspaceTree(created.id);
+        }
       } else {
         const err = await res.json().catch(() => ({}));
         alert(err.error || '创建工作区失败');
@@ -696,6 +792,10 @@ export default function StudioPage() {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` },
       });
+      if (res.status === 401) {
+        handleAuthFailure();
+        return;
+      }
       if (res.ok) {
         const remaining = workspaces.filter((w) => w.id !== wsId);
         setWorkspaces(remaining);
@@ -733,6 +833,10 @@ export default function StudioPage() {
           systemPrompt: editWsPrompt.trim() || undefined,
         }),
       });
+      if (res.status === 401) {
+        handleAuthFailure();
+        return;
+      }
       if (res.ok) {
         const data = await res.json();
         const updated: StudioWorkspaceItem = data.workspace;
@@ -1348,6 +1452,10 @@ export default function StudioPage() {
 
     try {
       const token = getAuthToken();
+      if (!token) {
+        handleAuthFailure();
+        throw new Error('请先登录');
+      }
       const res = await fetch('/api/studio/chat', {
         method: 'POST',
         headers: {
@@ -1373,6 +1481,11 @@ export default function StudioPage() {
             .map((m) => ({ role: m.role, content: m.content || '' })),
         }),
       });
+
+      if (res.status === 401) {
+        handleAuthFailure();
+        throw new Error('登录已过期，请重新登录');
+      }
 
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
@@ -1590,6 +1703,27 @@ export default function StudioPage() {
     const q = searchWorkspaceQuery.toLowerCase();
     return ws.name.toLowerCase().includes(q) || (ws.description && ws.description.toLowerCase().includes(q));
   });
+
+  if (needsLogin) {
+    return (
+      <div className="flex h-screen w-full flex-col items-center justify-center bg-[#fbfaf7] px-4">
+        <div className="w-full max-w-md">
+          <LoginRequired
+            title="登录以进入 Almaren Studio"
+            description="Studio 具备沙箱隔离、代码编写、多 Agent 团队协同与规则配置能力，需要登录后使用。"
+          />
+          <div className="mt-4 text-center">
+            <button
+              onClick={() => router.push('/')}
+              className="text-xs font-semibold text-slate-500 hover:text-slate-900 transition-colors"
+            >
+              ← 返回首页
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-full bg-[#fbfaf7] text-slate-900 font-sans selection:bg-indigo-500 selection:text-white relative overflow-hidden">

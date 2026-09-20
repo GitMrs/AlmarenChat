@@ -16,8 +16,14 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   });
 
   if (!res.ok) {
+    if (res.status === 401 && typeof window !== 'undefined') {
+      localStorage.removeItem('token');
+      window.dispatchEvent(new Event('almaren-auth-change'));
+    }
     const error = await res.json().catch(() => ({ error: 'Request failed' }));
-    throw new Error(error.error || `HTTP ${res.status}`);
+    const err = new Error(error.error || `HTTP ${res.status}`);
+    (err as any).status = res.status;
+    throw err;
   }
 
   return res.json();
@@ -31,8 +37,14 @@ async function uploadRequest<T>(path: string, formData: FormData): Promise<T> {
     body: formData,
   });
   if (!res.ok) {
+    if (res.status === 401 && typeof window !== 'undefined') {
+      localStorage.removeItem('token');
+      window.dispatchEvent(new Event('almaren-auth-change'));
+    }
     const error = await res.json().catch(() => ({ error: 'Upload failed' }));
-    throw new Error(error.error || `HTTP ${res.status}`);
+    const err = new Error(error.error || `HTTP ${res.status}`);
+    (err as any).status = res.status;
+    throw err;
   }
   return res.json();
 }

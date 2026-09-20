@@ -21,6 +21,60 @@ const navItems = [
   { label: '会话', href: '/conversations', icon: MessageCircle },
 ];
 
+// Module-scoped cache to retain auth status across page navigations within the session
+let hasClientMounted = false;
+let cachedAuthState: {
+  token: string | null;
+  isValid: boolean;
+  checkedAt: number;
+} = {
+  token: null,
+  isValid: false,
+  checkedAt: 0,
+};
+
+let inFlightAuthPromise: Promise<boolean> | null = null;
+const AUTH_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes cache
+
+async function verifyAuth(token: string, force = false): Promise<boolean> {
+  const now = Date.now();
+  if (
+    !force &&
+    cachedAuthState.token === token &&
+    cachedAuthState.isValid &&
+    now - cachedAuthState.checkedAt < AUTH_CACHE_TTL_MS
+  ) {
+    return true;
+  }
+
+  if (inFlightAuthPromise) {
+    return inFlightAuthPromise;
+  }
+
+  inFlightAuthPromise = (async () => {
+    try {
+      const response = await fetch('/api/auth/me', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (response.status === 401) {
+        localStorage.removeItem('token');
+        cachedAuthState = { token: null, isValid: false, checkedAt: Date.now() };
+        return false;
+      }
+      const ok = response.ok;
+      cachedAuthState = { token, isValid: ok, checkedAt: Date.now() };
+      return ok;
+    } catch {
+      // Keep optimistic login state on transient network failure if previously verified
+      return cachedAuthState.isValid || true;
+    } finally {
+      inFlightAuthPromise = null;
+    }
+  })();
+
+  return inFlightAuthPromise;
+}
+
 export default function AppShell({
   children,
   mainClassName,
@@ -29,35 +83,62 @@ export default function AppShell({
 }: AppShellProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+
+  // During client-side navigation (after initial mount), retain verified login status directly to prevent header flickering
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => {
+    if (!hasClientMounted || typeof window === 'undefined') {
+      return false;
+    }
+    const token = localStorage.getItem('token');
+    if (!token) return false;
+    if (cachedAuthState.token === token) {
+      return cachedAuthState.isValid;
+    }
+    return Boolean(token);
+  });
 
   useEffect(() => {
+    hasClientMounted = true;
     let cancelled = false;
-    const syncAuth = async () => {
+
+    const syncAuth = async (force = false) => {
       const token = localStorage.getItem('token');
       if (!token) {
-        setIsLoggedIn(false);
+        cachedAuthState = { token: null, isValid: false, checkedAt: 0 };
+        if (!cancelled) setIsLoggedIn(false);
         return;
       }
-      try {
-        const response = await fetch('/api/auth/me', {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (cancelled) return;
-        if (response.status === 401) {
-          localStorage.removeItem('token');
-          setIsLoggedIn(false);
-          return;
-        }
-        setIsLoggedIn(response.ok);
-      } catch {
-        // Keep the local login indicator during temporary network failures.
+
+      // If already verified recently and token matches, skip network request
+      if (
+        !force &&
+        cachedAuthState.token === token &&
+        cachedAuthState.isValid &&
+        Date.now() - cachedAuthState.checkedAt < AUTH_CACHE_TTL_MS
+      ) {
+        if (!cancelled) setIsLoggedIn(true);
+        return;
+      }
+
+      // Optimistically show logged in state if token exists
+      if (!cancelled) {
+        setIsLoggedIn(true);
+      }
+
+      const isValid = await verifyAuth(token, force);
+      if (!cancelled) {
+        setIsLoggedIn(isValid);
       }
     };
-    const handleAuthChange = () => { void syncAuth(); };
+
+    const handleAuthChange = () => {
+      void syncAuth(true);
+    };
+
     window.addEventListener('storage', handleAuthChange);
     window.addEventListener('almaren-auth-change', handleAuthChange);
     void syncAuth();
+
     return () => {
       cancelled = true;
       window.removeEventListener('storage', handleAuthChange);
