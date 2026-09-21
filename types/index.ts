@@ -127,6 +127,19 @@ export interface AssistantExperience {
   createdAt: string;
 }
 
+export interface AssistantContextStats {
+  conversationId: string;
+  conversationMode: 'MAIN' | 'TEMPORARY';
+  unarchivedCount: number;
+  archivedCount: number;
+  totalCount: number;
+  contextLimit: number;
+  estimatedTokens: number;
+  experiencesCount: number;
+  experiences: AssistantExperience[];
+  canArchive: boolean;
+}
+
 export interface AssistantExperienceMessage {
   id: string;
   role: 'user' | 'assistant' | 'system';
@@ -195,6 +208,7 @@ export interface Message {
   source?: 'WEB' | 'QQ' | 'SYSTEM';
   content: string;
   attachments?: MessageAttachment[];
+  assistantExperienceId?: string | null;
   createdAt: string;
 }
 

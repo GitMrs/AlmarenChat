@@ -1,4 +1,4 @@
-import type { AgentGrowthProfile, AgentRun, AssistantConversationSummary, AssistantExperienceMessage, AssistantMemoryItem, AssistantQQBinding, AssistantReminder, AssistantReminderCandidate, Message, MessageAttachment, PersonalAssistantBootstrap, PersonalAssistantProfile, SpaceActionRequest, SpaceAutomation, SpaceConnector, SpaceDiscussion, SpaceFileShare, SpaceOperationOutcome, SpaceOperationsSummary, SpaceRelay, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal, SpaceWork, SpaceWorkVersion, SpaceMcpServer, SpaceWebhook, AssistantMcpServer, McpProbeResult } from '@/types';
+import type { AgentGrowthProfile, AgentRun, AssistantContextStats, AssistantConversationSummary, AssistantExperience, AssistantExperienceMessage, AssistantMemoryItem, AssistantQQBinding, AssistantReminder, AssistantReminderCandidate, Message, MessageAttachment, PersonalAssistantBootstrap, PersonalAssistantProfile, SpaceActionRequest, SpaceAutomation, SpaceConnector, SpaceDiscussion, SpaceFileShare, SpaceOperationOutcome, SpaceOperationsSummary, SpaceRelay, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal, SpaceWork, SpaceWorkVersion, SpaceMcpServer, SpaceWebhook, AssistantMcpServer, McpProbeResult } from '@/types';
 
 const API_BASE = '/api';
 
@@ -66,8 +66,23 @@ export const auth = {
 
 export const assistant = {
   get: () => request<PersonalAssistantBootstrap>('/assistant'),
+  getContextStats: (conversationId?: string) =>
+    request<AssistantContextStats>(`/assistant/experiences${conversationId ? `?conversationId=${encodeURIComponent(conversationId)}` : ''}`),
+  archiveExperience: (data?: { conversationId?: string; preserveRecent?: number }) =>
+    request<{
+      experience: AssistantExperience;
+      archivedCount: number;
+      remainingCount: number;
+    }>('/assistant/experiences', {
+      method: 'POST',
+      body: JSON.stringify(data || {}),
+    }),
   getExperience: (experienceId: string) =>
     request<{ experience: { id: string; messages: AssistantExperienceMessage[] } }>(`/assistant/experiences/${experienceId}`),
+  deleteExperience: (experienceId: string) =>
+    request<{ success: true }>(`/assistant/experiences/${experienceId}`, {
+      method: 'DELETE',
+    }),
   getQQBinding: () => request<{ binding: AssistantQQBinding | null }>('/assistant/qq'),
   saveQQBinding: (data: { appId: string; appSecret: string }) =>
     request<{ binding: AssistantQQBinding }>('/assistant/qq', { method: 'PUT', body: JSON.stringify(data) }),

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { analyzeMessageImportance, buildContextCheckpointSummary, compressConversationContext } from './context-compression.ts';
+import { analyzeMessageImportance, buildContextCheckpointSummary, compressConversationContext } from './context-compression';
 import type { SpaceMessage } from '@/types';
 
 function messages(count: number, contentSize = 80): SpaceMessage[] {

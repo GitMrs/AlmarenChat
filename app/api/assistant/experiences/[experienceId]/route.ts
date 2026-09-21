@@ -26,3 +26,33 @@ export async function GET(
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
+
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ experienceId: string }> }
+) {
+  try {
+    const userId = requireAuth(request);
+    const { experienceId } = await params;
+    const experience = await prisma.assistantExperience.findFirst({
+      where: { id: experienceId, userId },
+      select: { id: true },
+    });
+    if (!experience) return NextResponse.json({ error: '经历摘要不存在' }, { status: 404 });
+
+    await prisma.$transaction(async (tx) => {
+      await tx.message.updateMany({
+        where: { assistantExperienceId: experienceId },
+        data: { assistantExperienceId: null },
+      });
+      await tx.assistantExperience.delete({
+        where: { id: experienceId },
+      });
+    });
+
+    return NextResponse.json({ success: true });
+  } catch (error: any) {
+    if (error.message === 'Unauthorized') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}

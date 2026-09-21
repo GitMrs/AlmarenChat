@@ -123,6 +123,98 @@ export async function archiveOldMainChatMessages(options: {
   }
 }
 
+export async function manualArchiveAssistantMessages(options: {
+  userId: string;
+  conversationId: string;
+  preserveRecent?: number;
+  summarize?: Summarizer;
+}) {
+  const preserveRecent = Math.max(0, options.preserveRecent ?? 4);
+  const conversation = await prisma.conversation.findFirst({
+    where: {
+      id: options.conversationId,
+      userId: options.userId,
+      kind: 'PERSONAL_ASSISTANT',
+    },
+    select: { id: true, assistantMode: true },
+  });
+  if (!conversation) {
+    throw new Error('未找到对应的小伴对话');
+  }
+
+  const unarchivedMessages = await prisma.message.findMany({
+    where: {
+      conversationId: options.conversationId,
+      assistantExperienceId: null,
+      role: { in: ['user', 'assistant'] },
+    },
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+    select: { id: true, role: true, content: true, createdAt: true },
+  });
+
+  if (unarchivedMessages.length <= preserveRecent) {
+    throw new Error(`当前活跃对话仅有 ${unarchivedMessages.length} 条，无需归档（至少保留最近 ${preserveRecent} 条）`);
+  }
+
+  const candidates = unarchivedMessages.slice(0, unarchivedMessages.length - preserveRecent);
+  if (candidates.length === 0) {
+    throw new Error('没有可归档的早期对话');
+  }
+
+  let summary = '';
+  if (options.summarize) {
+    try {
+      summary = compactText((await options.summarize(buildExperiencePrompt(candidates))) || '', 6000);
+    } catch {
+      summary = '';
+    }
+  }
+  if (!summary) summary = buildDeterministicExperienceSummary(candidates);
+  if (!summary) {
+    throw new Error('生成经历摘要失败');
+  }
+
+  const experienceId = randomUUID();
+  const experience = await prisma.$transaction(async (tx) => {
+    const created = await tx.assistantExperience.create({
+      data: {
+        id: experienceId,
+        userId: options.userId,
+        conversationId: options.conversationId,
+        summary,
+        messageCount: candidates.length,
+        startAt: candidates[0].createdAt,
+        endAt: candidates[candidates.length - 1].createdAt,
+      },
+    });
+    const claimed = await tx.message.updateMany({
+      where: {
+        id: { in: candidates.map((message) => message.id) },
+        conversationId: options.conversationId,
+        assistantExperienceId: null,
+      },
+      data: { assistantExperienceId: experienceId },
+    });
+    if (claimed.count !== candidates.length) {
+      throw new Error('经历归档已被其他请求并发处理，请重试');
+    }
+    return created;
+  });
+
+  return {
+    experience: {
+      id: experience.id,
+      summary: experience.summary,
+      messageCount: experience.messageCount,
+      startAt: experience.startAt.toISOString(),
+      endAt: experience.endAt.toISOString(),
+      createdAt: experience.createdAt.toISOString(),
+    },
+    archivedCount: candidates.length,
+    remainingCount: unarchivedMessages.length - candidates.length,
+  };
+}
+
 function queryTerms(query: string) {
   const normalized = query.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
   const terms = new Set<string>();

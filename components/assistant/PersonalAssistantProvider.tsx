@@ -2,18 +2,19 @@
 
 import { usePathname, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Bell, Check, CheckSquare, ChevronDown, ChevronUp, Clock, Cpu, Globe2, History, ImagePlus, Loader2, MessageCircleHeart, PanelRightClose, Pin, Plus, Send, Settings2, Sparkles, Square, Trash2, X } from 'lucide-react';
+import { Activity, ArrowLeft, Bell, Check, CheckSquare, ChevronDown, ChevronUp, Clock, Cpu, Globe2, History, ImagePlus, Loader2, MessageCircleHeart, PanelRightClose, Pin, Plus, Send, Settings2, Sparkles, Square, Trash2, X } from 'lucide-react';
 import ComposerShell from '@/components/chat/ComposerShell';
 import MessageActions from '@/components/chat/MessageActions';
 import MessageBubbleFrame from '@/components/chat/MessageBubbleFrame';
 import MessageContent from '@/components/chat/MessageContent';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
+import { AssistantContextModal } from '@/components/assistant/AssistantContextModal';
 import { assistant, uploads } from '@/lib/api';
 import { completeBrowserModel, readBrowserModelConfigForScope, streamBrowserModel } from '@/lib/browser-model';
 import type { BrowserModelSource } from '@/lib/browser-model';
 import { cn } from '@/lib/utils';
 import { shouldExtractMemorySuggestion } from '@/lib/personal-assistant/memory-intent.mjs';
-import type { AssistantConversationSummary, AssistantReminder, AssistantReminderCandidate, Message, MessageAttachment, PersonalAssistantBootstrap } from '@/types';
+import type { AssistantConversationSummary, AssistantExperience, AssistantReminder, AssistantReminderCandidate, Message, MessageAttachment, PersonalAssistantBootstrap } from '@/types';
 import { createClientId } from '@/lib/client-id';
 
 const HIDDEN_PATHS = ['/login'];
@@ -501,6 +502,55 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
   const [activeActionMessageId, setActiveActionMessageId] = useState<string | null>(null);
   const [pendingDeleteMessage, setPendingDeleteMessage] = useState<Message | null>(null);
   const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
+  const [contextModalOpen, setContextModalOpen] = useState(false);
+
+  const unarchivedMessages = (data?.messages || []).filter(
+    (m) => !m.assistantExperienceId && (m.role === 'user' || m.role === 'assistant')
+  );
+  const activeMessageCount = unarchivedMessages.length;
+  const estimatedActiveTokens = Math.round(
+    unarchivedMessages.reduce((sum, m) => sum + Math.max(1, Math.ceil(m.content.length * 1.3)), 0)
+  );
+  const estimatedTokensText = estimatedActiveTokens >= 1000
+    ? `${(estimatedActiveTokens / 1000).toFixed(1)}k`
+    : `${estimatedActiveTokens}`;
+
+  const handleExperienceArchived = (exp: AssistantExperience) => {
+    setData((prev) => {
+      if (!prev) return prev;
+      const endAtTime = new Date(exp.endAt).getTime();
+      const updatedMessages = prev.messages.map((m) => {
+        if (!m.assistantExperienceId && new Date(m.createdAt).getTime() <= endAtTime) {
+          return { ...m, assistantExperienceId: exp.id };
+        }
+        return m;
+      });
+      const updatedExperiences = [exp, ...(prev.experiences || [])];
+      return {
+        ...prev,
+        messages: updatedMessages,
+        experiences: updatedExperiences,
+      };
+    });
+  };
+
+  const handleExperienceDeleted = (deletedId: string) => {
+    setData((prev) => {
+      if (!prev) return prev;
+      const updatedMessages = prev.messages.map((m) => {
+        if (m.assistantExperienceId === deletedId) {
+          return { ...m, assistantExperienceId: null };
+        }
+        return m;
+      });
+      const updatedExperiences = (prev.experiences || []).filter((e) => e.id !== deletedId);
+      return {
+        ...prev,
+        messages: updatedMessages,
+        experiences: updatedExperiences,
+      };
+    });
+  };
 
   const handleClearAssistantMessages = async () => {
     setClearingAssistantMessages(true);
@@ -1569,55 +1619,61 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
             ) : (
               <>
                 <header className="flex h-16 shrink-0 items-center gap-2 border-b border-black/[0.06] bg-white/80 px-4 backdrop-blur">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-950 text-white">
-                    <MessageCircleHeart size={18} />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5">
-                      <h1 className="truncate text-sm font-black text-slate-900">{data?.profile.name || '个人助理'}</h1>
-                      {data && (
-                        <span className={cn(
-                          'shrink-0 rounded-full px-2 py-0.5 text-[10px] font-black',
-                          data.conversationMode === 'MAIN' ? 'bg-slate-950 text-white' : 'bg-amber-100 text-amber-800'
-                        )}>
-                          {data.conversationMode === 'MAIN' ? '主聊天' : '临时'}
-                        </span>
-                      )}
-                      {(() => {
-                        const active = localProactive !== null ? localProactive : isProactive(data?.profile.proactiveEnabled);
-                        return (
-                          <button
-                            type="button"
-                            onClick={toggleProactive}
-                            title={active ? '当前为在线陪伴，点击切换为仅待命' : '当前为仅待命，点击切换为在线陪伴'}
-                            className={cn(
-                              'inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-black transition cursor-pointer select-none active:scale-95',
-                              active
-                                ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                                : 'border-slate-200 bg-slate-100 text-slate-500 hover:bg-slate-200'
-                            )}
-                          >
-                            <span className={cn('h-1.5 w-1.5 rounded-full', active ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400')} />
-                            <span>{active ? '在线' : '待命'}</span>
-                          </button>
-                        );
-                      })()}
-                    </div>
-                    <p className="truncate text-[11px] font-semibold text-slate-400">陪你聊天，也帮你看清平台里的事</p>
-                  </div>
-                  {data?.conversationMode === 'TEMPORARY' && (
+                  {data?.conversationMode === 'TEMPORARY' ? (
                     <button
                       type="button"
                       onClick={() => handleSwitchConversation(data.mainConversationId)}
                       disabled={Boolean(busyConversationId)}
                       aria-label="返回主聊天"
-                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-950 text-xs font-black text-white hover:bg-slate-800 disabled:opacity-40 sm:w-auto sm:gap-1.5 sm:px-2.5"
                       title="返回长期连续的主聊天"
+                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-700 hover:bg-slate-950 hover:text-white transition cursor-pointer active:scale-95 disabled:opacity-40"
                     >
-                      <MessageCircleHeart size={14} />
-                      <span className="hidden sm:inline">主聊天</span>
+                      <ArrowLeft size={17} />
                     </button>
+                  ) : (
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-950 text-white">
+                      <MessageCircleHeart size={18} />
+                    </div>
                   )}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5">
+                      <h1 className="truncate text-sm font-black text-slate-900">{data?.profile.name || '个人助理'}</h1>
+                      {data?.conversationMode === 'TEMPORARY' ? (
+                        <button
+                          type="button"
+                          onClick={() => handleSwitchConversation(data.mainConversationId)}
+                          disabled={Boolean(busyConversationId)}
+                          title="返回长期连续的主聊天"
+                          className="shrink-0 rounded-full bg-amber-100 hover:bg-amber-200 px-2 py-0.5 text-[10px] font-black text-amber-800 transition cursor-pointer"
+                        >
+                          临时 · 返回 ↩
+                        </button>
+                      ) : (
+                        (() => {
+                          const active = localProactive !== null ? localProactive : isProactive(data?.profile.proactiveEnabled);
+                          return (
+                            <button
+                              type="button"
+                              onClick={toggleProactive}
+                              title={active ? '当前为在线陪伴，点击切换为仅待命' : '当前为仅待命，点击切换为在线陪伴'}
+                              className={cn(
+                                'inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-black transition cursor-pointer select-none active:scale-95',
+                                active
+                                  ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                                  : 'border-slate-200 bg-slate-100 text-slate-500 hover:bg-slate-200'
+                              )}
+                            >
+                              <span className={cn('h-1.5 w-1.5 rounded-full', active ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400')} />
+                              <span>{active ? '在线' : '待命'}</span>
+                            </button>
+                          );
+                        })()
+                      )}
+                    </div>
+                    <p className="truncate text-[11px] font-semibold text-slate-400">
+                      {data?.conversationMode === 'TEMPORARY' ? '临时对话不沉淀为长期经历' : '陪你聊天，也帮你看清平台里的事'}
+                    </p>
+                  </div>
                   <button
                     type="button"
                     onClick={() => setRemindersOpen((prev) => !prev)}
@@ -1780,8 +1836,22 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
                       <p className="text-base font-black text-slate-800">{data.profile.greeting || '我在，今天想聊什么？'}</p>
                     </div>
                   )}
-                  {data?.messages.map((message) => (
+                  {data?.messages.map((message, index) => (
                     <div key={message.id} className="space-y-2">
+                      {index > 0 && data.messages[index - 1]?.assistantExperienceId && !message.assistantExperienceId && (
+                        <div className="flex items-center gap-2 py-2 text-[10px] font-bold text-slate-400 select-none">
+                          <div className="h-px flex-1 bg-slate-200" />
+                          <button
+                            type="button"
+                            onClick={() => setContextModalOpen(true)}
+                            className="flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-emerald-700 hover:bg-emerald-100 transition cursor-pointer"
+                          >
+                            <Sparkles size={10} />
+                            <span>以上早期对话已沉淀为经历记忆 · 查看记忆</span>
+                          </button>
+                          <div className="h-px flex-1 bg-slate-200" />
+                        </div>
+                      )}
                       <MessageBubbleFrame
                         role={message.role}
                         avatar={data.profile.avatar || '🌿'}
@@ -1896,7 +1966,7 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
                   )}
                   <ComposerShell
                     rowClassName="gap-2"
-                    toolbar={(webEnabled || ollamaAvailable || pendingAttachment) ? (
+                    toolbar={(webEnabled || ollamaAvailable || pendingAttachment || activeMessageCount > 0) ? (
                       <div className="flex flex-wrap items-center gap-1.5 pb-1 pt-0.5">
                         {ollamaAvailable && (
                           <div className="inline-flex h-7 items-center rounded-lg bg-slate-100 p-0.5 text-[11px] font-black" role="group" aria-label="模型来源">
@@ -1924,6 +1994,24 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
                               本地
                             </button>
                           </div>
+                        )}
+                        {activeMessageCount > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setContextModalOpen(true)}
+                            title="查看上下文占用与经历记忆沉淀"
+                            className={cn(
+                              'inline-flex h-7 items-center gap-1.5 rounded-lg border px-2 text-[11px] font-bold transition cursor-pointer select-none active:scale-95 shadow-2xs',
+                              activeMessageCount >= 30
+                                ? 'border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100'
+                                : activeMessageCount >= 16
+                                  ? 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100'
+                                  : 'border-slate-200/90 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-950'
+                            )}
+                          >
+                            <span className={cn('h-1.5 w-1.5 rounded-full', activeMessageCount >= 30 ? 'bg-rose-500 animate-pulse' : activeMessageCount >= 16 ? 'bg-amber-500' : 'bg-emerald-500')} />
+                            <span>{activeMessageCount} 条活跃 · ~{estimatedTokensText} Tokens</span>
+                          </button>
                         )}
                         {webEnabled && (
                           <div className="inline-flex h-7 items-center gap-1.5 rounded-lg bg-emerald-50 px-2 text-xs font-black text-emerald-700 shadow-xs">
@@ -2223,6 +2311,14 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
           if (!deletingConversation) setPendingDeleteConversation(null);
         }}
         onConfirm={confirmDeleteConversation}
+      />
+      <AssistantContextModal
+        open={contextModalOpen}
+        onClose={() => setContextModalOpen(false)}
+        conversationId={data?.conversationId || ''}
+        conversationMode={data?.conversationMode || 'MAIN'}
+        onArchived={handleExperienceArchived}
+        onDeleted={handleExperienceDeleted}
       />
     </>
   );
