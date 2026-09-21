@@ -635,6 +635,7 @@ try {
     if (!hasColumn('SpaceFile', 'shareId')) db.exec('ALTER TABLE "SpaceFile" ADD COLUMN "shareId" TEXT');
     if (!hasColumn('SpaceFile', 'shareEnabled')) db.exec(`ALTER TABLE "SpaceFile" ADD COLUMN "shareEnabled" BOOLEAN NOT NULL DEFAULT false`);
     if (!hasColumn('SpaceFile', 'sharedAt')) db.exec('ALTER TABLE "SpaceFile" ADD COLUMN "sharedAt" DATETIME');
+    if (!hasColumn('SpaceFile', 'externalDependencies')) db.exec('ALTER TABLE "SpaceFile" ADD COLUMN "externalDependencies" BOOLEAN NOT NULL DEFAULT false');
     if (!hasColumn('AgentTask', 'reviewFeedback')) db.exec('ALTER TABLE "AgentTask" ADD COLUMN "reviewFeedback" TEXT');
     if (!hasColumn('AgentTask', 'waitQuestion')) db.exec('ALTER TABLE "AgentTask" ADD COLUMN "waitQuestion" TEXT');
     if (!hasColumn('AgentTask', 'waitReason')) db.exec('ALTER TABLE "AgentTask" ADD COLUMN "waitReason" TEXT');
@@ -675,6 +676,8 @@ try {
         "scheduleMinute" INTEGER,
         "weekdays" JSONB,
         "workStrategy" TEXT NOT NULL DEFAULT 'NEW_WORK',
+        "executionMode" TEXT NOT NULL DEFAULT 'PROMPT',
+        "scriptPath" TEXT,
         "networkPolicy" TEXT NOT NULL DEFAULT 'forbidden',
         "enabled" BOOLEAN NOT NULL DEFAULT false,
         "nextRunAt" DATETIME NOT NULL,
@@ -709,6 +712,8 @@ try {
     if (!hasColumn('SpaceAutomation', 'scheduleHour')) db.exec('ALTER TABLE "SpaceAutomation" ADD COLUMN "scheduleHour" INTEGER');
     if (!hasColumn('SpaceAutomation', 'scheduleMinute')) db.exec('ALTER TABLE "SpaceAutomation" ADD COLUMN "scheduleMinute" INTEGER');
     if (!hasColumn('SpaceAutomation', 'weekdays')) db.exec('ALTER TABLE "SpaceAutomation" ADD COLUMN "weekdays" JSONB');
+    if (!hasColumn('SpaceAutomation', 'executionMode')) db.exec(`ALTER TABLE "SpaceAutomation" ADD COLUMN "executionMode" TEXT NOT NULL DEFAULT 'PROMPT'`);
+    if (!hasColumn('SpaceAutomation', 'scriptPath')) db.exec('ALTER TABLE "SpaceAutomation" ADD COLUMN "scriptPath" TEXT');
     if (!hasColumn('SpaceAutomation', 'consecutiveFailures')) db.exec('ALTER TABLE "SpaceAutomation" ADD COLUMN "consecutiveFailures" INTEGER NOT NULL DEFAULT 0');
     if (!hasColumn('SpaceAutomation', 'completionAction')) db.exec(`ALTER TABLE "SpaceAutomation" ADD COLUMN "completionAction" TEXT NOT NULL DEFAULT 'NONE'`);
     if (!hasColumn('SpaceAutomation', 'completionConfig')) db.exec('ALTER TABLE "SpaceAutomation" ADD COLUMN "completionConfig" JSONB');
