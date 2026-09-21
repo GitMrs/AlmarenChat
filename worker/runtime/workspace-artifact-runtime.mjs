@@ -36,12 +36,14 @@ export function createWorkspaceArtifactRuntime({
     const timestamp = now();
     const fileId = db.transaction(() => {
       const existing = db.prepare(
-        `SELECT "id" FROM "SpaceFile" WHERE "spaceId" = ? AND "relativePath" = ? AND "runId" = ? AND "taskId" = ? ORDER BY "createdAt" DESC LIMIT 1`
+        `SELECT "id", "status" FROM "SpaceFile" WHERE "spaceId" = ? AND "relativePath" = ? AND "runId" = ? AND "taskId" = ? ORDER BY "createdAt" DESC LIMIT 1`
       ).get(run.spaceId, artifact.relativePath, run.id, task.id);
       if (existing) {
-        db.prepare(
-          `UPDATE "SpaceFile" SET "fileName" = ?, "mimeType" = ?, "size" = ?, "runId" = ?, "taskId" = ?, "workId" = ?, "status" = 'GENERATING', "updatedAt" = ? WHERE "id" = ?`
-        ).run(artifact.fileName, artifact.mimeType, artifact.size, run.id, task.id, artifact.workId, timestamp, existing.id);
+        if (existing.status !== 'READY') {
+          db.prepare(
+            `UPDATE "SpaceFile" SET "fileName" = ?, "mimeType" = ?, "size" = ?, "runId" = ?, "taskId" = ?, "workId" = ?, "status" = 'GENERATING', "updatedAt" = ? WHERE "id" = ?`
+          ).run(artifact.fileName, artifact.mimeType, artifact.size, run.id, task.id, artifact.workId, timestamp, existing.id);
+        }
       } else {
         db.prepare(
           `INSERT INTO "SpaceFile" ("id", "spaceId", "fileName", "mimeType", "size", "relativePath", "runId", "taskId", "workId", "status", "createdAt", "updatedAt") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'GENERATING', ?, ?)`

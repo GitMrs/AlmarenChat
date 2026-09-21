@@ -49,6 +49,18 @@ test('stale run recovery resets execution and review states for replay', () => {
   db.close();
 });
 
+test('recent run without heartbeat is not prematurely recovered as stale', () => {
+  const db = database();
+  db.exec(`
+    INSERT INTO "AgentRun" ("id", "status", "workerId", "heartbeatAt", "updatedAt")
+      VALUES ('run-active', 'RUNNING', 'live-worker', NULL, '2026-02-05');
+  `);
+  const recovered = recoverStaleRunLeases(db, '2026-02-01', '2026-02-05');
+  assert.deepEqual(recovered, []);
+  assert.equal(db.prepare(`SELECT "status" FROM "AgentRun" WHERE "id" = 'run-active'`).get().status, 'RUNNING');
+  db.close();
+});
+
 test('recovery exposes cancellation requests and resets interrupted discussions', () => {
   const db = database();
   db.exec(`

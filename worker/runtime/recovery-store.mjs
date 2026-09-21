@@ -13,7 +13,7 @@ export function recoverStaleRunLeases(db, staleBefore, timestamp = new Date().to
   const staleRuns = db.prepare(
     `SELECT "id", "workerId" FROM "AgentRun"
      WHERE "status" IN ('PLANNING', 'RUNNING', 'SUMMARIZING')
-       AND ("heartbeatAt" IS NULL OR "heartbeatAt" <= ?)`
+       AND COALESCE("heartbeatAt", "updatedAt") <= ?`
   ).all(staleBefore);
   const recovered = [];
   for (const run of staleRuns) {
@@ -21,7 +21,7 @@ export function recoverStaleRunLeases(db, staleBefore, timestamp = new Date().to
       const result = db.prepare(
         `UPDATE "AgentRun" SET "status" = 'QUEUED', "workerId" = NULL, "heartbeatAt" = NULL, "updatedAt" = ?
          WHERE "id" = ? AND "status" IN ('PLANNING', 'RUNNING', 'SUMMARIZING')
-           AND ("heartbeatAt" IS NULL OR "heartbeatAt" <= ?)`
+           AND COALESCE("heartbeatAt", "updatedAt") <= ?`
       ).run(timestamp, run.id, staleBefore);
       if (result.changes !== 1) return false;
       db.prepare(
@@ -49,7 +49,7 @@ export function recoverInterruptedDiscussions(db, timestamp = new Date().toISOSt
   ).run(timestamp).changes;
   const cancelled = db.prepare(
     `UPDATE "SpaceDiscussion" SET "status" = 'CANCELLED', "completedAt" = ?, "updatedAt" = ?
-     WHERE "status" = 'CANCEL_REQUESTED'`
+      WHERE "status" = 'CANCEL_REQUESTED'`
   ).run(timestamp, timestamp).changes;
   return { queued, cancelled };
 }
@@ -63,7 +63,7 @@ export function recoverInterruptedRelays(db, timestamp = new Date().toISOString(
   ).run(timestamp).changes;
   const cancelled = db.prepare(
     `UPDATE "SpaceRelay" SET "status" = 'CANCELLED', "pendingAction" = NULL,
-     "completedAt" = ?, "updatedAt" = ? WHERE "status" = 'CANCEL_REQUESTED'`
+      "completedAt" = ?, "updatedAt" = ? WHERE "status" = 'CANCEL_REQUESTED'`
   ).run(timestamp, timestamp).changes;
   return { queued, cancelled, paused };
 }

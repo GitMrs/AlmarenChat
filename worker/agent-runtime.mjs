@@ -719,9 +719,15 @@ async function coordinateNextWork(run, context, triggerEventId) {
           lastDecision: action.summary,
           lastDispatchFeedback: null,
         };
-        db.prepare(`UPDATE "AgentRun" SET "coordinatorState" = ?, "status" = ?, "workerId" = NULL, "heartbeatAt" = NULL, "updatedAt" = ? WHERE "id" = ?`).run(
-          JSON.stringify(nextState), awaitingApproval ? 'WAITING_APPROVAL' : 'QUEUED', timestamp, run.id
-        );
+        if (awaitingApproval) {
+          db.prepare(`UPDATE "AgentRun" SET "coordinatorState" = ?, "status" = 'WAITING_APPROVAL', "workerId" = NULL, "heartbeatAt" = NULL, "updatedAt" = ? WHERE "id" = ?`).run(
+            JSON.stringify(nextState), timestamp, run.id
+          );
+        } else {
+          db.prepare(`UPDATE "AgentRun" SET "coordinatorState" = ?, "status" = 'RUNNING', "workerId" = ?, "heartbeatAt" = ?, "updatedAt" = ? WHERE "id" = ?`).run(
+            JSON.stringify(nextState), workerId, timestamp, timestamp, run.id
+          );
+        }
         return rows;
       })();
       action.taskIds = createdTasks.map((task) => task.id);
@@ -1393,7 +1399,7 @@ async function processRun(run) {
       }, `run-waiting-dispatch-approval:${proposedTasks.map((task) => task.id).sort().join(':')}`);
       return;
     } else if (tasks.length > 0) {
-      db.prepare(`UPDATE "AgentRun" SET "status" = 'RUNNING', "updatedAt" = ? WHERE "id" = ?`).run(now(), run.id);
+      db.prepare(`UPDATE "AgentRun" SET "status" = 'RUNNING', "workerId" = ?, "heartbeatAt" = ?, "updatedAt" = ? WHERE "id" = ?`).run(workerId, now(), now(), run.id);
     }
 
     const previousResults = tasks
