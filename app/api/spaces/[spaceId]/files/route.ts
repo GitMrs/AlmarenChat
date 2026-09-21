@@ -43,6 +43,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
 
     const formData = await request.formData();
     const file = formData.get('file');
+    const rawRole = typeof formData.get('role') === 'string' ? (formData.get('role') as string).trim() : '';
+    const rawWorkId = typeof formData.get('workId') === 'string' ? (formData.get('workId') as string).trim() : '';
     if (!(file instanceof File)) {
       return NextResponse.json({ error: 'Missing file' }, { status: 400 });
     }
@@ -51,22 +53,73 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
     }
 
     await ensureSpaceRoot(userId, spaceId);
-    const fileName = `${Date.now()}-${safeFileName(file.name)}`;
-    const relativePath = `workspace/inbox/${fileName}`;
+
+    const cleanName = safeFileName(file.name);
+    let relativePath: string;
+    let workId: string | null = null;
+
+    if (rawRole === 'SHARED') {
+      relativePath = `workspace/shared/${cleanName}`;
+    } else if (rawRole === 'FOUNDATION') {
+      relativePath = `workspace/foundation/${cleanName}`;
+    } else if (rawRole === 'OUTPUT' && rawWorkId && rawWorkId !== 'all') {
+      workId = rawWorkId;
+      relativePath = `workspace/works/${rawWorkId}/${cleanName}`;
+    } else if (rawRole === 'OUTPUT') {
+      relativePath = `workspace/works/${cleanName}`;
+    } else if (rawRole === 'ARCHIVE') {
+      relativePath = `workspace/archive/${cleanName}`;
+    } else {
+      const fileName = `${Date.now()}-${cleanName}`;
+      relativePath = `workspace/inbox/${fileName}`;
+    }
+
+    if (workId) {
+      const workExists = await prisma.spaceWork.findFirst({
+        where: { id: workId, spaceId },
+        select: { id: true },
+      });
+      if (!workExists) {
+        workId = null;
+      }
+    }
+
     const target = resolveSpacePath(userId, spaceId, relativePath);
     const bytes = Buffer.from(await file.arrayBuffer());
     await mkdir(path.dirname(target), { recursive: true });
     await writeFile(target, bytes);
 
-    const record = await prisma.spaceFile.create({
-      data: {
-        spaceId,
-        fileName: file.name,
-        mimeType: file.type || null,
-        size: file.size,
-        relativePath,
-      },
+    const existing = await prisma.spaceFile.findFirst({
+      where: { spaceId, relativePath },
     });
+
+    let record;
+    if (existing) {
+      record = await prisma.spaceFile.update({
+        where: { id: existing.id },
+        data: {
+          fileName: file.name,
+          mimeType: file.type || null,
+          size: file.size,
+          workId: workId ?? existing.workId,
+          updatedAt: new Date(),
+        },
+        include: { work: true },
+      });
+    } else {
+      record = await prisma.spaceFile.create({
+        data: {
+          spaceId,
+          fileName: file.name,
+          mimeType: file.type || null,
+          size: file.size,
+          relativePath,
+          workId,
+        },
+        include: { work: true },
+      });
+    }
+
     await prisma.space.update({ where: { id: spaceId }, data: { updatedAt: new Date() } });
     return NextResponse.json({ file: decorateSpaceFile(record) });
   } catch (e: any) {

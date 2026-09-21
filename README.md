@@ -11,6 +11,7 @@ AlmarenChat 是一个基于 Next.js、Prisma 和 SQLite 的 AI 工作与陪伴�
 - [Agent Runtime](docs/agent-runtime.md)
 - [空间连接器](docs/space-connectors.md)
 - [空间自动化验收](docs/space-automation-acceptance.md)
+- [空间资产、两阶段防重与上下文检查点压缩](docs/space-context-and-assets.md)
 
 ## 功能特性
 

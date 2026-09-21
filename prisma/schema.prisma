@@ -278,6 +278,8 @@ model SpaceAutomation {
   scheduleMinute  Int?
   weekdays        Json?
   workStrategy    String    @default("NEW_WORK")
+  executionMode   String    @default("PROMPT")
+  scriptPath      String?
   networkPolicy   String    @default("forbidden")
   completionAction String   @default("NONE")
   completionConfig Json?

@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-// @ts-expect-error Node's type-stripping test runner requires the explicit extension.
-import { analyzeMessageImportance, compressConversationContext } from './context-compression.ts';
+import { analyzeMessageImportance, buildContextCheckpointSummary, compressConversationContext } from './context-compression.ts';
 import type { SpaceMessage } from '@/types';
 
 function messages(count: number, contentSize = 80): SpaceMessage[] {
@@ -59,4 +58,12 @@ test('newer messages receive a higher recency score', () => {
   });
 
   assert.ok(newest.score > oldest.score);
+});
+
+test('buildContextCheckpointSummary generates structured checkpoint text preserving source context', () => {
+  const source = messages(5, 50);
+  const summary = buildContextCheckpointSummary(source);
+  assert.ok(summary.includes('此前对话检查点'));
+  assert.ok(summary.includes('message-0'));
+  assert.ok(summary.includes('message-4'));
 });

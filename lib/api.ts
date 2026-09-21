@@ -568,12 +568,12 @@ export const spaces = {
     }),
   automations: (spaceId: string) =>
     request<{ automations: SpaceAutomation[] }>(`/spaces/${spaceId}/automations`),
-  createAutomation: (spaceId: string, data: { name: string; prompt: string; scheduleType: 'INTERVAL' | 'DAILY' | 'WEEKLY'; intervalMinutes: number; timeZone: string; scheduleHour?: number; scheduleMinute?: number; weekdays?: number[]; workStrategy: 'NEW_WORK' | 'ACTIVE_WORK'; networkPolicy: 'forbidden' | 'allowed' | 'required'; completionAction?: 'NONE' | 'WECHAT_CREATE_DRAFT' | 'WEBHOOK_NOTIFY'; completionConfig?: { themeId?: string; target?: 'PERSONAL_QQ' | 'CUSTOM_WEBHOOK'; webhookId?: string } | null; enabled: boolean }) =>
+  createAutomation: (spaceId: string, data: { name: string; prompt: string; scheduleType: 'INTERVAL' | 'DAILY' | 'WEEKLY'; intervalMinutes: number; timeZone: string; scheduleHour?: number; scheduleMinute?: number; weekdays?: number[]; workStrategy: 'NEW_WORK' | 'ACTIVE_WORK'; executionMode?: 'PROMPT' | 'SCRIPT_ANALYSIS' | 'SCRIPT_DIRECT'; scriptPath?: string | null; networkPolicy: 'forbidden' | 'allowed' | 'required'; completionAction?: 'NONE' | 'WECHAT_CREATE_DRAFT' | 'WEBHOOK_NOTIFY'; completionConfig?: { themeId?: string; target?: 'PERSONAL_QQ' | 'CUSTOM_WEBHOOK'; webhookId?: string } | null; enabled: boolean }) =>
     request<{ automation: SpaceAutomation }>(`/spaces/${spaceId}/automations`, {
       method: 'POST',
       body: JSON.stringify(data),
     }),
-  updateAutomation: (spaceId: string, automationId: string, data: Partial<Pick<SpaceAutomation, 'name' | 'prompt' | 'scheduleType' | 'intervalMinutes' | 'timeZone' | 'scheduleHour' | 'scheduleMinute' | 'weekdays' | 'workStrategy' | 'networkPolicy' | 'completionAction' | 'completionConfig' | 'enabled' | 'nextRunAt'>>) =>
+  updateAutomation: (spaceId: string, automationId: string, data: Partial<Pick<SpaceAutomation, 'name' | 'prompt' | 'scheduleType' | 'intervalMinutes' | 'timeZone' | 'scheduleHour' | 'scheduleMinute' | 'weekdays' | 'workStrategy' | 'executionMode' | 'scriptPath' | 'networkPolicy' | 'completionAction' | 'completionConfig' | 'enabled' | 'nextRunAt'>>) =>
     request<{ automation: SpaceAutomation }>(`/spaces/${spaceId}/automations/${automationId}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
@@ -649,10 +649,12 @@ export const spaces = {
       method: 'PATCH',
       body: JSON.stringify({ action: 'reject_task_proposal' }),
     }),
-  uploadFile: async (id: string, file: File) => {
+  uploadFile: async (id: string, file: File, options?: { role?: string; workId?: string }) => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
     const formData = new FormData();
     formData.append('file', file);
+    if (options?.role) formData.append('role', options.role);
+    if (options?.workId) formData.append('workId', options.workId);
 
     const res = await fetch(`${API_BASE}/spaces/${id}/files`, {
       method: 'POST',
@@ -694,6 +696,13 @@ export const spaces = {
       }>;
       lastCompressedAt: string | null;
     }>(`/spaces/${id}/compression-stats`),
+  createCheckpoint: (id: string, options?: { preserveRecent?: number }) =>
+    request<{ success: boolean; checkpoint: any; archivedCount: number; preservedCount: number }>(
+      `/spaces/${id}/compression-stats`,
+      { method: 'POST', body: JSON.stringify(options || {}) }
+    ),
+  clearCheckpoint: (id: string) =>
+    request<{ success: boolean }>(`/spaces/${id}/compression-stats`, { method: 'DELETE' }),
 };
 
 export const spaceShares = {

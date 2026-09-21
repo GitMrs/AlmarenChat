@@ -1,7 +1,13 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
-import { initialAutomationRunAt, normalizeAutomationCompletion, normalizeAutomationSchedule } from '@/lib/space-automation-policy.mjs';
+import {
+  initialAutomationRunAt,
+  normalizeAutomationCompletion,
+  normalizeAutomationSchedule,
+  normalizeAutomationExecutionMode,
+  normalizeAutomationScriptPath,
+} from '@/lib/space-automation-policy.mjs';
 
 async function ownedAutomation(spaceId: string, automationId: string, userId: string) {
   return prisma.spaceAutomation.findFirst({
@@ -39,6 +45,15 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ sp
     if (body?.workStrategy !== undefined) {
       if (!['NEW_WORK', 'ACTIVE_WORK'].includes(body.workStrategy)) return NextResponse.json({ error: '成果策略无效' }, { status: 400 });
       data.workStrategy = body.workStrategy;
+    }
+    if (body?.executionMode !== undefined || body?.scriptPath !== undefined) {
+      const targetMode = normalizeAutomationExecutionMode(body?.executionMode ?? automation.executionMode);
+      const targetScript = normalizeAutomationScriptPath(
+        body?.scriptPath !== undefined ? body.scriptPath : automation.scriptPath,
+        targetMode
+      );
+      data.executionMode = targetMode;
+      data.scriptPath = targetScript;
     }
     if (body?.networkPolicy !== undefined) {
       if (!['forbidden', 'allowed', 'required'].includes(body.networkPolicy)) return NextResponse.json({ error: '联网策略无效' }, { status: 400 });

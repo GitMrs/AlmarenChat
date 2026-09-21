@@ -4,6 +4,7 @@ import { requireAuth } from '@/app/api/_lib/auth';
 import { ensureSpaceRoot } from '@/app/api/_lib/spaces';
 import { connectorActionDefinition } from '@/lib/connectors/registry.mjs';
 import { buildWechatDraftSnapshot, selectAutomatedWechatDraftFiles } from '@/lib/connectors/wechat-draft-snapshot';
+import { commitSpacePendingHistory } from '@/lib/space-pending-history.mjs';
 
 async function prepareFinalizationFollowUp(
   actionId: string,
@@ -73,6 +74,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ sp
           where: { id: action.workId },
           data: { status: 'COMPLETED', stage: 'ready', completedAt: timestamp },
         });
+        commitSpacePendingHistory({ userId, spaceId });
         await tx.spaceActionRequest.update({
           where: { id: action.id },
           data: {

@@ -507,6 +507,8 @@ export default function SpaceDetailPage() {
   const [automationTime, setAutomationTime] = useState('09:00');
   const [automationWeekdays, setAutomationWeekdays] = useState<number[]>([1, 2, 3, 4, 5]);
   const [automationWorkStrategy, setAutomationWorkStrategy] = useState<'NEW_WORK' | 'ACTIVE_WORK'>('NEW_WORK');
+  const [automationExecutionMode, setAutomationExecutionMode] = useState<'PROMPT' | 'SCRIPT_ANALYSIS' | 'SCRIPT_DIRECT'>('PROMPT');
+  const [automationScriptPath, setAutomationScriptPath] = useState('');
   const [automationNetworkPolicy, setAutomationNetworkPolicy] = useState<'forbidden' | 'allowed' | 'required'>('forbidden');
   const [automationCompletionAction, setAutomationCompletionAction] = useState<'NONE' | 'WECHAT_CREATE_DRAFT' | 'WEBHOOK_NOTIFY'>('NONE');
   const [automationWebhookTarget, setAutomationWebhookTarget] = useState<'PERSONAL_QQ' | 'CUSTOM_WEBHOOK'>('PERSONAL_QQ');
@@ -1317,8 +1319,16 @@ export default function SpaceDetailPage() {
     setUploadingFile(true);
     setError('');
     try {
-      const result = await spacesApi.uploadFile(spaceId, file);
-      setFiles((items) => [result.file, ...items]);
+      const targetRole = workspaceView === 'files' && fileAssetTab !== 'all' ? fileAssetTab : 'INPUT';
+      const targetWorkId = targetRole === 'OUTPUT' ? (selectedWorkId !== 'all' ? selectedWorkId : currentWork?.id) : undefined;
+      const result = await spacesApi.uploadFile(spaceId, file, {
+        role: targetRole,
+        workId: targetWorkId,
+      });
+      setFiles((items) => {
+        const next = [result.file, ...items.filter((item) => item.id !== result.file.id && item.relativePath !== result.file.relativePath)];
+        return next;
+      });
     } catch (err: any) {
       setError(err.message || '上传资料失败');
     } finally {
@@ -1741,6 +1751,8 @@ export default function SpaceDetailPage() {
     setAutomationTime('09:00');
     setAutomationWeekdays([1, 2, 3, 4, 5]);
     setAutomationWorkStrategy('NEW_WORK');
+    setAutomationExecutionMode('PROMPT');
+    setAutomationScriptPath('');
     setAutomationNetworkPolicy('forbidden');
     setAutomationCompletionAction('NONE');
     setAutomationWebhookTarget('PERSONAL_QQ');
@@ -1761,6 +1773,8 @@ export default function SpaceDetailPage() {
     setAutomationTime(`${hour}:${minute}`);
     setAutomationWeekdays(Array.isArray(automation.weekdays) ? automation.weekdays : [1, 2, 3, 4, 5]);
     setAutomationWorkStrategy(automation.workStrategy || 'NEW_WORK');
+    setAutomationExecutionMode(automation.executionMode || 'PROMPT');
+    setAutomationScriptPath(automation.scriptPath || '');
     setAutomationNetworkPolicy(automation.networkPolicy || 'forbidden');
     setAutomationCompletionAction(automation.completionAction || 'NONE');
     setAutomationWebhookTarget(automation.completionConfig?.target || 'PERSONAL_QQ');
@@ -1772,6 +1786,7 @@ export default function SpaceDetailPage() {
 
   const saveAutomation = async () => {
     if (!automationName.trim() || !automationPrompt.trim() || automationBusyId) return;
+    if (automationExecutionMode !== 'PROMPT' && !automationScriptPath.trim()) return;
     const isEditing = Boolean(editingAutomationId);
     setAutomationBusyId(isEditing ? editingAutomationId : 'new');
     setError('');
@@ -1786,6 +1801,8 @@ export default function SpaceDetailPage() {
         scheduleMinute: Number(automationTime.split(':')[1]),
         weekdays: automationScheduleType === 'WEEKLY' ? automationWeekdays : undefined,
         workStrategy: automationWorkStrategy,
+        executionMode: automationExecutionMode,
+        scriptPath: automationExecutionMode !== 'PROMPT' ? automationScriptPath.trim() : null,
         networkPolicy: automationNetworkPolicy,
         completionAction: automationCompletionAction,
         completionConfig: automationCompletionAction === 'WEBHOOK_NOTIFY'
@@ -2962,9 +2979,15 @@ export default function SpaceDetailPage() {
                           保存
                         </button>
                       </>}
-                      <button type="button" onClick={() => fileInputRef.current?.click()} disabled={uploadingFile} className="inline-flex h-10 shrink-0 items-center gap-2 rounded-lg bg-slate-950 px-3 text-xs font-black text-white disabled:bg-slate-200">
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={uploadingFile}
+                        className="inline-flex h-10 shrink-0 items-center gap-2 rounded-lg bg-slate-950 px-3 text-xs font-black text-white disabled:bg-slate-200"
+                        title={fileAssetTab === 'SHARED' ? '上传到共享资产 (workspace/shared/)' : fileAssetTab === 'FOUNDATION' ? '上传到基础资料 (workspace/foundation/)' : fileAssetTab === 'OUTPUT' ? '上传到成果' : fileAssetTab === 'INPUT' ? '上传到待处理资料 (workspace/inbox/)' : '上传资料'}
+                      >
                         {uploadingFile ? <Loader2 className="animate-spin" size={15} /> : <UploadCloud size={15} />}
-                        上传
+                        {fileAssetTab === 'SHARED' ? '上传共享资产' : fileAssetTab === 'FOUNDATION' ? '上传基础资料' : fileAssetTab === 'OUTPUT' ? '上传成果' : '上传'}
                       </button>
                     </div>
                   </div>
@@ -4772,12 +4795,44 @@ export default function SpaceDetailPage() {
                             placeholder="自动化名称"
                             className="h-10 w-full rounded-lg border border-black/[0.08] bg-[#fbfaf7] px-3 text-xs font-semibold text-slate-700 outline-none focus:border-slate-300"
                           />
+                          <div className="rounded-lg border border-black/[0.06] bg-slate-50/70 p-3 space-y-2">
+                            <label className="block text-xs font-black text-slate-600">执行方式</label>
+                            <select
+                              value={automationExecutionMode}
+                              onChange={(event) => setAutomationExecutionMode(event.target.value as 'PROMPT' | 'SCRIPT_ANALYSIS' | 'SCRIPT_DIRECT')}
+                              aria-label="自动化执行方式"
+                              className="h-9 w-full rounded-md border border-black/[0.08] bg-white px-2.5 text-xs font-bold text-slate-700 outline-none"
+                            >
+                              <option value="PROMPT">常规大模型任务（纯 Prompt）</option>
+                              <option value="SCRIPT_ANALYSIS">脚本数据清洗 + AI 深度分析（推荐）</option>
+                              <option value="SCRIPT_DIRECT">纯脚本直执（无需 AI 分析，0 Token 成本）</option>
+                            </select>
+                            {automationExecutionMode !== 'PROMPT' && (
+                              <div className="space-y-1.5 pt-1">
+                                <div className="flex items-center justify-between text-[11px] font-bold text-slate-500">
+                                  <span>工作区脚本路径</span>
+                                  <span className="text-[10px] text-slate-400">如 shared/fetch_and_filter.py</span>
+                                </div>
+                                <input
+                                  value={automationScriptPath}
+                                  onChange={(event) => setAutomationScriptPath(event.target.value)}
+                                  placeholder="例如：shared/fetch_and_filter.py 或 scripts/sync.mjs"
+                                  className="h-8 w-full rounded-md border border-black/[0.08] bg-white px-2.5 font-mono text-xs text-slate-700 outline-none focus:border-slate-300"
+                                />
+                                <p className="text-[11px] leading-4 text-slate-400">
+                                  {automationExecutionMode === 'SCRIPT_ANALYSIS'
+                                    ? '系统到期时先运行此脚本获取纯净数据，再自动注入给大模型做智能分析提炼。'
+                                    : '系统到期时直接运行此脚本，捕获输出作为成果交付或推送 Webhook，不调用大模型。'}
+                                </p>
+                              </div>
+                            )}
+                          </div>
                           <textarea
                             value={automationPrompt}
                             onChange={(event) => setAutomationPrompt(event.target.value)}
                             maxLength={12_000}
                             rows={4}
-                            placeholder="每次执行的任务要求"
+                            placeholder={automationExecutionMode === 'SCRIPT_DIRECT' ? '任务执行描述/备注（直接执行模式下作为成果说明）' : (automationExecutionMode === 'SCRIPT_ANALYSIS' ? '对脚本拉取到的数据进行分析的指令（如：提炼 3 条热点趋势并总结金句）' : '每次执行的任务要求')}
                             className="w-full resize-y rounded-lg border border-black/[0.08] bg-[#fbfaf7] px-3 py-2.5 text-xs font-semibold leading-5 text-slate-700 outline-none focus:border-slate-300"
                           />
                           <div className="grid grid-cols-2 gap-2">
@@ -4949,7 +5004,7 @@ export default function SpaceDetailPage() {
                               <button
                                 type="button"
                                 onClick={saveAutomation}
-                                disabled={!automationName.trim() || !automationPrompt.trim() || (automationCompletionAction === 'WEBHOOK_NOTIFY' && automationWebhookTarget === 'CUSTOM_WEBHOOK' && !automationWebhookId) || (automationScheduleType === 'WEEKLY' && automationWeekdays.length === 0) || Boolean(automationBusyId)}
+                                disabled={!automationName.trim() || !automationPrompt.trim() || (automationExecutionMode !== 'PROMPT' && !automationScriptPath.trim()) || (automationCompletionAction === 'WEBHOOK_NOTIFY' && automationWebhookTarget === 'CUSTOM_WEBHOOK' && !automationWebhookId) || (automationScheduleType === 'WEEKLY' && automationWeekdays.length === 0) || Boolean(automationBusyId)}
                                 className="inline-flex h-10 items-center gap-2 rounded-lg bg-slate-950 px-4 text-xs font-black text-white disabled:bg-slate-200 disabled:text-slate-400"
                               >
                                 {automationBusyId === (editingAutomationId || 'new') ? <Loader2 className="animate-spin" size={14} /> : editingAutomationId ? <Save size={14} /> : <Plus size={14} />}

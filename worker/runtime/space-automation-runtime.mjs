@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { automationAuthorization, nextScheduledAutomationRunAt } from '../../lib/space-automation-policy.mjs';
+import { executeSpaceScriptSync } from '../../lib/space-script-runner.mjs';
+import { commitSpacePendingHistory } from '../../lib/space-pending-history.mjs';
 
 const ACTIVE_RUN_STATUSES = ['QUEUED', 'PLANNING', 'RUNNING', 'WAITING', 'WAITING_APPROVAL', 'SUMMARIZING', 'CANCEL_REQUESTED'];
 const ACTIVE_RELAY_STATUSES = ['QUEUED', 'RUNNING', 'PAUSE_REQUESTED', 'WAITING_APPROVAL', 'PAUSED', 'CANCEL_REQUESTED'];
@@ -34,7 +36,7 @@ function workTitle(automation, timestamp) {
   return `${automation.name} · ${stamp}`.slice(0, 120);
 }
 
-function automationExecutionInput(db, automation, prompt) {
+function automationExecutionInput(db, automation, prompt, scriptData = null) {
   const recentWorks = db.prepare(
     `SELECT "title", "objective", "status", "updatedAt"
      FROM "SpaceWork"
@@ -44,10 +46,14 @@ function automationExecutionInput(db, automation, prompt) {
   const history = recentWorks.length > 0
     ? recentWorks.map((work, index) => `${index + 1}. ${String(work.title || '').slice(0, 120)}${work.objective ? `：${String(work.objective).slice(0, 240)}` : ''}`).join('\n')
     : '暂无已完成成果。';
-  return `${prompt}\n\n自动化选题推进要求：\n- 读取空间共享策略和选题池，选择一个本次尚未完成的新主题。\n- 避免与下面最近成果的主题、标题和角度重复；如果选题池已使用完，明确说明并选择最接近但不同的角度。\n- 本次只创作一篇新成果，不要重复改写历史文章。\n最近成果记录：\n${history}`.slice(0, 12_000);
+  const scriptPrefix = scriptData
+    ? `【前置脚本执行采集的数据 (${automation.scriptPath})】：\n${scriptData}\n\n`
+    : '';
+  return `${scriptPrefix}${prompt}\n\n自动化选题推进要求：\n- 读取空间共享策略和选题池，选择一个本次尚未完成的新主题。\n- 避免与下面最近成果的主题、标题和角度重复；如果选题池已使用完，明确说明并选择最接近但不同的角度。\n- 本次只创作一篇新成果，不要重复改写历史文章。\n最近成果记录：\n${history}`.slice(0, 12_000);
 }
 
-export function triggerNextDueAutomation(db, timestamp = new Date().toISOString()) {
+export function triggerNextDueAutomation(db, timestamp = new Date().toISOString(), options = {}) {
+  const { projectRoot = process.cwd() } = options;
   return db.transaction(() => {
     const automation = db.prepare(
       `SELECT automation.*, space."userId", space."templateId", space."templateSnapshot",
@@ -81,12 +87,108 @@ export function triggerNextDueAutomation(db, timestamp = new Date().toISOString(
       scheduledFor,
       timestamp
     ).toISOString();
-    const runId = randomUUID();
     const executionId = randomUUID();
+    const mode = automation.executionMode || 'PROMPT';
+
+    // 处理脚本执行（SCRIPT_ANALYSIS 或 SCRIPT_DIRECT）
+    let scriptData = null;
+    if (mode === 'SCRIPT_ANALYSIS' || mode === 'SCRIPT_DIRECT') {
+      const scriptResult = executeSpaceScriptSync({
+        projectRoot,
+        userId: automation.userId,
+        spaceId: automation.spaceId,
+        scriptPath: automation.scriptPath,
+      });
+
+      if (!scriptResult.ok) {
+        const errorDetail = scriptResult.timedOut
+          ? '脚本执行超时'
+          : (scriptResult.stderr || scriptResult.stdout || `脚本异常退出 (code: ${scriptResult.exitCode})`);
+        const errMessage = `${mode === 'SCRIPT_DIRECT' ? '脚本' : '前置脚本'}执行失败：${errorDetail}`.slice(0, 500);
+
+        db.prepare(
+          `INSERT INTO "SpaceAutomationExecution"
+           ("id", "automationId", "scheduledFor", "status", "runId", "error", "createdAt", "updatedAt")
+           VALUES (?, ?, ?, 'FAILED', NULL, ?, ?, ?)`
+        ).run(executionId, automation.id, scheduledFor, errMessage, timestamp, timestamp);
+
+        db.prepare(
+          `INSERT INTO "SpaceMessage" ("id", "spaceId", "role", "speakerAgentId", "content", "attachments", "sourceKey", "createdAt")
+           VALUES (?, ?, 'assistant', 'space-coordinator', ?, ?, ?, ?)`
+        ).run(
+          randomUUID(),
+          automation.spaceId,
+          `自动化“${automation.name}”${errMessage}`,
+          JSON.stringify([{ type: 'automation_error', automationId: automation.id, executionId, scheduledFor, error: errMessage }]),
+          `automation-error:${executionId}`,
+          timestamp
+        );
+
+        db.prepare(
+          `UPDATE "SpaceAutomation"
+           SET "nextRunAt" = ?, "lastRunAt" = ?, "lastRunId" = NULL, "lastError" = ?, "updatedAt" = ?
+           WHERE "id" = ? AND "nextRunAt" = ?`
+        ).run(nextRunAt, timestamp, errMessage, timestamp, automation.id, scheduledFor);
+
+        return { automationId: automation.id, executionId, status: 'FAILED', reason: 'SCRIPT_ERROR', nextRunAt };
+      }
+
+      scriptData = scriptResult.stdout;
+
+      // 如果是 SCRIPT_DIRECT，脚本执行成功即代表自动化完成，不启动 AI AgentRun
+      if (mode === 'SCRIPT_DIRECT') {
+        const title = workTitle(automation, timestamp);
+        const workId = randomUUID();
+        const contentOutput = scriptData.slice(0, 4000);
+
+        db.prepare(
+          `INSERT INTO "SpaceWork"
+           ("id", "spaceId", "title", "kind", "status", "stage", "objective", "completedAt", "createdAt", "updatedAt")
+           VALUES (?, ?, ?, ?, 'COMPLETED', 'delivery', ?, ?, ?, ?)`
+        ).run(workId, automation.spaceId, title, automation.templateId || 'general', contentOutput, timestamp, timestamp, timestamp);
+
+        db.prepare(
+          `INSERT INTO "SpaceAutomationExecution"
+           ("id", "automationId", "scheduledFor", "status", "runId", "createdAt", "updatedAt")
+           VALUES (?, ?, ?, 'COMPLETED', NULL, ?, ?)`
+        ).run(executionId, automation.id, scheduledFor, timestamp, timestamp);
+
+        db.prepare(
+          `INSERT INTO "SpaceMessage" ("id", "spaceId", "role", "speakerAgentId", "content", "attachments", "sourceKey", "createdAt")
+           VALUES (?, ?, 'assistant', 'space-coordinator', ?, ?, ?, ?)`
+        ).run(
+          randomUUID(),
+          automation.spaceId,
+          `自动化“${automation.name}”直接脚本执行完成：\n\n\`\`\`\n${contentOutput}\n\`\`\``,
+          JSON.stringify([{ type: 'automation_script_direct', automationId: automation.id, executionId, workId, scheduledFor }]),
+          `automation-direct:${executionId}`,
+          timestamp
+        );
+
+        db.prepare(
+          `UPDATE "SpaceAutomation"
+           SET "nextRunAt" = ?, "lastRunAt" = ?, "lastRunId" = NULL, "lastError" = NULL, "updatedAt" = ?
+           WHERE "id" = ? AND "nextRunAt" = ?`
+        ).run(nextRunAt, timestamp, timestamp, automation.id, scheduledFor);
+
+        db.prepare('UPDATE "Space" SET "activeWorkId" = ?, "updatedAt" = ? WHERE "id" = ?').run(
+          workId,
+          timestamp,
+          automation.spaceId
+        );
+
+        commitSpacePendingHistory({ projectRoot, userId: automation.userId, spaceId: automation.spaceId });
+
+        return { automationId: automation.id, executionId, workId, status: 'COMPLETED', nextRunAt };
+      }
+    }
+
+    // PROMPT 或 SCRIPT_ANALYSIS (脚本成功后执行 AI 分析)
+    const runId = randomUUID();
     const snapshot = parseSnapshot(automation.templateSnapshot);
     const authorization = automationAuthorization(automation, snapshot);
     const prompt = String(automation.prompt || '').trim();
-    const input = automationExecutionInput(db, automation, prompt);
+    const input = automationExecutionInput(db, automation, prompt, scriptData);
     let work = automation.workStrategy === 'ACTIVE_WORK' && automation.activeWorkId
       ? db.prepare(`SELECT * FROM "SpaceWork" WHERE "id" = ? AND "spaceId" = ? AND "status" <> 'ARCHIVED'`).get(
           automation.activeWorkId,
@@ -145,7 +247,9 @@ export function triggerNextDueAutomation(db, timestamp = new Date().toISOString(
     ).run(
       randomUUID(),
       runId,
-      `自动化“${automation.name}”已到期，等待协调者安排工作`,
+      mode === 'SCRIPT_ANALYSIS'
+        ? `自动化“${automation.name}”前置脚本已采集数据，等待协调者分析推进`
+        : `自动化“${automation.name}”已到期，等待协调者安排工作`,
       JSON.stringify({ automationId: automation.id, executionId, scheduledFor, authorization }),
       `automation:${automation.id}:${scheduledFor}`,
       timestamp
@@ -161,7 +265,9 @@ export function triggerNextDueAutomation(db, timestamp = new Date().toISOString(
     ).run(
       randomUUID(),
       automation.spaceId,
-      `自动化“${automation.name}”已开始执行。`,
+      mode === 'SCRIPT_ANALYSIS'
+        ? `自动化“${automation.name}”已成功获取脚本数据，进入智能分析创作流程。`
+        : `自动化“${automation.name}”已开始执行。`,
       JSON.stringify([{ type: 'automation_trigger', automationId: automation.id, executionId, runId, scheduledFor }]),
       `automation-trigger:${executionId}`,
       timestamp

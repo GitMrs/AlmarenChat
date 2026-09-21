@@ -2,7 +2,13 @@ import { NextResponse } from 'next/server';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { getSpaceForUser } from '@/app/api/_lib/spaces';
-import { initialAutomationRunAt, normalizeAutomationCompletion, normalizeAutomationSchedule } from '@/lib/space-automation-policy.mjs';
+import {
+  initialAutomationRunAt,
+  normalizeAutomationCompletion,
+  normalizeAutomationSchedule,
+  normalizeAutomationExecutionMode,
+  normalizeAutomationScriptPath,
+} from '@/lib/space-automation-policy.mjs';
 
 function parseDate(value: unknown, fallback: Date) {
   if (value === undefined || value === null || value === '') return fallback;
@@ -50,6 +56,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
     if (!prompt || prompt.length > 12_000) return NextResponse.json({ error: '任务要求必须为 1 到 12000 字' }, { status: 400 });
     const schedule = normalizeAutomationSchedule(body);
     const workStrategy = body?.workStrategy === 'ACTIVE_WORK' ? 'ACTIVE_WORK' : 'NEW_WORK';
+    const executionMode = normalizeAutomationExecutionMode(body?.executionMode);
+    const scriptPath = normalizeAutomationScriptPath(body?.scriptPath, executionMode);
     const networkPolicy = ['forbidden', 'allowed', 'required'].includes(body?.networkPolicy) ? body.networkPolicy : 'forbidden';
     const completion = normalizeAutomationCompletion(body, space.templateId);
     if (completion.completionAction === 'WEBHOOK_NOTIFY' && completion.completionConfig?.target === 'CUSTOM_WEBHOOK') {
@@ -65,6 +73,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
         prompt,
         ...schedule,
         workStrategy,
+        executionMode,
+        scriptPath,
         networkPolicy,
         ...completion,
         enabled: body?.enabled === true,

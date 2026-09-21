@@ -245,7 +245,16 @@ export default function SpaceOperationsCenter(props: Props) {
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="text-sm font-black text-slate-800">{automation.name}</span>
                           <span className={`text-[10px] font-black ${automation.enabled ? 'text-emerald-700' : 'text-slate-400'}`}>{automation.enabled ? '运行中' : '已停用'}</span>
+                          {automation.executionMode === 'SCRIPT_ANALYSIS' && (
+                            <span className="rounded bg-sky-50 px-1.5 py-0.5 text-[10px] font-bold text-sky-700 border border-sky-100">脚本 + AI分析</span>
+                          )}
+                          {automation.executionMode === 'SCRIPT_DIRECT' && (
+                            <span className="rounded bg-violet-50 px-1.5 py-0.5 text-[10px] font-bold text-violet-700 border border-violet-100">纯脚本直执</span>
+                          )}
                         </div>
+                        {automation.scriptPath && (
+                          <div className="mt-1 font-mono text-[11px] text-slate-400">脚本: {automation.scriptPath}</div>
+                        )}
                         <div className="mt-1 line-clamp-2 text-xs font-semibold leading-5 text-slate-500">{automation.prompt}</div>
                         <div className="mt-2 text-[11px] font-bold text-slate-400">{scheduleLabel(automation)} · {automation.enabled ? `下次 ${new Date(automation.nextRunAt).toLocaleString('zh-CN')}` : '不会自动触发'}</div>
                         {automation.lastError && <div className="mt-2 text-xs font-semibold text-rose-600">{automation.lastError}</div>}

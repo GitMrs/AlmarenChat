@@ -356,6 +356,8 @@ export interface SpaceAutomation {
   scheduleMinute?: number | null;
   weekdays?: number[] | null;
   workStrategy: 'NEW_WORK' | 'ACTIVE_WORK';
+  executionMode: 'PROMPT' | 'SCRIPT_ANALYSIS' | 'SCRIPT_DIRECT';
+  scriptPath?: string | null;
   networkPolicy: 'forbidden' | 'allowed' | 'required';
   completionAction: 'NONE' | 'WECHAT_CREATE_DRAFT' | 'WEBHOOK_NOTIFY';
   completionConfig?: { themeId?: string; target?: 'PERSONAL_QQ' | 'CUSTOM_WEBHOOK'; webhookId?: string } | null;
