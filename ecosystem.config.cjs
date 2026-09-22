@@ -15,6 +15,7 @@ module.exports = {
         SPACE_CONNECTOR_SECRET: process.env.SPACE_CONNECTOR_SECRET || '',
         QQ_ASSISTANT_SECRET: process.env.QQ_ASSISTANT_SECRET || '',
         QQ_ASSISTANT_WEBHOOK_PUBLIC_URL: process.env.QQ_ASSISTANT_WEBHOOK_PUBLIC_URL || '',
+        APP_URL: process.env.APP_URL || '',
       },
     },
     {
@@ -36,6 +37,7 @@ module.exports = {
         QQ_ASSISTANT_SECRET: process.env.QQ_ASSISTANT_SECRET || '',
         QQ_ASSISTANT_WEBHOOK_INTERNAL_URL: process.env.QQ_ASSISTANT_WEBHOOK_INTERNAL_URL || '',
         QQ_ASSISTANT_WEBHOOK_PUBLIC_URL: process.env.QQ_ASSISTANT_WEBHOOK_PUBLIC_URL || '',
+        APP_URL: process.env.APP_URL || '',
       },
     },
     {
