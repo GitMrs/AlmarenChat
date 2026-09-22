@@ -8,12 +8,12 @@ function shareUrl(shareId: string | null) {
   return shareId ? `/share/${shareId}/` : null;
 }
 
-async function ownedHtmlFile(request: Request, spaceId: string, fileId: string) {
+async function ownedShareableFile(request: Request, spaceId: string, fileId: string) {
   const userId = requireAuth(request);
   const space = await getSpaceForUser(spaceId, userId);
   if (!space) return null;
   const file = await prisma.spaceFile.findFirst({ where: { id: fileId, spaceId } });
-  if (!file || !/\.html?$/i.test(file.fileName)) return null;
+  if (!file || !/\.(?:html?|md|markdown)$/i.test(file.fileName)) return null;
   return file;
 }
 
@@ -23,7 +23,7 @@ export async function GET(
 ) {
   try {
     const { spaceId, fileId } = await params;
-    const file = await ownedHtmlFile(request, spaceId, fileId);
+    const file = await ownedShareableFile(request, spaceId, fileId);
     if (!file) return NextResponse.json({ error: 'File not found' }, { status: 404 });
     return NextResponse.json({
       enabled: file.shareEnabled,
@@ -42,7 +42,7 @@ export async function PUT(
 ) {
   try {
     const { spaceId, fileId } = await params;
-    const file = await ownedHtmlFile(request, spaceId, fileId);
+    const file = await ownedShareableFile(request, spaceId, fileId);
     if (!file) return NextResponse.json({ error: 'File not found' }, { status: 404 });
     if (file.status !== 'READY') {
       return NextResponse.json({ error: '当前文件状态不允许公开共享' }, { status: 409 });
@@ -69,7 +69,7 @@ export async function DELETE(
 ) {
   try {
     const { spaceId, fileId } = await params;
-    const file = await ownedHtmlFile(request, spaceId, fileId);
+    const file = await ownedShareableFile(request, spaceId, fileId);
     if (!file) return NextResponse.json({ error: 'File not found' }, { status: 404 });
     await prisma.spaceFile.update({
       where: { id: file.id },

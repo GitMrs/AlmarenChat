@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { mkdir, writeFile, rm } from 'node:fs/promises';
 import Database from 'better-sqlite3';
-import { triggerNextDueAutomation } from './space-automation-runtime.mjs';
+import { automationExecutionInput, triggerNextDueAutomation } from './space-automation-runtime.mjs';
 
 function database() {
   const db = new Database(':memory:');
@@ -27,7 +27,10 @@ function database() {
     );
     CREATE TABLE "SpaceAutomationExecution" (
       "id" TEXT PRIMARY KEY, "automationId" TEXT, "scheduledFor" TEXT, "status" TEXT,
-      "runId" TEXT UNIQUE, "error" TEXT, "createdAt" TEXT, "updatedAt" TEXT,
+      "runId" TEXT UNIQUE, "workId" TEXT, "result" TEXT, "resultHash" TEXT,
+      "deliveryStatus" TEXT DEFAULT 'NOT_REQUIRED', "deliveryAttempts" INTEGER DEFAULT 0,
+      "deliveryError" TEXT, "deliveryNextAttemptAt" TEXT, "deliveredAt" TEXT,
+      "error" TEXT, "createdAt" TEXT, "updatedAt" TEXT,
       UNIQUE("automationId", "scheduledFor")
     );
     CREATE TABLE "AgentRun" (
@@ -131,7 +134,10 @@ test('SCRIPT_ANALYSIS mode executes script and prepends output to AgentRun input
     await mkdir(workspaceDir, { recursive: true });
     await writeFile(
       path.join(workspaceDir, 'fetch.mjs'),
-      'console.log(JSON.stringify([{ id: "hot-123", title: "测试推文" }]));\n'
+      `import fs from 'node:fs';
+const receipts = JSON.parse(fs.readFileSync(process.env.SPACE_AUTOMATION_RECEIPTS_PATH, 'utf8'));
+console.log(JSON.stringify([{ id: 'hot-123', executionId: process.env.SPACE_AUTOMATION_EXECUTION_ID, receiptCount: receipts.receipts.length }]));
+`
     );
 
     insertAutomation(db, {
@@ -144,8 +150,11 @@ test('SCRIPT_ANALYSIS mode executes script and prepends output to AgentRun input
 
     const run = db.prepare('SELECT * FROM "AgentRun"').get();
     assert.equal(run.status, 'QUEUED');
-    assert.match(run.input, /【前置脚本执行采集的数据 \(shared\/fetch\.mjs\)】/);
+    assert.match(run.input, /【前置脚本执行结果 \(shared\/fetch\.mjs\)】/);
     assert.match(run.input, /hot-123/);
+    assert.match(run.input, /receiptCount/);
+    assert.doesNotMatch(run.input, /自动化选题推进要求|最近成果记录/);
+    assert.equal(JSON.parse(run.coordinatorState).singlePass, true);
 
     const execution = db.prepare('SELECT * FROM "SpaceAutomationExecution"').get();
     assert.equal(execution.status, 'TRIGGERED');
@@ -154,6 +163,27 @@ test('SCRIPT_ANALYSIS mode executes script and prepends output to AgentRun input
     db.close();
     await rm(tmpRoot, { recursive: true, force: true }).catch(() => {});
   }
+});
+
+test('automation input preserves instructions before truncating oversized script output', () => {
+  const instruction = '必须保留的用户任务要求';
+  const input = automationExecutionInput(
+    { scriptPath: 'shared/fetch.mjs' },
+    instruction,
+    'x'.repeat(30_000)
+  );
+  assert.ok(input.startsWith(`${instruction}\n\n【前置脚本执行结果`));
+  assert.equal(input.length, 24_000);
+});
+
+test('QQ automation asks the existing model call for a dedicated short notification artifact', () => {
+  const input = automationExecutionInput({
+    completionAction: 'WEBHOOK_NOTIFY',
+    completionConfig: JSON.stringify({ target: 'PERSONAL_QQ' }),
+  }, '生成每日简报');
+  assert.match(input, /^生成每日简报/);
+  assert.match(input, /notification\.txt/);
+  assert.match(input, /平台会自动追加完整成果链接/);
 });
 
 test('SCRIPT_DIRECT mode executes script and completes work directly without AgentRun', async () => {
@@ -187,6 +217,9 @@ test('SCRIPT_DIRECT mode executes script and completes work directly without Age
     // 自动化执行记录应为 COMPLETED
     const execution = db.prepare('SELECT * FROM "SpaceAutomationExecution"').get();
     assert.equal(execution.status, 'COMPLETED');
+    assert.equal(execution.workId, work.id);
+    assert.equal(execution.result, 'direct output: processed 10 items');
+    assert.equal(execution.resultHash.length, 64);
 
     // 自动化日程已推进
     assert.equal(db.prepare('SELECT "nextRunAt" FROM "SpaceAutomation"').get().nextRunAt, '2026-09-09T00:00:00.000Z');

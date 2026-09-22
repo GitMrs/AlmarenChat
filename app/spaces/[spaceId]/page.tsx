@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Activity, ArrowLeft, BookOpen, CalendarClock, Check, CheckCircle2, ChevronRight, Code2, Download, ExternalLink, FilePenLine, FileText, Globe2, History, Image as ImageIcon, ListTodo, Loader2, MessagesSquare, Newspaper, PackagePlus, Paperclip, Play, Plus, RotateCcw, Save, Send, Settings2, ShieldCheck, SkipForward, Square, Trash2, UploadCloud, UsersRound, X } from 'lucide-react';
+import { Activity, ArrowLeft, BookOpen, CalendarClock, Check, CheckCircle2, ChevronRight, Code2, Copy, Download, ExternalLink, FilePenLine, FileText, Globe2, History, Image as ImageIcon, ListTodo, Loader2, MessagesSquare, Newspaper, PackagePlus, Paperclip, Play, Plus, RotateCcw, Save, Send, Settings2, ShieldCheck, SkipForward, Square, Trash2, UploadCloud, UsersRound, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import AppShell from '@/components/layout/AppShell';
@@ -492,6 +492,7 @@ export default function SpaceDetailPage() {
   const [mcpBusy, setMcpBusy] = useState(false);
   const [selectedWorkId, setSelectedWorkId] = useState('all');
   const [fileAssetTab, setFileAssetTab] = useState<'all' | 'FOUNDATION' | 'INPUT' | 'OUTPUT' | 'SHARED'>('all');
+  const [copiedAssetPath, setCopiedAssetPath] = useState('');
   const [activeWorkId, setActiveWorkId] = useState('new');
   const [workMenuOpen, setWorkMenuOpen] = useState(false);
   const [switchingWork, setSwitchingWork] = useState(false);
@@ -825,8 +826,28 @@ export default function SpaceDetailPage() {
     [messages]
   );
   const currentWork = activeWorkId === 'new' ? null : workById.get(activeWorkId) || null;
+  const currentAssetPath = fileAssetTab === 'FOUNDATION'
+    ? 'foundation/'
+    : fileAssetTab === 'INPUT'
+      ? 'inbox/'
+      : fileAssetTab === 'SHARED'
+        ? 'shared/'
+        : fileAssetTab === 'OUTPUT'
+          ? selectedWorkId !== 'all' && selectedWorkId !== 'legacy' ? `works/${selectedWorkId}/` : 'works/'
+          : '';
   const workNoun = WORK_NOUNS[space?.templateId || ''] || '成果';
   const workSelectionLocked = isStreaming || isRunActive || hasPendingTaskProposal || switchingWork;
+
+  const copyAssetPath = async () => {
+    if (!currentAssetPath) return;
+    try {
+      await navigator.clipboard.writeText(currentAssetPath);
+      setCopiedAssetPath(currentAssetPath);
+      window.setTimeout(() => setCopiedAssetPath(''), 1800);
+    } catch {
+      setError('复制路径失败，请手动复制');
+    }
+  };
 
   const openWorkVersions = async () => {
     if (!currentWork || versionsLoading) return;
@@ -2952,6 +2973,16 @@ export default function SpaceDetailPage() {
                     </button>
                   );
                 })}
+                <button
+                  type="button"
+                  onClick={() => setSidePanel('runs')}
+                  aria-expanded={sidePanel === 'runs'}
+                  aria-label="历史任务"
+                  title="历史任务"
+                  className={`ml-auto hidden h-full w-11 items-center justify-center border-b-2 transition lg:flex ${sidePanel === 'runs' ? 'border-slate-950 text-slate-950' : 'border-transparent text-slate-400 hover:border-slate-200 hover:text-slate-800'}`}
+                >
+                  <History size={17} />
+                </button>
               </nav>
             )}
 
@@ -3031,6 +3062,21 @@ export default function SpaceDetailPage() {
                       </button>
                     ))}
                   </div>
+                  {currentAssetPath && (
+                    <div className="mt-3 flex min-w-0 items-center gap-2 text-xs font-semibold text-slate-400">
+                      <span className="shrink-0">当前路径</span>
+                      <code className="min-w-0 truncate font-mono text-slate-600">{currentAssetPath}</code>
+                      <button
+                        type="button"
+                        onClick={copyAssetPath}
+                        aria-label={`复制路径 ${currentAssetPath}`}
+                        title="复制路径"
+                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-800"
+                      >
+                        {copiedAssetPath === currentAssetPath ? <Check size={14} className="text-emerald-600" /> : <Copy size={14} />}
+                      </button>
+                    </div>
+                  )}
                   {error && <div className="mt-5 rounded-lg bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-600">{error}</div>}
                   {visibleFiles.length === 0 ? (
                     <div className="border-b border-dashed border-slate-200 py-20 text-center"><FileText className="mx-auto text-slate-300" size={28} /><div className="mt-3 text-sm font-black text-slate-500">暂无资料</div></div>

@@ -41,30 +41,21 @@
   - 自动合并增速榜（`rate`）与浏览榜（`views`），按推文 `id` 毫秒级去重；
   - 提取关键字段：`id, h (handle), n (昵称), c (分类), t (正文), age (距今小时), v (浏览量), l (点赞数), r (增速得分)`。
 
-### 2.3 两阶段防重提交（Two-Phase Deduplication）
-为防止“抓取后写入历史库，但后续大模型精编报错或推送接口失败导致好推文永久漏发”，实现两阶段提交机制：
+### 2.3 执行级交付回执
+定时采集、AI 处理与外部推送采用通用的执行级回执，不再由平台提交某一种来源专用的 `pending-ids.txt`：
 
 ```
-[执行阶段一：抓取与初筛]
-fetch_and_filter.py
-   ├─ 读取 shared/sent-history.txt（只读）
-   ├─ 筛选 24h 内高质推文，过滤已发 ID
-   └─ 将本次候选 ID 写入 shared/pending-ids.txt（暂存区，不污染正式库）
-
-[执行阶段二：确认交付与正式落盘]
-大模型精编产出早参 -> 生成成果 (SpaceWork)
-   ├─ 人工审批/自动化完成 (FINALIZE_WORK)
-   │     └─ 调用 commitSpacePendingHistory()
-   │           ├─ 将 pending-ids.txt 增量追加至 shared/sent-history.txt
-   │           └─ 清理 pending-ids.txt
-   └─ 若执行中途失败 -> pending-ids.txt 不提交，推文下次抓取仍可被正常调度
+[采集] -> [AI 处理或脚本直出] -> SpaceAutomationExecution
+                                      ├─ PENDING：等待推送
+                                      ├─ DELIVERING：正在推送
+                                      ├─ DELIVERED：外部接收方确认成功
+                                      └─ FAILED：重试耗尽，保留错误
 ```
 
-- **核心模块**：
-  - `lib/space-pending-history.mjs`：提供 `commitSpacePendingHistory(spaceDir)` 函数；
-  - `app/api/spaces/[spaceId]/actions/[actionId]/route.ts`：定稿审批时触发提交；
-  - `worker/runtime/space-automation-runtime.mjs`：自动化脚本直接执行成功后触发提交；
-  - `shared/fetch_and_filter.py`：支持 `--commit`（即时直接提交）、`--confirm-pending`（确认暂存提交）、`--dry-run`（纯预览不写盘）。
+- 每次执行独立保存 `workId`、推送内容、内容哈希、尝试次数、送达时间和错误，不共享可被后一次执行覆盖的暂存文件。
+- Worker 中断时，`DELIVERING` 会恢复为 `PENDING`；Webhook 使用稳定的执行级幂等键。
+- 脚本通过 `SPACE_AUTOMATION_EXECUTION_ID` 识别本次执行，并从 `SPACE_AUTOMATION_RECEIPTS_PATH` 读取当前自动化最近 50 条已确认送达结果。
+- 来源规则仍由脚本负责：脚本可按消息 ID、URL、游标或时间戳解释回执；平台只负责执行隔离和确认送达边界。
 
 ### 2.4 提示词与脚本输出纯净化解耦
 - 移除了脚本 `format_for_llm` 中硬编码的指令建议文本；
@@ -172,9 +163,10 @@ fetch_and_filter.py
    - 运行 `npx tsc --noEmit`，验证通过（Exit Code 0）；
    - 运行 `node --test lib/agent-runtime/skill-registry.test.mjs`，10 项测试全部通过；
    - 运行 `node --test lib/context-compression.test.ts`，4 项测试全部通过。
-2. **两阶段去重实测**：
-   - 运行 `python shared/fetch_and_filter.py --dry-run`，验证推文提取与 `pending-ids.txt` 暂存逻辑完整；
-   - 验证 `sent-history.txt` 历史 ID 未被提前污染。
+2. **执行级交付回执实测**：
+   - 验证脚本直出和 AI 分析两种执行都先写入独立的 `SpaceAutomationExecution`；
+   - 验证只有 Webhook 返回成功后状态才变为 `DELIVERED`，失败重试不会重新执行采集脚本；
+   - 验证下一次脚本只能从回执文件读到已确认送达的执行结果。
 3. **文件模块化上传实测**：
    - 验证在 `SHARED` 标签上传脚本文件，直接落入 `workspace/shared/`，且多次上传同名文件无时间戳并能正确替换。
 4. **手动检查点压缩实测**：

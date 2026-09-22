@@ -25,7 +25,7 @@ const secret = process.env.QQ_ASSISTANT_SECRET || '';
 const internalUrl = process.env.QQ_ASSISTANT_INTERNAL_URL
   || `http://127.0.0.1:${process.env.PORT || 8001}/api/internal/assistant/qq/messages`;
 const pollMs = Math.max(2_000, Number(process.env.QQ_ASSISTANT_POLL_MS) || 5_000);
-const webhookPort = Math.max(0, Number(process.env.QQ_ASSISTANT_WEBHOOK_PORT) || 0);
+const webhookPort = Math.max(0, Number(process.env.QQ_ASSISTANT_WEBHOOK_PORT) || 8787);
 const webhookHost = process.env.QQ_ASSISTANT_WEBHOOK_HOST || '127.0.0.1';
 const db = openWorkerDatabase(resolveWorkerDatabasePath(projectRoot));
 const clients = new Map();

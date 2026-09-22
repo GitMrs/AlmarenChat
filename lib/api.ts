@@ -86,7 +86,7 @@ export const assistant = {
   getQQBinding: () => request<{ binding: AssistantQQBinding | null }>('/assistant/qq'),
   saveQQBinding: (data: { appId: string; appSecret: string }) =>
     request<{ binding: AssistantQQBinding }>('/assistant/qq', { method: 'PUT', body: JSON.stringify(data) }),
-  updateQQBinding: (data: { enabled?: boolean; action?: 'reset-peer' | 'generate-webhook' | 'rotate-webhook' | 'revoke-webhook' }) =>
+  updateQQBinding: (data: { enabled?: boolean; action?: 'reset-peer' | 'generate-webhook' | 'rotate-webhook' | 'revoke-webhook' | 'reveal-webhook'; password?: string }) =>
     request<{ binding: AssistantQQBinding; webhookUrl?: string }>('/assistant/qq', { method: 'PATCH', body: JSON.stringify(data) }),
   deleteQQBinding: () => request<{ success: true }>('/assistant/qq', { method: 'DELETE' }),
   listConversations: () =>

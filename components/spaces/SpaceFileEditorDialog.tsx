@@ -184,7 +184,7 @@ export default function SpaceFileEditorDialog({
       .finally(() => {
         if (active) setLoading(false);
       });
-    if (/\.html?$/i.test(file.fileName)) {
+    if (/\.(?:html?|md|markdown)$/i.test(file.fileName)) {
       void (async () => {
         let allowExternalDependencies = false;
         try {
@@ -196,14 +196,16 @@ export default function SpaceFileEditorDialog({
         } catch (reason: any) {
           if (active) setShareError(reason.message || '读取共享状态失败');
         }
-        try {
-          const result = await spacesApi.createFilePreview(spaceId, file.id, {
-            externalImages: true,
-            externalDependencies: allowExternalDependencies,
-          });
-          if (active) setPreview(result);
-        } catch (reason: any) {
-          if (active) setPreviewError(reason.message || '创建网页预览失败');
+        if (/\.html?$/i.test(file.fileName)) {
+          try {
+            const result = await spacesApi.createFilePreview(spaceId, file.id, {
+              externalImages: true,
+              externalDependencies: allowExternalDependencies,
+            });
+            if (active) setPreview(result);
+          } catch (reason: any) {
+            if (active) setPreviewError(reason.message || '创建网页预览失败');
+          }
         }
       })();
     }
@@ -522,47 +524,51 @@ export default function SpaceFileEditorDialog({
               <div className={error ? 'text-rose-600' : ''}>
                 {readOnlyReason || error || `${new Blob([content]).size.toLocaleString('zh-CN')} 字节 · UTF-8`}
               </div>
-              {htmlPreview && (
+              {previewable && (
                 <div className="mt-2 flex min-w-0 flex-wrap items-center gap-2">
-                  <ImageIcon size={14} className={externalImages ? 'text-emerald-600' : 'text-slate-400'} />
-                  <span className="text-slate-600">外部图片</span>
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={externalImages}
-                    aria-label="加载 HTTPS 外部图片"
-                    onClick={toggleExternalImages}
-                    disabled={externalImagesBusy}
-                    title={externalImages ? '停止加载外部图片' : '加载 HTTPS 外部图片'}
-                    className={`relative h-5 w-9 shrink-0 rounded-full transition ${externalImages ? 'bg-emerald-600' : 'bg-slate-200'} disabled:opacity-50`}
-                  >
-                    <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition ${externalImages ? 'left-[18px]' : 'left-0.5'}`} />
-                  </button>
-                  {externalImagesBusy && <Loader2 size={13} className="animate-spin" />}
-                  <span className="mx-1 h-4 w-px bg-slate-200" aria-hidden="true" />
-                  <Package size={14} className={externalDependencies ? 'text-emerald-600' : 'text-slate-400'} />
-                  <span className="text-slate-600">外部依赖</span>
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={externalDependencies}
-                    aria-label="加载受信任 CDN 的外部依赖"
-                    onClick={toggleExternalDependencies}
-                    disabled={externalDependenciesBusy}
-                    title={externalDependencies ? '停止加载外部依赖' : '允许加载受信任 CDN 的脚本、样式和字体'}
-                    className={`relative h-5 w-9 shrink-0 rounded-full transition ${externalDependencies ? 'bg-emerald-600' : 'bg-slate-200'} disabled:opacity-50`}
-                  >
-                    <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition ${externalDependencies ? 'left-[18px]' : 'left-0.5'}`} />
-                  </button>
-                  {externalDependenciesBusy && <Loader2 size={13} className="animate-spin" />}
-                  <span className="mx-1 h-4 w-px bg-slate-200" aria-hidden="true" />
+                  {htmlPreview && (
+                    <>
+                      <ImageIcon size={14} className={externalImages ? 'text-emerald-600' : 'text-slate-400'} />
+                      <span className="text-slate-600">外部图片</span>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={externalImages}
+                        aria-label="加载 HTTPS 外部图片"
+                        onClick={toggleExternalImages}
+                        disabled={externalImagesBusy}
+                        title={externalImages ? '停止加载外部图片' : '加载 HTTPS 外部图片'}
+                        className={`relative h-5 w-9 shrink-0 rounded-full transition ${externalImages ? 'bg-emerald-600' : 'bg-slate-200'} disabled:opacity-50`}
+                      >
+                        <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition ${externalImages ? 'left-[18px]' : 'left-0.5'}`} />
+                      </button>
+                      {externalImagesBusy && <Loader2 size={13} className="animate-spin" />}
+                      <span className="mx-1 h-4 w-px bg-slate-200" aria-hidden="true" />
+                      <Package size={14} className={externalDependencies ? 'text-emerald-600' : 'text-slate-400'} />
+                      <span className="text-slate-600">外部依赖</span>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={externalDependencies}
+                        aria-label="加载受信任 CDN 的外部依赖"
+                        onClick={toggleExternalDependencies}
+                        disabled={externalDependenciesBusy}
+                        title={externalDependencies ? '停止加载外部依赖' : '允许加载受信任 CDN 的脚本、样式和字体'}
+                        className={`relative h-5 w-9 shrink-0 rounded-full transition ${externalDependencies ? 'bg-emerald-600' : 'bg-slate-200'} disabled:opacity-50`}
+                      >
+                        <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition ${externalDependencies ? 'left-[18px]' : 'left-0.5'}`} />
+                      </button>
+                      {externalDependenciesBusy && <Loader2 size={13} className="animate-spin" />}
+                      <span className="mx-1 h-4 w-px bg-slate-200" aria-hidden="true" />
+                    </>
+                  )}
                   <Globe2 size={14} className={share?.enabled ? 'text-emerald-600' : 'text-slate-400'} />
                   <span className="text-slate-600">公开共享</span>
                   <button
                     type="button"
                     role="switch"
                     aria-checked={Boolean(share?.enabled)}
-                    aria-label="公开共享网页"
+                    aria-label="公开共享内容"
                     onClick={toggleShare}
                     disabled={!share || shareBusy || (dirty && !share.enabled)}
                     title={dirty && !share?.enabled ? '请先保存文件' : share?.enabled ? '关闭共享' : '开启共享'}
@@ -579,7 +585,7 @@ export default function SpaceFileEditorDialog({
                       </button>
                       <button type="button" onClick={() => window.open(share.url!, '_blank', 'noopener,noreferrer')} className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-950">
                         <ExternalLink size={13} />
-                        打开网页
+                        打开分享
                       </button>
                     </>
                   )}

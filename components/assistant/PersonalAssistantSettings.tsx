@@ -1,11 +1,13 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
-import { ArrowRight, Blocks, Bot, Brain, ChevronDown, Copy, Eye, EyeOff, Heart, Loader2, MessageCircleHeart, Plus, RefreshCw, RotateCcw, Save, Sparkles, Trash2, Unplug, Upload } from 'lucide-react';
+import { ArrowRight, Blocks, Bot, Brain, ChevronDown, Copy, Eye, EyeOff, Heart, KeyRound, Loader2, MessageCircleHeart, Plus, RefreshCw, RotateCcw, Save, Sparkles, Trash2, Unplug, Upload } from 'lucide-react';
 import Avatar from '@/components/shared/Avatar';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import { assistant, uploads, user as userApi } from '@/lib/api';
+import { qqAssistantErrorNotice } from '@/lib/qq-assistant/policy.mjs';
 import { cn } from '@/lib/utils';
 import type { AssistantExperience, AssistantExperienceMessage, AssistantMemoryItem, AssistantQQBinding, PersonalAssistantProfile } from '@/types';
 
@@ -72,6 +74,58 @@ const COMPANION_PRESETS: CompanionPreset[] = [
   },
 ];
 
+function WebhookRevealDialog({
+  open,
+  password,
+  error,
+  loading,
+  onPasswordChange,
+  onCancel,
+  onConfirm,
+}: {
+  open: boolean;
+  password: string;
+  error: string;
+  loading: boolean;
+  onPasswordChange: (value: string) => void;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  if (!open || typeof document === 'undefined') return null;
+  return createPortal(
+    <div className="fixed inset-0 z-[2147483647] flex items-center justify-center bg-slate-950/30 px-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="qq-webhook-reveal-title">
+      <form
+        className="w-full max-w-md rounded-[28px] border border-black/[0.08] bg-white p-6 shadow-2xl"
+        onSubmit={(event) => { event.preventDefault(); onConfirm(); }}
+      >
+        <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-2xl bg-sky-50 text-sky-700"><KeyRound size={20} /></div>
+        <h2 id="qq-webhook-reveal-title" className="text-xl font-black text-slate-950">查看 Webhook 地址</h2>
+        <p className="mt-3 text-sm leading-6 text-slate-500">请输入当前账号密码。验证成功后，完整地址将临时显示 60 秒。</p>
+        <label className="mt-5 block text-xs font-black text-slate-600" htmlFor="qq-webhook-password">当前账号密码</label>
+        <input
+          id="qq-webhook-password"
+          type="password"
+          value={password}
+          onChange={(event) => onPasswordChange(event.target.value)}
+          autoComplete="current-password"
+          autoFocus
+          disabled={loading}
+          className="mt-2 h-11 w-full rounded-xl border border-black/10 bg-white px-3 text-sm text-slate-800 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100 disabled:bg-slate-50"
+        />
+        {error && <p className="mt-2 text-xs font-semibold text-rose-600">{error}</p>}
+        <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+          <button type="button" onClick={onCancel} disabled={loading} className="inline-flex h-11 items-center justify-center rounded-full border border-black/[0.06] bg-white px-5 text-sm font-black text-slate-600 shadow-sm transition hover:text-slate-950 disabled:text-slate-300">取消</button>
+          <button type="submit" disabled={loading || !password} className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-slate-950 px-5 text-sm font-black text-white shadow-sm transition hover:bg-slate-800 disabled:bg-slate-200 disabled:text-slate-400">
+            {loading ? <Loader2 className="animate-spin" size={15} /> : <Eye size={15} />}
+            验证并查看
+          </button>
+        </div>
+      </form>
+    </div>,
+    document.body
+  );
+}
+
 export default function PersonalAssistantSettings() {
   const router = useRouter();
   const [profile, setProfile] = useState<PersonalAssistantProfile>(EMPTY_PROFILE);
@@ -103,7 +157,16 @@ export default function PersonalAssistantSettings() {
   const [qqSecretVisible, setQQSecretVisible] = useState(false);
   const [qqBusy, setQQBusy] = useState(false);
   const [qqWebhookUrl, setQQWebhookUrl] = useState('');
+  const [qqRevealOpen, setQQRevealOpen] = useState(false);
+  const [qqRevealPassword, setQQRevealPassword] = useState('');
+  const [qqRevealError, setQQRevealError] = useState('');
+  const [qqRevealBusy, setQQRevealBusy] = useState(false);
+  const qqWebhookHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => () => {
+    if (qqWebhookHideTimerRef.current) clearTimeout(qqWebhookHideTimerRef.current);
+  }, []);
 
   useEffect(() => {
     assistant.get()
@@ -402,6 +465,42 @@ export default function PersonalAssistantSettings() {
     }
   };
 
+  const showQQWebhookTemporarily = (url: string) => {
+    if (qqWebhookHideTimerRef.current) clearTimeout(qqWebhookHideTimerRef.current);
+    setQQWebhookUrl(url);
+    qqWebhookHideTimerRef.current = setTimeout(() => {
+      setQQWebhookUrl('');
+      qqWebhookHideTimerRef.current = null;
+    }, 60_000);
+  };
+
+  const openQQWebhookReveal = () => {
+    setQQRevealPassword('');
+    setQQRevealError('');
+    setQQRevealOpen(true);
+  };
+
+  const revealQQWebhook = async () => {
+    if (!qqRevealPassword || qqRevealBusy) return;
+    setQQRevealBusy(true);
+    setQQRevealError('');
+    try {
+      const result = await assistant.updateQQBinding({
+        action: 'reveal-webhook',
+        password: qqRevealPassword,
+      });
+      setQQBinding(result.binding);
+      showQQWebhookTemporarily(result.webhookUrl || '');
+      setQQRevealOpen(false);
+      setQQRevealPassword('');
+      setNotice('Webhook 地址将在 60 秒后自动隐藏');
+    } catch (reason: any) {
+      setQQRevealError(reason.message || '验证失败，请重试');
+    } finally {
+      setQQRevealBusy(false);
+    }
+  };
+
   const generateQQWebhook = async (rotate = false) => {
     if (!qqBinding || qqBusy) return;
     setQQBusy(true);
@@ -410,7 +509,7 @@ export default function PersonalAssistantSettings() {
     try {
       const result = await assistant.updateQQBinding({ action: rotate ? 'rotate-webhook' : 'generate-webhook' });
       setQQBinding(result.binding);
-      setQQWebhookUrl(result.webhookUrl || '');
+      showQQWebhookTemporarily(result.webhookUrl || '');
       setNotice(rotate ? 'QQ Webhook 已重新生成，旧地址已失效' : 'QQ Webhook 已生成，请复制并妥善保存');
     } catch (reason: any) {
       setError(reason.message || '生成 QQ Webhook 失败');
@@ -426,6 +525,8 @@ export default function PersonalAssistantSettings() {
     try {
       const result = await assistant.updateQQBinding({ action: 'revoke-webhook' });
       setQQBinding(result.binding);
+      if (qqWebhookHideTimerRef.current) clearTimeout(qqWebhookHideTimerRef.current);
+      qqWebhookHideTimerRef.current = null;
       setQQWebhookUrl('');
       setNotice('QQ Webhook 已禁用，使用它的空间将不再发送通知');
     } catch (reason: any) {
@@ -482,6 +583,7 @@ export default function PersonalAssistantSettings() {
   }
 
   const activeMemoryCount = memories.filter((m) => m.status === 'ACTIVE').length;
+  const qqErrorNotice = qqAssistantErrorNotice(qqBinding?.lastError);
 
   const toggleExperience = async (experienceId: string) => {
     if (expandedExperienceId === experienceId) {
@@ -905,7 +1007,14 @@ export default function PersonalAssistantSettings() {
                   {qqBinding.peerBound ? '已识别 QQ 接收方' : '等待首次私聊'}
                 </span>
               </div>
-              {qqBinding.lastError && <p className="mt-2 text-xs font-semibold text-rose-600">{qqBinding.lastError}</p>}
+              {qqErrorNotice && (
+                <p className={cn(
+                  'mt-2 max-w-full break-words text-xs font-semibold leading-5 [overflow-wrap:anywhere]',
+                  qqErrorNotice.tone === 'warning' ? 'text-amber-700' : 'text-rose-600'
+                )}>
+                  {qqErrorNotice.message}
+                </p>
+              )}
             </div>
             <div className="flex shrink-0 items-center gap-2">
               {qqBinding.peerBound && (
@@ -947,10 +1056,21 @@ export default function PersonalAssistantSettings() {
                   一个用户级地址，多个空间可以共用。它独立于平台登录 Token，重新生成后旧地址立即失效。
                 </p>
                 {qqBinding.webhookConfigured && !qqWebhookUrl && (
-                  <p className="mt-2 text-xs font-bold text-emerald-700">已生成 Webhook，完整地址只在生成时显示。</p>
+                  <p className="mt-2 text-xs font-bold text-emerald-700">已生成 Webhook，验证账号密码后可临时查看。</p>
                 )}
               </div>
               <div className="flex shrink-0 flex-wrap gap-2">
+                {qqBinding.webhookConfigured && (
+                  <button
+                    type="button"
+                    onClick={openQQWebhookReveal}
+                    disabled={qqBusy || qqRevealBusy}
+                    className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-white px-3 text-xs font-black text-slate-700 shadow-sm transition hover:bg-slate-100 disabled:opacity-40"
+                  >
+                    <Eye size={13} />
+                    查看地址
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => generateQQWebhook(Boolean(qqBinding.webhookConfigured))}
@@ -1223,6 +1343,21 @@ export default function PersonalAssistantSettings() {
           </div>
         </div>
       </section>
+
+      <WebhookRevealDialog
+        open={qqRevealOpen}
+        password={qqRevealPassword}
+        error={qqRevealError}
+        loading={qqRevealBusy}
+        onPasswordChange={setQQRevealPassword}
+        onCancel={() => {
+          if (qqRevealBusy) return;
+          setQQRevealOpen(false);
+          setQQRevealPassword('');
+          setQQRevealError('');
+        }}
+        onConfirm={revealQQWebhook}
+      />
 
       <ConfirmDialog
         open={Boolean(confirmModal)}

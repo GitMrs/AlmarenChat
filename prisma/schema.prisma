@@ -308,6 +308,14 @@ model SpaceAutomationExecution {
   status       String          @default("TRIGGERED")
   runId        String?         @unique
   run          AgentRun?       @relation(fields: [runId], references: [id], onDelete: SetNull)
+  workId       String?
+  result       String?
+  resultHash   String?
+  deliveryStatus String        @default("NOT_REQUIRED")
+  deliveryAttempts Int         @default(0)
+  deliveryError String?
+  deliveryNextAttemptAt DateTime?
+  deliveredAt  DateTime?
   error        String?
   createdAt    DateTime        @default(now())
   updatedAt    DateTime        @updatedAt
@@ -317,6 +325,7 @@ model SpaceAutomationExecution {
   @@unique([automationId, scheduledFor])
   @@index([automationId, createdAt])
   @@index([status, createdAt])
+  @@index([deliveryStatus, deliveryNextAttemptAt])
 }
 
 model SpaceActionRequest {

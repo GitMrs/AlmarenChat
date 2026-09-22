@@ -23,7 +23,7 @@ import {
 import { shouldRefreshResearch } from './policies/research-policy.mjs';
 import { taskModelRequestLimit } from '../lib/task-execution-plan.mjs';
 import { taskRequiresWorkspaceWrite } from '../lib/workspace-write-intent.mjs';
-import { COORDINATOR_ACTION_TOOL, COORDINATOR_ACTION_TOOL_NAME, COORDINATOR_REVIEW_TOOL, COORDINATOR_REVIEW_TOOL_NAME, authorizationAllowsCapability, authorizationRequirements, coordinatorDecisionTrigger, coordinatorTaskReviewInstructions, coordinatorTaskReviewRequest, dispatchConstraintFromFeedback, dispatchRequiresApproval, requestCoordinatorAction, requestCoordinatorReviewAction, structuredToolOutput } from '../lib/agent-runtime-v3-policy.mjs';
+import { COORDINATOR_ACTION_TOOL, COORDINATOR_ACTION_TOOL_NAME, COORDINATOR_REVIEW_TOOL, COORDINATOR_REVIEW_TOOL_NAME, authorizationAllowsCapability, authorizationRequirements, automatedSinglePassCoverage, coordinatorDecisionTrigger, coordinatorTaskReviewInstructions, coordinatorTaskReviewRequest, dispatchConstraintFromFeedback, dispatchRequiresApproval, requestCoordinatorAction, requestCoordinatorReviewAction, structuredToolOutput } from '../lib/agent-runtime-v3-policy.mjs';
 import { completionIdFor } from '../lib/agent-completion-policy.mjs';
 import { isExecutionBudgetWait, isResearchSourceWait } from '../lib/agent-wait-policy.mjs';
 import { appendSpaceMemory, spaceMemoryContext } from '../lib/space-memory-policy.mjs';
@@ -55,8 +55,14 @@ import { createRelayRuntime } from './runtime/relay-runtime.mjs';
 import { createWorkspaceRecoveryRuntime } from './runtime/workspace-recovery-runtime.mjs';
 import { createTaskLifecycleRuntime } from './runtime/task-lifecycle-runtime.mjs';
 import { advanceWorkAfterRun, completeAutomationExecution } from './runtime/work-lifecycle-store.mjs';
-import { notifyWebhookCompletion, qqWebhookError } from './runtime/qq-webhook.mjs';
+import { notifyWebhookCompletion } from './runtime/qq-webhook.mjs';
 import { triggerNextDueAutomation } from './runtime/space-automation-runtime.mjs';
+import {
+  claimNextAutomationDelivery,
+  completeAutomationDelivery,
+  failAutomationDelivery,
+  recoverAutomationDeliveries,
+} from './runtime/automation-delivery-store.mjs';
 import { createConnectorActionRuntime } from './runtime/connector-action-runtime.mjs';
 import { parseMcpServers } from '../lib/agent-runtime/mcp-config.mjs';
 import { decryptConnectorCredential } from '../lib/connectors/credentials.mjs';
@@ -292,7 +298,7 @@ function stageCompletion(runId, completionId, status, result, error, eventType, 
   const run = db.prepare('SELECT "spaceId" FROM "AgentRun" WHERE "id" = ?').get(runId);
   if (!run) throw new Error('任务不存在，无法提交完成事件');
   addEvent(runId, eventType, eventMessage, eventPayload, completionId);
-  completeAutomationExecution(db, { runId, runStatus: status, error, timestamp });
+  completeAutomationExecution(db, { runId, runStatus: status, result, error, timestamp });
   enqueueCompletion(db, {
     runId,
     spaceId: run.spaceId,
@@ -879,9 +885,32 @@ async function reviewSubmittedTask(run, task, context, completion) {
       addEvent(run.id, 'TASK_ACCEPTED', action.publicNote || `${task.agentName}的提交已通过验收`, { taskId: task.id, agentId: task.agentId, attempt: task.attempt, actor: 'coordinator', summary: action.summary }, `task-accepted:${completion.id}`);
       let nextDecision;
       try {
-        nextDecision = run.runtimeVersion >= 3
-          ? await coordinateNextWork(run, context, `task-accepted:${completion.id}`)
-          : { type: 'dispatch', tasks: dispatchNextAuthorizedTask(run) };
+        const coordinatorState = run.runtimeVersion >= 3 ? readCoordinatorState(db, run.id) : null;
+        const allTasks = run.runtimeVersion >= 3
+          ? db.prepare('SELECT * FROM "AgentTask" WHERE "runId" = ? ORDER BY "sortOrder" ASC').all(run.id)
+          : [];
+        const singlePassCoverage = automatedSinglePassCoverage(coordinatorState, allTasks);
+        if (singlePassCoverage) {
+          const nextState = {
+            ...coordinatorState,
+            phase: 'finishing',
+            iteration: Math.max(0, Number(coordinatorState.iteration || 0)) + 1,
+            currentTaskIds: [],
+            lastDecision: '自动化单轮任务已全部通过验收。',
+            lastCoverage: singlePassCoverage,
+          };
+          db.prepare('UPDATE "AgentRun" SET "coordinatorState" = ?, "updatedAt" = ? WHERE "id" = ?').run(
+            JSON.stringify(nextState), acceptedAt, run.id
+          );
+          addEvent(run.id, 'COORDINATOR_GOAL_SATISFIED', '自动化单轮任务已全部通过验收。', {
+            actor: 'automation', coverage: singlePassCoverage,
+          }, `automation-single-pass-finished:${run.id}`);
+          nextDecision = { type: 'finish', taskIds: [], coverage: singlePassCoverage };
+        } else {
+          nextDecision = run.runtimeVersion >= 3
+            ? await coordinateNextWork(run, context, `task-accepted:${completion.id}`)
+            : { type: 'dispatch', tasks: dispatchNextAuthorizedTask(run) };
+        }
       } catch (error) {
         if (run.runtimeVersion < 3) throw error;
         const deferredAt = now();
@@ -1710,16 +1739,6 @@ async function processRun(run) {
         }], timestamp);
     })();
     try {
-      const notification = await notifyWebhookCompletion(db, { runId: run.id, status: outcome.status, result });
-      if (notification.sent) {
-        addEvent(run.id, 'WEBHOOK_NOTIFICATION_SENT', '空间成果已通过 Webhook 发送', { channel: notification.target || 'WEBHOOK' });
-      } else if (notification.reason) {
-        addEvent(run.id, 'WEBHOOK_NOTIFICATION_SKIPPED', notification.reason, { channel: notification.target || 'WEBHOOK' });
-      }
-    } catch (error) {
-      addEvent(run.id, 'WEBHOOK_NOTIFICATION_FAILED', `空间成果 Webhook 发送失败：${qqWebhookError(error)}`, { channel: 'WEBHOOK' });
-    }
-    try {
       recordAcceptedAgentExperiences(db, {
         run,
         tasks: completedTasks,
@@ -1739,6 +1758,50 @@ async function processRun(run) {
   }
 }
 
+async function processAutomationDelivery(delivery) {
+  const timestamp = now();
+  try {
+    const notification = await notifyWebhookCompletion(db, {
+      executionId: delivery.id,
+      status: 'COMPLETED',
+      result: delivery.result,
+    });
+    if (!notification.sent) throw new Error(notification.reason || '自动化通知未发送');
+    completeAutomationDelivery(db, delivery.id, timestamp);
+    if (delivery.runId) {
+      addEvent(delivery.runId, 'WEBHOOK_NOTIFICATION_SENT', '空间成果已通过 Webhook 发送', {
+        channel: notification.target || 'WEBHOOK',
+        executionId: delivery.id,
+      });
+    }
+  } catch (error) {
+    const outcome = failAutomationDelivery(db, delivery, error, timestamp);
+    if (delivery.runId) {
+      addEvent(
+        delivery.runId,
+        'WEBHOOK_NOTIFICATION_FAILED',
+        `空间成果 Webhook 发送失败：${outcome.error}`,
+        { channel: 'WEBHOOK', executionId: delivery.id, retryAt: outcome.nextAttemptAt }
+      );
+    }
+    if (!outcome.retry) {
+      db.prepare(
+        `INSERT OR IGNORE INTO "SpaceMessage"
+         ("id", "spaceId", "role", "speakerAgentId", "content", "attachments", "sourceKey", "createdAt")
+         SELECT ?, automation."spaceId", 'assistant', 'space-coordinator', ?, ?, ?, ?
+         FROM "SpaceAutomation" automation WHERE automation."id" = ?`
+      ).run(
+        randomUUID(),
+        `自动化已完成，但推送失败：${outcome.error}`,
+        JSON.stringify([{ type: 'automation_notification_error', executionId: delivery.id, error: outcome.error }]),
+        `automation-notification-error:${delivery.id}`,
+        timestamp,
+        delivery.automationId
+      );
+    }
+  }
+}
+
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -1752,6 +1815,7 @@ async function main() {
   recoverStaleOutbox(db, leaseCutoffIso(Date.now(), leaseTimeoutMs));
   recoverRuntimeIntents(db, leaseCutoffIso(Date.now(), leaseTimeoutMs));
   recoverCoordinatorTurns(db, leaseCutoffIso(Date.now(), leaseTimeoutMs));
+  recoverAutomationDeliveries(db, leaseCutoffIso(Date.now(), leaseTimeoutMs));
   recoverInterruptedConnectorExecutions();
   reconcileCompletionOutbox(db);
   console.log(`[agent-worker] ready (${fakeMode ? 'fake' : 'model'} mode)`);
@@ -1761,8 +1825,11 @@ async function main() {
       recoverStaleRuns();
       recoverStaleOutbox(db, leaseCutoffIso(Date.now(), leaseTimeoutMs));
       recoverRuntimeIntents(db, leaseCutoffIso(Date.now(), leaseTimeoutMs));
+      recoverAutomationDeliveries(db, leaseCutoffIso(Date.now(), leaseTimeoutMs));
     },
     triggerAutomation: () => triggerNextDueAutomation(db, now()),
+    claimAutomationDelivery: () => claimNextAutomationDelivery(db, now()),
+    processAutomationDelivery,
     claimCompletion: () => claimNextCompletion(db, workerId),
     deliverCompletion: (completion) => deliverCompletion(db, completion),
     failCompletion: (completion, error) => failCompletion(db, completion, error),

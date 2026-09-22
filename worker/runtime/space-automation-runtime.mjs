@@ -1,7 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { automationAuthorization, nextScheduledAutomationRunAt } from '../../lib/space-automation-policy.mjs';
 import { executeSpaceScriptSync } from '../../lib/space-script-runner.mjs';
-import { commitSpacePendingHistory } from '../../lib/space-pending-history.mjs';
+import {
+  automationResultHash,
+  deliveryStatusFor,
+  writeAutomationDeliveryReceipts,
+} from './automation-delivery-store.mjs';
 
 const ACTIVE_RUN_STATUSES = ['QUEUED', 'PLANNING', 'RUNNING', 'WAITING', 'WAITING_APPROVAL', 'SUMMARIZING', 'CANCEL_REQUESTED'];
 const ACTIVE_RELAY_STATUSES = ['QUEUED', 'RUNNING', 'PAUSE_REQUESTED', 'WAITING_APPROVAL', 'PAUSED', 'CANCEL_REQUESTED'];
@@ -36,20 +40,24 @@ function workTitle(automation, timestamp) {
   return `${automation.name} · ${stamp}`.slice(0, 120);
 }
 
-function automationExecutionInput(db, automation, prompt, scriptData = null) {
-  const recentWorks = db.prepare(
-    `SELECT "title", "objective", "status", "updatedAt"
-     FROM "SpaceWork"
-     WHERE "spaceId" = ? AND "kind" = ? AND "status" <> 'ARCHIVED'
-     ORDER BY "updatedAt" DESC LIMIT 12`
-  ).all(automation.spaceId, automation.templateId || 'general');
-  const history = recentWorks.length > 0
-    ? recentWorks.map((work, index) => `${index + 1}. ${String(work.title || '').slice(0, 120)}${work.objective ? `：${String(work.objective).slice(0, 240)}` : ''}`).join('\n')
-    : '暂无已完成成果。';
-  const scriptPrefix = scriptData
-    ? `【前置脚本执行采集的数据 (${automation.scriptPath})】：\n${scriptData}\n\n`
+export function automationExecutionInput(automation, prompt, scriptData = null) {
+  let notificationTarget = null;
+  try {
+    const completionConfig = typeof automation.completionConfig === 'string'
+      ? JSON.parse(automation.completionConfig)
+      : automation.completionConfig;
+    notificationTarget = completionConfig?.target;
+  } catch {
+    notificationTarget = null;
+  }
+  const qqDelivery = automation.completionAction === 'WEBHOOK_NOTIFY' && notificationTarget === 'PERSONAL_QQ'
+    ? '\n\n【QQ 通知交付要求】除完整成果外，同时写入 notification.txt：使用适合手机即时消息阅读的纯文本，最多 3 条重点；每条将标题和一句话摘要合并，原文链接单独一行；总长度不超过 1200 字符。不要在文件中编造共享链接，平台会自动追加完整成果链接。'
     : '';
-  return `${scriptPrefix}${prompt}\n\n自动化选题推进要求：\n- 读取空间共享策略和选题池，选择一个本次尚未完成的新主题。\n- 避免与下面最近成果的主题、标题和角度重复；如果选题池已使用完，明确说明并选择最接近但不同的角度。\n- 本次只创作一篇新成果，不要重复改写历史文章。\n最近成果记录：\n${history}`.slice(0, 12_000);
+  const instruction = `${String(prompt || '').trim()}${qqDelivery}`.slice(0, 12_000);
+  if (!scriptData) return instruction;
+  const dataHeader = `【前置脚本执行结果 (${automation.scriptPath})】\n`;
+  const dataBudget = Math.max(0, 24_000 - instruction.length - dataHeader.length - 2);
+  return `${instruction}\n\n${dataHeader}${String(scriptData).slice(0, dataBudget)}`;
 }
 
 export function triggerNextDueAutomation(db, timestamp = new Date().toISOString(), options = {}) {
@@ -93,11 +101,20 @@ export function triggerNextDueAutomation(db, timestamp = new Date().toISOString(
     // 处理脚本执行（SCRIPT_ANALYSIS 或 SCRIPT_DIRECT）
     let scriptData = null;
     if (mode === 'SCRIPT_ANALYSIS' || mode === 'SCRIPT_DIRECT') {
+      const scriptEnv = writeAutomationDeliveryReceipts({
+        projectRoot,
+        userId: automation.userId,
+        spaceId: automation.spaceId,
+        automationId: automation.id,
+        executionId,
+        db,
+      });
       const scriptResult = executeSpaceScriptSync({
         projectRoot,
         userId: automation.userId,
         spaceId: automation.spaceId,
         scriptPath: automation.scriptPath,
+        env: scriptEnv,
       });
 
       if (!scriptResult.ok) {
@@ -139,7 +156,7 @@ export function triggerNextDueAutomation(db, timestamp = new Date().toISOString(
       if (mode === 'SCRIPT_DIRECT') {
         const title = workTitle(automation, timestamp);
         const workId = randomUUID();
-        const contentOutput = scriptData.slice(0, 4000);
+        const contentOutput = scriptData.trim().slice(0, 4000);
 
         db.prepare(
           `INSERT INTO "SpaceWork"
@@ -149,9 +166,20 @@ export function triggerNextDueAutomation(db, timestamp = new Date().toISOString(
 
         db.prepare(
           `INSERT INTO "SpaceAutomationExecution"
-           ("id", "automationId", "scheduledFor", "status", "runId", "createdAt", "updatedAt")
-           VALUES (?, ?, ?, 'COMPLETED', NULL, ?, ?)`
-        ).run(executionId, automation.id, scheduledFor, timestamp, timestamp);
+           ("id", "automationId", "scheduledFor", "status", "runId", "workId", "result", "resultHash",
+            "deliveryStatus", "createdAt", "updatedAt")
+           VALUES (?, ?, ?, 'COMPLETED', NULL, ?, ?, ?, ?, ?, ?)`
+        ).run(
+          executionId,
+          automation.id,
+          scheduledFor,
+          workId,
+          contentOutput,
+          automationResultHash(contentOutput),
+          deliveryStatusFor(automation.completionAction),
+          timestamp,
+          timestamp
+        );
 
         db.prepare(
           `INSERT INTO "SpaceMessage" ("id", "spaceId", "role", "speakerAgentId", "content", "attachments", "sourceKey", "createdAt")
@@ -177,9 +205,7 @@ export function triggerNextDueAutomation(db, timestamp = new Date().toISOString(
           automation.spaceId
         );
 
-        commitSpacePendingHistory({ projectRoot, userId: automation.userId, spaceId: automation.spaceId });
-
-        return { automationId: automation.id, executionId, workId, status: 'COMPLETED', nextRunAt };
+        return { automationId: automation.id, executionId, workId, status: 'COMPLETED', result: contentOutput, nextRunAt };
       }
     }
 
@@ -188,7 +214,7 @@ export function triggerNextDueAutomation(db, timestamp = new Date().toISOString(
     const snapshot = parseSnapshot(automation.templateSnapshot);
     const authorization = automationAuthorization(automation, snapshot);
     const prompt = String(automation.prompt || '').trim();
-    const input = automationExecutionInput(db, automation, prompt, scriptData);
+    const input = automationExecutionInput(automation, prompt, scriptData);
     let work = automation.workStrategy === 'ACTIVE_WORK' && automation.activeWorkId
       ? db.prepare(`SELECT * FROM "SpaceWork" WHERE "id" = ? AND "spaceId" = ? AND "status" <> 'ARCHIVED'`).get(
           automation.activeWorkId,
@@ -222,6 +248,7 @@ export function triggerNextDueAutomation(db, timestamp = new Date().toISOString(
       taskCount: 0,
       currentTaskIds: [],
       authorization,
+      singlePass: mode === 'SCRIPT_ANALYSIS',
     });
     db.prepare(
       `INSERT INTO "AgentRun"
@@ -256,9 +283,9 @@ export function triggerNextDueAutomation(db, timestamp = new Date().toISOString(
     );
     db.prepare(
       `INSERT INTO "SpaceAutomationExecution"
-       ("id", "automationId", "scheduledFor", "status", "runId", "createdAt", "updatedAt")
-       VALUES (?, ?, ?, 'TRIGGERED', ?, ?, ?)`
-    ).run(executionId, automation.id, scheduledFor, runId, timestamp, timestamp);
+       ("id", "automationId", "scheduledFor", "status", "runId", "workId", "createdAt", "updatedAt")
+       VALUES (?, ?, ?, 'TRIGGERED', ?, ?, ?, ?)`
+    ).run(executionId, automation.id, scheduledFor, runId, work.id, timestamp, timestamp);
     db.prepare(
       `INSERT INTO "SpaceMessage" ("id", "spaceId", "role", "speakerAgentId", "content", "attachments", "sourceKey", "createdAt")
        VALUES (?, ?, 'assistant', 'space-coordinator', ?, ?, ?, ?)`

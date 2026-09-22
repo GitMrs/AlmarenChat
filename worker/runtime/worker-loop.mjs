@@ -1,6 +1,8 @@
 export async function runWorkerIteration({
   recover,
   triggerAutomation,
+  claimAutomationDelivery,
+  processAutomationDelivery,
   claimCompletion,
   deliverCompletion,
   failCompletion,
@@ -20,7 +22,13 @@ export async function runWorkerIteration({
   clearIntervalFn = clearInterval,
 }) {
   recover();
-  triggerAutomation?.();
+  await triggerAutomation?.();
+
+  const automationDelivery = claimAutomationDelivery?.();
+  if (automationDelivery) {
+    await processAutomationDelivery(automationDelivery);
+    return 'automation-delivery';
+  }
 
   const completion = claimCompletion();
   if (completion) {

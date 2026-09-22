@@ -105,7 +105,7 @@ function MeContent() {
         if (active) setSharedPages(result.shares);
       })
       .catch((err: any) => {
-        if (active) setShareError(err.message || '加载网页共享失败');
+        if (active) setShareError(err.message || '加载内容共享失败');
       })
       .finally(() => {
         if (active) setSharesLoading(false);
@@ -176,7 +176,7 @@ function MeContent() {
       setShareNotice(`已关闭「${pendingDisableShare.fileName}」的公开共享`);
       setPendingDisableShare(null);
     } catch (err: any) {
-      setShareError(err.message || '关闭网页共享失败');
+      setShareError(err.message || '关闭内容共享失败');
     } finally {
       setShareActionId(null);
     }
@@ -207,7 +207,7 @@ function MeContent() {
                 个人中心
               </div>
               <h1 className="text-4xl font-black leading-tight text-slate-950 sm:text-5xl">
-                管理你的 Agent、网页共享和账号。
+                管理你的 Agent、内容共享和账号。
               </h1>
               <p className="mt-4 text-base leading-7 text-slate-500">
                 在这里维护你创建的 Agent、公开网页和账号配置。
@@ -243,7 +243,7 @@ function MeContent() {
         <section className="flex flex-wrap gap-2 rounded-[28px] border border-black/[0.06] bg-white p-2 shadow-sm">
           {[
             { id: 'assets', label: '我的资产', icon: Bot },
-            { id: 'shares', label: '网页共享', icon: Globe2 },
+            { id: 'shares', label: '内容共享', icon: Globe2 },
             { id: 'assistant', label: '助理设置', icon: MessageCircleHeart },
             { id: 'mcp', label: 'MCP 工具', icon: Blocks },
             { id: 'settings', label: '账号设置', icon: SlidersHorizontal },
@@ -316,8 +316,8 @@ function MeContent() {
             <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
               <div>
                 <p className="text-sm font-bold text-slate-400">Shared Pages</p>
-                <h2 className="text-2xl font-black text-slate-950">网页共享</h2>
-                <p className="mt-2 text-sm text-slate-500">集中管理从不同空间公开的 HTML 网页。</p>
+                <h2 className="text-2xl font-black text-slate-950">内容共享</h2>
+                <p className="mt-2 text-sm text-slate-500">集中管理从不同空间公开的网页和 Markdown 文档。</p>
               </div>
               {!sharesLoading && sharedPages.length > 0 && (
                 <div className="text-sm font-bold text-slate-400">共 {sharedPages.length} 个</div>
@@ -354,7 +354,7 @@ function MeContent() {
                           <Copy size={14} />复制链接
                         </button>
                         <button type="button" onClick={() => window.open(item.url, '_blank', 'noopener,noreferrer')} className="inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-xs font-black text-slate-500 transition hover:bg-slate-100 hover:text-slate-950">
-                          <ExternalLink size={14} />打开网页
+                          <ExternalLink size={14} />打开分享
                         </button>
                         <button type="button" onClick={() => router.push(`/spaces/${item.spaceId}`)} className="inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-xs font-black text-slate-500 transition hover:bg-slate-100 hover:text-slate-950">
                           <PanelsTopLeft size={14} />所属空间
@@ -370,8 +370,8 @@ function MeContent() {
             ) : (
               <div className="border-y border-black/[0.06] py-16 text-center">
                 <Globe2 className="mx-auto text-slate-300" size={28} />
-                <h3 className="mt-4 text-base font-black text-slate-950">还没有公开网页</h3>
-                <p className="mt-2 text-sm text-slate-500">在空间中打开 HTML 文件，通过“公开共享”开关发布网页。</p>
+                <h3 className="mt-4 text-base font-black text-slate-950">还没有公开内容</h3>
+                <p className="mt-2 text-sm text-slate-500">在空间中打开 HTML 或 Markdown 文件，通过“公开共享”开关发布。</p>
                 <button type="button" onClick={() => router.push('/spaces')} className="mt-5 inline-flex h-10 items-center gap-2 rounded-lg bg-slate-950 px-4 text-sm font-black text-white">
                   <PanelsTopLeft size={15} />前往空间
                 </button>
@@ -598,7 +598,7 @@ function MeContent() {
       />
       <ConfirmDialog
         open={Boolean(pendingDisableShare)}
-        title="关闭这个网页共享？"
+        title="关闭这个内容共享？"
         description={`关闭后，「${pendingDisableShare?.fileName || ''}」的现有共享链接会立即失效。`}
         icon={<Link2Off size={20} />}
         cancelText="继续共享"

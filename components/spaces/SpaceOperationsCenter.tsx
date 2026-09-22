@@ -73,6 +73,10 @@ const ACTION_STATUS: Record<string, string> = {
   PENDING: '待确认', APPROVED: '执行中', REJECTED: '已取消', COMPLETED: '已完成', FAILED: '失败',
 };
 
+const DELIVERY_STATUS: Record<string, string> = {
+  PENDING: '待推送', DELIVERING: '推送中', DELIVERED: '已推送', FAILED: '推送失败',
+};
+
 const LEARNING_CATEGORY_LABELS: Record<string, string> = {
   collaboration: '协作与派发', acceptance: '验收与返工', delivery: '交付可信度', execution: '执行方法',
 };
@@ -259,8 +263,9 @@ export default function SpaceOperationsCenter(props: Props) {
                         <div className="mt-2 text-[11px] font-bold text-slate-400">{scheduleLabel(automation)} · {automation.enabled ? `下次 ${new Date(automation.nextRunAt).toLocaleString('zh-CN')}` : '不会自动触发'}</div>
                         {automation.lastError && <div className="mt-2 text-xs font-semibold text-rose-600">{automation.lastError}</div>}
                         {automation.executions?.slice(0, 3).map((execution) => (
-                          <button key={execution.id} type="button" disabled={!execution.runId} onClick={() => execution.runId && props.onOpenRun(execution.runId)} className="mr-3 mt-2 text-[11px] font-black text-slate-400 hover:text-slate-800 disabled:text-slate-300">
+                          <button key={execution.id} type="button" disabled={!execution.runId} onClick={() => execution.runId && props.onOpenRun(execution.runId)} title={execution.deliveryError || undefined} className="mr-3 mt-2 text-[11px] font-black text-slate-400 hover:text-slate-800 disabled:text-slate-300">
                             {new Date(execution.createdAt).toLocaleString('zh-CN')} · {ACTION_STATUS[execution.status] || execution.status}
+                            {DELIVERY_STATUS[execution.deliveryStatus] ? ` · ${DELIVERY_STATUS[execution.deliveryStatus]}` : ''}
                           </button>
                         ))}
                       </div>

@@ -352,6 +352,13 @@ export interface SpaceAutomationExecution {
   scheduledFor: string;
   status: 'TRIGGERED' | 'COMPLETED' | 'PARTIAL' | 'FAILED_VALIDATION' | 'FAILED' | 'BLOCKED' | 'CANCELLED';
   runId?: string | null;
+  workId?: string | null;
+  resultHash?: string | null;
+  deliveryStatus: 'NOT_REQUIRED' | 'PENDING' | 'DELIVERING' | 'DELIVERED' | 'FAILED';
+  deliveryAttempts: number;
+  deliveryError?: string | null;
+  deliveryNextAttemptAt?: string | null;
+  deliveredAt?: string | null;
   error?: string | null;
   createdAt: string;
   updatedAt: string;

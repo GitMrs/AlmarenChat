@@ -1,13 +1,99 @@
 import 'dotenv/config';
-import { copyFileSync, existsSync, mkdirSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { copyFileSync, existsSync, mkdirSync, readdirSync } from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import Database from 'better-sqlite3';
+
+const BASELINE_MIGRATION = '20260921180000_add_space_automation_execution_mode';
+const REQUIRED_BASELINE_TABLES = [
+  'User', 'Agent', 'Space', 'AgentRun', 'SpaceAutomation', 'SpaceWebhook', 'SpaceMcpServer', 'StudioWorkspace',
+];
+const REQUIRED_BASELINE_COLUMNS = {
+  SpaceAutomation: ['executionMode', 'scriptPath', 'completionAction', 'deletedAt'],
+  Space: ['runtimeType', 'executionEngine', 'activeWorkId'],
+  User: ['imageModelEnabled', 'imageModelProtocol', 'modelContextWindow'],
+};
 
 function resolveDatabasePath() {
   const url = (process.env.DATABASE_URL || 'file:./dev.db').replace(/^['"]|['"]$/g, '');
   if (!url.startsWith('file:')) throw new Error('Agent Runtime 第一阶段仅支持 SQLite DATABASE_URL');
   return path.resolve(process.cwd(), url.slice('file:'.length));
 }
+
+function baselineHasTable(targetDb, table) {
+  return Boolean(targetDb.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(table));
+}
+
+export function inspectPrismaBaseline(targetDb) {
+  if (baselineHasTable(targetDb, '_prisma_migrations')) return { action: 'none', reason: 'migration-history-exists' };
+  const businessTableCount = targetDb.prepare(
+    "SELECT COUNT(*) AS count FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"
+  ).get().count;
+  if (businessTableCount === 0) return { action: 'none', reason: 'empty-database' };
+
+  const missing = [];
+  for (const table of REQUIRED_BASELINE_TABLES) {
+    if (!baselineHasTable(targetDb, table)) missing.push(`table:${table}`);
+  }
+  for (const [table, requiredColumns] of Object.entries(REQUIRED_BASELINE_COLUMNS)) {
+    if (!baselineHasTable(targetDb, table)) continue;
+    const existing = new Set(targetDb.prepare(`PRAGMA table_info("${table}")`).all().map((column) => column.name));
+    for (const column of requiredColumns) {
+      if (!existing.has(column)) missing.push(`column:${table}.${column}`);
+    }
+  }
+  if (missing.length > 0) {
+    throw new Error(`现有数据库缺少基线结构：${missing.join(', ')}。已停止部署，请先人工检查数据库版本。`);
+  }
+  return { action: 'baseline', reason: 'existing-database-without-history' };
+}
+
+function preparePrismaMigrationHistory() {
+  const databasePath = resolveDatabasePath();
+  if (!existsSync(databasePath)) return { action: 'none', reason: 'database-does-not-exist', applied: 0 };
+  const targetDb = new Database(databasePath, { readonly: true, fileMustExist: true });
+  let inspection;
+  try {
+    inspection = inspectPrismaBaseline(targetDb);
+  } finally {
+    targetDb.close();
+  }
+  if (inspection.action !== 'baseline') return { ...inspection, applied: 0 };
+
+  const projectRoot = process.cwd();
+  const migrationsDirectory = path.join(projectRoot, 'prisma', 'migrations');
+  const migrations = readdirSync(migrationsDirectory, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .filter((name) => name <= BASELINE_MIGRATION && existsSync(path.join(migrationsDirectory, name, 'migration.sql')))
+    .sort();
+  const executable = process.platform === 'win32'
+    ? path.join(projectRoot, 'node_modules', '.bin', 'prisma.cmd')
+    : path.join(projectRoot, 'node_modules', '.bin', 'prisma');
+  for (const migration of migrations) {
+    const result = spawnSync(executable, ['migrate', 'resolve', '--applied', migration], {
+      cwd: projectRoot,
+      env: process.env,
+      stdio: 'inherit',
+      shell: false,
+    });
+    if (result.status !== 0) throw new Error(`无法将迁移 ${migration} 登记为基线`);
+  }
+  return { ...inspection, applied: migrations.length, baseline: BASELINE_MIGRATION };
+}
+
+const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+const preparePrismaOnly = process.argv.includes('--prepare-prisma');
+
+if (isMain && preparePrismaOnly) {
+  const result = preparePrismaMigrationHistory();
+  if (result.action === 'baseline') {
+    console.log(`Prisma baseline created through ${result.baseline} (${result.applied} migrations).`);
+  } else {
+    console.log(`Prisma baseline not required: ${result.reason}.`);
+  }
+} else if (isMain) {
 
 const db = new Database(resolveDatabasePath());
 db.pragma('foreign_keys = ON');
@@ -888,4 +974,5 @@ try {
   console.log(`Space and Agent Runtime database upgrade completed. Migrated ${migratedWechatStrategies} WeChat shared strategies.`);
 } finally {
   db.close();
+}
 }

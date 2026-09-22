@@ -9,6 +9,8 @@ function harness(overrides = {}) {
     options: {
       recover: () => calls.push('recover'),
       triggerAutomation: () => calls.push('trigger-automation'),
+      claimAutomationDelivery: () => null,
+      processAutomationDelivery: async () => calls.push('process-automation-delivery'),
       claimCompletion: () => null,
       deliverCompletion: () => calls.push('deliver'),
       failCompletion: () => calls.push('fail-completion'),
@@ -85,4 +87,27 @@ test('idle iteration waits before polling again', async () => {
   const state = harness();
   assert.equal(await runWorkerIteration(state.options), 'idle');
   assert.deepEqual(state.calls, ['recover', 'trigger-automation', 'delay']);
+});
+
+test('automation delivery is processed after scheduling and before model work', async () => {
+  const state = harness({
+    claimAutomationDelivery: () => ({ id: 'delivery-1' }),
+    claimCompletion: () => {
+      state.calls.push('claim-completion');
+      return { id: 'completion-1' };
+    },
+  });
+  assert.equal(await runWorkerIteration(state.options), 'automation-delivery');
+  assert.deepEqual(state.calls, ['recover', 'trigger-automation', 'process-automation-delivery']);
+});
+
+test('worker waits for asynchronous automation completion handling', async () => {
+  const state = harness({
+    triggerAutomation: async () => {
+      await Promise.resolve();
+      state.calls.push('automation-complete');
+    },
+  });
+  assert.equal(await runWorkerIteration(state.options), 'idle');
+  assert.deepEqual(state.calls, ['recover', 'automation-complete', 'delay']);
 });

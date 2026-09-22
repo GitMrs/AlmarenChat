@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
+import bcrypt from 'bcryptjs';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
-import { encryptQQCredential } from '@/lib/qq-assistant/credentials.mjs';
+import { decryptQQCredential, encryptQQCredential } from '@/lib/qq-assistant/credentials.mjs';
 import { buildQQWebhookUrl, generateQQWebhookToken, hashQQWebhookToken } from '@/lib/qq-assistant/webhook.mjs';
 import { ensurePersonalAssistant } from '@/lib/personal-assistant/profile';
 
@@ -37,10 +38,10 @@ function serializeBinding(binding: {
   };
 }
 
-function webhookResponse(binding: Parameters<typeof serializeBinding>[0], token: string | null = null) {
+function webhookResponse(binding: Parameters<typeof serializeBinding>[0], token: string | null = null, baseUrl?: string) {
   return {
     binding: serializeBinding(binding),
-    ...(token ? { webhookUrl: buildQQWebhookUrl(token) } : {}),
+    ...(token ? { webhookUrl: buildQQWebhookUrl(token, baseUrl) } : {}),
   };
 }
 
@@ -117,6 +118,28 @@ export async function PATCH(request: Request) {
 
     const data: Record<string, unknown> = {};
     const action = typeof body.action === 'string' ? body.action : '';
+    if (action === 'reveal-webhook') {
+      const password = typeof body.password === 'string' ? body.password : '';
+      if (!password || password.length > 200) {
+        return NextResponse.json({ error: '请输入当前账号密码' }, { status: 400 });
+      }
+      if (!existing.webhookTokenCiphertext || !existing.webhookTokenHash) {
+        return NextResponse.json({ error: '请先生成 Webhook 地址' }, { status: 404 });
+      }
+      const user = await prisma.user.findUnique({ where: { id: userId }, select: { passwordHash: true } });
+      if (!user || !await bcrypt.compare(password, user.passwordHash)) {
+        return NextResponse.json({ error: '账号密码不正确' }, { status: 403 });
+      }
+      const webhookToken = decryptQQCredential(existing.webhookTokenCiphertext);
+      if (hashQQWebhookToken(webhookToken) !== existing.webhookTokenHash) {
+        return NextResponse.json({ error: 'Webhook 凭据校验失败，请重新生成' }, { status: 409 });
+      }
+      return NextResponse.json(webhookResponse(
+        existing,
+        webhookToken,
+        process.env.QQ_ASSISTANT_WEBHOOK_PUBLIC_URL || requestOrigin(request)
+      ));
+    }
     if (typeof body.enabled === 'boolean') {
       data.enabled = body.enabled;
       data.status = body.enabled ? 'PENDING' : 'DISABLED';

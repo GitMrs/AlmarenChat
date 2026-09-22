@@ -3,6 +3,7 @@ import path from 'node:path';
 import { NextResponse } from 'next/server';
 import prisma from '@/app/api/_lib/db';
 import { resolveSpacePath, spaceRoot } from '@/app/api/_lib/spaces';
+import { renderSharedMarkdownPage } from '@/lib/markdown-share.mjs';
 import { isValidShareId, resolveSharedResource } from '@/lib/space-share-policy.mjs';
 import { STATIC_HTML_SANDBOX } from '@/lib/static-html-sandbox.mjs';
 import { TRUSTED_STATIC_CDN_SOURCES } from '@/lib/space-preview-policy.mjs';
@@ -26,6 +27,20 @@ function sharePolicy(request: Request, shareId: string, externalDependencies: bo
     "frame-ancestors 'none'",
     "worker-src 'none'",
     `form-action ${root}`,
+    "base-uri 'none'",
+  ].join('; ');
+}
+
+function markdownSharePolicy(request: Request, shareId: string) {
+  const root = `${new URL(request.url).origin}/share/${shareId}/`;
+  return [
+    "default-src 'none'",
+    "style-src 'unsafe-inline'",
+    `img-src ${root} https: data:`,
+    "script-src 'none'",
+    "object-src 'none'",
+    "frame-src 'none'",
+    "frame-ancestors 'none'",
     "base-uri 'none'",
   ].join('; ');
 }
@@ -71,12 +86,16 @@ export async function GET(
       return NextResponse.json({ error: '共享资源不能超过 5MB' }, { status: 413 });
     }
     const bytes = await readFile(actualTarget);
-    return new Response(bytes, {
+    const markdown = /\.(?:md|markdown)$/i.test(relativePath);
+    const body = markdown ? renderSharedMarkdownPage(bytes.toString('utf8'), entry.fileName) : bytes;
+    return new Response(body, {
       headers: {
-        'Content-Type': mimeType,
-        'Content-Length': String(bytes.byteLength),
+        'Content-Type': markdown ? 'text/html; charset=utf-8' : mimeType,
+        'Content-Length': String(Buffer.byteLength(body)),
         'Cache-Control': 'no-store',
-        'Content-Security-Policy': sharePolicy(request, shareId, entry.externalDependencies),
+        'Content-Security-Policy': markdown
+          ? markdownSharePolicy(request, shareId)
+          : sharePolicy(request, shareId, entry.externalDependencies),
         'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=(), usb=()',
         'Referrer-Policy': 'no-referrer',
         'X-Content-Type-Options': 'nosniff',

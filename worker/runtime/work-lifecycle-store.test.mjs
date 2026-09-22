@@ -22,7 +22,8 @@ function database() {
     );
     CREATE TABLE "SpaceAutomationExecution" (
       "id" TEXT PRIMARY KEY, "automationId" TEXT NOT NULL, "runId" TEXT,
-      "status" TEXT NOT NULL, "error" TEXT, "updatedAt" TEXT NOT NULL
+      "status" TEXT NOT NULL, "result" TEXT, "resultHash" TEXT,
+      "deliveryStatus" TEXT NOT NULL DEFAULT 'NOT_REQUIRED', "error" TEXT, "updatedAt" TEXT NOT NULL
     );
     CREATE TABLE "SpaceActionRequest" (
       "id" TEXT PRIMARY KEY, "spaceId" TEXT, "workId" TEXT, "runId" TEXT,
@@ -67,14 +68,41 @@ test('successful automation executions remain enabled and clear prior failures',
   const db = database();
   try {
     db.prepare('INSERT INTO "SpaceAutomation" ("id", "enabled", "consecutiveFailures", "lastError", "updatedAt") VALUES (?, ?, ?, ?, ?)').run('auto-1', 1, 2, '旧错误', 'before');
-    db.prepare('INSERT INTO "SpaceAutomationExecution" VALUES (?, ?, ?, ?, ?, ?)').run('exec-1', 'auto-1', 'run-1', 'TRIGGERED', null, 'before');
+    db.prepare('INSERT INTO "SpaceAutomationExecution" ("id", "automationId", "runId", "status", "updatedAt") VALUES (?, ?, ?, ?, ?)').run('exec-1', 'auto-1', 'run-1', 'TRIGGERED', 'before');
     assert.equal(completeAutomationExecution(db, {
-      runId: 'run-1', runStatus: 'COMPLETED', error: null, timestamp: 'after',
+      runId: 'run-1', runStatus: 'COMPLETED', result: '完成内容', error: null, timestamp: 'after',
     }), true);
     assert.deepEqual(db.prepare('SELECT "enabled", "consecutiveFailures", "lastError" FROM "SpaceAutomation"').get(), {
       enabled: 1, consecutiveFailures: 0, lastError: null,
     });
     assert.equal(db.prepare('SELECT "status" FROM "SpaceAutomationExecution"').get().status, 'COMPLETED');
+    assert.deepEqual(db.prepare('SELECT "result", "deliveryStatus" FROM "SpaceAutomationExecution"').get(), {
+      result: '完成内容', deliveryStatus: 'NOT_REQUIRED',
+    });
+  } finally {
+    db.close();
+  }
+});
+
+test('webhook automation completion queues delivery without reopening an existing receipt', () => {
+  const db = database();
+  try {
+    db.prepare(`INSERT INTO "SpaceAutomation"
+      ("id", "enabled", "consecutiveFailures", "lastError", "updatedAt", "completionAction")
+      VALUES (?, ?, ?, ?, ?, ?)`
+    ).run('auto-1', 1, 0, null, 'before', 'WEBHOOK_NOTIFY');
+    db.prepare('INSERT INTO "SpaceAutomationExecution" ("id", "automationId", "runId", "status", "updatedAt") VALUES (?, ?, ?, ?, ?)').run(
+      'exec-1', 'auto-1', 'run-1', 'TRIGGERED', 'before'
+    );
+    completeAutomationExecution(db, {
+      runId: 'run-1', runStatus: 'COMPLETED', result: '待推送内容', error: null, timestamp: 'after',
+    });
+    assert.equal(db.prepare('SELECT "deliveryStatus" FROM "SpaceAutomationExecution"').get().deliveryStatus, 'PENDING');
+    db.prepare('UPDATE "SpaceAutomationExecution" SET "deliveryStatus" = ?').run('DELIVERED');
+    completeAutomationExecution(db, {
+      runId: 'run-1', runStatus: 'COMPLETED', result: '待推送内容', error: null, timestamp: 'later',
+    });
+    assert.equal(db.prepare('SELECT "deliveryStatus" FROM "SpaceAutomationExecution"').get().deliveryStatus, 'DELIVERED');
   } finally {
     db.close();
   }
@@ -91,7 +119,7 @@ test('successful automated work requests one idempotent user finalization', () =
       ("id", "enabled", "consecutiveFailures", "lastError", "updatedAt", "completionAction", "completionConfig")
       VALUES (?, ?, ?, ?, ?, ?, ?)`
     ).run('auto-1', 1, 0, null, 'before', 'WECHAT_CREATE_DRAFT', JSON.stringify({ themeId: 'editorial-red' }));
-    db.prepare('INSERT INTO "SpaceAutomationExecution" VALUES (?, ?, ?, ?, ?, ?)').run('exec-1', 'auto-1', 'run-1', 'TRIGGERED', null, 'before');
+    db.prepare('INSERT INTO "SpaceAutomationExecution" ("id", "automationId", "runId", "status", "updatedAt") VALUES (?, ?, ?, ?, ?)').run('exec-1', 'auto-1', 'run-1', 'TRIGGERED', 'before');
     completeAutomationExecution(db, { runId: 'run-1', runStatus: 'COMPLETED', error: null, timestamp: 'after' });
     completeAutomationExecution(db, { runId: 'run-1', runStatus: 'COMPLETED', error: null, timestamp: 'after' });
     const action = db.prepare('SELECT * FROM "SpaceActionRequest"').get();
@@ -112,7 +140,7 @@ test('unsuccessful automation executions pause the rule with an auditable error'
   const db = database();
   try {
     db.prepare('INSERT INTO "SpaceAutomation" ("id", "enabled", "consecutiveFailures", "lastError", "updatedAt") VALUES (?, ?, ?, ?, ?)').run('auto-1', 1, 0, null, 'before');
-    db.prepare('INSERT INTO "SpaceAutomationExecution" VALUES (?, ?, ?, ?, ?, ?)').run('exec-1', 'auto-1', 'run-1', 'TRIGGERED', null, 'before');
+    db.prepare('INSERT INTO "SpaceAutomationExecution" ("id", "automationId", "runId", "status", "updatedAt") VALUES (?, ?, ?, ?, ?)').run('exec-1', 'auto-1', 'run-1', 'TRIGGERED', 'before');
     assert.equal(completeAutomationExecution(db, {
       runId: 'run-1', runStatus: 'FAILED_VALIDATION', error: '缺少正文', timestamp: 'after',
     }), true);

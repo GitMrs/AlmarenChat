@@ -27,6 +27,6 @@ export async function GET(request: Request) {
     });
   } catch (error: any) {
     if (error.message === 'Unauthorized') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    return NextResponse.json({ error: '加载网页共享失败' }, { status: 500 });
+    return NextResponse.json({ error: '加载内容共享失败' }, { status: 500 });
   }
 }
