@@ -73,7 +73,31 @@ test('does not skip an image settings migration when a column is missing', () =>
     db.exec('CREATE TABLE "_prisma_migrations" ("migration_name" TEXT, "finished_at" DATETIME, "rolled_back_at" DATETIME)');
     const result = inspectKnownMigrationRepair(db);
     assert.equal(result.action, 'manual');
-    assert.deepEqual(result.missing, ['imageModelEnabled']);
+    assert.deepEqual(result.missing, ['column:User.imageModelEnabled']);
+  } finally {
+    db.close();
+  }
+});
+
+test('detects a personal assistant migration whose full schema already exists', () => {
+  const db = baselineDatabase();
+  try {
+    db.exec(`
+      CREATE TABLE "_prisma_migrations" ("migration_name" TEXT, "finished_at" DATETIME, "rolled_back_at" DATETIME);
+      CREATE TABLE "Conversation" ("id" TEXT PRIMARY KEY, "userId" TEXT, "kind" TEXT, "updatedAt" TEXT);
+      CREATE TABLE "PersonalAssistantProfile" ("userId" TEXT, "conversationId" TEXT, "name" TEXT, "avatar" TEXT, "identity" TEXT, "soul" TEXT, "greeting" TEXT, "createdAt" TEXT, "updatedAt" TEXT);
+      CREATE TABLE "AssistantMemoryItem" ("id" TEXT, "userId" TEXT, "category" TEXT, "content" TEXT, "status" TEXT, "sourceMessageId" TEXT, "occurrenceCount" INTEGER, "createdAt" TEXT, "updatedAt" TEXT);
+      CREATE INDEX "Conversation_userId_kind_updatedAt_idx" ON "Conversation"("userId", "kind", "updatedAt");
+      CREATE UNIQUE INDEX "PersonalAssistantProfile_conversationId_key" ON "PersonalAssistantProfile"("conversationId");
+      CREATE INDEX "AssistantMemoryItem_userId_status_updatedAt_idx" ON "AssistantMemoryItem"("userId", "status", "updatedAt");
+    `);
+    db.prepare('INSERT INTO "_prisma_migrations" ("migration_name", "finished_at", "rolled_back_at") VALUES (?, ?, NULL)')
+      .run('20260902150000_add_image_model_settings', '2026-09-02T15:00:00.000Z');
+    assert.deepEqual(inspectKnownMigrationRepair(db), {
+      action: 'resolve',
+      migration: '20260902183000_add_personal_assistant',
+      reason: 'schema-present-without-migration-history',
+    });
   } finally {
     db.close();
   }

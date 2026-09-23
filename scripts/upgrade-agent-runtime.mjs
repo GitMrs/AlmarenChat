@@ -6,8 +6,25 @@ import { fileURLToPath } from 'node:url';
 import Database from 'better-sqlite3';
 
 const BASELINE_MIGRATION = '20260921180000_add_space_automation_execution_mode';
-const IMAGE_MODEL_SETTINGS_MIGRATION = '20260902150000_add_image_model_settings';
-const IMAGE_MODEL_SETTINGS_COLUMNS = ['imageModelEnabled', 'imageModelName', 'imageModelSize'];
+const KNOWN_MIGRATION_REPAIRS = [
+  {
+    migration: '20260902150000_add_image_model_settings',
+    columns: [{ table: 'User', names: ['imageModelEnabled', 'imageModelName', 'imageModelSize'] }],
+  },
+  {
+    migration: '20260902183000_add_personal_assistant',
+    columns: [{ table: 'Conversation', names: ['kind'] }],
+    tables: [
+      { name: 'PersonalAssistantProfile', columns: ['userId', 'conversationId', 'name', 'avatar', 'identity', 'soul', 'greeting', 'createdAt', 'updatedAt'] },
+      { name: 'AssistantMemoryItem', columns: ['id', 'userId', 'category', 'content', 'status', 'sourceMessageId', 'occurrenceCount', 'createdAt', 'updatedAt'] },
+    ],
+    indexes: [
+      'Conversation_userId_kind_updatedAt_idx',
+      'PersonalAssistantProfile_conversationId_key',
+      'AssistantMemoryItem_userId_status_updatedAt_idx',
+    ],
+  },
+];
 const REQUIRED_BASELINE_TABLES = [
   'User', 'Agent', 'Space', 'AgentRun', 'SpaceAutomation', 'SpaceWebhook', 'SpaceMcpServer', 'StudioWorkspace',
 ];
@@ -31,30 +48,62 @@ function tableColumns(targetDb, table) {
   return new Set(targetDb.prepare(`PRAGMA table_info("${table}")`).all().map((column) => column.name));
 }
 
+function migrationRepairSpec(migrationName) {
+  return KNOWN_MIGRATION_REPAIRS.find((item) => item.migration === migrationName) || null;
+}
+
 export function inspectKnownMigrationRepair(targetDb) {
   if (!baselineHasTable(targetDb, '_prisma_migrations') || !baselineHasTable(targetDb, 'User')) {
     return { action: 'none', reason: 'migration-or-user-table-missing' };
   }
-  const migration = targetDb.prepare(
+  const pendingMigrations = targetDb.prepare(
     'SELECT "migration_name" AS migrationName, "finished_at" AS finishedAt, "rolled_back_at" AS rolledBackAt FROM "_prisma_migrations" WHERE "migration_name" = ?'
-  ).get(IMAGE_MODEL_SETTINGS_MIGRATION);
-  if (migration?.finishedAt && !migration.rolledBackAt) {
-    return { action: 'none', reason: 'migration-already-applied', migration: IMAGE_MODEL_SETTINGS_MIGRATION };
+  );
+  const migration = KNOWN_MIGRATION_REPAIRS
+    .map((spec) => ({ spec, row: pendingMigrations.get(spec.migration) }))
+    .find(({ row }) => !row?.finishedAt || row.rolledBackAt);
+  if (!migration) return { action: 'none', reason: 'known-migrations-already-applied' };
+
+  const { spec } = migration;
+  const migrationName = spec.migration;
+  const missing = [];
+  for (const requirement of spec.columns || []) {
+    if (!baselineHasTable(targetDb, requirement.table)) {
+      missing.push(`table:${requirement.table}`);
+      continue;
+    }
+    const existing = tableColumns(targetDb, requirement.table);
+    for (const column of requirement.names) {
+      if (!existing.has(column)) missing.push(`column:${requirement.table}.${column}`);
+    }
   }
-  const existing = tableColumns(targetDb, 'User');
-  const missing = IMAGE_MODEL_SETTINGS_COLUMNS.filter((column) => !existing.has(column));
+  for (const requirement of spec.tables || []) {
+    if (!baselineHasTable(targetDb, requirement.name)) {
+      missing.push(`table:${requirement.name}`);
+      continue;
+    }
+    const existing = tableColumns(targetDb, requirement.name);
+    for (const column of requirement.columns) {
+      if (!existing.has(column)) missing.push(`column:${requirement.name}.${column}`);
+    }
+  }
+  for (const index of spec.indexes || []) {
+    if (!targetDb.prepare("SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = ?").get(index)) {
+      missing.push(`index:${index}`);
+    }
+  }
   if (missing.length > 0) {
     return {
       action: 'manual',
-      migration: IMAGE_MODEL_SETTINGS_MIGRATION,
+      migration: migrationName,
       missing,
-      reason: migration ? 'migration-not-applied-and-schema-incomplete' : 'migration-history-missing-and-schema-incomplete',
+      reason: migration.row ? 'migration-failed-but-schema-incomplete' : 'migration-history-missing-and-schema-incomplete',
     };
   }
   return {
     action: 'resolve',
-    migration: IMAGE_MODEL_SETTINGS_MIGRATION,
-    reason: migration ? 'migration-failed-but-schema-present' : 'schema-present-without-migration-history',
+    migration: migrationName,
+    reason: migration.row ? 'migration-failed-but-schema-present' : 'schema-present-without-migration-history',
   };
 }
 
@@ -152,7 +201,7 @@ if (isMain && preparePrismaOnly) {
   const repaired = repairKnownMigrationConflict();
   const result = preparePrismaMigrationHistory();
   if (repaired.action === 'resolved') {
-    console.log(`Prisma migration repaired: ${repaired.migration} marked as applied because its columns already exist.`);
+    console.log(`Prisma migration repaired: ${repaired.migration} marked as applied because its schema already exists.`);
   }
   if (result.action === 'baseline') {
     console.log(`Prisma baseline created through ${result.baseline} (${result.applied} migrations).`);
