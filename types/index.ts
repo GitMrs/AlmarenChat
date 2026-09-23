@@ -382,6 +382,7 @@ export interface SpaceAutomation {
   networkPolicy: 'forbidden' | 'allowed' | 'required';
   completionAction: 'NONE' | 'WECHAT_CREATE_DRAFT' | 'WEBHOOK_NOTIFY';
   completionConfig?: { themeId?: string; target?: 'PERSONAL_QQ' | 'CUSTOM_WEBHOOK'; webhookId?: string } | null;
+  shareTheme: 'inherit' | 'clean' | 'editorial-handwritten';
   enabled: boolean;
   nextRunAt: string;
   lastRunAt?: string | null;
@@ -511,6 +512,7 @@ export interface SpaceFile {
   status?: 'GENERATING' | 'WAITING_APPROVAL' | 'READY' | 'INCOMPLETE';
   shareId?: string | null;
   shareEnabled?: boolean;
+  shareTheme?: 'clean' | 'editorial-handwritten';
   sharedAt?: string | null;
   createdAt: string;
   updatedAt?: string | null;
@@ -565,7 +567,7 @@ export type SpaceLearningCommand = {
 };
 
 export type SpaceTaskCapability = 'workspace_read' | 'workspace_write' | 'web_research' | 'code_execute' | 'image_generate';
-export type SpaceNetworkPolicy = 'forbidden' | 'allowed' | 'required';
+export type SpaceNetworkPolicy = 'forbidden' | 'allowed' | 'required' | 'runtime';
 
 export interface SpaceTaskExecutionStep {
   agentId: string;

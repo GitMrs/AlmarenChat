@@ -31,7 +31,7 @@ type TaskProposalRevision = {
   goal: string;
   steps: string[];
   deliverables: string[];
-  networkPolicy: 'forbidden' | 'allowed' | 'required';
+  networkPolicy: 'forbidden' | 'allowed' | 'required' | 'runtime';
 };
 
 function parseRevision(value: unknown): TaskProposalRevision | null {
@@ -47,12 +47,11 @@ function parseRevision(value: unknown): TaskProposalRevision | null {
     return normalized;
   };
   const steps = list(input.steps, '执行步骤');
-  const networkPolicy = ['forbidden', 'allowed', 'required'].includes(String(input.networkPolicy || ''))
+  const networkPolicy = ['forbidden', 'allowed', 'required', 'runtime'].includes(String(input.networkPolicy || ''))
     ? input.networkPolicy as TaskProposalRevision['networkPolicy']
     : null;
   if (!goal || steps.length === 0) throw new Error('修改后的任务方案缺少目标或步骤');
-  if (!networkPolicy) throw new Error('请选择联网策略');
-  return { goal, steps, deliverables: list(input.deliverables, '预期产出'), networkPolicy };
+  return { goal, steps, deliverables: list(input.deliverables, '预期产出'), networkPolicy: networkPolicy || 'runtime' };
 }
 
 function applyRevision(proposal: TaskProposalAttachment, revision: TaskProposalRevision | null) {

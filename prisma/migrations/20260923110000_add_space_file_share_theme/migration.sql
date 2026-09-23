@@ -1,0 +1,1 @@
+ALTER TABLE "SpaceFile" ADD COLUMN "shareTheme" TEXT NOT NULL DEFAULT 'clean';

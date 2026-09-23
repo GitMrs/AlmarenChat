@@ -59,6 +59,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
     const executionMode = normalizeAutomationExecutionMode(body?.executionMode);
     const scriptPath = normalizeAutomationScriptPath(body?.scriptPath, executionMode);
     const networkPolicy = ['forbidden', 'allowed', 'required'].includes(body?.networkPolicy) ? body.networkPolicy : 'forbidden';
+    const shareTheme = ['inherit', 'clean', 'editorial-handwritten'].includes(body?.shareTheme) ? body.shareTheme : 'inherit';
     const completion = normalizeAutomationCompletion(body, space.templateId);
     if (completion.completionAction === 'WEBHOOK_NOTIFY' && completion.completionConfig?.target === 'CUSTOM_WEBHOOK') {
       const webhookId = completion.completionConfig.webhookId;
@@ -76,6 +77,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
         executionMode,
         scriptPath,
         networkPolicy,
+        shareTheme,
         ...completion,
         enabled: body?.enabled === true,
         nextRunAt,

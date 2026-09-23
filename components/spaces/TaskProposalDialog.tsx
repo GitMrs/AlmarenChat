@@ -24,7 +24,6 @@ export default function TaskProposalDialog({
   const [goal, setGoal] = useState('');
   const [stepsText, setStepsText] = useState('');
   const [deliverablesText, setDeliverablesText] = useState('');
-  const [networkPolicy, setNetworkPolicy] = useState<SpaceNetworkPolicy>('forbidden');
   const [validationError, setValidationError] = useState('');
 
   useEffect(() => {
@@ -32,7 +31,6 @@ export default function TaskProposalDialog({
     setGoal(proposal.goal);
     setStepsText(proposal.steps.join('\n'));
     setDeliverablesText(proposal.deliverables.join('\n'));
-    setNetworkPolicy(proposal.networkPolicy || (proposal.capabilities?.includes('web_research') ? 'required' : 'forbidden'));
     setValidationError('');
   }, [proposal]);
 
@@ -67,7 +65,7 @@ export default function TaskProposalDialog({
     if (steps.length > 8) return setValidationError('执行步骤不能超过 8 项');
     if (deliverables.length > 8) return setValidationError('预期产出不能超过 8 项');
     setValidationError('');
-    onConfirm({ goal: trimmedGoal, steps, deliverables, networkPolicy });
+    onConfirm({ goal: trimmedGoal, steps, deliverables, networkPolicy: 'runtime' });
   };
 
   return (
@@ -129,27 +127,7 @@ export default function TaskProposalDialog({
 
           <section className="border-t border-black/[0.06] pt-5">
             <div className="text-sm font-black text-slate-700">执行权限</div>
-            <div className="mt-3 grid grid-cols-3 gap-1 rounded-lg bg-slate-100 p-1" role="group" aria-label="联网策略">
-              {([
-                ['forbidden', '禁止联网'],
-                ['allowed', 'AI 按需'],
-                ['required', '必须联网'],
-              ] as const).map(([value, label]) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => setNetworkPolicy(value)}
-                  aria-pressed={networkPolicy === value}
-                  className={`min-h-9 rounded-md px-2 text-xs font-black transition ${
-                    networkPolicy === value
-                      ? 'bg-white text-slate-950 shadow-sm'
-                      : 'text-slate-500 hover:text-slate-800'
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
+            <div className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-xs font-semibold leading-5 text-slate-500">联网不在计划阶段预先决定。执行过程中需要外部资料时，系统会展示具体查询并等待你的确认。</div>
             <div className="mt-3 flex flex-wrap gap-2">
               <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-black text-slate-600">
                 <FileText size={13} />
@@ -173,10 +151,10 @@ export default function TaskProposalDialog({
                   每个任务生成 1 张图片
                 </span>
               )}
-              {networkPolicy !== 'forbidden' && (
+              {proposal.capabilities?.includes('web_research') && (
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-black text-emerald-700">
                   <Globe2 size={13} />
-                  {networkPolicy === 'required' ? '必须联网检索' : '允许按需联网'}
+                  运行时需要时申请联网
                 </span>
               )}
             </div>

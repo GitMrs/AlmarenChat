@@ -1753,6 +1753,10 @@ async function processRun(run) {
     }
   } catch (error) {
     if (isCancelRequested(run.id)) cancelRun(run.id);
+    else if (error?.code === 'RUNTIME_PERMISSION_REQUIRED') {
+      // The research runtime has already persisted the pending request and released the lease.
+      return;
+    }
     else if (error?.code === 'MODEL_REQUEST_BUDGET' && error.scope === 'run') waitRunForExecutionContinuation(run, error);
     else failRun(run.id, error);
   }

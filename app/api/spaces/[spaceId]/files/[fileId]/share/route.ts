@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { getSpaceForUser } from '@/app/api/_lib/spaces';
+import { normalizeShareTheme } from '@/lib/share-theme-policy.mjs';
 
 function shareUrl(shareId: string | null) {
   return shareId ? `/share/${shareId}/` : null;
@@ -29,6 +30,7 @@ export async function GET(
       enabled: file.shareEnabled,
       url: file.shareEnabled ? shareUrl(file.shareId) : null,
       externalDependencies: file.externalDependencies,
+      shareTheme: file.shareTheme,
     });
   } catch (error: any) {
     if (error.message === 'Unauthorized') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -49,14 +51,17 @@ export async function PUT(
     }
     const body = await request.json().catch(() => ({}));
     const externalDependencies = body?.externalDependencies === true;
+    const shareTheme = /\.(?:md|markdown)$/i.test(file.fileName)
+      ? normalizeShareTheme(body?.shareTheme ?? file.shareTheme)
+      : 'clean';
     const shareId = file.shareEnabled && file.shareId
       ? file.shareId
       : randomUUID().replaceAll('-', '');
     await prisma.spaceFile.update({
       where: { id: file.id },
-      data: { shareId, shareEnabled: true, externalDependencies, sharedAt: new Date() },
+      data: { shareId, shareEnabled: true, shareTheme, externalDependencies, sharedAt: new Date() },
     });
-    return NextResponse.json({ enabled: true, url: shareUrl(shareId), externalDependencies });
+    return NextResponse.json({ enabled: true, url: shareUrl(shareId), externalDependencies, shareTheme });
   } catch (error: any) {
     if (error.message === 'Unauthorized') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     return NextResponse.json({ error: '开启共享失败' }, { status: 500 });
@@ -75,7 +80,7 @@ export async function DELETE(
       where: { id: file.id },
       data: { shareId: null, shareEnabled: false, sharedAt: null },
     });
-    return NextResponse.json({ enabled: false, url: null, externalDependencies: file.externalDependencies });
+    return NextResponse.json({ enabled: false, url: null, externalDependencies: file.externalDependencies, shareTheme: file.shareTheme });
   } catch (error: any) {
     if (error.message === 'Unauthorized') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     return NextResponse.json({ error: '关闭共享失败' }, { status: 500 });

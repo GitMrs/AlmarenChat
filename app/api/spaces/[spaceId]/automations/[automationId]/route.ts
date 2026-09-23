@@ -59,6 +59,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ sp
       if (!['forbidden', 'allowed', 'required'].includes(body.networkPolicy)) return NextResponse.json({ error: '联网策略无效' }, { status: 400 });
       data.networkPolicy = body.networkPolicy;
     }
+    if (body?.shareTheme !== undefined) {
+      if (!['inherit', 'clean', 'editorial-handwritten'].includes(body.shareTheme)) return NextResponse.json({ error: '共享页面样式无效' }, { status: 400 });
+      data.shareTheme = body.shareTheme;
+    }
     if (body?.completionAction !== undefined || body?.completionConfig !== undefined) {
       const completion = normalizeAutomationCompletion(body, automation.space.templateId, automation);
       if (completion.completionAction === 'WEBHOOK_NOTIFY' && completion.completionConfig?.target === 'CUSTOM_WEBHOOK') {

@@ -512,6 +512,7 @@ export default function SpaceDetailPage() {
   const [automationScriptPath, setAutomationScriptPath] = useState('');
   const [automationNetworkPolicy, setAutomationNetworkPolicy] = useState<'forbidden' | 'allowed' | 'required'>('forbidden');
   const [automationCompletionAction, setAutomationCompletionAction] = useState<'NONE' | 'WECHAT_CREATE_DRAFT' | 'WEBHOOK_NOTIFY'>('NONE');
+  const [automationShareTheme, setAutomationShareTheme] = useState<'inherit' | 'clean' | 'editorial-handwritten'>('inherit');
   const [automationWebhookTarget, setAutomationWebhookTarget] = useState<'PERSONAL_QQ' | 'CUSTOM_WEBHOOK'>('PERSONAL_QQ');
   const [automationWebhookId, setAutomationWebhookId] = useState('');
   const [automationWechatTheme, setAutomationWechatTheme] = useState('fresh-green');
@@ -788,6 +789,7 @@ export default function SpaceDetailPage() {
   const latestResearchEvent = currentRun
     ? [...currentRun.events].reverse().find((event) => event.type.startsWith('WEB_SEARCH_')) || null
     : null;
+  const researchApprovalPending = latestResearchEvent?.type === 'WEB_SEARCH_APPROVAL_REQUIRED' && currentRun?.status === 'WAITING_APPROVAL';
   const acceptanceEvent = currentRun
     ? [...currentRun.events].reverse().find((event) => event.type === 'RUN_ACCEPTANCE_COMPLETED') || null
     : null;
@@ -973,7 +975,8 @@ export default function SpaceDetailPage() {
             onClick={() => setWorkMenuOpen((open) => !open)}
             disabled={workSelectionLocked}
             aria-expanded={workMenuOpen}
-            className={`flex h-8 min-w-0 items-center gap-2 rounded-md border border-black/[0.06] bg-[#fbfaf7] px-2.5 text-left text-xs font-bold text-slate-600 transition hover:border-slate-200 hover:text-slate-950 disabled:text-slate-300 ${compact ? 'max-w-[190px]' : 'flex-1'}`}
+            title={currentWork?.title || `新建${workNoun}`}
+            className={`flex h-8 min-w-0 items-center gap-2 rounded-md border border-black/[0.06] bg-[#fbfaf7] px-2.5 text-left text-xs font-bold text-slate-600 transition hover:border-slate-200 hover:text-slate-950 disabled:text-slate-300 ${compact ? 'max-w-[240px] sm:max-w-[300px]' : 'flex-1'}`}
           >
             {switchingWork ? <Loader2 className="shrink-0 animate-spin" size={13} /> : <FileText className="shrink-0" size={13} />}
             <span className="shrink-0 text-slate-400">当前{workNoun}</span>
@@ -1776,6 +1779,7 @@ export default function SpaceDetailPage() {
     setAutomationScriptPath('');
     setAutomationNetworkPolicy('forbidden');
     setAutomationCompletionAction('NONE');
+    setAutomationShareTheme('inherit');
     setAutomationWebhookTarget('PERSONAL_QQ');
     setAutomationWebhookId('');
     setAutomationWechatTheme('fresh-green');
@@ -1798,6 +1802,7 @@ export default function SpaceDetailPage() {
     setAutomationScriptPath(automation.scriptPath || '');
     setAutomationNetworkPolicy(automation.networkPolicy || 'forbidden');
     setAutomationCompletionAction(automation.completionAction || 'NONE');
+    setAutomationShareTheme(automation.shareTheme || 'inherit');
     setAutomationWebhookTarget(automation.completionConfig?.target || 'PERSONAL_QQ');
     setAutomationWebhookId(automation.completionConfig?.webhookId || '');
     setAutomationWechatTheme(automation.completionConfig?.themeId || 'fresh-green');
@@ -1826,6 +1831,7 @@ export default function SpaceDetailPage() {
         scriptPath: automationExecutionMode !== 'PROMPT' ? automationScriptPath.trim() : null,
         networkPolicy: automationNetworkPolicy,
         completionAction: automationCompletionAction,
+        shareTheme: automationShareTheme,
         completionConfig: automationCompletionAction === 'WEBHOOK_NOTIFY'
           ? { target: automationWebhookTarget, ...(automationWebhookTarget === 'CUSTOM_WEBHOOK' ? { webhookId: automationWebhookId } : {}) }
           : space?.templateId === 'wechat-article' && automationCompletionAction === 'WECHAT_CREATE_DRAFT'
@@ -2512,6 +2518,17 @@ export default function SpaceDetailPage() {
     }
   };
 
+  const decideResearchApproval = async (approved: boolean) => {
+    if (!currentRun || !researchApprovalPending) return;
+    try {
+      const result = await agentRunsApi.approveNetwork(currentRun.id, approved);
+      setRuns((items) => items.map((item) => item.id === result.run.id ? result.run : item));
+      setError('');
+    } catch (err: any) {
+      setError(err.message || '联网确认失败');
+    }
+  };
+
   const cancelRun = async () => {
     if (!activeRun || runActionLoading) return;
     setRunActionLoading(true);
@@ -2995,9 +3012,9 @@ export default function SpaceDetailPage() {
                       <div className="mt-1 text-xs font-semibold text-slate-400">{visibleFiles.length} 个文件</div>
                     </div>
                     <div className="flex min-w-0 items-center gap-2">
-                      {fileAssetTab === 'OUTPUT' && <select value={selectedWorkId} onChange={(event) => setSelectedWorkId(event.target.value)} aria-label="筛选成果" className="h-10 min-w-0 flex-1 rounded-lg border border-black/[0.08] bg-white px-3 text-xs font-bold text-slate-700 outline-none sm:w-64">
+                      {fileAssetTab === 'OUTPUT' && <select value={selectedWorkId} onChange={(event) => setSelectedWorkId(event.target.value)} aria-label="筛选成果" className="h-10 min-w-0 flex-1 rounded-lg border border-black/[0.08] bg-white px-3 text-xs font-bold text-slate-700 outline-none sm:w-80">
                           <option value="all">全部成果</option>
-                          {works.map((work, index) => <option key={work.id} value={work.id}>{WORK_NOUNS[work.kind] || '成果'} {works.length - index} · {compactWorkTitle(work.title, 14)}</option>)}
+                          {works.map((work, index) => <option key={work.id} value={work.id}>{WORK_NOUNS[work.kind] || '成果'} {works.length - index} · {work.title}</option>)}
                           {files.some((file) => !file.workId) && <option value="legacy">公共 / 历史</option>}
                         </select>}
                       {currentWork && fileAssetTab === 'OUTPUT' && <>
@@ -3225,7 +3242,7 @@ export default function SpaceDetailPage() {
                         </div>
                       </section>
 
-                      {currentRun.id === activeRun?.id && !['WAITING', 'WAITING_APPROVAL'].includes(currentRun.status) && (
+                      {currentRun.id === activeRun?.id && (!['WAITING', 'WAITING_APPROVAL'].includes(currentRun.status) || researchApprovalPending) && (
                         <section className="rounded-lg border border-black/[0.06] bg-white px-4 py-4 sm:px-5">
                           <div className="flex items-start gap-3">
                             <Loader2 className="mt-0.5 shrink-0 animate-spin text-slate-500" size={17} />
@@ -3249,6 +3266,16 @@ export default function SpaceDetailPage() {
                                 <div className={`mt-3 flex items-center gap-2 text-xs font-bold ${latestResearchEvent.type === 'WEB_SEARCH_COMPLETED' ? 'text-emerald-600' : latestResearchEvent.type === 'WEB_SEARCH_STARTED' ? 'text-slate-500' : 'text-amber-600'}`}>
                                   {latestResearchEvent.type === 'WEB_SEARCH_STARTED' ? <Loader2 className="animate-spin" size={13} /> : <Globe2 size={13} />}
                                   {latestResearchEvent.message}
+                                </div>
+                              )}
+                              {researchApprovalPending && (
+                                <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                                  <div className="text-xs font-black text-amber-800">执行过程中需要联网查询</div>
+                                  <div className="mt-1 text-xs font-semibold leading-5 text-amber-700">系统会根据当前任务生成具体查询，允许后仅授权本轮受控联网。</div>
+                                  <div className="mt-3 flex flex-wrap gap-2">
+                                    <button type="button" onClick={() => void decideResearchApproval(true)} className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-slate-950 px-3 text-xs font-black text-white"><Check size={13} />允许本轮</button>
+                                    <button type="button" onClick={() => void decideResearchApproval(false)} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-amber-200 bg-white px-3 text-xs font-black text-amber-800"><X size={13} />拒绝</button>
+                                  </div>
                                 </div>
                               )}
                             </div>
@@ -4968,6 +4995,20 @@ export default function SpaceDetailPage() {
                           </select>
                           <div className="rounded-lg border border-black/[0.06] bg-slate-50/70 p-3">
                             <label htmlFor="automation-completion-action" className="mb-2 block text-xs font-black text-slate-600">任务完成后</label>
+                            <div className="mb-2 space-y-1.5">
+                              <label htmlFor="automation-share-theme" className="block text-[11px] font-black text-slate-500">共享页面样式</label>
+                              <select
+                                id="automation-share-theme"
+                                value={automationShareTheme}
+                                onChange={(event) => setAutomationShareTheme(event.target.value as 'inherit' | 'clean' | 'editorial-handwritten')}
+                                className="h-9 w-full rounded-md border border-black/[0.08] bg-white px-2.5 text-[11px] font-bold text-slate-700 outline-none"
+                              >
+                                <option value="inherit">跟随成果声明</option>
+                                <option value="clean">简洁阅读</option>
+                                <option value="editorial-handwritten">编辑部手账</option>
+                              </select>
+                              <p className="text-[10px] font-semibold leading-4 text-slate-400">仅在自动共享成果时生效；明确选择后会覆盖成果中的主题声明。</p>
+                            </div>
                             <div className="grid grid-cols-2 gap-2">
                               <select
                                 id="automation-completion-action"

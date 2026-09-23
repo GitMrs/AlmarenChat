@@ -5,6 +5,8 @@ import { decryptQQCredential } from '../../lib/qq-assistant/credentials.mjs';
 import { buildQQWebhookUrl } from '../../lib/qq-assistant/webhook.mjs';
 import { isUnsafeWebhookHostname } from '../../lib/space-automation-policy.mjs';
 import { renderWebhookTemplate } from '../../lib/webhook-template.mjs';
+import { findDeliveryArtifact, normalizeDeliveryManifest } from '../../lib/delivery-manifest.mjs';
+import { normalizeShareTheme } from '../../lib/share-theme-policy.mjs';
 
 function shortError(error) {
   return (error instanceof Error ? error.message : String(error)).slice(0, 500);
@@ -29,23 +31,43 @@ export { renderWebhookTemplate } from '../../lib/webhook-template.mjs';
 
 function primaryTextArtifact(db, context, projectRoot) {
   if (!context.workId && !context.runId) return null;
-  const file = db.prepare(
-    `SELECT "id", "fileName", "mimeType", "relativePath", "size", "shareId", "shareEnabled"
+  const files = db.prepare(
+    `SELECT "id", "fileName", "mimeType", "relativePath", "size", "shareId", "shareEnabled", "shareTheme"
      FROM "SpaceFile"
      WHERE "spaceId" = ? AND "status" = 'READY'
        AND ((? IS NOT NULL AND "runId" = ?) OR (? IS NOT NULL AND "workId" = ?))
        AND (LOWER("fileName") LIKE '%.md' OR LOWER("fileName") LIKE '%.txt')
        AND LOWER("fileName") NOT IN ('notification.txt', 'notification.md')
      ORDER BY CASE WHEN "runId" = ? THEN 0 ELSE 1 END, COALESCE("size", 0) DESC, "createdAt" DESC
-     LIMIT 1`
+     LIMIT 20`
+  ).all(context.spaceId, context.runId, context.runId, context.workId, context.workId, context.runId);
+  const manifestFile = db.prepare(
+    `SELECT "id", "fileName", "mimeType", "relativePath", "size", "shareId", "shareEnabled"
+     FROM "SpaceFile"
+     WHERE "spaceId" = ? AND "status" = 'READY'
+       AND ((? IS NOT NULL AND "runId" = ?) OR (? IS NOT NULL AND "workId" = ?))
+       AND LOWER("fileName") = '.delivery.json'
+     ORDER BY CASE WHEN "runId" = ? THEN 0 ELSE 1 END, "createdAt" DESC LIMIT 1`
   ).get(context.spaceId, context.runId, context.runId, context.workId, context.workId, context.runId);
-  return readTextArtifact(file, context, projectRoot);
+  const manifestText = readTextArtifact(manifestFile, context, projectRoot, 32_000)?.text;
+  if (manifestText) {
+    let manifest;
+    try { manifest = normalizeDeliveryManifest(JSON.parse(manifestText)); } catch { manifest = null; }
+    if (manifest) {
+      const declared = manifest.artifacts.find((entry) => entry.role === 'report' && entry.share === true);
+      if (!declared) return null;
+      const selected = files.find((file) => findDeliveryArtifact(manifest, file.relativePath)?.path === declared.path)
+        || files.find((file) => findDeliveryArtifact(manifest, file.fileName)?.path === declared.path);
+      return readTextArtifact(selected, context, projectRoot);
+    }
+  }
+  return readTextArtifact(files[0], context, projectRoot);
 }
 
 function notificationTextArtifact(db, context, projectRoot) {
   if (!context.workId && !context.runId) return null;
   const file = db.prepare(
-    `SELECT "id", "fileName", "mimeType", "relativePath", "size", "shareId", "shareEnabled"
+    `SELECT "id", "fileName", "mimeType", "relativePath", "size", "shareId", "shareEnabled", "shareTheme"
      FROM "SpaceFile"
      WHERE "spaceId" = ? AND "status" = 'READY'
        AND ((? IS NOT NULL AND "runId" = ?) OR (? IS NOT NULL AND "workId" = ?))
@@ -62,15 +84,17 @@ function publicAppOrigin() {
   try { return new URL(configured).origin; } catch { return null; }
 }
 
-function ensureArtifactShare(db, artifact, timestamp = new Date().toISOString()) {
+function ensureArtifactShare(db, artifact, theme = 'clean', timestamp = new Date().toISOString()) {
   if (!artifact?.id || !/\.(?:md|markdown)$/i.test(artifact.fileName || '')) return null;
   const origin = publicAppOrigin();
   if (!origin) return null;
   const shareId = artifact.shareId || randomUUID().replaceAll('-', '');
   if (!artifact.shareEnabled || !artifact.shareId) {
     db.prepare(
-      `UPDATE "SpaceFile" SET "shareId" = ?, "shareEnabled" = 1, "sharedAt" = COALESCE("sharedAt", ?), "updatedAt" = ? WHERE "id" = ?`
-    ).run(shareId, timestamp, timestamp, artifact.id);
+      `UPDATE "SpaceFile" SET "shareId" = ?, "shareEnabled" = 1, "shareTheme" = ?, "sharedAt" = COALESCE("sharedAt", ?), "updatedAt" = ? WHERE "id" = ?`
+    ).run(shareId, theme, timestamp, timestamp, artifact.id);
+  } else if (artifact.shareTheme !== theme) {
+    db.prepare('UPDATE "SpaceFile" SET "shareTheme" = ?, "updatedAt" = ? WHERE "id" = ?').run(theme, timestamp, artifact.id);
   }
   return `${origin}/share/${shareId}/`;
 }
@@ -96,7 +120,7 @@ export async function notifyWebhookCompletion(db, { executionId = null, runId = 
   const context = db.prepare(
     `SELECT space."userId", automation."spaceId", run."result", run."completedAt",
             automation."id" AS "automationId", automation."name" AS "automationName",
-            automation."completionAction", automation."completionConfig",
+            automation."completionAction", automation."completionConfig", automation."shareTheme",
             execution."id" AS "executionId", execution."runId", execution."workId", execution."scheduledFor",
             execution."result" AS "executionResult"
      FROM "SpaceAutomationExecution" execution
@@ -177,7 +201,25 @@ export async function notifyWebhookCompletion(db, { executionId = null, runId = 
   }
 
   const notification = notificationTextArtifact(db, context, projectRoot);
-  const shareUrl = ensureArtifactShare(db, artifact);
+  let shareTheme = context.shareTheme === 'clean' || context.shareTheme === 'editorial-handwritten'
+    ? context.shareTheme
+    : artifact?.shareTheme || 'clean';
+  const manifestFile = db.prepare(
+    `SELECT "id", "fileName", "mimeType", "relativePath", "size", "shareId", "shareEnabled"
+     FROM "SpaceFile" WHERE "spaceId" = ? AND "status" = 'READY'
+       AND ((? IS NOT NULL AND "runId" = ?) OR (? IS NOT NULL AND "workId" = ?))
+       AND LOWER("fileName") = '.delivery.json'
+     ORDER BY "createdAt" DESC LIMIT 1`
+  ).get(context.spaceId, context.runId, context.runId, context.workId, context.workId);
+  const manifestText = readTextArtifact(manifestFile, context, projectRoot, 32_000)?.text;
+  if (manifestText && artifact) {
+    try {
+      const manifest = normalizeDeliveryManifest(JSON.parse(manifestText));
+      const declared = findDeliveryArtifact(manifest, artifact.relativePath) || findDeliveryArtifact(manifest, artifact.fileName);
+      if (context.shareTheme === 'inherit' && declared?.renderTheme) shareTheme = normalizeShareTheme(declared.renderTheme);
+    } catch { /* keep the default theme for malformed optional metadata */ }
+  }
+  const shareUrl = ensureArtifactShare(db, artifact, shareTheme);
   const qqContent = qqNotificationText(notification?.text || content, shareUrl);
 
   const baseUrl = process.env.QQ_ASSISTANT_WEBHOOK_INTERNAL_URL

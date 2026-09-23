@@ -44,7 +44,7 @@ function notificationDatabase() {
     CREATE TABLE "Space" ("id" TEXT PRIMARY KEY, "userId" TEXT);
     CREATE TABLE "SpaceAutomation" (
       "id" TEXT PRIMARY KEY, "spaceId" TEXT, "name" TEXT,
-      "completionAction" TEXT, "completionConfig" TEXT
+      "completionAction" TEXT, "completionConfig" TEXT, "shareTheme" TEXT DEFAULT 'inherit'
     );
     CREATE TABLE "SpaceAutomationExecution" (
       "id" TEXT PRIMARY KEY, "automationId" TEXT, "runId" TEXT,
@@ -61,6 +61,7 @@ function notificationDatabase() {
       "id" TEXT PRIMARY KEY, "spaceId" TEXT, "fileName" TEXT, "mimeType" TEXT,
       "relativePath" TEXT, "size" INTEGER, "runId" TEXT, "workId" TEXT,
       "status" TEXT, "shareId" TEXT, "shareEnabled" INTEGER DEFAULT 0,
+      "shareTheme" TEXT DEFAULT 'clean',
       "sharedAt" TEXT, "createdAt" TEXT, "updatedAt" TEXT
     );
     CREATE TABLE "AssistantQQBinding" (
@@ -69,12 +70,13 @@ function notificationDatabase() {
     );
   `);
   db.prepare('INSERT INTO "Space" VALUES (?, ?)').run('space-1', 'user-1');
-  db.prepare('INSERT INTO "SpaceAutomation" VALUES (?, ?, ?, ?, ?)').run(
+  db.prepare('INSERT INTO "SpaceAutomation" VALUES (?, ?, ?, ?, ?, ?)').run(
     'automation-1',
     'space-1',
     '每日速报',
     'WEBHOOK_NOTIFY',
-    JSON.stringify({ target: 'CUSTOM_WEBHOOK', webhookId: 'webhook-1' })
+    JSON.stringify({ target: 'CUSTOM_WEBHOOK', webhookId: 'webhook-1' }),
+    'inherit'
   );
   db.prepare('INSERT INTO "SpaceWebhook" VALUES (?, ?, ?, ?, ?, NULL, NULL)').run(
     'webhook-1',
@@ -294,3 +296,4 @@ test('unsuccessful automation does not send a completion webhook', async () => {
     globalThis.fetch = originalFetch;
   }
 });
+

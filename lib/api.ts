@@ -540,14 +540,14 @@ export const spaces = {
       body: JSON.stringify(options || {}),
     }),
   getFileShare: (spaceId: string, fileId: string) =>
-    request<{ enabled: boolean; url: string | null; externalDependencies: boolean }>(`/spaces/${spaceId}/files/${fileId}/share`),
-  enableFileShare: (spaceId: string, fileId: string, options?: { externalDependencies?: boolean }) =>
-    request<{ enabled: boolean; url: string; externalDependencies: boolean }>(`/spaces/${spaceId}/files/${fileId}/share`, {
+    request<{ enabled: boolean; url: string | null; externalDependencies: boolean; shareTheme: 'clean' | 'editorial-handwritten' }>(`/spaces/${spaceId}/files/${fileId}/share`),
+  enableFileShare: (spaceId: string, fileId: string, options?: { externalDependencies?: boolean; shareTheme?: 'clean' | 'editorial-handwritten' }) =>
+    request<{ enabled: boolean; url: string; externalDependencies: boolean; shareTheme: 'clean' | 'editorial-handwritten' }>(`/spaces/${spaceId}/files/${fileId}/share`, {
       method: 'PUT',
       body: JSON.stringify(options || {}),
     }),
   disableFileShare: (spaceId: string, fileId: string) =>
-    request<{ enabled: false; url: null; externalDependencies: boolean }>(`/spaces/${spaceId}/files/${fileId}/share`, { method: 'DELETE' }),
+    request<{ enabled: false; url: null; externalDependencies: boolean; shareTheme: 'clean' | 'editorial-handwritten' }>(`/spaces/${spaceId}/files/${fileId}/share`, { method: 'DELETE' }),
   updateFileText: (spaceId: string, fileId: string, content: string, updatedAt: string | null) =>
     request<{ file: any }>(`/spaces/${spaceId}/files/${fileId}`, {
       method: 'PUT',
@@ -583,12 +583,12 @@ export const spaces = {
     }),
   automations: (spaceId: string) =>
     request<{ automations: SpaceAutomation[] }>(`/spaces/${spaceId}/automations`),
-  createAutomation: (spaceId: string, data: { name: string; prompt: string; scheduleType: 'INTERVAL' | 'DAILY' | 'WEEKLY'; intervalMinutes: number; timeZone: string; scheduleHour?: number; scheduleMinute?: number; weekdays?: number[]; workStrategy: 'NEW_WORK' | 'ACTIVE_WORK'; executionMode?: 'PROMPT' | 'SCRIPT_ANALYSIS' | 'SCRIPT_DIRECT'; scriptPath?: string | null; networkPolicy: 'forbidden' | 'allowed' | 'required'; completionAction?: 'NONE' | 'WECHAT_CREATE_DRAFT' | 'WEBHOOK_NOTIFY'; completionConfig?: { themeId?: string; target?: 'PERSONAL_QQ' | 'CUSTOM_WEBHOOK'; webhookId?: string } | null; enabled: boolean }) =>
+  createAutomation: (spaceId: string, data: { name: string; prompt: string; scheduleType: 'INTERVAL' | 'DAILY' | 'WEEKLY'; intervalMinutes: number; timeZone: string; scheduleHour?: number; scheduleMinute?: number; weekdays?: number[]; workStrategy: 'NEW_WORK' | 'ACTIVE_WORK'; executionMode?: 'PROMPT' | 'SCRIPT_ANALYSIS' | 'SCRIPT_DIRECT'; scriptPath?: string | null; networkPolicy: 'forbidden' | 'allowed' | 'required'; completionAction?: 'NONE' | 'WECHAT_CREATE_DRAFT' | 'WEBHOOK_NOTIFY'; completionConfig?: { themeId?: string; target?: 'PERSONAL_QQ' | 'CUSTOM_WEBHOOK'; webhookId?: string } | null; shareTheme?: 'inherit' | 'clean' | 'editorial-handwritten'; enabled: boolean }) =>
     request<{ automation: SpaceAutomation }>(`/spaces/${spaceId}/automations`, {
       method: 'POST',
       body: JSON.stringify(data),
     }),
-  updateAutomation: (spaceId: string, automationId: string, data: Partial<Pick<SpaceAutomation, 'name' | 'prompt' | 'scheduleType' | 'intervalMinutes' | 'timeZone' | 'scheduleHour' | 'scheduleMinute' | 'weekdays' | 'workStrategy' | 'executionMode' | 'scriptPath' | 'networkPolicy' | 'completionAction' | 'completionConfig' | 'enabled' | 'nextRunAt'>>) =>
+  updateAutomation: (spaceId: string, automationId: string, data: Partial<Pick<SpaceAutomation, 'name' | 'prompt' | 'scheduleType' | 'intervalMinutes' | 'timeZone' | 'scheduleHour' | 'scheduleMinute' | 'weekdays' | 'workStrategy' | 'executionMode' | 'scriptPath' | 'networkPolicy' | 'completionAction' | 'completionConfig' | 'shareTheme' | 'enabled' | 'nextRunAt'>>) =>
     request<{ automation: SpaceAutomation }>(`/spaces/${spaceId}/automations/${automationId}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
@@ -652,7 +652,7 @@ export const spaces = {
     id: string,
     input: string,
     proposalMessageId?: string,
-    revisedProposal?: { goal: string; steps: string[]; deliverables: string[]; networkPolicy: 'forbidden' | 'allowed' | 'required' },
+    revisedProposal?: { goal: string; steps: string[]; deliverables: string[]; networkPolicy: 'forbidden' | 'allowed' | 'required' | 'runtime' },
     workId?: string
   ) =>
     request<{ run: AgentRun; proposal?: SpaceTaskProposal }>(`/spaces/${id}/runs`, {
@@ -732,6 +732,11 @@ export const agentRuns = {
     request<{ run: AgentRun }>(`/runs/${id}/cancel`, { method: 'POST' }),
   cancelTask: (runId: string, taskId: string) =>
     request<{ run: AgentRun }>(`/runs/${runId}/tasks/${taskId}/cancel`, { method: 'POST' }),
+  approveNetwork: (runId: string, approved: boolean) =>
+    request<{ run: AgentRun }>(`/runs/${runId}/network-approval`, {
+      method: 'POST',
+      body: JSON.stringify({ approved }),
+    }),
   reviewDispatch: (
     runId: string,
     taskId: string,

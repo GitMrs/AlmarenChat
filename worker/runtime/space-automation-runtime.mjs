@@ -51,7 +51,7 @@ export function automationExecutionInput(automation, prompt, scriptData = null) 
     notificationTarget = null;
   }
   const qqDelivery = automation.completionAction === 'WEBHOOK_NOTIFY' && notificationTarget === 'PERSONAL_QQ'
-    ? '\n\n【QQ 通知交付要求】除完整成果外，同时写入 notification.txt：使用适合手机即时消息阅读的纯文本，最多 3 条重点；每条将标题和一句话摘要合并，原文链接单独一行；总长度不超过 1200 字符。不要在文件中编造共享链接，平台会自动追加完整成果链接。'
+    ? '\n\n【QQ 通知交付要求】除完整成果外，同时写入 notification.txt：使用适合手机即时消息阅读的纯文本，最多 3 条重点；每条将标题和一句话摘要合并，原文链接单独一行；总长度不超过 1200 字符。不要在文件中编造共享链接，平台会自动追加完整成果链接。可选地写入 .delivery.json 声明成果角色、是否共享及 renderTheme；不要把 .delivery.json 当作正文成果。'
     : '';
   const instruction = `${String(prompt || '').trim()}${qqDelivery}`.slice(0, 12_000);
   if (!scriptData) return instruction;

@@ -241,7 +241,7 @@ export function createResearchRuntime({
     // A task field must not opt in to research. The concrete input being
     // processed is the runtime signal; callers can pass a focused research
     // request when the current action actually needs external facts.
-    if (run.runtimeVersion >= 3 && options.task && !options.forceResearch && !wantsWebResearch(run.input)) return '';
+    if (run.runtimeVersion >= 3 && options.task && !options.forceResearch && !wantsWebResearch(researchInput)) return '';
     if (run.runtimeVersion >= 3 && options.task
       ? explicitlyForbidsResearchExecution(researchInput)
       : explicitlyForbidsWebResearch(researchInput)) return '';
@@ -252,6 +252,23 @@ export function createResearchRuntime({
       ? runtimePermissions.consume('web_research', 'web_search')
       : { allowed: true };
     if (!permission.allowed) {
+      if (permission.pending && run.runtimeVersion >= 3) {
+        const request = {
+          capability: 'web_research',
+          query: String(researchInput).slice(0, 600),
+          reason: '当前执行步骤需要外部资料或最新事实，是否允许本轮联网查询？',
+          requestedAt: now(),
+        };
+        const row = db.prepare('SELECT "coordinatorState" FROM "AgentRun" WHERE "id" = ?').get(run.id);
+        let state = {};
+        try { state = row?.coordinatorState ? JSON.parse(row.coordinatorState) : {}; } catch { state = {}; }
+        db.prepare('UPDATE "AgentRun" SET "status" = \'WAITING_APPROVAL\', "workerId" = NULL, "heartbeatAt" = NULL, "coordinatorState" = ?, "updatedAt" = ? WHERE "id" = ?')
+          .run(JSON.stringify({ ...state, pendingNetworkRequest: request }), now(), run.id);
+        addEvent(run.id, 'WEB_SEARCH_APPROVAL_REQUIRED', '任务执行需要联网查询，等待用户确认', request);
+        const error = new Error(permission.error);
+        error.code = 'RUNTIME_PERMISSION_REQUIRED';
+        throw error;
+      }
       addEvent(run.id, 'WEB_SEARCH_BLOCKED', permission.error, { code: permission.code, usage: runtimePermissions.usage });
       return `联网检索未执行：${permission.error}`;
     }

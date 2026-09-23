@@ -112,7 +112,7 @@ export default function SpaceFileEditorDialog({
   const [externalDependencies, setExternalDependencies] = useState(false);
   const [externalDependenciesBusy, setExternalDependenciesBusy] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
-  const [share, setShare] = useState<{ enabled: boolean; url: string | null; externalDependencies: boolean } | null>(null);
+  const [share, setShare] = useState<{ enabled: boolean; url: string | null; externalDependencies: boolean; shareTheme: 'clean' | 'editorial-handwritten' } | null>(null);
   const [shareBusy, setShareBusy] = useState(false);
   const [shareError, setShareError] = useState('');
   const [shareMessage, setShareMessage] = useState('');
@@ -333,7 +333,7 @@ export default function SpaceFileEditorDialog({
     try {
       const result = share.enabled
         ? await spacesApi.disableFileShare(spaceId, file.id)
-        : await spacesApi.enableFileShare(spaceId, file.id, { externalDependencies });
+         : await spacesApi.enableFileShare(spaceId, file.id, { externalDependencies, shareTheme: share?.shareTheme || 'clean' });
       setShare(result);
       setShareMessage(result.enabled ? '任何获得链接的人都可以访问' : '共享已关闭，原链接已失效');
     } catch (reason: any) {
@@ -577,6 +577,26 @@ export default function SpaceFileEditorDialog({
                     <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition ${share?.enabled ? 'left-[18px]' : 'left-0.5'}`} />
                   </button>
                   {shareBusy && <Loader2 size={13} className="animate-spin" />}
+                  {share?.enabled && markdownPreview && (
+                    <select
+                      aria-label="共享展示主题"
+                      value={share.shareTheme || 'clean'}
+                      disabled={shareBusy}
+                      onChange={async (event) => {
+                        try {
+                          const result = await spacesApi.enableFileShare(spaceId, file.id, { externalDependencies, shareTheme: event.target.value as 'clean' | 'editorial-handwritten' });
+                          setShare(result);
+                          setShareMessage('共享展示主题已更新');
+                        } catch (reason: any) {
+                          setShareError(reason.message || '更新共享主题失败');
+                        }
+                      }}
+                      className="h-7 rounded-md border border-black/[0.08] bg-white px-2 text-xs font-semibold text-slate-600"
+                    >
+                      <option value="clean">简洁阅读</option>
+                      <option value="editorial-handwritten">编辑部手账</option>
+                    </select>
+                  )}
                   {share?.enabled && share.url && (
                     <>
                       <button type="button" onClick={copyShareLink} className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-950">

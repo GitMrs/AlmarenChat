@@ -283,6 +283,7 @@ model SpaceAutomation {
   networkPolicy   String    @default("forbidden")
   completionAction String   @default("NONE")
   completionConfig Json?
+  shareTheme      String    @default("inherit")
   enabled         Boolean   @default(false)
   nextRunAt       DateTime
   lastRunAt       DateTime?
@@ -434,6 +435,7 @@ model SpaceFile {
   status       String   @default("READY")
   shareId      String?  @unique
   shareEnabled Boolean  @default(false)
+  shareTheme   String   @default("clean")
   externalDependencies Boolean @default(false)
   sharedAt     DateTime?
   createdAt    DateTime @default(now())

@@ -87,7 +87,7 @@ export async function GET(
     }
     const bytes = await readFile(actualTarget);
     const markdown = /\.(?:md|markdown)$/i.test(relativePath);
-    const body = markdown ? renderSharedMarkdownPage(bytes.toString('utf8'), entry.fileName) : bytes;
+    const body = markdown ? renderSharedMarkdownPage(bytes.toString('utf8'), entry.fileName, { theme: entry.shareTheme }) : bytes;
     return new Response(body, {
       headers: {
         'Content-Type': markdown ? 'text/html; charset=utf-8' : mimeType,
