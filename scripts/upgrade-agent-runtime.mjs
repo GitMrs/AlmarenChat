@@ -41,6 +41,11 @@ const KNOWN_MIGRATION_REPAIRS = [
     migration: '20260904120000_add_space_file_external_dependencies',
     columns: [{ table: 'SpaceFile', names: ['externalDependencies'] }],
   },
+  {
+    migration: '20260904150000_add_assistant_reminder_idempotency',
+    columns: [{ table: 'AssistantReminder', names: ['idempotencyKey'] }],
+    indexes: ['AssistantReminder_userId_idempotencyKey_key'],
+  },
 ];
 const REQUIRED_BASELINE_TABLES = [
   'User', 'Agent', 'Space', 'AgentRun', 'SpaceAutomation', 'SpaceWebhook', 'SpaceMcpServer', 'StudioWorkspace',
