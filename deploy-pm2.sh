@@ -9,6 +9,24 @@ BACKUP_DIR=".next.previous"
 PM2_CONFIG="ecosystem.config.cjs"
 PM2_APPS=(almaren-chat almaren-chat-worker almaren-chat-qq)
 SERVICES_STOPPED=0
+LOCK_FILE="${DEPLOY_LOCK_FILE:-/tmp/almaren-chat-deploy.lock}"
+HEALTH_URL="${HEALTH_URL:-}"
+DATABASE_BACKUP_RESULT=""
+
+if ! command -v flock >/dev/null 2>&1; then
+  echo "Error: flock is required for serialized deployments"
+  exit 1
+fi
+if ! command -v curl >/dev/null 2>&1; then
+  echo "Error: curl is required for the post-deploy health check"
+  exit 1
+fi
+
+exec 9>"$LOCK_FILE"
+if ! flock -n 9; then
+  echo "Error: another deployment is already running (lock: $LOCK_FILE)"
+  exit 1
+fi
 
 if [ ! -f "$ENV_FILE" ]; then
   echo "Error: env file not found: $ENV_FILE"
@@ -20,26 +38,53 @@ set -a
 . "$ENV_FILE"
 set +a
 
-if [ -z "${DATABASE_URL:-}" ] || [[ "$DATABASE_URL" == file:/app/* ]]; then
-  export DATABASE_URL="file:./data/dev.db"
+if [ -z "${DATABASE_URL:-}" ]; then
+  echo "Error: DATABASE_URL is required in $ENV_FILE"
+  exit 1
+fi
+if [[ "$DATABASE_URL" != file:* ]]; then
+  echo "Error: production deployment currently requires a SQLite file DATABASE_URL"
+  exit 1
 fi
 
 restart_services() {
-  set +e
-  pm2 startOrReload "$PM2_CONFIG" --env production --update-env
-  pm2 save
-  set -e
+  if ! pm2 startOrReload "$PM2_CONFIG" --env production --update-env; then
+    echo "CRITICAL: failed to restore PM2 services"
+    return 1
+  fi
+  if ! pm2 save; then
+    echo "CRITICAL: PM2 services started but pm2 save failed"
+    return 1
+  fi
 }
 
 rollback_after_failure() {
   local status=$?
   if [ "$SERVICES_STOPPED" -eq 1 ]; then
     echo "Deployment failed; restoring service availability..."
-    restart_services
+    if ! restart_services; then
+      echo "CRITICAL: deployment failed and service restoration failed"
+    fi
+    echo "Database backups are retained under ${DATABASE_BACKUP_DIR:-data/backups}"
   fi
   exit "$status"
 }
 trap rollback_after_failure EXIT
+
+wait_for_health() {
+  local health_url="${HEALTH_URL:-http://127.0.0.1:${PORT}/}"
+  local attempt
+  echo "Checking application health at $health_url..."
+  for attempt in {1..12}; do
+    if curl --fail --silent --show-error --max-time 3 "$health_url" >/dev/null; then
+      echo "Application health check passed."
+      return 0
+    fi
+    sleep 2
+  done
+  echo "Application health check failed after 12 attempts."
+  return 1
+}
 
 if command -v git >/dev/null 2>&1 && [ -d .git ]; then
   echo "Updating code..."
@@ -94,7 +139,8 @@ echo "Building app in an isolated directory..."
 NEXT_DIST_DIR="$BUILD_DIR" yarn build
 
 echo "Backing up SQLite database before schema changes..."
-yarn db:backup
+DATABASE_BACKUP_RESULT="$(yarn db:backup)"
+echo "$DATABASE_BACKUP_RESULT"
 
 echo "Stopping PM2 services for SQLite migration..."
 for app in "${PM2_APPS[@]}"; do
@@ -125,7 +171,22 @@ if ! pm2 startOrReload "$PM2_CONFIG" --env production --update-env; then
   if [ -d "$BACKUP_DIR" ]; then
     mv "$BACKUP_DIR" .next
   fi
-  restart_services
+  if ! restart_services; then
+    echo "CRITICAL: start-failure rollback failed to restore PM2 services"
+  fi
+  SERVICES_STOPPED=0
+  exit 1
+fi
+
+if ! wait_for_health; then
+  echo "New build is not healthy; rolling back the previous build..."
+  rm -rf .next
+  if [ -d "$BACKUP_DIR" ]; then
+    mv "$BACKUP_DIR" .next
+  fi
+  if ! restart_services; then
+    echo "CRITICAL: health-check rollback failed to restore PM2 services"
+  fi
   SERVICES_STOPPED=0
   exit 1
 fi

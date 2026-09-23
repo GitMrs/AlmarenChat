@@ -161,6 +161,8 @@ pm2 logs almaren-chat-qq
 
 部署脚本会备份 SQLite、升级 Agent Runtime Schema、构建应用并启动 Web、Agent Worker 和 QQ Worker。
 
+生产环境的 `.env.production` 必须显式配置 SQLite `DATABASE_URL`，部署不会再缺省切换到开发数据库。脚本会使用 `flock` 防止并发部署，并在 PM2 重载后检查 `http://127.0.0.1:$PORT/`；可通过 `HEALTH_URL` 指定其他健康检查地址，通过 `DEPLOY_LOCK_FILE` 指定部署锁文件路径。
+
 ## 常见问题
 
 ### Q: 本地 Ollama 配置保存在哪里？
