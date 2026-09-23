@@ -46,6 +46,10 @@ const KNOWN_MIGRATION_REPAIRS = [
     columns: [{ table: 'AssistantReminder', names: ['idempotencyKey'] }],
     indexes: ['AssistantReminder_userId_idempotencyKey_key'],
   },
+  {
+    migration: '20260904170000_add_assistant_context_preferences',
+    columns: [{ table: 'PersonalAssistantProfile', names: ['includeSpaceContext', 'includeTaskContext', 'includeChatContext'] }],
+  },
 ];
 const REQUIRED_BASELINE_TABLES = [
   'User', 'Agent', 'Space', 'AgentRun', 'SpaceAutomation', 'SpaceWebhook', 'SpaceMcpServer', 'StudioWorkspace',

@@ -180,3 +180,30 @@ test('detects a reminder idempotency migration whose schema already exists', () 
     db.close();
   }
 });
+
+test('detects an assistant context preferences migration whose columns already exist', () => {
+  const db = baselineDatabase();
+  try {
+    db.exec(`
+      CREATE TABLE "_prisma_migrations" ("migration_name" TEXT, "started_at" DATETIME, "finished_at" DATETIME, "rolled_back_at" DATETIME);
+      CREATE TABLE "PersonalAssistantProfile" ("userId" TEXT, "includeSpaceContext" INTEGER, "includeTaskContext" INTEGER, "includeChatContext" INTEGER);
+    `);
+    for (const migration of [
+      '20260902150000_add_image_model_settings',
+      '20260902183000_add_personal_assistant',
+      '20260903170000_add_assistant_proactive_reminders',
+      '20260904120000_add_space_file_external_dependencies',
+      '20260904150000_add_assistant_reminder_idempotency',
+    ]) {
+      db.prepare('INSERT INTO "_prisma_migrations" ("migration_name", "started_at", "finished_at", "rolled_back_at") VALUES (?, ?, ?, NULL)')
+        .run(migration, '2026-09-01T00:00:00.000Z', '2026-09-01T00:00:01.000Z');
+    }
+    assert.deepEqual(inspectKnownMigrationRepair(db), {
+      action: 'resolve',
+      migration: '20260904170000_add_assistant_context_preferences',
+      reason: 'schema-present-without-migration-history',
+    });
+  } finally {
+    db.close();
+  }
+});
