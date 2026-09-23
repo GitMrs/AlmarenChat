@@ -1,12 +1,12 @@
 import 'dotenv/config';
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, readdirSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Database from 'better-sqlite3';
 
 const BASELINE_MIGRATION = '20260921180000_add_space_automation_execution_mode';
-const KNOWN_MIGRATION_REPAIRS = [
+const MANUAL_MIGRATION_REPAIRS = [
   {
     migration: '20260902150000_add_image_model_settings',
     columns: [{ table: 'User', names: ['imageModelEnabled', 'imageModelName', 'imageModelSize'] }],
@@ -50,6 +50,50 @@ const KNOWN_MIGRATION_REPAIRS = [
     migration: '20260904170000_add_assistant_context_preferences',
     columns: [{ table: 'PersonalAssistantProfile', names: ['includeSpaceContext', 'includeTaskContext', 'includeChatContext'] }],
   },
+];
+const MIGRATIONS_DIRECTORY = path.resolve(process.cwd(), 'prisma', 'migrations');
+
+function parseSchemaOnlyMigration(migration, sql) {
+  if (/\b(?:UPDATE|INSERT|DELETE|DROP)\b/i.test(sql)) return null;
+  const columns = new Map();
+  const tables = [];
+  const indexes = [];
+  for (const match of sql.matchAll(/ALTER TABLE\s+"([^"]+)"\s+ADD COLUMN\s+"([^"]+)"/gi)) {
+    if (!columns.has(match[1])) columns.set(match[1], []);
+    columns.get(match[1]).push(match[2]);
+  }
+  for (const match of sql.matchAll(/CREATE TABLE(?: IF NOT EXISTS)?\s+"([^"]+)"\s*\(([\s\S]*?)\n\);/gi)) {
+    const tableColumns = [...match[2].matchAll(/^\s*"([^"]+)"\s+/gm)].map((column) => column[1]);
+    tables.push({ name: match[1], columns: tableColumns });
+  }
+  for (const match of sql.matchAll(/CREATE (?:UNIQUE )?INDEX(?: IF NOT EXISTS)?\s+"([^"]+)"/gi)) {
+    indexes.push(match[1]);
+  }
+  if (columns.size === 0 && tables.length === 0 && indexes.length === 0) return null;
+  return {
+    migration,
+    columns: [...columns.entries()].map(([table, names]) => ({ table, names })),
+    tables,
+    indexes,
+  };
+}
+
+function discoverSchemaOnlyMigrationRepairs() {
+  if (!existsSync(MIGRATIONS_DIRECTORY)) return [];
+  return readdirSync(MIGRATIONS_DIRECTORY, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .sort((left, right) => left.name.localeCompare(right.name))
+    .map((entry) => {
+      const migrationFile = path.join(MIGRATIONS_DIRECTORY, entry.name, 'migration.sql');
+      if (!existsSync(migrationFile)) return null;
+      return parseSchemaOnlyMigration(entry.name, readFileSync(migrationFile, 'utf8'));
+    })
+    .filter(Boolean);
+}
+
+const KNOWN_MIGRATION_REPAIRS = [
+  ...MANUAL_MIGRATION_REPAIRS,
+  ...discoverSchemaOnlyMigrationRepairs().filter((item) => !MANUAL_MIGRATION_REPAIRS.some((known) => known.migration === item.migration)),
 ];
 const REQUIRED_BASELINE_TABLES = [
   'User', 'Agent', 'Space', 'AgentRun', 'SpaceAutomation', 'SpaceWebhook', 'SpaceMcpServer', 'StudioWorkspace',
