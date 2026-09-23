@@ -131,12 +131,13 @@ export function inspectKnownMigrationRepair(targetDb) {
   );
   const migration = KNOWN_MIGRATION_REPAIRS
     .map((spec) => ({ spec, row: pendingMigrations.get(spec.migration) }))
-    .find(({ row }) => !row || row.finished_at === null || row.rolled_back_at !== null);
+    .find(({ row }) => !row || (row.finished_at === null && row.rolled_back_at === null));
   if (!migration) return { action: 'none', reason: 'known-migrations-already-applied' };
 
   const { spec } = migration;
   const migrationName = spec.migration;
   const missing = [];
+  let existingStructureCount = 0;
   for (const requirement of spec.columns || []) {
     if (!baselineHasTable(targetDb, requirement.table)) {
       missing.push(`table:${requirement.table}`);
@@ -145,6 +146,7 @@ export function inspectKnownMigrationRepair(targetDb) {
     const existing = tableColumns(targetDb, requirement.table);
     for (const column of requirement.names) {
       if (!existing.has(column)) missing.push(`column:${requirement.table}.${column}`);
+      else existingStructureCount += 1;
     }
   }
   for (const requirement of spec.tables || []) {
@@ -152,17 +154,26 @@ export function inspectKnownMigrationRepair(targetDb) {
       missing.push(`table:${requirement.name}`);
       continue;
     }
+    existingStructureCount += 1;
     const existing = tableColumns(targetDb, requirement.name);
     for (const column of requirement.columns) {
       if (!existing.has(column)) missing.push(`column:${requirement.name}.${column}`);
+      else existingStructureCount += 1;
     }
   }
   for (const index of spec.indexes || []) {
     if (!targetDb.prepare("SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = ?").get(index)) {
       missing.push(`index:${index}`);
-    }
+    } else existingStructureCount += 1;
   }
   if (missing.length > 0) {
+    if (migration.row && !migration.row.finished_at && !migration.row.rolled_back_at && existingStructureCount === 0) {
+      return {
+        action: 'rollback',
+        migration: migrationName,
+        reason: 'migration-failed-without-schema-changes',
+      };
+    }
     return {
       action: 'manual',
       migration: migrationName,
@@ -197,6 +208,17 @@ function repairKnownMigrationConflict() {
       throw new Error(`迁移 ${inspection.migration} 的字段结构不完整，缺少：${inspection.missing.join(', ')}。已停止部署，请先人工检查。`);
     }
     if (inspection.action !== 'resolve') {
+      if (inspection.action === 'rollback') {
+        const result = spawnSync(executable, ['migrate', 'resolve', '--rolled-back', inspection.migration], {
+          cwd: projectRoot,
+          env: process.env,
+          stdio: 'inherit',
+          shell: false,
+        });
+        if (result.status !== 0) throw new Error(`无法回滚失败的 Prisma 迁移 ${inspection.migration}`);
+        resolvedMigration = inspection.migration;
+        continue;
+      }
       return resolvedMigration
         ? { action: 'resolved', migration: resolvedMigration }
         : inspection;
