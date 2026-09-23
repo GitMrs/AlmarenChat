@@ -9,6 +9,7 @@ BACKUP_DIR=".next.previous"
 PM2_CONFIG="ecosystem.config.cjs"
 PM2_APPS=(almaren-chat almaren-chat-worker almaren-chat-qq)
 SERVICES_STOPPED=0
+MIGRATION_FAILED=0
 LOCK_FILE="${DEPLOY_LOCK_FILE:-/tmp/almaren-chat-deploy.lock}"
 HEALTH_URL="${HEALTH_URL:-}"
 DATABASE_BACKUP_RESULT=""
@@ -48,6 +49,11 @@ if [[ "$DATABASE_URL" != file:* ]]; then
 fi
 
 restart_services() {
+  if [ ! -f .next/BUILD_ID ]; then
+    echo "CRITICAL: cannot start PM2 services because .next/BUILD_ID is missing"
+    echo "Build the application successfully before restoring PM2 services."
+    return 1
+  fi
   if ! pm2 startOrReload "$PM2_CONFIG" --env production --update-env; then
     echo "CRITICAL: failed to restore PM2 services"
     return 1
@@ -61,9 +67,14 @@ restart_services() {
 rollback_after_failure() {
   local status=$?
   if [ "$SERVICES_STOPPED" -eq 1 ]; then
-    echo "Deployment failed; restoring service availability..."
-    if ! restart_services; then
-      echo "CRITICAL: deployment failed and service restoration failed"
+    if [ "$MIGRATION_FAILED" -eq 1 ]; then
+      echo "CRITICAL: database migration failed; PM2 services remain stopped to prevent a restart loop."
+      echo "After recovering the migration, run: pm2 startOrReload $PM2_CONFIG --env production --update-env"
+    else
+      echo "Deployment failed; restoring service availability..."
+      if ! restart_services; then
+        echo "CRITICAL: deployment failed and service restoration failed"
+      fi
     fi
     echo "Database backups are retained under ${DATABASE_BACKUP_DIR:-data/backups}"
   fi
@@ -137,6 +148,10 @@ fi
 
 echo "Building app in an isolated directory..."
 NEXT_DIST_DIR="$BUILD_DIR" yarn build
+if [ ! -f "$BUILD_DIR/BUILD_ID" ]; then
+  echo "Error: Next.js build completed without $BUILD_DIR/BUILD_ID"
+  exit 1
+fi
 
 echo "Backing up SQLite database before schema changes..."
 DATABASE_BACKUP_RESULT="$(yarn db:backup)"
@@ -151,9 +166,15 @@ done
 SERVICES_STOPPED=1
 
 echo "Preparing Prisma migration history..."
-node scripts/upgrade-agent-runtime.mjs --prepare-prisma
+if ! node scripts/upgrade-agent-runtime.mjs --prepare-prisma; then
+  MIGRATION_FAILED=1
+  exit 1
+fi
 echo "Applying database migrations..."
-yarn prisma migrate deploy
+if ! yarn prisma migrate deploy; then
+  MIGRATION_FAILED=1
+  exit 1
+fi
 echo "Applying compatibility data upgrades..."
 yarn db:upgrade-agent-runtime
 
