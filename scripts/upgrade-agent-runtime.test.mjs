@@ -55,7 +55,7 @@ test('an incomplete legacy database stops instead of hiding missing migrations',
 test('detects an image settings migration whose columns already exist', () => {
   const db = baselineDatabase();
   try {
-    db.exec('CREATE TABLE "_prisma_migrations" ("migration_name" TEXT, "finished_at" DATETIME, "rolled_back_at" DATETIME)');
+    db.exec('CREATE TABLE "_prisma_migrations" ("migration_name" TEXT, "started_at" DATETIME, "finished_at" DATETIME, "rolled_back_at" DATETIME)');
     assert.deepEqual(inspectKnownMigrationRepair(db), {
       action: 'resolve',
       migration: '20260902150000_add_image_model_settings',
@@ -70,7 +70,7 @@ test('does not skip an image settings migration when a column is missing', () =>
   const db = baselineDatabase();
   try {
     db.exec('ALTER TABLE "User" RENAME COLUMN "imageModelEnabled" TO "oldImageModelEnabled"');
-    db.exec('CREATE TABLE "_prisma_migrations" ("migration_name" TEXT, "finished_at" DATETIME, "rolled_back_at" DATETIME)');
+    db.exec('CREATE TABLE "_prisma_migrations" ("migration_name" TEXT, "started_at" DATETIME, "finished_at" DATETIME, "rolled_back_at" DATETIME)');
     const result = inspectKnownMigrationRepair(db);
     assert.equal(result.action, 'manual');
     assert.deepEqual(result.missing, ['column:User.imageModelEnabled']);
@@ -83,7 +83,7 @@ test('detects a personal assistant migration whose full schema already exists', 
   const db = baselineDatabase();
   try {
     db.exec(`
-      CREATE TABLE "_prisma_migrations" ("migration_name" TEXT, "finished_at" DATETIME, "rolled_back_at" DATETIME);
+      CREATE TABLE "_prisma_migrations" ("migration_name" TEXT, "started_at" DATETIME, "finished_at" DATETIME, "rolled_back_at" DATETIME);
       CREATE TABLE "Conversation" ("id" TEXT PRIMARY KEY, "userId" TEXT, "kind" TEXT, "updatedAt" TEXT);
       CREATE TABLE "PersonalAssistantProfile" ("userId" TEXT, "conversationId" TEXT, "name" TEXT, "avatar" TEXT, "identity" TEXT, "soul" TEXT, "greeting" TEXT, "createdAt" TEXT, "updatedAt" TEXT);
       CREATE TABLE "AssistantMemoryItem" ("id" TEXT, "userId" TEXT, "category" TEXT, "content" TEXT, "status" TEXT, "sourceMessageId" TEXT, "occurrenceCount" INTEGER, "createdAt" TEXT, "updatedAt" TEXT);
@@ -96,6 +96,32 @@ test('detects a personal assistant migration whose full schema already exists', 
     assert.deepEqual(inspectKnownMigrationRepair(db), {
       action: 'resolve',
       migration: '20260902183000_add_personal_assistant',
+      reason: 'schema-present-without-migration-history',
+    });
+  } finally {
+    db.close();
+  }
+});
+
+test('detects a proactive reminders migration whose full schema already exists', () => {
+  const db = baselineDatabase();
+  try {
+    db.exec(`
+      CREATE TABLE "_prisma_migrations" ("migration_name" TEXT, "started_at" DATETIME, "finished_at" DATETIME, "rolled_back_at" DATETIME);
+      CREATE TABLE "PersonalAssistantProfile" ("userId" TEXT, "conversationId" TEXT, "proactiveEnabled" INTEGER);
+      CREATE TABLE "AssistantReminder" ("id" TEXT, "userId" TEXT, "content" TEXT, "dueTime" TEXT, "status" TEXT, "sourceMessageId" TEXT, "createdAt" TEXT, "updatedAt" TEXT);
+      CREATE TABLE "AssistantProactiveDelivery" ("id" TEXT, "userId" TEXT, "sourceKey" TEXT, "greeting" TEXT, "status" TEXT, "messageId" TEXT, "createdAt" TEXT, "openedAt" TEXT);
+      CREATE INDEX "AssistantReminder_userId_status_dueTime_idx" ON "AssistantReminder"("userId", "status", "dueTime");
+      CREATE UNIQUE INDEX "AssistantProactiveDelivery_userId_sourceKey_key" ON "AssistantProactiveDelivery"("userId", "sourceKey");
+      CREATE INDEX "AssistantProactiveDelivery_userId_createdAt_idx" ON "AssistantProactiveDelivery"("userId", "createdAt");
+    `);
+    db.prepare('INSERT INTO "_prisma_migrations" ("migration_name", "started_at", "finished_at", "rolled_back_at") VALUES (?, ?, ?, NULL)')
+      .run('20260902150000_add_image_model_settings', '2026-09-02T15:00:00.000Z', '2026-09-02T15:00:01.000Z');
+    db.prepare('INSERT INTO "_prisma_migrations" ("migration_name", "started_at", "finished_at", "rolled_back_at") VALUES (?, ?, ?, NULL)')
+      .run('20260902183000_add_personal_assistant', '2026-09-02T18:30:00.000Z', '2026-09-02T18:30:01.000Z');
+    assert.deepEqual(inspectKnownMigrationRepair(db), {
+      action: 'resolve',
+      migration: '20260903170000_add_assistant_proactive_reminders',
       reason: 'schema-present-without-migration-history',
     });
   } finally {

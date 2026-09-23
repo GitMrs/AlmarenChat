@@ -24,6 +24,19 @@ const KNOWN_MIGRATION_REPAIRS = [
       'AssistantMemoryItem_userId_status_updatedAt_idx',
     ],
   },
+  {
+    migration: '20260903170000_add_assistant_proactive_reminders',
+    columns: [{ table: 'PersonalAssistantProfile', names: ['proactiveEnabled'] }],
+    tables: [
+      { name: 'AssistantReminder', columns: ['id', 'userId', 'content', 'dueTime', 'status', 'sourceMessageId', 'createdAt', 'updatedAt'] },
+      { name: 'AssistantProactiveDelivery', columns: ['id', 'userId', 'sourceKey', 'greeting', 'status', 'messageId', 'createdAt', 'openedAt'] },
+    ],
+    indexes: [
+      'AssistantReminder_userId_status_dueTime_idx',
+      'AssistantProactiveDelivery_userId_sourceKey_key',
+      'AssistantProactiveDelivery_userId_createdAt_idx',
+    ],
+  },
 ];
 const REQUIRED_BASELINE_TABLES = [
   'User', 'Agent', 'Space', 'AgentRun', 'SpaceAutomation', 'SpaceWebhook', 'SpaceMcpServer', 'StudioWorkspace',
@@ -110,30 +123,36 @@ export function inspectKnownMigrationRepair(targetDb) {
 function repairKnownMigrationConflict() {
   const databasePath = resolveDatabasePath();
   if (!existsSync(databasePath)) return { action: 'none', reason: 'database-does-not-exist' };
-  const targetDb = new Database(databasePath, { readonly: true, fileMustExist: true });
-  let inspection;
-  try {
-    inspection = inspectKnownMigrationRepair(targetDb);
-  } finally {
-    targetDb.close();
-  }
-  if (inspection.action === 'manual') {
-    throw new Error(`迁移 ${inspection.migration} 的字段结构不完整，缺少：${inspection.missing.join(', ')}。已停止部署，请先人工检查。`);
-  }
-  if (inspection.action !== 'resolve') return inspection;
-
   const projectRoot = process.cwd();
   const executable = process.platform === 'win32'
     ? path.join(projectRoot, 'node_modules', '.bin', 'prisma.cmd')
     : path.join(projectRoot, 'node_modules', '.bin', 'prisma');
-  const result = spawnSync(executable, ['migrate', 'resolve', '--applied', inspection.migration], {
-    cwd: projectRoot,
-    env: process.env,
-    stdio: 'inherit',
-    shell: false,
-  });
-  if (result.status !== 0) throw new Error(`无法修复 Prisma 迁移 ${inspection.migration}`);
-  return { ...inspection, action: 'resolved' };
+  let resolvedMigration = null;
+  while (true) {
+    const targetDb = new Database(databasePath, { readonly: true, fileMustExist: true });
+    let inspection;
+    try {
+      inspection = inspectKnownMigrationRepair(targetDb);
+    } finally {
+      targetDb.close();
+    }
+    if (inspection.action === 'manual') {
+      throw new Error(`迁移 ${inspection.migration} 的字段结构不完整，缺少：${inspection.missing.join(', ')}。已停止部署，请先人工检查。`);
+    }
+    if (inspection.action !== 'resolve') {
+      return resolvedMigration
+        ? { action: 'resolved', migration: resolvedMigration }
+        : inspection;
+    }
+    const result = spawnSync(executable, ['migrate', 'resolve', '--applied', inspection.migration], {
+      cwd: projectRoot,
+      env: process.env,
+      stdio: 'inherit',
+      shell: false,
+    });
+    if (result.status !== 0) throw new Error(`无法修复 Prisma 迁移 ${inspection.migration}`);
+    resolvedMigration = inspection.migration;
+  }
 }
 
 export function inspectPrismaBaseline(targetDb) {
