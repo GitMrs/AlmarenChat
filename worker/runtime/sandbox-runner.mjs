@@ -3,6 +3,7 @@ import { access, lstat, mkdir, mkdtemp, realpath, rm } from 'node:fs/promises';
 import { constants as fsConstants } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { createLinuxBubblewrapInvocation } from '../../lib/linux-bubblewrap.mjs';
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_MAX_OUTPUT_BYTES = 64 * 1024;
@@ -56,19 +57,6 @@ async function resolveCommand(command) {
   throw new Error(`服务器没有安装 Skill 所需命令：${name}`);
 }
 
-async function existingPaths(values) {
-  const result = [];
-  for (const value of values) {
-    try {
-      await access(value, fsConstants.R_OK);
-      result.push(value);
-    } catch {
-      // Optional system path is absent on this distribution.
-    }
-  }
-  return result;
-}
-
 function seatbeltProfile({ workspaceRoot, skillRoot, tempRoot, network, workspaceAccess }) {
   const forms = [
     '(version 1)',
@@ -101,45 +89,15 @@ async function sandboxInvocation({ platform, workspaceRoot, skillRoot, script, e
   }
 
   if (platform === 'linux') {
-    const bwrapCandidates = ['/usr/bin/bwrap', '/bin/bwrap', '/usr/local/bin/bwrap'];
-    let bwrap = null;
-    for (const candidate of bwrapCandidates) {
-      try {
-        await access(candidate, fsConstants.X_OK);
-        bwrap = candidate;
-        break;
-      } catch {
-        // Try the next standard location.
-      }
-    }
-    if (!bwrap) throw new Error('Linux bubblewrap 不可用，拒绝在宿主机直接执行 Skill');
-    const systemRoots = await existingPaths(['/usr', '/bin', '/lib', '/lib64', '/usr/local']);
-    const systemFiles = await existingPaths(['/etc/ld.so.cache', '/etc/localtime']);
-    const profile = ['--die-with-parent', '--new-session', '--unshare-all', '--clearenv'];
-    for (const root of systemRoots) profile.push('--ro-bind', root, root);
-    profile.push('--dir', '/etc');
-    for (const file of systemFiles) profile.push('--ro-bind', file, file);
-    profile.push(
-      '--dev', '/dev',
-      '--proc', '/proc',
-      '--tmpfs', '/tmp',
-      '--dir', '/tmp/home',
-      '--ro-bind', skillRoot, '/skill',
-      workspaceAccess === 'write' ? '--bind' : '--ro-bind', workspaceRoot, '/workspace',
-      '--chdir', '/workspace',
-      '--setenv', 'HOME', '/tmp/home',
-      '--setenv', 'TMPDIR', '/tmp',
-      '--setenv', 'PATH', '/usr/local/bin:/usr/bin:/bin',
-      '--setenv', 'LANG', 'C.UTF-8',
-      '--setenv', 'PYTHONDONTWRITEBYTECODE', '1'
-    );
-    if (!network) profile.push('--unshare-net');
-    return {
-      backend: 'bubblewrap',
-      executable: bwrap,
-      args: [...profile, '--', executable, `/skill/${script.relative}`, ...args],
-      cwd: workspaceRoot,
-    };
+    if (network) throw new Error('Linux bubblewrap 脚本运行不允许联网');
+    return createLinuxBubblewrapInvocation({
+      workspaceRoot,
+      scriptRoot: skillRoot,
+      scriptRelative: script.relative,
+      executable,
+      args,
+      workspaceAccess,
+    });
   }
 
   throw new Error(`当前平台 ${platform} 没有可用的强制沙箱后端`);
