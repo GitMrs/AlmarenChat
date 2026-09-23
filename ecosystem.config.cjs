@@ -9,6 +9,7 @@ module.exports = {
       exec_mode: 'fork',
       env: {
         NODE_ENV: 'production',
+        NEXT_DIST_DIR: '.next',
         PORT: process.env.PORT || 8001,
         HOSTNAME: '0.0.0.0',
         DATABASE_URL: process.env.DATABASE_URL || 'file:./data/dev.db',
