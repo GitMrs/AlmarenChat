@@ -6,6 +6,8 @@ import { fileURLToPath } from 'node:url';
 import Database from 'better-sqlite3';
 
 const BASELINE_MIGRATION = '20260921180000_add_space_automation_execution_mode';
+const IMAGE_MODEL_SETTINGS_MIGRATION = '20260902150000_add_image_model_settings';
+const IMAGE_MODEL_SETTINGS_COLUMNS = ['imageModelEnabled', 'imageModelName', 'imageModelSize'];
 const REQUIRED_BASELINE_TABLES = [
   'User', 'Agent', 'Space', 'AgentRun', 'SpaceAutomation', 'SpaceWebhook', 'SpaceMcpServer', 'StudioWorkspace',
 ];
@@ -23,6 +25,66 @@ function resolveDatabasePath() {
 
 function baselineHasTable(targetDb, table) {
   return Boolean(targetDb.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(table));
+}
+
+function tableColumns(targetDb, table) {
+  return new Set(targetDb.prepare(`PRAGMA table_info("${table}")`).all().map((column) => column.name));
+}
+
+export function inspectKnownMigrationRepair(targetDb) {
+  if (!baselineHasTable(targetDb, '_prisma_migrations') || !baselineHasTable(targetDb, 'User')) {
+    return { action: 'none', reason: 'migration-or-user-table-missing' };
+  }
+  const migration = targetDb.prepare(
+    'SELECT "migration_name" AS migrationName, "finished_at" AS finishedAt, "rolled_back_at" AS rolledBackAt FROM "_prisma_migrations" WHERE "migration_name" = ?'
+  ).get(IMAGE_MODEL_SETTINGS_MIGRATION);
+  if (migration?.finishedAt && !migration.rolledBackAt) {
+    return { action: 'none', reason: 'migration-already-applied', migration: IMAGE_MODEL_SETTINGS_MIGRATION };
+  }
+  const existing = tableColumns(targetDb, 'User');
+  const missing = IMAGE_MODEL_SETTINGS_COLUMNS.filter((column) => !existing.has(column));
+  if (missing.length > 0) {
+    return {
+      action: 'manual',
+      migration: IMAGE_MODEL_SETTINGS_MIGRATION,
+      missing,
+      reason: migration ? 'migration-not-applied-and-schema-incomplete' : 'migration-history-missing-and-schema-incomplete',
+    };
+  }
+  return {
+    action: 'resolve',
+    migration: IMAGE_MODEL_SETTINGS_MIGRATION,
+    reason: migration ? 'migration-failed-but-schema-present' : 'schema-present-without-migration-history',
+  };
+}
+
+function repairKnownMigrationConflict() {
+  const databasePath = resolveDatabasePath();
+  if (!existsSync(databasePath)) return { action: 'none', reason: 'database-does-not-exist' };
+  const targetDb = new Database(databasePath, { readonly: true, fileMustExist: true });
+  let inspection;
+  try {
+    inspection = inspectKnownMigrationRepair(targetDb);
+  } finally {
+    targetDb.close();
+  }
+  if (inspection.action === 'manual') {
+    throw new Error(`迁移 ${inspection.migration} 的字段结构不完整，缺少：${inspection.missing.join(', ')}。已停止部署，请先人工检查。`);
+  }
+  if (inspection.action !== 'resolve') return inspection;
+
+  const projectRoot = process.cwd();
+  const executable = process.platform === 'win32'
+    ? path.join(projectRoot, 'node_modules', '.bin', 'prisma.cmd')
+    : path.join(projectRoot, 'node_modules', '.bin', 'prisma');
+  const result = spawnSync(executable, ['migrate', 'resolve', '--applied', inspection.migration], {
+    cwd: projectRoot,
+    env: process.env,
+    stdio: 'inherit',
+    shell: false,
+  });
+  if (result.status !== 0) throw new Error(`无法修复 Prisma 迁移 ${inspection.migration}`);
+  return { ...inspection, action: 'resolved' };
 }
 
 export function inspectPrismaBaseline(targetDb) {
@@ -87,7 +149,11 @@ const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPat
 const preparePrismaOnly = process.argv.includes('--prepare-prisma');
 
 if (isMain && preparePrismaOnly) {
+  const repaired = repairKnownMigrationConflict();
   const result = preparePrismaMigrationHistory();
+  if (repaired.action === 'resolved') {
+    console.log(`Prisma migration repaired: ${repaired.migration} marked as applied because its columns already exist.`);
+  }
   if (result.action === 'baseline') {
     console.log(`Prisma baseline created through ${result.baseline} (${result.applied} migrations).`);
   } else {
