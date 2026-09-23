@@ -37,6 +37,10 @@ const KNOWN_MIGRATION_REPAIRS = [
       'AssistantProactiveDelivery_userId_createdAt_idx',
     ],
   },
+  {
+    migration: '20260904120000_add_space_file_external_dependencies',
+    columns: [{ table: 'SpaceFile', names: ['externalDependencies'] }],
+  },
 ];
 const REQUIRED_BASELINE_TABLES = [
   'User', 'Agent', 'Space', 'AgentRun', 'SpaceAutomation', 'SpaceWebhook', 'SpaceMcpServer', 'StudioWorkspace',
