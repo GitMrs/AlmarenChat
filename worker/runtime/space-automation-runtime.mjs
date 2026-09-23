@@ -115,6 +115,7 @@ export function triggerNextDueAutomation(db, timestamp = new Date().toISOString(
         spaceId: automation.spaceId,
         scriptPath: automation.scriptPath,
         env: scriptEnv,
+        network: automation.networkPolicy === 'allowed' || automation.networkPolicy === 'required',
       });
 
       if (!scriptResult.ok) {

@@ -31,7 +31,7 @@
 
 ## 2. 脚本化执行与两阶段防重体系
 
-空间 Python/Node.js 脚本在 Linux 生产服务器上强制通过 Bubblewrap 执行；macOS 和 Windows 仅作为可信本地开发环境直接执行。部署要求、隔离边界、断网限制和排障方法见 [空间脚本 Linux 沙箱说明](./space-script-sandbox.md)。
+空间 Python/Node.js 脚本在 Linux 生产服务器上强制通过 Bubblewrap 执行；macOS 和 Windows 仅作为可信本地开发环境直接执行。空间自动化按自身联网策略选择是否保留网络，Space Skill 固定断网。部署要求、隔离边界、网络策略和排障方法见 [空间脚本 Linux 沙箱说明](./space-script-sandbox.md)。
 
 ### 2.1 技能注册表分工升级（`script-developer`）
 - **痛点**：此前后台代码生成任务经常被 `document-writer`（仅支持 `.md`）拦截，导致 Python 等后台脚本创建失败并抛出“不支持代码格式”错误。
