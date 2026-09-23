@@ -57,11 +57,11 @@ export function inspectKnownMigrationRepair(targetDb) {
     return { action: 'none', reason: 'migration-or-user-table-missing' };
   }
   const pendingMigrations = targetDb.prepare(
-    'SELECT "migration_name" AS migrationName, "finished_at" AS finishedAt, "rolled_back_at" AS rolledBackAt FROM "_prisma_migrations" WHERE "migration_name" = ?'
+    'SELECT "migration_name", "finished_at", "rolled_back_at" FROM "_prisma_migrations" WHERE "migration_name" = ? ORDER BY "started_at" DESC LIMIT 1'
   );
   const migration = KNOWN_MIGRATION_REPAIRS
     .map((spec) => ({ spec, row: pendingMigrations.get(spec.migration) }))
-    .find(({ row }) => !row?.finishedAt || row.rolledBackAt);
+    .find(({ row }) => !row || row.finished_at === null || row.rolled_back_at !== null);
   if (!migration) return { action: 'none', reason: 'known-migrations-already-applied' };
 
   const { spec } = migration;
