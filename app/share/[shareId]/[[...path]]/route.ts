@@ -27,7 +27,7 @@ function sharePolicy(request: Request, shareId: string, externalDependencies: bo
     "frame-ancestors 'none'",
     "worker-src 'none'",
     `form-action ${root}`,
-    "base-uri 'none'",
+    `base-uri ${root}`,
   ].join('; ');
 }
 
@@ -87,7 +87,12 @@ export async function GET(
     }
     const bytes = await readFile(actualTarget);
     const markdown = /\.(?:md|markdown)$/i.test(relativePath);
-    const body = markdown ? renderSharedMarkdownPage(bytes.toString('utf8'), entry.fileName, { theme: entry.shareTheme }) : bytes;
+    const html = markdown
+      ? renderSharedMarkdownPage(bytes.toString('utf8'), entry.fileName, { theme: entry.shareTheme })
+      : /\.html?$/i.test(relativePath)
+        ? addSharedBaseHref(bytes.toString('utf8'), request, shareId)
+        : null;
+    const body = html ?? bytes;
     return new Response(body, {
       headers: {
         'Content-Type': markdown ? 'text/html; charset=utf-8' : mimeType,
@@ -107,4 +112,14 @@ export async function GET(
     if (error.code === 'ENOENT') return NextResponse.json({ error: 'Shared resource not found' }, { status: 404 });
     return NextResponse.json({ error: 'Shared page unavailable' }, { status: 500 });
   }
+}
+
+function addSharedBaseHref(source: string, request: Request, shareId: string) {
+  const baseHref = `${new URL(request.url).origin}/share/${shareId}/`;
+  const baseTag = `<base href="${baseHref.replaceAll('"', '&quot;')}">`;
+  if (/<base\s/i.test(source)) return source;
+  if (/<head(?:\s[^>]*)?>/i.test(source)) {
+    return source.replace(/<head(?:\s[^>]*)?>/i, (tag) => `${tag}${baseTag}`);
+  }
+  return `${baseTag}${source}`;
 }

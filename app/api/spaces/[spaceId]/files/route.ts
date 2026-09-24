@@ -7,6 +7,7 @@ import { ensureSpaceRoot, getSpaceForUser, resolveSpacePath } from '@/app/api/_l
 import { decorateSpaceFile } from '@/lib/space-asset-policy.mjs';
 
 const MAX_FILE_SIZE = 2 * 1024 * 1024;
+const MAX_IMAGE_FILE_SIZE = 5 * 1024 * 1024;
 
 function safeFileName(name: string) {
   return path.basename(name || 'untitled.txt').replace(/[^\w.\-\u4e00-\u9fa5]/g, '_').slice(0, 120) || 'untitled.txt';
@@ -48,8 +49,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
     if (!(file instanceof File)) {
       return NextResponse.json({ error: 'Missing file' }, { status: 400 });
     }
-    if (file.size > MAX_FILE_SIZE) {
-      return NextResponse.json({ error: '单个空间资料不能超过 2MB。' }, { status: 400 });
+    const isImage = String(file.type || '').toLowerCase().startsWith('image/');
+    const maxFileSize = isImage ? MAX_IMAGE_FILE_SIZE : MAX_FILE_SIZE;
+    if (file.size > maxFileSize) {
+      return NextResponse.json({ error: isImage ? '单张图片不能超过 5MB。' : '单个空间资料不能超过 2MB。' }, { status: 400 });
     }
 
     await ensureSpaceRoot(userId, spaceId);
