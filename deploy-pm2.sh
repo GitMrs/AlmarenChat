@@ -146,6 +146,12 @@ if [ -e "$BACKUP_DIR" ]; then
   exit 1
 fi
 
+if [ -d ".next/cache" ]; then
+  echo "Reusing Next.js build cache..."
+  mkdir -p "$BUILD_DIR"
+  cp -a .next/cache "$BUILD_DIR/cache"
+fi
+
 echo "Building app in an isolated directory..."
 NEXT_DIST_DIR="$BUILD_DIR" yarn build
 if [ ! -f "$BUILD_DIR/BUILD_ID" ]; then
