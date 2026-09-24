@@ -10,8 +10,36 @@ import { TRUSTED_STATIC_CDN_SOURCES } from '@/lib/space-preview-policy.mjs';
 
 const MAX_SHARED_FILE_BYTES = 5 * 1024 * 1024;
 
+function publicOrigin(request: Request) {
+  const candidates = [
+    process.env.APP_URL,
+    (() => {
+      const proto = request.headers.get('x-forwarded-proto')?.split(',')[0]?.trim();
+      const host = request.headers.get('x-forwarded-host')?.split(',')[0]?.trim();
+      return proto && host ? `${proto}://${host}` : '';
+    })(),
+    (() => {
+      const host = request.headers.get('host')?.trim();
+      return host ? `${new URL(request.url).protocol}//${host}` : '';
+    })(),
+    request.url,
+  ];
+
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    try {
+      const url = new URL(candidate);
+      if (url.hostname === '::' || url.hostname === '0.0.0.0') continue;
+      return url.origin;
+    } catch {
+      // Try the next origin source.
+    }
+  }
+  return new URL(request.url).origin;
+}
+
 function sharePolicy(request: Request, shareId: string, externalDependencies: boolean) {
-  const root = `${new URL(request.url).origin}/share/${shareId}/`;
+  const root = `${publicOrigin(request)}/share/${shareId}/`;
   const cdnSources = externalDependencies ? ` ${TRUSTED_STATIC_CDN_SOURCES.join(' ')}` : '';
   return [
     `sandbox ${STATIC_HTML_SANDBOX}`,
@@ -32,7 +60,7 @@ function sharePolicy(request: Request, shareId: string, externalDependencies: bo
 }
 
 function markdownSharePolicy(request: Request, shareId: string) {
-  const root = `${new URL(request.url).origin}/share/${shareId}/`;
+  const root = `${publicOrigin(request)}/share/${shareId}/`;
   return [
     "default-src 'none'",
     "style-src 'unsafe-inline'",
@@ -115,7 +143,7 @@ export async function GET(
 }
 
 function addSharedBaseHref(source: string, request: Request, shareId: string) {
-  const baseHref = `${new URL(request.url).origin}/share/${shareId}/`;
+  const baseHref = `${publicOrigin(request)}/share/${shareId}/`;
   const baseTag = `<base href="${baseHref.replaceAll('"', '&quot;')}">`;
   if (/<base\s/i.test(source)) return source;
   if (/<head(?:\s[^>]*)?>/i.test(source)) {
