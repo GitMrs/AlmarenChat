@@ -13,7 +13,45 @@ export async function PATCH(
     const discussion = await prisma.spaceDiscussion.findFirst({ where: { id: discussionId, spaceId, userId } });
     if (!discussion) return NextResponse.json({ error: 'Discussion not found' }, { status: 404 });
 
-    const { action, scope } = await request.json();
+    const { action, scope, content } = await request.json();
+    if (action === 'pause') {
+      if (!['QUEUED', 'RUNNING'].includes(discussion.status)) return NextResponse.json({ discussion });
+      const updated = await prisma.spaceDiscussion.update({
+        where: { id: discussion.id },
+        data: { status: discussion.status === 'RUNNING' ? 'PAUSE_REQUESTED' : 'PAUSED' },
+      });
+      return NextResponse.json({ discussion: updated });
+    }
+    if (action === 'resume') {
+      if (discussion.status !== 'PAUSED') return NextResponse.json({ discussion });
+      const updated = await prisma.spaceDiscussion.update({ where: { id: discussion.id }, data: { status: 'QUEUED', error: null } });
+      return NextResponse.json({ discussion: updated });
+    }
+    if (action === 'continue') {
+      if (discussion.status !== 'COMPLETED') return NextResponse.json({ error: '只有已完成的讨论可以继续' }, { status: 409 });
+      const updated = await prisma.spaceDiscussion.update({
+        where: { id: discussion.id },
+        data: { status: 'QUEUED', maxRounds: { increment: 2 }, result: null, completedAt: null, error: null },
+      });
+      return NextResponse.json({ discussion: updated });
+    }
+    if (action === 'inject') {
+      const message = typeof content === 'string' ? content.trim().slice(0, 4000) : '';
+      if (!message) return NextResponse.json({ error: '插话内容不能为空' }, { status: 400 });
+      if (!['QUEUED', 'RUNNING', 'PAUSED', 'PAUSE_REQUESTED', 'WAITING_RESEARCH'].includes(discussion.status)) {
+        return NextResponse.json({ error: '当前讨论已经结束' }, { status: 409 });
+      }
+      const transcript = Array.isArray(discussion.transcript) ? discussion.transcript : [];
+      const updated = await prisma.$transaction(async (tx) => {
+        const next = await tx.spaceDiscussion.update({
+          where: { id: discussion.id },
+          data: { transcript: [...transcript, { type: 'user_interjection', content: message, createdAt: new Date().toISOString() }] },
+        });
+        await tx.spaceMessage.create({ data: { spaceId, role: 'user', content: message } });
+        return next;
+      });
+      return NextResponse.json({ discussion: updated });
+    }
     if (action === 'cancel') {
       if (!['QUEUED', 'RUNNING', 'WAITING_RESEARCH', 'CANCEL_REQUESTED'].includes(discussion.status)) {
         return NextResponse.json({ discussion });

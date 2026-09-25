@@ -1,15 +1,18 @@
 'use client';
 
-import { Globe2, Loader2, MessagesSquare, Square, X } from 'lucide-react';
+import { Globe2, Loader2, MessagesSquare, Pause, Play, Square, X } from 'lucide-react';
 import type { Agent, SpaceDiscussion } from '@/types';
 
-const ACTIVE = new Set(['QUEUED', 'RUNNING', 'WAITING_RESEARCH', 'CANCEL_REQUESTED']);
+const ACTIVE = new Set(['QUEUED', 'RUNNING', 'WAITING_RESEARCH', 'PAUSE_REQUESTED', 'PAUSED', 'CANCEL_REQUESTED']);
 
 export default function SpaceDiscussionStatus({
   discussion,
   agents,
   busy,
   onCancel,
+  onPause,
+  onResume,
+  onContinue,
   onResearch,
   onConvert,
   onDismiss,
@@ -18,6 +21,9 @@ export default function SpaceDiscussionStatus({
   agents: Agent[];
   busy: boolean;
   onCancel: () => void;
+  onPause: () => void;
+  onResume: () => void;
+  onContinue: () => void;
   onResearch: (approved: boolean, scope?: 'once' | 'discussion') => void;
   onConvert: () => void;
   onDismiss: () => void;
@@ -25,10 +31,15 @@ export default function SpaceDiscussionStatus({
   const participants = discussion.participantIds
     .map((id) => agents.find((agent) => agent.id === id))
     .filter(Boolean) as Agent[];
-  const sequence = discussion.currentRound === 2 ? [...participants].reverse() : participants;
+  const sequence = participants;
   const currentAgent = sequence[discussion.currentIndex];
   const summarizing = discussion.currentRound > discussion.maxRounds && ACTIVE.has(discussion.status);
   const active = ACTIVE.has(discussion.status);
+  const statusLabel = discussion.status === 'RUNNING' && currentAgent
+    ? `正在发言：${currentAgent.name}`
+    : discussion.status === 'QUEUED' && currentAgent
+      ? `下一位：${currentAgent.name}`
+      : `第 ${discussion.currentRound}/${discussion.maxRounds} 轮 · ${currentAgent?.name || '准备中'}`;
 
   return (
     <div className="border-y border-black/[0.06] bg-white px-3 py-3 sm:px-4">
@@ -43,15 +54,25 @@ export default function SpaceDiscussionStatus({
                 ? '讨论已完成'
                 : discussion.status === 'CANCELLED'
                   ? '讨论已停止'
-                  : discussion.status === 'FAILED'
+                    : discussion.status === 'FAILED'
                     ? '讨论失败'
                     : summarizing
                       ? '协调者正在总结'
-                      : `第 ${discussion.currentRound}/${discussion.maxRounds} 轮 · ${currentAgent?.name || '准备中'}`}
+                      : statusLabel}
             </div>
-            {active && discussion.status !== 'WAITING_RESEARCH' && (
-              <button type="button" onClick={onCancel} disabled={busy || discussion.status === 'CANCEL_REQUESTED'} className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2 text-xs font-black text-rose-500 hover:bg-rose-50 disabled:text-slate-300">
-                <Square size={12} />停止
+            {active && discussion.status !== 'WAITING_RESEARCH' && discussion.status !== 'PAUSED' && (
+              <div className="flex items-center gap-1">
+                <button type="button" onClick={onPause} disabled={busy || discussion.status === 'PAUSE_REQUESTED' || discussion.status === 'CANCEL_REQUESTED'} className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2 text-xs font-black text-slate-500 hover:bg-slate-100 disabled:text-slate-300">
+                  <Pause size={12} />暂停
+                </button>
+                <button type="button" onClick={onCancel} disabled={busy || discussion.status === 'CANCEL_REQUESTED'} className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2 text-xs font-black text-rose-500 hover:bg-rose-50 disabled:text-slate-300">
+                  <Square size={12} />停止
+                </button>
+              </div>
+            )}
+            {discussion.status === 'PAUSED' && (
+              <button type="button" onClick={onResume} disabled={busy} className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-slate-950 px-2.5 text-xs font-black text-white disabled:bg-slate-200">
+                <Play size={12} />继续
               </button>
             )}
             {!active && (
@@ -79,7 +100,10 @@ export default function SpaceDiscussionStatus({
           )}
 
           {discussion.status === 'COMPLETED' && (
-            <button type="button" onClick={onConvert} className="mt-3 h-8 rounded-lg bg-slate-950 px-3 text-xs font-black text-white">转为任务</button>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button type="button" onClick={onContinue} disabled={busy} className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-slate-950 px-3 text-xs font-black text-white disabled:bg-slate-200"><Play size={12} />继续聊天</button>
+              <button type="button" onClick={onConvert} className="h-8 rounded-lg border border-black/[0.08] px-3 text-xs font-black text-slate-600">转为任务</button>
+            </div>
           )}
           {discussion.error && <div className="mt-2 text-xs font-semibold text-rose-600">{discussion.error}</div>}
         </div>

@@ -692,7 +692,7 @@ export interface SpaceDiscussion {
   userId: string;
   topic: string;
   participantIds: string[];
-  status: 'QUEUED' | 'RUNNING' | 'WAITING_RESEARCH' | 'CANCEL_REQUESTED' | 'CANCELLED' | 'COMPLETED' | 'FAILED';
+  status: 'QUEUED' | 'RUNNING' | 'WAITING_RESEARCH' | 'PAUSE_REQUESTED' | 'PAUSED' | 'CANCEL_REQUESTED' | 'CANCELLED' | 'COMPLETED' | 'FAILED';
   currentRound: number;
   currentIndex: number;
   maxRounds: number;

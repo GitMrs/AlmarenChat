@@ -658,7 +658,7 @@ export default function SpaceDetailPage() {
   const latestRun = runs[0] || null;
   const activeRun = runs.find((run) => ACTIVE_RUN_STATUSES.has(run.status)) || null;
   const latestDiscussion = discussions[0] || null;
-  const activeDiscussion = discussions.find((discussion) => ['QUEUED', 'RUNNING', 'WAITING_RESEARCH', 'CANCEL_REQUESTED'].includes(discussion.status)) || null;
+  const activeDiscussion = discussions.find((discussion) => ['QUEUED', 'RUNNING', 'WAITING_RESEARCH', 'PAUSE_REQUESTED', 'PAUSED', 'CANCEL_REQUESTED'].includes(discussion.status)) || null;
   const visibleDiscussion = latestDiscussion
     && (activeDiscussion?.id === latestDiscussion.id || !dismissedDiscussionIds.includes(latestDiscussion.id))
     ? latestDiscussion
@@ -714,9 +714,7 @@ export default function SpaceDetailPage() {
       .find(({ event, payload }) => event.type === 'COORDINATOR_TASK_PROPOSED' && payload.taskId === proposedTask.id)?.payload.reason || ''
     : '';
   const discussionSequenceIds = activeDiscussion
-    ? activeDiscussion.currentRound === 2
-      ? [...activeDiscussion.participantIds].reverse()
-      : activeDiscussion.participantIds
+    ? activeDiscussion.participantIds
     : [];
   const currentDiscussionAgentId = activeDiscussion && activeDiscussion.currentRound <= activeDiscussion.maxRounds
     ? discussionSequenceIds[activeDiscussion.currentIndex]
@@ -763,7 +761,7 @@ export default function SpaceDetailPage() {
         return { label: '等待联网', color: 'bg-sky-400', text: 'text-sky-600', task: null };
       }
       if (agentId === currentDiscussionAgentId && activeDiscussion.status === 'RUNNING') {
-        return { label: '讨论中', color: 'bg-emerald-500', text: 'text-emerald-600', task: null };
+        return { label: '正在发言', color: 'bg-emerald-500', text: 'text-emerald-600', task: null };
       }
       return { label: '等待讨论', color: 'bg-amber-400', text: 'text-amber-600', task: null };
     }
@@ -1417,6 +1415,12 @@ export default function SpaceDetailPage() {
   ) => {
     if (!content || isStreaming || activeRelay) return;
 
+    if (!isPiSpace && activeDiscussion && !options?.reuseLastUserMessage) {
+      await updateDiscussion('inject', undefined, content);
+      setInput('');
+      return;
+    }
+
     if (!options?.reuseLastUserMessage && latestDiscussion && !activeDiscussion) {
       dismissDiscussion(latestDiscussion.id);
     }
@@ -1686,14 +1690,15 @@ export default function SpaceDetailPage() {
   };
 
   const updateDiscussion = async (
-    action: 'cancel' | 'approve_research' | 'reject_research',
-    scope?: 'once' | 'discussion'
+    action: 'cancel' | 'pause' | 'resume' | 'continue' | 'inject' | 'approve_research' | 'reject_research',
+    scope?: 'once' | 'discussion',
+    content?: string
   ) => {
     if (!latestDiscussion || discussionBusy) return;
     setDiscussionBusy(true);
     setError('');
     try {
-      const result = await spacesApi.updateDiscussion(spaceId, latestDiscussion.id, { action, scope });
+      const result = await spacesApi.updateDiscussion(spaceId, latestDiscussion.id, { action, scope, content });
       setDiscussions((items) => items.map((item) => item.id === result.discussion.id ? result.discussion : item));
     } catch (err: any) {
       setError(err.message || '处理讨论失败');
@@ -3829,6 +3834,9 @@ export default function SpaceDetailPage() {
                     agents={memberAgents}
                     busy={discussionBusy}
                     onCancel={() => updateDiscussion('cancel')}
+                    onPause={() => updateDiscussion('pause')}
+                    onResume={() => updateDiscussion('resume')}
+                    onContinue={() => updateDiscussion('continue')}
                     onResearch={(approved, scope) => updateDiscussion(approved ? 'approve_research' : 'reject_research', scope)}
                     onConvert={convertDiscussionToTask}
                     onDismiss={() => dismissDiscussion(visibleDiscussion.id)}

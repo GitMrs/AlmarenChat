@@ -495,7 +495,7 @@ export const spaces = {
   updateDiscussion: (
     spaceId: string,
     discussionId: string,
-    data: { action: 'cancel' | 'approve_research' | 'reject_research'; scope?: 'once' | 'discussion' }
+    data: { action: 'cancel' | 'pause' | 'resume' | 'continue' | 'inject' | 'approve_research' | 'reject_research'; scope?: 'once' | 'discussion'; content?: string }
   ) => request<{ discussion: SpaceDiscussion }>(`/spaces/${spaceId}/discussions/${discussionId}`, {
     method: 'PATCH',
     body: JSON.stringify(data),

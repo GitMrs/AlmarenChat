@@ -50,11 +50,60 @@ const MANUAL_MIGRATION_REPAIRS = [
     migration: '20260904170000_add_assistant_context_preferences',
     columns: [{ table: 'PersonalAssistantProfile', names: ['includeSpaceContext', 'includeTaskContext', 'includeChatContext'] }],
   },
+  {
+    migration: '20260905120000_add_assistant_experiences',
+    columns: [
+      { table: 'Conversation', names: ['assistantMode'] },
+      { table: 'Message', names: ['source', 'assistantExperienceId'] },
+    ],
+    tables: [
+      { name: 'AssistantExperience', columns: ['id', 'userId', 'conversationId', 'summary', 'messageCount', 'startAt', 'endAt', 'createdAt', 'updatedAt'] },
+    ],
+    indexes: [
+      'Message_assistantExperienceId_idx',
+      'AssistantExperience_userId_endAt_idx',
+      'AssistantExperience_conversationId_endAt_idx',
+    ],
+  },
+  {
+    migration: '20260906150000_add_space_works',
+    columns: [
+      { table: 'AgentRun', names: ['workId'] },
+      { table: 'SpaceFile', names: ['workId'] },
+    ],
+    tables: [
+      { name: 'SpaceWork', columns: ['id', 'spaceId', 'title', 'kind', 'createdAt', 'updatedAt'] },
+    ],
+    indexes: [
+      'SpaceWork_spaceId_updatedAt_idx',
+      'AgentRun_workId_createdAt_idx',
+      'SpaceFile_workId_idx',
+    ],
+  },
+  {
+    migration: '20260907160000_add_space_relays',
+    tables: [
+      { name: 'SpaceRelay', columns: ['id', 'spaceId', 'userId', 'kind', 'goal', 'participantIds', 'approvalMode', 'status', 'currentIndex', 'turnCount', 'maxTurns', 'state', 'transcript', 'pendingAction', 'result', 'error', 'createdAt', 'updatedAt', 'startedAt', 'completedAt'] },
+    ],
+    indexes: [
+      'SpaceRelay_spaceId_createdAt_idx',
+      'SpaceRelay_userId_createdAt_idx',
+      'SpaceRelay_status_createdAt_idx',
+    ],
+  },
+  {
+    migration: '20260908130000_add_agent_type',
+    columns: [{ table: 'Agent', names: ['agentType'] }],
+  },
+  {
+    migration: '20260908220000_add_space_execution_engine',
+    columns: [{ table: 'Space', names: ['executionEngine'] }],
+  },
 ];
 const MIGRATIONS_DIRECTORY = path.resolve(process.cwd(), 'prisma', 'migrations');
 
 function parseSchemaOnlyMigration(migration, sql) {
-  if (/\b(?:UPDATE|INSERT|DELETE|DROP)\b/i.test(sql)) return null;
+  if (/\b(?:UPDATE|INSERT|DELETE|DROP)\s+(?:"[^\"]+"|INTO|FROM|TABLE|INDEX|VIEW)/i.test(sql)) return null;
   const columns = new Map();
   const tables = [];
   const indexes = [];
@@ -101,7 +150,7 @@ const REQUIRED_BASELINE_TABLES = [
 const REQUIRED_BASELINE_COLUMNS = {
   SpaceAutomation: ['executionMode', 'scriptPath', 'completionAction', 'deletedAt'],
   Space: ['runtimeType', 'executionEngine', 'activeWorkId'],
-  User: ['imageModelEnabled', 'imageModelProtocol', 'modelContextWindow'],
+  User: ['imageModelEnabled', 'imageModelProtocol', 'modelContextWindow', 'assistantMcpServers'],
 };
 
 function resolveDatabasePath() {
@@ -122,20 +171,7 @@ function migrationRepairSpec(migrationName) {
   return KNOWN_MIGRATION_REPAIRS.find((item) => item.migration === migrationName) || null;
 }
 
-export function inspectKnownMigrationRepair(targetDb) {
-  if (!baselineHasTable(targetDb, '_prisma_migrations') || !baselineHasTable(targetDb, 'User')) {
-    return { action: 'none', reason: 'migration-or-user-table-missing' };
-  }
-  const pendingMigrations = targetDb.prepare(
-    'SELECT "migration_name", "finished_at", "rolled_back_at" FROM "_prisma_migrations" WHERE "migration_name" = ? ORDER BY "started_at" DESC LIMIT 1'
-  );
-  const migration = KNOWN_MIGRATION_REPAIRS
-    .map((spec) => ({ spec, row: pendingMigrations.get(spec.migration) }))
-    .find(({ row }) => !row || (row.finished_at === null && row.rolled_back_at === null));
-  if (!migration) return { action: 'none', reason: 'known-migrations-already-applied' };
-
-  const { spec } = migration;
-  const migrationName = spec.migration;
+function inspectMigrationSchema(targetDb, spec) {
   const missing = [];
   let existingStructureCount = 0;
   for (const requirement of spec.columns || []) {
@@ -166,6 +202,51 @@ export function inspectKnownMigrationRepair(targetDb) {
       missing.push(`index:${index}`);
     } else existingStructureCount += 1;
   }
+  return { missing, existingStructureCount };
+}
+
+export function inspectKnownMigrationRepair(targetDb) {
+  if (!baselineHasTable(targetDb, '_prisma_migrations') || !baselineHasTable(targetDb, 'User')) {
+    return { action: 'none', reason: 'migration-or-user-table-missing' };
+  }
+  const migrationRows = targetDb.prepare(
+    'SELECT "migration_name", "finished_at", "rolled_back_at" FROM "_prisma_migrations" ORDER BY "started_at" DESC'
+  ).all();
+  const latestMigrationRows = new Map();
+  for (const row of migrationRows) {
+    if (!latestMigrationRows.has(row.migration_name)) latestMigrationRows.set(row.migration_name, row);
+  }
+  const mcpMigration = KNOWN_MIGRATION_REPAIRS.find(
+    (spec) => spec.migration === '20260913010000_add_assistant_mcp_servers'
+  );
+  const mcpMigrationRow = latestMigrationRows.get(mcpMigration?.migration);
+  if (
+    mcpMigration
+    && mcpMigrationRow?.finished_at
+    && !mcpMigrationRow.rolled_back_at
+    && inspectMigrationSchema(targetDb, mcpMigration).missing.length > 0
+  ) {
+    return {
+      action: 'rollback',
+      migration: mcpMigration.migration,
+      reason: 'migration-applied-but-schema-missing',
+    };
+  }
+  const migrationCandidates = KNOWN_MIGRATION_REPAIRS
+    .map((spec) => ({ spec, row: latestMigrationRows.get(spec.migration) }));
+  const migration = migrationCandidates.find(({ row }) => row && row.finished_at === null && row.rolled_back_at === null)
+    || migrationCandidates.find(({ spec, row }) => (
+      spec.migration === '20260913010000_add_assistant_mcp_servers'
+      && row?.finished_at
+      && !row.rolled_back_at
+      && inspectMigrationSchema(targetDb, spec).missing.length > 0
+    ))
+    || migrationCandidates.find(({ spec, row }) => !row && spec.migration !== '20260913010000_add_assistant_mcp_servers');
+  if (!migration) return { action: 'none', reason: 'known-migrations-already-applied' };
+
+  const { spec } = migration;
+  const migrationName = spec.migration;
+  const { missing, existingStructureCount } = inspectMigrationSchema(targetDb, spec);
   if (missing.length > 0) {
     if (!migration.row) {
       return {
@@ -178,7 +259,9 @@ export function inspectKnownMigrationRepair(targetDb) {
       return {
         action: 'rollback',
         migration: migrationName,
-        reason: 'migration-failed-without-schema-changes',
+        reason: migration.row.finished_at
+          ? 'migration-applied-but-schema-missing'
+          : 'migration-failed-without-schema-changes',
       };
     }
     return {
@@ -371,6 +454,17 @@ try {
   }
 
   db.transaction(() => {
+    if (!hasColumn('Agent', 'agentType')) {
+      db.exec(`ALTER TABLE "Agent" ADD COLUMN "agentType" TEXT NOT NULL DEFAULT 'BASIC'`);
+    }
+    db.exec(`
+      UPDATE "Agent"
+      SET "agentType" = 'EMPLOYEE'
+      WHERE "systemPrompt" LIKE '%# ROLE%'
+         OR "systemPrompt" LIKE '%SOUL%'
+         OR "systemPrompt" LIKE '%BLUE-TEAM REBUTTAL PROTOCOL%'
+         OR "systemPrompt" LIKE '%SOP: WORKFLOW & CHECKLIST%'
+    `);
     if (!hasColumn('User', 'imageModelEnabled')) db.exec(`ALTER TABLE "User" ADD COLUMN "imageModelEnabled" BOOLEAN NOT NULL DEFAULT false`);
     if (!hasColumn('User', 'imageModelName')) db.exec('ALTER TABLE "User" ADD COLUMN "imageModelName" TEXT');
     if (!hasColumn('User', 'imageModelSize')) db.exec(`ALTER TABLE "User" ADD COLUMN "imageModelSize" TEXT DEFAULT '1024x1024'`);

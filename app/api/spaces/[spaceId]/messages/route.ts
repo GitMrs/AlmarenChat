@@ -146,6 +146,29 @@ function relayStartTool(memberAgents: Array<{ id: string; name: string }>) {
   } as const;
 }
 
+function discussionStartTool(memberAgents: Array<{ id: string; name: string }>) {
+  return {
+    type: 'function',
+    function: {
+      name: 'start_group_chat',
+      description: '当用户要求大家自然聊天、互相讨论、自由接话或让多个成员一起聊一个话题时，启动多人闲聊讨论。不要用于写文件、执行任务、验收交付，也不要用于用户明确要求按固定顺序接力或轮流审阅。',
+      parameters: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['topic', 'participantIds'],
+        properties: {
+          topic: { type: 'string', maxLength: 4000, description: '多人闲聊的主题，保留用户真正想讨论的问题' },
+          participantIds: {
+            type: 'array', minItems: 2, maxItems: 6, uniqueItems: true,
+            items: { type: 'string', enum: memberAgents.map((agent) => agent.id) },
+            description: `参与闲聊的成员 ID：${memberAgents.map((agent) => `${agent.name}=${agent.id}`).join('；')}`,
+          },
+        },
+      },
+    },
+  } as const;
+}
+
 type RelayDraft = {
   kind: 'collaboration' | 'gomoku';
   title: string;
@@ -154,6 +177,11 @@ type RelayDraft = {
   completionCriteria: string[];
   maxTurns: number;
   approvalMode: 'AUTO' | 'EACH_TURN';
+};
+
+type DiscussionDraft = {
+  topic: string;
+  participantIds: string[];
 };
 
 type TaskProposal = {
@@ -548,6 +576,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
         coordinatorMention ||
         mentionedTarget ||
         fallbackTarget;
+    const normalizedInteractionMode = ['multi_reply', 'coordinated_turn', 'coordination_summary'].includes(interactionMode)
+      ? interactionMode
+      : 'chat';
     const agentMemory = await loadAgentMemoryContext({
       userId,
       agentId: targetAgent.id,
@@ -561,9 +592,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
     }
 
     if (space.runtimeType === 'PI_CODING') {
-      const normalizedInteractionMode = ['multi_reply', 'coordinated_turn', 'coordination_summary'].includes(interactionMode)
-        ? interactionMode
-        : 'chat';
       const normalizedCoordinationScope = ['coordinated_turn', 'coordination_summary'].includes(normalizedInteractionMode)
         ? normalizePiCoordinationScope(coordinationScope, new Set(memberAgents.map((agent) => agent.id)))
         : null;
@@ -742,13 +770,27 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
     const relayTool = !isMultiReply && targetAgent.id === SPACE_COORDINATOR.id && memberAgents.length >= 2
       ? relayStartTool(memberAgents)
       : null;
+    const discussionTool = !isMultiReply && targetAgent.id === SPACE_COORDINATOR.id && memberAgents.length >= 2
+      ? discussionStartTool(memberAgents)
+      : null;
     const availableTools = [
       ...(selectedWork ? workspaceToolSchemas.filter((tool: any) => READ_ONLY_WORKSPACE_TOOLS.has(tool.function.name)) : []),
       ...(!isMultiReply && allowWebSearch ? [WEB_SEARCH_TOOL, WEB_FETCH_TOOL] : []),
       ...(!isMultiReply ? [TASK_PROPOSAL_TOOL] : []),
       ...(relayTool ? [relayTool] : []),
+      ...(discussionTool ? [discussionTool] : []),
       ...(skillReferenceTool ? [skillReferenceTool] : []),
     ];
+    const chatGuidance = normalizedInteractionMode === 'chat'
+      ? [
+          '当前是空间闲聊，不是任务执行轮次。请先像空间里的真实成员一样回应当前话题：理解上下文，接住用户的情绪或观点，必要时表达自己的判断、补充、反驳或提出一个自然的问题。不要因为用户讨论了一个想法，就立刻拆成任务、要求验收或把自己说成已经开始执行。',
+          '闲聊时可以结合空间说明、最近对话、已有任务状态和只读资料，让回应具有连续性；引用任务或文件时只说已确认的事实，不要把后台状态猜成结果。',
+          '只有用户明确要求写入、修改、执行、生成可交付文件，或明确要求持续推进多步骤工作时，才调用 propose_task。用户只是问“你怎么看”“聊聊这个”“帮我分析一下”时，直接在当前对话回答。',
+          targetAgent.id === SPACE_COORDINATOR.id
+            ? '你当前是空间协调者，但闲聊时也先作为空间里的对话者交流；不要把每个话题都变成协调流程。'
+            : `你当前是空间成员 ${targetAgent.name}，闲聊时保持自己的专业视角和表达风格；不要冒充空间协调者，也不要替其他成员承诺已经执行任务。`,
+        ].join('\n')
+      : '';
 
     const systemPrompt = [
       targetAgent.systemPrompt || targetAgent.description || `你是 ${targetAgent.name}。`,
@@ -763,6 +805,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
       projectMemory,
       teamLearning,
       runEvidence,
+      chatGuidance,
       currentPendingProposal
         ? [
             '当前已有一份待用户确认的任务方案：',
@@ -789,7 +832,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
           ? '当前是多人分别回答，不是任务执行。只代表自己给出观点，不得创建任务方案，不得写文件、联网或声称已经开始执行。'
           : '你没有写入、终端和浏览器权限。普通问答、简单分析、本地只读查看或一到两次联网事实查询应直接完成；需要形成带明确数量、格式或验收要求的专业交付，或者需要修改文件、编写代码并落盘、制作网页或文档、运行命令、操作浏览器、多个步骤持续执行时，调用 propose_task 生成目标授权方案。',
         !isMultiReply ? '任务方案必须覆盖完整目标、范围、主要里程碑、预期产物和总体验收要求，但不要提前选择成员或生成固定执行链。用户确认的是目标与能力边界；运行时 Coordinator 会读取空间中的实时成员、工作状态和每轮成果，动态决定下一件任务交给谁。按可独立验收的产物描述里程碑，不要按页面结构、样式、功能点或检查阶段机械拆分。不要声称任务已经开始。' : '',
-        relayTool ? '用户明确要求多个成员按顺序参与同一件事时，调用 start_relay；这包含让大家依次参与、每个人分别回应、轮流处理、接力推进、相互审阅或持续改进同一份文字成果。只有明确的逐员参与或顺序推进要求才启动，泛泛征询意见不自动启动。用户说“大家”“所有成员”或“全员”时，participantIds 必须包含全部可用普通成员；用户只要求几位成员时才选择子集。需要文件、联网、命令、浏览器或专业交付时仍调用 propose_task。讨论只能由用户从空间输入框的“发起讨论”入口手动创建和执行；用户在聊天中要求讨论时，提示这个入口，不要用 start_relay 或其他协调工具代替。接力开始后你会作为可见的空间协调者组织开场，成员轮次由平台直接推进，结束时你再验收汇总。' : '',
+        relayTool ? '用户明确要求多个成员按顺序参与同一件事时，调用 start_relay；这包含让大家依次参与、每个人分别回应、轮流处理、接力推进、相互审阅或持续改进同一份文字成果。只有明确的逐员参与或顺序推进要求才启动，泛泛征询意见不自动启动。用户说“大家”“所有成员”或“全员”时，participantIds 必须包含全部可用普通成员；用户只要求几位成员时才选择子集。需要文件、联网、命令、浏览器或专业交付时仍调用 propose_task。接力开始后会按接力规则推进并在最后验收。' : '',
+        discussionTool ? '用户说“大家聊聊”“自然接话”“互相讨论”“一起聊”或类似表达时，调用 start_group_chat，创建真正的多人闲聊讨论；不要调用 start_relay。闲聊讨论由成员根据前序发言动态选择接话者，用户可以随后插话、暂停或继续。用户说“大家”“所有成员”或“全员”时必须包含全部可用普通成员；用户只点名几位成员时只选择这些成员。' : '',
         !isMultiReply ? (allowWebSearch
           ? '本轮用户已开启联网总权限。不要在任务方案中声明联网策略；实际执行到需要外部资料时，运行时再调用 web_search 或 web_fetch，并受次数预算限制。'
           : '本轮用户没有开启联网权限。实际执行不得调用 web_search 或 web_fetch；需要外部资料时提示用户开启联网。') : '',
@@ -836,6 +880,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
       async start(controller) {
         let taskProposal: TaskProposal | null = null;
         let relayDraft: RelayDraft | null = null;
+        let discussionDraft: DiscussionDraft | null = null;
         const runtimePermissions = createRuntimePermissionBroker({
           authorization: { capabilities: allowWebSearch ? ['web_research'] : [], networkPolicy: allowWebSearch ? 'allowed' : 'forbidden' },
           operationLimit: 2,
@@ -935,6 +980,24 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
                 };
                 return { ok: true, pause: true, message: '接力协作已安排，成员将按顺序开始' };
               }
+              if (name === 'start_group_chat') {
+                if (!discussionTool || targetAgent.id !== SPACE_COORDINATOR.id) throw new Error('当前不能启动多人闲聊');
+                if (discussionDraft) return { ok: false, error: '本轮已经启动多人闲聊' };
+                const memberIds = new Set(memberAgents.map((agent) => agent.id));
+                const participantIds = Array.isArray(args.participantIds)
+                  ? [...new Set(args.participantIds.map(String))].filter((id) => memberIds.has(id)).slice(0, 6)
+                  : [];
+                const topic = typeof args.topic === 'string' ? args.topic.trim().slice(0, 4000) : '';
+                if (!topic || participantIds.length < 2) return { ok: false, error: '多人闲聊需要主题和至少两位有效成员' };
+                const [activeRun, activeDiscussion, activeRelay] = await Promise.all([
+                  prisma.agentRun.findFirst({ where: { spaceId, status: { in: ACTIVE_AGENT_RUN_STATUSES } }, select: { id: true } }),
+                  prisma.spaceDiscussion.findFirst({ where: { spaceId, status: { in: ACTIVE_DISCUSSION_STATUSES } }, select: { id: true } }),
+                  prisma.spaceRelay.findFirst({ where: { spaceId, status: { in: ACTIVE_RELAY_STATUSES } }, select: { id: true } }),
+                ]);
+                if (activeRun || activeDiscussion || activeRelay) return { ok: false, error: '空间中已有任务、讨论或接力正在进行' };
+                discussionDraft = { topic, participantIds };
+                return { ok: true, pause: true, message: '多人闲聊已安排，成员将自然接话' };
+              }
               if (name === 'read_skill_file') {
                 if (!selectedSkill || !skillReferenceTool) throw new Error('本轮没有明确选择 Space Skill');
                 return readSpaceSkillFile({
@@ -992,6 +1055,26 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
 
             if (taskProposal && selectedWork) taskProposal = { ...taskProposal, workId: selectedWork.id };
             let relayId: string | null = null;
+            let discussionId: string | null = null;
+            if (discussionDraft) {
+              const [activeRun, activeDiscussion, activeRelay] = await Promise.all([
+                tx.agentRun.findFirst({ where: { spaceId, status: { in: ACTIVE_AGENT_RUN_STATUSES } }, select: { id: true } }),
+                tx.spaceDiscussion.findFirst({ where: { spaceId, status: { in: ACTIVE_DISCUSSION_STATUSES } }, select: { id: true } }),
+                tx.spaceRelay.findFirst({ where: { spaceId, status: { in: ACTIVE_RELAY_STATUSES } }, select: { id: true } }),
+              ]);
+              if (activeRun || activeDiscussion || activeRelay) throw new Error('空间中已有任务、讨论或接力正在进行');
+              const discussion = await tx.spaceDiscussion.create({
+                data: {
+                  spaceId,
+                  userId,
+                  topic: discussionDraft.topic,
+                  participantIds: discussionDraft.participantIds,
+                  transcript: [],
+                  allowWeb: false,
+                },
+              });
+              discussionId = discussion.id;
+            }
             if (relayDraft) {
               const [activeRun, activeDiscussion, activeRelay] = await Promise.all([
                 tx.agentRun.findFirst({ where: { spaceId, status: { in: ACTIVE_AGENT_RUN_STATUSES } }, select: { id: true } }),
@@ -1019,9 +1102,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
             const assistantContent = loopResult.content?.trim()
               || (taskProposal
                 ? '已根据你的要求生成目标授权方案，确认后由协调者根据实时团队和成果动态推进。'
-                : relayDraft
-                  ? `已启动“${relayDraft.title}”，成员将按既定顺序接力，我会在完成后验收并汇总。`
-                  : '');
+              : relayDraft
+                ? `已启动“${relayDraft.title}”，成员将按既定顺序接力，我会在完成后验收并汇总。`
+                : discussionDraft
+                  ? `已开始围绕“${discussionDraft.topic}”进行多人闲聊，成员会根据彼此发言自然接话。`
+                : '');
             const attachments = taskProposal
               ? [taskProposal]
               : relayDraft && relayId
@@ -1033,6 +1118,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
                     participantNames: relayDraft.participantIds.map((id) => memberAgents.find((agent) => agent.id === id)?.name || id),
                     completionCriteria: relayDraft.completionCriteria,
                   }]
+                : discussionDraft && discussionId
+                  ? [{ type: 'discussion_started', discussionId, topic: discussionDraft.topic, participantIds: discussionDraft.participantIds }]
                 : null;
             const assistantMessage = await tx.spaceMessage.create({
               data: {

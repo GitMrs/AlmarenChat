@@ -6,7 +6,7 @@ import {
   workspaceToolSchemas,
 } from '../../lib/agent-runtime/runtime-tools.mjs';
 import { runToolLoop } from '../../lib/agent-runtime/tool-loop.mjs';
-import { discussionSequence, nextDiscussionPosition } from '../policies/discussion-policy.mjs';
+import { chooseNextGroupChatSpeaker, groupChatTurnLimit, nextGroupChatPosition } from '../policies/group-chat-scheduler.mjs';
 
 const DISCUSSION_READ_TOOLS = new Set(['list_files', 'read_file', 'check_files']);
 const DISCUSSION_RESEARCH_TOOL = {
@@ -35,6 +35,30 @@ function parseJson(value, fallback) {
   }
 }
 
+function agentEntriesCount(transcript) {
+  return (Array.isArray(transcript) ? transcript : []).filter((entry) => (entry?.agentId || entry?.agentName) && entry?.content).length;
+}
+
+function compactDiscussionTranscript(transcript, { recentEntries = 4, recentChars = 1800, olderChars = 500 } = {}) {
+  const entries = Array.isArray(transcript) ? transcript : [];
+  if (entries.length <= recentEntries) return entries;
+  return entries.map((entry, index) => {
+    const limit = index < entries.length - recentEntries ? olderChars : recentChars;
+    const content = String(entry?.content || '');
+    return content.length <= limit
+      ? entry
+      : { ...entry, content: `${content.slice(0, limit)}\n[本段较早内容已压缩]` };
+  });
+}
+
+function discussionTranscriptText(transcript, options) {
+  return compactDiscussionTranscript(transcript, options)
+    .map((entry) => entry.type === 'user_interjection'
+      ? `[用户插话]\n${entry.content}`
+      : `[第 ${entry.round} 轮 · ${entry.agentName}]\n${entry.content}`)
+    .join('\n\n');
+}
+
 export function createDiscussionRuntime({
   db,
   projectRoot,
@@ -55,6 +79,12 @@ export function createDiscussionRuntime({
     return db.prepare('SELECT "status" FROM "SpaceDiscussion" WHERE "id" = ?').get(discussionId)?.status === 'WAITING_RESEARCH';
   }
 
+  function isDiscussionPaused(discussionId) {
+    return ['PAUSE_REQUESTED', 'PAUSED'].includes(
+      db.prepare('SELECT "status" FROM "SpaceDiscussion" WHERE "id" = ?').get(discussionId)?.status
+    );
+  }
+
   function cancelDiscussion(discussionId) {
     const timestamp = now();
     db.prepare(
@@ -62,19 +92,22 @@ export function createDiscussionRuntime({
     ).run(timestamp, timestamp, discussionId);
   }
 
-  function persistAndQueueDiscussionTurn(discussion, agentId, content, attachment, transcript, participantCount) {
-    const next = nextDiscussionPosition(discussion.currentRound, discussion.currentIndex, participantCount);
+  function persistAndQueueDiscussionTurn(discussion, agentId, content, attachment, transcript, participants) {
+    const next = nextGroupChatPosition({
+      participants,
+      transcript,
+    });
     const saved = db.transaction(() => {
       const status = db.prepare('SELECT "status" FROM "SpaceDiscussion" WHERE "id" = ?').get(discussion.id)?.status;
-      if (status !== 'RUNNING') return false;
+      if (!['RUNNING', 'PAUSE_REQUESTED'].includes(status)) return false;
       const timestamp = now();
       db.prepare(
         `INSERT INTO "SpaceMessage" ("id", "spaceId", "role", "speakerAgentId", "content", "attachments", "createdAt") VALUES (?, ?, 'assistant', ?, ?, ?, ?)`
       ).run(randomUUID(), discussion.spaceId, agentId, content, JSON.stringify([attachment]), timestamp);
       db.prepare(`UPDATE "Space" SET "updatedAt" = ? WHERE "id" = ?`).run(timestamp, discussion.spaceId);
       db.prepare(
-        `UPDATE "SpaceDiscussion" SET "status" = 'QUEUED', "transcript" = ?, "currentRound" = ?, "currentIndex" = ?, "error" = NULL, "updatedAt" = ? WHERE "id" = ?`
-      ).run(JSON.stringify(transcript), next.round, next.index, timestamp, discussion.id);
+        `UPDATE "SpaceDiscussion" SET "status" = ?, "transcript" = ?, "currentRound" = ?, "currentIndex" = ?, "error" = NULL, "updatedAt" = ? WHERE "id" = ?`
+      ).run(status === 'PAUSE_REQUESTED' ? 'PAUSED' : 'QUEUED', JSON.stringify(transcript), next.currentRound, next.currentIndex, timestamp, discussion.id);
       return true;
     })();
     if (!saved && isDiscussionCancelRequested(discussion.id)) cancelDiscussion(discussion.id);
@@ -101,9 +134,7 @@ export function createDiscussionRuntime({
   }
 
   async function summarizeDiscussion(discussion, context, transcript, signal) {
-    const transcriptText = transcript
-      .map((entry) => `[第 ${entry.round} 轮 · ${entry.agentName}]\n${entry.content}`)
-      .join('\n\n');
+    const transcriptText = discussionTranscriptText(transcript, { recentEntries: 6, recentChars: 1600, olderChars: 600 });
     const response = await completeMessage(context.model, [
       {
         role: 'system',
@@ -147,11 +178,12 @@ export function createDiscussionRuntime({
   async function processDiscussion(initialDiscussion) {
     let discussion = initialDiscussion;
     let currentAgent = null;
+    let participants = [];
     try {
       const context = loadRunContext(discussion);
       const participantIds = parseJson(discussion.participantIds, []);
       const agentById = new Map(context.agents.map((agent) => [agent.id, agent]));
-      const participants = participantIds.map((id) => agentById.get(id)).filter(Boolean);
+      participants = participantIds.map((id) => agentById.get(id)).filter(Boolean);
       if (participants.length < 2) throw new Error('讨论成员不足两位或成员已被移除');
 
       discussion = await completeApprovedDiscussionResearch(discussion, context);
@@ -162,20 +194,19 @@ export function createDiscussionRuntime({
       }, 500);
 
       try {
-        if (discussion.currentRound > discussion.maxRounds) {
+        if (discussion.currentRound > discussion.maxRounds
+          || agentEntriesCount(transcript) >= groupChatTurnLimit({ participantCount: participants.length, maxRounds: discussion.maxRounds })) {
+          if (isDiscussionPaused(discussion.id)) return;
           await summarizeDiscussion(discussion, context, transcript, controller.signal);
           return;
         }
 
-        const sequence = discussionSequence(participants, discussion.currentRound);
-        currentAgent = sequence[discussion.currentIndex];
+        currentAgent = chooseNextGroupChatSpeaker({ participants, transcript });
         if (!currentAgent) throw new Error('无法确定当前讨论成员');
         let researchContext = discussion.researchContext || '';
         let turnSearchCount = 0;
         let researchPending = false;
-        const transcriptText = transcript
-          .map((entry) => `[第 ${entry.round} 轮 · ${entry.agentName}]\n${entry.content}`)
-          .join('\n\n');
+        const transcriptText = discussionTranscriptText(transcript);
         const roundInstruction = discussion.currentRound === 1
           ? '这是第一轮。请从你的专业角度提出独立判断、关键依据、风险和建议。'
           : '这是第二轮交叉回应。请回应前面成员的关键观点，指出同意、分歧和需要修正之处，不要重复第一轮内容。';
@@ -191,6 +222,7 @@ export function createDiscussionRuntime({
                 currentAgent.systemPrompt || currentAgent.description || `你是 ${currentAgent.name}。`,
                 currentAgent.memoryContext || '',
                 `你正在以“${currentAgent.name}”的身份参加空间多人讨论。${roundInstruction}`,
+                '这是轻量多人闲聊，不是长篇评审。请控制在 300～600 字，直接回应前面观点；不要生成大表格、长篇背景复述或重复已经说过的内容。',
                 '当前只允许讨论、分析、读取必要的空间资料和申请受控联网搜索。',
                 '不得创建任务方案，不得调用或描述 propose_task，不得写文件、运行命令、操作浏览器或声称已经执行工作。',
                 '需要联网且尚未获得授权时，调用 request_web_research；一次只申请一个具体查询。',
@@ -261,7 +293,7 @@ export function createDiscussionRuntime({
           type: 'discussion_turn',
           discussionId: discussion.id,
           round: discussion.currentRound,
-        }, [...transcript, entry], sequence.length);
+        }, [...transcript, entry], participants);
       } finally {
         clearInterval(cancellationTimer);
       }
@@ -273,7 +305,7 @@ export function createDiscussionRuntime({
       }
 
       const message = error instanceof Error ? error.message : String(error);
-      if (currentAgent && discussion.currentRound <= discussion.maxRounds) {
+      if (currentAgent && agentEntriesCount(parseJson(discussion.transcript, [])) < groupChatTurnLimit({ participantCount: parseJson(discussion.participantIds, []).length, maxRounds: discussion.maxRounds })) {
         const transcript = parseJson(discussion.transcript, []);
         const failure = `${currentAgent.name}本轮响应失败，已跳过：${message.slice(0, 300)}`;
         persistAndQueueDiscussionTurn(discussion, currentAgent.id, failure, {
@@ -284,7 +316,7 @@ export function createDiscussionRuntime({
         }, [
           ...transcript,
           { agentId: currentAgent.id, agentName: currentAgent.name, round: discussion.currentRound, content: failure },
-        ], parseJson(discussion.participantIds, []).length);
+        ], participants);
         return;
       }
 

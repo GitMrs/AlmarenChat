@@ -8,7 +8,7 @@ function baselineDatabase() {
   for (const table of ['Agent', 'AgentRun', 'SpaceWebhook', 'SpaceMcpServer', 'StudioWorkspace']) {
     db.exec(`CREATE TABLE "${table}" ("id" TEXT PRIMARY KEY)`);
   }
-  db.exec('CREATE TABLE "User" ("id" TEXT PRIMARY KEY, "imageModelEnabled" INTEGER, "imageModelName" TEXT, "imageModelSize" TEXT, "imageModelProtocol" TEXT, "modelContextWindow" INTEGER)');
+  db.exec('CREATE TABLE "User" ("id" TEXT PRIMARY KEY, "imageModelEnabled" INTEGER, "imageModelName" TEXT, "imageModelSize" TEXT, "imageModelProtocol" TEXT, "modelContextWindow" INTEGER, "assistantMcpServers" TEXT)');
   db.exec('CREATE TABLE "Space" ("id" TEXT PRIMARY KEY, "runtimeType" TEXT, "executionEngine" TEXT, "activeWorkId" TEXT)');
   db.exec('CREATE TABLE "SpaceAutomation" ("id" TEXT PRIMARY KEY, "executionMode" TEXT, "scriptPath" TEXT, "completionAction" TEXT, "deletedAt" TEXT)');
   return db;
@@ -74,6 +74,35 @@ test('leaves a new migration for prisma migrate deploy when its column is missin
     const result = inspectKnownMigrationRepair(db);
     assert.equal(result.action, 'none');
     assert.equal(result.reason, 'migration-not-applied');
+  } finally {
+    db.close();
+  }
+});
+
+test('detects an applied MCP migration whose column is missing', () => {
+  const db = baselineDatabase();
+  try {
+    db.exec('ALTER TABLE "User" DROP COLUMN "assistantMcpServers"');
+    db.exec('CREATE TABLE "_prisma_migrations" ("migration_name" TEXT, "started_at" DATETIME, "finished_at" DATETIME, "rolled_back_at" DATETIME)');
+    db.prepare('INSERT INTO "_prisma_migrations" ("migration_name", "started_at", "finished_at", "rolled_back_at") VALUES (?, ?, ?, NULL)')
+      .run('20260902150000_add_image_model_settings', '2026-09-02T15:00:00.000Z', '2026-09-02T15:00:01.000Z');
+    for (const migration of [
+      '20260902183000_add_personal_assistant',
+      '20260903170000_add_assistant_proactive_reminders',
+      '20260904120000_add_space_file_external_dependencies',
+      '20260904150000_add_assistant_reminder_idempotency',
+      '20260904170000_add_assistant_context_preferences',
+    ]) {
+      db.prepare('INSERT INTO "_prisma_migrations" ("migration_name", "started_at", "finished_at", "rolled_back_at") VALUES (?, ?, ?, NULL)')
+        .run(migration, '2026-09-04T00:00:00.000Z', '2026-09-04T00:00:01.000Z');
+    }
+    db.prepare('INSERT INTO "_prisma_migrations" ("migration_name", "started_at", "finished_at", "rolled_back_at") VALUES (?, ?, ?, NULL)')
+      .run('20260913010000_add_assistant_mcp_servers', '2026-09-13T01:00:00.000Z', '2026-09-13T01:00:01.000Z');
+    assert.deepEqual(inspectKnownMigrationRepair(db), {
+      action: 'rollback',
+      migration: '20260913010000_add_assistant_mcp_servers',
+      reason: 'migration-applied-but-schema-missing',
+    });
   } finally {
     db.close();
   }
