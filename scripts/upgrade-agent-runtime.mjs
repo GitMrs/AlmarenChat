@@ -167,6 +167,13 @@ export function inspectKnownMigrationRepair(targetDb) {
     } else existingStructureCount += 1;
   }
   if (missing.length > 0) {
+    if (!migration.row) {
+      return {
+        action: 'none',
+        migration: migrationName,
+        reason: 'migration-not-applied',
+      };
+    }
     if (migration.row && !migration.row.rolled_back_at && existingStructureCount === 0) {
       return {
         action: 'rollback',

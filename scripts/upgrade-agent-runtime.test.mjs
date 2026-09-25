@@ -66,14 +66,14 @@ test('detects an image settings migration whose columns already exist', () => {
   }
 });
 
-test('does not skip an image settings migration when a column is missing', () => {
+test('leaves a new migration for prisma migrate deploy when its column is missing', () => {
   const db = baselineDatabase();
   try {
     db.exec('ALTER TABLE "User" RENAME COLUMN "imageModelEnabled" TO "oldImageModelEnabled"');
     db.exec('CREATE TABLE "_prisma_migrations" ("migration_name" TEXT, "started_at" DATETIME, "finished_at" DATETIME, "rolled_back_at" DATETIME)');
     const result = inspectKnownMigrationRepair(db);
-    assert.equal(result.action, 'manual');
-    assert.deepEqual(result.missing, ['column:User.imageModelEnabled']);
+    assert.equal(result.action, 'none');
+    assert.equal(result.reason, 'migration-not-applied');
   } finally {
     db.close();
   }
