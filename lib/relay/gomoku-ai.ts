@@ -22,7 +22,7 @@ export type GomokuSituation =
   | 'corner_move';
 
 // 角色阶段分级台词（开局布局 / 残局绝杀）
-const STAGE_LINES: Record<string, { opening: string[]; endgame: string[] }> = {
+export const STAGE_LINES: Record<string, { opening: string[]; endgame: string[] }> = {
   'gaming-lulu': {
     opening: [
       '哼，抢开局是吧？先说明，本小姐今天手感可是顶级的！',
@@ -74,7 +74,7 @@ const STAGE_LINES: Record<string, { opening: string[]; endgame: string[] }> = {
 };
 
 // 角色对局专属互怼/互动台词（观战或特定对手在场时触发）
-const INTERACTION_LINES: Record<string, Record<string, string[]>> = {
+export const INTERACTION_LINES: Record<string, Record<string, string[]>> = {
   // 璐璐 对 诺克斯 / 可可
   'gaming-lulu': {
     'gaming-nox': [
@@ -156,7 +156,7 @@ export function getUndoLine(agentId: string): string {
 }
 
 // 核心角色落子情境台词库（大规模精品扩充）
-const CHARACTER_LINES: Record<string, Record<GomokuSituation, string[]>> = {
+export const CHARACTER_LINES: Record<string, Record<GomokuSituation, string[]>> = {
   // 璐璐：傲娇毒舌、嘴硬心软、高胜负欲
   'gaming-lulu': {
     normal: [

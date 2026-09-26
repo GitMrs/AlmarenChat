@@ -16,6 +16,7 @@
     "worker": "node worker/agent-runtime.mjs",
     "worker:qq": "node worker/qq-assistant.mjs",
     "lint": "next lint",
+    "precache:fish": "node scripts/precache-fish-audio.mjs",
     "postinstall": "node scripts/postinstall.mjs"
   },
   "dependencies": {
