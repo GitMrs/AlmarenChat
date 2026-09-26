@@ -8,13 +8,14 @@ import {
   Users,
 } from 'lucide-react';
 import InteractiveGomokuModal from '@/components/spaces/InteractiveGomokuModal';
+import InteractiveUndercoverModal from '@/components/spaces/InteractiveUndercoverModal';
 import type { Agent } from '@/types';
 
 export interface SpaceGameCenterProps {
   spaceAgents?: Agent[];
   onShareToSpace?: (content: string) => void;
   onBackToChat?: () => void;
-  initialGame?: 'gomoku' | null;
+  initialGame?: 'gomoku' | 'undercover' | null;
 }
 
 export default function SpaceGameCenter({
@@ -24,12 +25,15 @@ export default function SpaceGameCenter({
   initialGame = null,
 }: SpaceGameCenterProps) {
   const [isGomokuModalOpen, setIsGomokuModalOpen] = useState(Boolean(initialGame === 'gomoku'));
+  const [isUndercoverModalOpen, setIsUndercoverModalOpen] = useState(Boolean(initialGame === 'undercover'));
   const [gomokuMode, setGomokuMode] = useState<'pve' | 'eve'>('pve');
 
   useEffect(() => {
     if (initialGame === 'gomoku') {
       setGomokuMode('pve');
       setIsGomokuModalOpen(true);
+    } else if (initialGame === 'undercover') {
+      setIsUndercoverModalOpen(true);
     }
   }, [initialGame]);
 
@@ -80,19 +84,19 @@ export default function SpaceGameCenter({
           </div>
         </div>
 
-        {/* 开放游戏列表（五子棋作为当前唯一的类型） */}
-        <div>
-          <div className="flex items-center justify-between mb-4">
+        {/* 开放游戏列表 */}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <h3 className="text-base font-black text-slate-900">精选游戏库</h3>
               <span className="rounded-md bg-amber-500/10 border border-amber-200 px-2 py-0.5 text-xs font-black text-amber-800">
-                当前开放 1 款
+                当前开放 2 款
               </span>
             </div>
-            <span className="text-xs text-slate-400 font-semibold">类型：经典棋盘博弈</span>
+            <span className="text-xs text-slate-400 font-semibold">类型：棋盘博弈 · 语言推理桌游</span>
           </div>
 
-          {/* 核心游戏大卡片：五子棋 */}
+          {/* 游戏卡片 1：五子棋 */}
           <div className="relative overflow-hidden rounded-2xl border-2 border-amber-300/90 bg-white p-6 shadow-sm transition hover:shadow-md hover:border-amber-400">
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
               <div className="flex items-start gap-4">
@@ -117,7 +121,7 @@ export default function SpaceGameCenter({
                   </p>
                   <div className="mt-3.5 flex flex-wrap gap-2 text-xs font-semibold text-slate-500">
                     <span className="flex items-center gap-1 bg-slate-50 px-2.5 py-1 rounded-lg border border-black/[0.06]">
-                      🎙️ 180+ 句个性台词 (开局/残局/专属互怼)
+                      🎙️ 220+ 句个性台词 (开局/残局/专属互怼)
                     </span>
                     <span className="flex items-center gap-1 bg-slate-50 px-2.5 py-1 rounded-lg border border-black/[0.06]">
                       💡 军师点位深度战术指导
@@ -136,7 +140,7 @@ export default function SpaceGameCenter({
                     setGomokuMode('pve');
                     setIsGomokuModalOpen(true);
                   }}
-                  className="flex-1 lg:flex-none inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-slate-950 px-5 text-xs font-black text-white shadow-md transition hover:bg-slate-800"
+                  className="flex-1 lg:flex-none inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-slate-950 px-5 text-xs font-black text-white shadow-md transition hover:bg-slate-800 cursor-pointer"
                 >
                   <User size={15} />
                   开始人机对弈 (PVE)
@@ -147,10 +151,63 @@ export default function SpaceGameCenter({
                     setGomokuMode('eve');
                     setIsGomokuModalOpen(true);
                   }}
-                  className="flex-1 lg:flex-none inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-5 text-xs font-black text-slate-800 shadow-sm transition hover:bg-slate-50 hover:border-slate-400"
+                  className="flex-1 lg:flex-none inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-5 text-xs font-black text-slate-800 shadow-sm transition hover:bg-slate-50 hover:border-slate-400 cursor-pointer"
                 >
                   <Users size={15} />
                   开启全员观战 (EVE)
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* 游戏卡片 2：谁是卧底 */}
+          <div className="relative overflow-hidden rounded-2xl border-2 border-indigo-200 bg-white p-6 shadow-sm transition hover:shadow-md hover:border-indigo-300">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+              <div className="flex items-start gap-4">
+                <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 text-3xl text-white shadow-lg ring-4 ring-indigo-100">
+                  🎲
+                </div>
+                <div>
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    <h4 className="text-lg font-black text-slate-900">谁是卧底 · 语言推理</h4>
+                    <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-black text-emerald-700">
+                      现已开放
+                    </span>
+                    <span className="rounded-full bg-indigo-100 px-2.5 py-0.5 text-xs font-black text-indigo-800">
+                      4人暗牌局
+                    </span>
+                    <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-black text-amber-800">
+                      全角色语音辩论
+                    </span>
+                    <span className="rounded-full bg-rose-100 px-2.5 py-0.5 text-xs font-black text-rose-800">
+                      绝地反杀机制
+                    </span>
+                  </div>
+                  <p className="mt-2 text-xs leading-relaxed text-slate-600 max-w-2xl">
+                    经典的暗牌社交推理桌游！你与璐璐、可可、诺克斯围坐一桌，秘密抽取身份牌（3平民 vs 1卧底）。轮流隐晦描述、自由质询指认并投票放逐卧底。卧底被投出更有机会猜词翻盘反杀！
+                  </p>
+                  <div className="mt-3.5 flex flex-wrap gap-2 text-xs font-semibold text-slate-500">
+                    <span className="flex items-center gap-1 bg-slate-50 px-2.5 py-1 rounded-lg border border-black/[0.06]">
+                      🎙️ 璐璐/可可/诺克斯个性化陈述与互怼语音
+                    </span>
+                    <span className="flex items-center gap-1 bg-slate-50 px-2.5 py-1 rounded-lg border border-black/[0.06]">
+                      🎴 经典平衡词对库 (美食/数码/影视/情感)
+                    </span>
+                    <span className="flex items-center gap-1 bg-slate-50 px-2.5 py-1 rounded-lg border border-black/[0.06]">
+                      ⚡ 秘密手牌防窥与一键战报分享
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setIsUndercoverModalOpen(true)}
+                  className="w-full lg:w-auto inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-6 text-xs font-black text-white shadow-md transition hover:bg-indigo-700 cursor-pointer"
+                >
+                  <Gamepad2 size={16} className="text-amber-300" />
+                  立即开局 (4人局)
                 </button>
               </div>
             </div>
@@ -164,21 +221,6 @@ export default function SpaceGameCenter({
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 opacity-60">
             <div className="flex items-center gap-4 rounded-2xl border border-dashed border-slate-300 bg-white p-5">
-              <span className="text-3xl">🎲</span>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-black text-slate-800">谁是卧底 · 语言推理</span>
-                  <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
-                    筹备中
-                  </span>
-                </div>
-                <p className="mt-1 text-xs text-slate-500 truncate">
-                  多 Agent 身份隐藏与陈述辩论推理，敬请期待
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-4 rounded-2xl border border-dashed border-slate-300 bg-white p-5">
               <span className="text-3xl">♟️</span>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between">
@@ -189,6 +231,21 @@ export default function SpaceGameCenter({
                 </div>
                 <p className="mt-1 text-xs text-slate-500 truncate">
                   诺克斯军师定制战术残局复盘与推演
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-4 rounded-2xl border border-dashed border-slate-300 bg-white p-5">
+              <span className="text-3xl">📜</span>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-black text-slate-800">沉浸跑团 · 命运骰子</span>
+                  <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
+                    规划中
+                  </span>
+                </div>
+                <p className="mt-1 text-xs text-slate-500 truncate">
+                  守秘人主持 TRPG 克苏鲁与地牢掷骰冒险
                 </p>
               </div>
             </div>
@@ -204,6 +261,17 @@ export default function SpaceGameCenter({
         initialMode={gomokuMode}
         onShareToSpace={(text) => {
           setIsGomokuModalOpen(false);
+          onShareToSpace?.(text);
+        }}
+      />
+
+      {/* 谁是卧底沉浸式语言推理桌游弹框 */}
+      <InteractiveUndercoverModal
+        isOpen={isUndercoverModalOpen}
+        onClose={() => setIsUndercoverModalOpen(false)}
+        spaceAgents={spaceAgents}
+        onShareToSpace={(text) => {
+          setIsUndercoverModalOpen(false);
           onShareToSpace?.(text);
         }}
       />
