@@ -406,6 +406,9 @@ export default function SpaceMessageItem({
   onApproveTaskResult,
   onReviseTaskResult,
   onSkipTaskResult,
+  speaking = false,
+  speakingLoading = false,
+  onSpeak,
 }: {
   message: SpaceMessage;
   speaker?: Agent | null;
@@ -417,6 +420,9 @@ export default function SpaceMessageItem({
   onCopy: () => void;
   onRegenerate: () => void;
   onDelete: () => void;
+  speaking?: boolean;
+  speakingLoading?: boolean;
+  onSpeak?: (id: string, content: string, voice?: string) => void;
   run?: AgentRun | null;
   proposalBusy?: boolean;
   proposalDisabled?: boolean;
@@ -457,6 +463,9 @@ export default function SpaceMessageItem({
           copied={copied}
           active={active}
           canRegenerate={message.id === latestAssistantMessageId}
+          speaking={speaking}
+          speakingLoading={speakingLoading}
+          onSpeak={onSpeak && message.content ? () => onSpeak(message.id, message.content, speaker?.voice || undefined) : undefined}
           onCopy={onCopy}
           onRegenerate={onRegenerate}
           onDelete={onDelete}

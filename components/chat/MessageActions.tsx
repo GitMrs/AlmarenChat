@@ -1,6 +1,6 @@
 'use client';
 
-import { Check, Copy, RefreshCw, Trash2 } from 'lucide-react';
+import { Check, Copy, Loader2, RefreshCw, Square, Trash2, Volume2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 function formatTime(value: string) {
@@ -16,18 +16,24 @@ export default function MessageActions({
   copied,
   active,
   canRegenerate,
+  speaking,
+  speakingLoading,
   onCopy,
   onRegenerate,
   onDelete,
+  onSpeak,
 }: {
   role: 'user' | 'assistant' | 'system';
   createdAt: string;
   copied: boolean;
   active: boolean;
   canRegenerate: boolean;
+  speaking?: boolean;
+  speakingLoading?: boolean;
   onCopy: () => void;
   onRegenerate: () => void;
   onDelete: () => void;
+  onSpeak?: () => void;
 }) {
   return (
     <div
@@ -59,6 +65,29 @@ export default function MessageActions({
           aria-label="复制回复"
         >
           {copied ? <Check size={13} className="text-emerald-500" /> : <Copy size={13} />}
+        </button>
+      )}
+      {role === 'assistant' && onSpeak && (
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            onSpeak();
+          }}
+          className={cn(
+            'inline-flex h-7 w-7 items-center justify-center rounded-full transition hover:bg-slate-100 hover:text-slate-700',
+            speaking && 'bg-violet-50 text-violet-600'
+          )}
+          title={speakingLoading ? '合成中...' : speaking ? '停止朗读' : '朗读'}
+          aria-label={speaking ? '停止朗读' : '朗读回复'}
+        >
+          {speakingLoading ? (
+            <Loader2 size={13} className="animate-spin text-violet-500" />
+          ) : speaking ? (
+            <Square size={11} className="fill-current text-violet-600" />
+          ) : (
+            <Volume2 size={13} />
+          )}
         </button>
       )}
       {role === 'assistant' && canRegenerate && (

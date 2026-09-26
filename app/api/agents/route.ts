@@ -25,7 +25,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const userId = requireAuth(request);
-    const { name, avatar, description, category, tone, greeting, systemPrompt, isPublic, agentType } =
+    const { name, avatar, description, category, tone, greeting, systemPrompt, isPublic, agentType, voice } =
       await request.json();
 
     if (!['BASIC', 'EMPLOYEE'].includes(agentType)) {
@@ -42,6 +42,7 @@ export async function POST(request: Request) {
         greeting,
         systemPrompt,
         agentType,
+        voice,
         isPublic: isPublic ?? false,
         creatorId: userId,
       },

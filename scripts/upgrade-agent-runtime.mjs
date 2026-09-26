@@ -474,6 +474,9 @@ try {
     if (hasTable('Space') && !hasColumn('Space', 'activeWorkId')) db.exec('ALTER TABLE "Space" ADD COLUMN "activeWorkId" TEXT');
     if (!hasColumn('Conversation', 'kind')) db.exec(`ALTER TABLE "Conversation" ADD COLUMN "kind" TEXT NOT NULL DEFAULT 'AGENT'`);
     if (!hasColumn('Conversation', 'assistantMode')) db.exec('ALTER TABLE "Conversation" ADD COLUMN "assistantMode" TEXT');
+    if (!hasColumn('Agent', 'voice')) db.exec('ALTER TABLE "Agent" ADD COLUMN "voice" TEXT');
+    if (!hasColumn('Conversation', 'agentVoice')) db.exec('ALTER TABLE "Conversation" ADD COLUMN "agentVoice" TEXT');
+    db.exec(`UPDATE "Agent" SET "voice" = 'zh-CN-XiaoyiNeural' WHERE "voice" IS NULL OR "voice" = ''`);
     if (hasTable('Message') && !hasColumn('Message', 'source')) {
       db.exec(`ALTER TABLE "Message" ADD COLUMN "source" TEXT NOT NULL DEFAULT 'WEB'`);
     }

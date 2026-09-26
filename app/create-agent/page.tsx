@@ -20,6 +20,8 @@ import {
   Send,
   ShieldCheck,
   Sparkles,
+  Square,
+  Volume2,
   Wand2,
   XCircle,
 } from 'lucide-react';
@@ -27,8 +29,12 @@ import AppShell from '@/components/layout/AppShell';
 import LoginRequired from '@/components/auth/LoginRequired';
 import AgentAvatarPicker from '@/components/agent/AgentAvatarPicker';
 import AgentGrowthPanel from '@/components/agent/AgentGrowthPanel';
+import AgentVoicePicker from '@/components/agent/AgentVoicePicker';
 import KnowledgeManager from '@/components/agent/KnowledgeManager';
 import Avatar from '@/components/shared/Avatar';
+import SearchableSelect from '@/components/shared/SearchableSelect';
+import { useTTS } from '@/hooks/useTTS';
+import { getVoiceById } from '@/lib/tts/voices.mjs';
 import { createAgentAvatar, createRandomAgentAvatarOptions, DEFAULT_AGENT_AVATAR } from '@/lib/agent-avatar';
 import { cn } from '@/lib/utils';
 import { AGENT_CATEGORIES, AGENT_TONES, CATEGORY_COLORS } from '@/types';
@@ -99,6 +105,7 @@ function CreateAgentContent() {
   const [systemPrompt, setSystemPrompt] = useState('');
   const [selectedAvatar, setSelectedAvatar] = useState('🛡️');
   const [proSelectedAvatar, setProSelectedAvatar] = useState(DEFAULT_AGENT_AVATAR);
+  const [voice, setVoice] = useState('zh-CN-XiaoyiNeural');
   const [proAvatarOptions, setProAvatarOptions] = useState(() =>
     Array.from({ length: 9 }, (_, index) => createAgentAvatar(`almaren-agent-preview-${index + 1}`))
   );
@@ -194,6 +201,7 @@ ${dims.boundaries.trim() || '- 严禁越权承诺，严禁未经验证盲目脑�
           setSystemPrompt(agent.systemPrompt || '');
           setSelectedAvatar(agent.avatar || '🪄');
           setProSelectedAvatar(agent.avatar || DEFAULT_AGENT_AVATAR);
+          setVoice(agent.voice || 'zh-CN-XiaoyiNeural');
           setIsPublic(Boolean(agent.isPublic));
 
           const dims = parsePromptToDimensions(agent.systemPrompt || '');
@@ -260,6 +268,28 @@ ${dims.boundaries.trim() || '- 严禁越权承诺，严禁未经验证盲目脑�
     if (systemPrompt.trim()) return systemPrompt;
     return `你是一个${category}类 AI Agent。你的语气风格是${tone}。你需要根据用户的问题给出清晰、具体、可执行的帮助。`;
   }, [category, systemPrompt, tone]);
+
+  const {
+    play: playCardTTS,
+    stop: stopCardTTS,
+    isPlaying: isCardTTSPlaying,
+    isLoading: isCardTTSLoading,
+    currentId: cardTTSId,
+  } = useTTS();
+  const cardVoiceObj = useMemo(() => getVoiceById(voice), [voice]);
+  const cardVoicePreviewId = `card-preview-${voice}`;
+  const isCardVoicePlaying = isCardTTSPlaying && cardTTSId === cardVoicePreviewId;
+  const isCardVoiceLoading = isCardTTSLoading && cardTTSId === cardVoicePreviewId;
+
+  const handlePreviewCardVoice = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    if (isCardVoicePlaying || isCardVoiceLoading) {
+      stopCardTTS();
+      return;
+    }
+    playCardTTS(finalGreeting, { id: cardVoicePreviewId, voice });
+  };
 
   const applyPreset = (preset: (typeof PURPOSE_PRESETS)[number]) => {
     setCategory(preset.category);
@@ -429,6 +459,7 @@ ${dims.boundaries.trim() || '- 严禁越权承诺，严禁未经验证盲目脑�
         systemPrompt: finalPrompt,
         avatar: creationMode === 'pro' ? proSelectedAvatar : selectedAvatar,
         agentType: creationMode === 'pro' ? 'EMPLOYEE' : 'BASIC',
+        voice,
         isPublic,
       };
 
@@ -707,15 +738,15 @@ ${dims.boundaries.trim() || '- 严禁越权承诺，严禁未经验证盲目脑�
                       </div>
                       <div className="flex items-center gap-2">
                         <span className="text-xs font-bold text-slate-400">领域：</span>
-                        <select
+                        <SearchableSelect
                           value={category}
-                          onChange={(e) => setCategory(e.target.value)}
-                          className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-800 outline-none"
-                        >
-                          {AGENT_CATEGORIES.filter((c) => c !== '全部').map((c) => (
-                            <option key={c} value={c}>{c}</option>
-                          ))}
-                        </select>
+                          options={AGENT_CATEGORIES.filter((c) => c !== '全部')}
+                          compact
+                          triggerClassName="h-8 rounded-xl px-2.5 text-xs font-bold bg-slate-50 border-slate-200"
+                          dropdownClassName="w-36"
+                          showSearch={false}
+                          onChange={setCategory}
+                        />
                       </div>
                     </div>
 
@@ -778,6 +809,12 @@ ${dims.boundaries.trim() || '- 严禁越权承诺，严禁未经验证盲目脑�
                             className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3 text-xs font-medium text-slate-800 outline-none focus:border-slate-400"
                           />
                         </label>
+
+                        {/* 角色声线定制 */}
+                        <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
+                          <span className="block text-xs font-bold text-slate-700">角色声线 (TTS)</span>
+                          <AgentVoicePicker value={voice} onChange={setVoice} size="sm" />
+                        </div>
                       </div>
                     </div>
                   </section>
@@ -1077,6 +1114,14 @@ ${dims.boundaries.trim() || '- 严禁越权承诺，严禁未经验证盲目脑�
                         </div>
                       </div>
                     </div>
+
+                    <div className="mt-5 pt-5 border-t border-black/[0.05] flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <label className="block text-sm font-bold text-slate-700">角色声线 (TTS)</label>
+                        <p className="text-xs text-slate-500">挑选 Agent 的说话音色，可点击试听</p>
+                      </div>
+                      <AgentVoicePicker value={voice} onChange={setVoice} size="md" />
+                    </div>
                   </section>
 
                   <section className="rounded-[28px] border border-black/[0.06] bg-white p-5 shadow-sm sm:p-6">
@@ -1179,7 +1224,7 @@ ${dims.boundaries.trim() || '- 严禁越权承诺，严禁未经验证盲目脑�
                           )}
                           <div className="min-w-0 flex-1">
                             <h3 className="truncate text-lg font-black text-slate-950">{name || '未命名 Agent'}</h3>
-                            <div className="mt-1 flex flex-wrap gap-1.5">
+                            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                               <span
                                 className="rounded-full px-2.5 py-0.5 text-2xs font-bold text-white"
                                 style={{ backgroundColor: categoryColor }}
@@ -1189,6 +1234,28 @@ ${dims.boundaries.trim() || '- 严禁越权承诺，严禁未经验证盲目脑�
                               <span className="rounded-full bg-white px-2 py-0.5 text-2xs font-bold text-slate-600">
                                 {tone}
                               </span>
+                              {voice && (
+                                <button
+                                  type="button"
+                                  onClick={handlePreviewCardVoice}
+                                  className={cn(
+                                    'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-2xs font-bold transition',
+                                    isCardVoicePlaying
+                                      ? 'bg-indigo-600 text-white shadow-xs'
+                                      : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100 active:scale-95'
+                                  )}
+                                  title={isCardVoicePlaying ? '停止试听' : `试听 ${cardVoiceObj.name} 声线朗读开场白`}
+                                >
+                                  {isCardVoiceLoading ? (
+                                    <Loader2 size={10} className="animate-spin text-indigo-600" />
+                                  ) : isCardVoicePlaying ? (
+                                    <Square size={8} className="fill-current text-white" />
+                                  ) : (
+                                    <Volume2 size={10} />
+                                  )}
+                                  <span>{cardVoiceObj.name}</span>
+                                </button>
+                              )}
                             </div>
                           </div>
                         </div>

@@ -42,6 +42,7 @@ export interface Agent {
   greeting?: string;
   systemPrompt?: string;
   model?: string;
+  voice?: string;
   isPublic: boolean;
   createdAt: string;
   updatedAt: string;

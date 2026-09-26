@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Activity, ArrowLeft, BookOpen, CalendarClock, Check, CheckCircle2, ChevronRight, Code2, Copy, Download, ExternalLink, FilePenLine, FileText, Globe2, History, Image as ImageIcon, ListTodo, Loader2, MessagesSquare, Newspaper, PackagePlus, Paperclip, Play, Plus, RotateCcw, Save, Send, Settings2, ShieldCheck, SkipForward, Square, Trash2, UploadCloud, UsersRound, X } from 'lucide-react';
+import { Activity, ArrowLeft, BookOpen, CalendarClock, Check, CheckCircle2, ChevronRight, Code2, Copy, Download, ExternalLink, FilePenLine, FileText, Gamepad2, Globe2, History, Image as ImageIcon, ListTodo, Loader2, MessagesSquare, Newspaper, PackagePlus, Paperclip, Play, Plus, RotateCcw, Save, Send, Settings2, ShieldCheck, SkipForward, Square, Trash2, UploadCloud, UsersRound, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import AppShell from '@/components/layout/AppShell';
@@ -17,12 +17,14 @@ import TaskReviewDialog from '@/components/spaces/TaskReviewDialog';
 import SpaceFileEditorDialog from '@/components/spaces/SpaceFileEditorDialog';
 import SpaceImagePreviewDialog from '@/components/spaces/SpaceImagePreviewDialog';
 import SpaceDiscussionDialog from '@/components/spaces/SpaceDiscussionDialog';
+import SpaceGameCenter from '@/components/spaces/SpaceGameCenter';
 import SpaceDiscussionStatus from '@/components/spaces/SpaceDiscussionStatus';
 import SpaceRelayStatus from '@/components/spaces/SpaceRelayStatus';
 import SpaceOperationsCenter, { type SpaceOperationsTab } from '@/components/spaces/SpaceOperationsCenter';
 import { CompressionStatusPanel } from '@/components/spaces/CompressionStatusPanel';
 import { agentRuns as agentRunsApi, agents as agentsApi, spaces as spacesApi, streamSpaceMessage } from '@/lib/api';
 import { getBuiltInAgents } from '@/lib/agents-data';
+import { useTTS } from '@/hooks/useTTS';
 import { latestRunInRetryChain } from '@/lib/agent-run-retry-chain.mjs';
 import {
   DEFAULT_CONTINUATION_ITERATIONS,
@@ -527,7 +529,8 @@ export default function SpaceDetailPage() {
   const [relays, setRelays] = useState<SpaceRelay[]>([]);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [mode, setMode] = useState<'chat' | 'task'>('chat');
-  const [workspaceView, setWorkspaceView] = useState<'chat' | 'files' | 'operations'>('chat');
+  const [workspaceView, setWorkspaceView] = useState<'chat' | 'files' | 'operations' | 'games'>('chat');
+  const [gameCenterInitialGame, setGameCenterInitialGame] = useState<'gomoku' | null>(null);
   const [operationsTab, setOperationsTab] = useState<SpaceOperationsTab>('overview');
   const [sidePanel, setSidePanel] = useState<'members' | 'files' | 'skills' | 'runs' | 'operations' | 'publications' | 'settings' | 'automation' | 'notifications' | 'connector' | null>(null);
   const [loading, setLoading] = useState(true);
@@ -551,6 +554,7 @@ export default function SpaceDetailPage() {
   const [mentionRange, setMentionRange] = useState<{ start: number; end: number } | null>(null);
   const [activeMentionIndex, setActiveMentionIndex] = useState(0);
   const [isStreaming, setIsStreaming] = useState(false);
+  const { play: playTTS, stop: stopTTS, isPlaying: isTTSPlaying, isLoading: isTTSLoading, currentId: currentTTSId } = useTTS();
   const [streamingContent, setStreamingContent] = useState('');
   const [streamingSpeakerId, setStreamingSpeakerId] = useState<string | null>(null);
   const [streamingPiActivity, setStreamingPiActivity] = useState<SpacePiExecutionActivity | null>(null);
@@ -612,6 +616,8 @@ export default function SpaceDetailPage() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const forceScrollToBottomRef = useRef(true);
   const followMessagesRef = useRef(true);
+  const chatScrollTopRef = useRef<number>(0);
+  const wasAtBottomRef = useRef<boolean>(true);
   const abortRef = useRef<AbortController | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const skillZipInputRef = useRef<HTMLInputElement>(null);
@@ -1150,13 +1156,45 @@ export default function SpaceDetailPage() {
       behavior: shouldJump || isStreaming ? 'auto' : 'smooth',
     });
     forceScrollToBottomRef.current = false;
+    wasAtBottomRef.current = true;
   }, [messages, streamingContent, isStreaming]);
 
   const handleMessagesScroll = () => {
     const container = scrollRef.current;
     if (!container) return;
-    followMessagesRef.current = container.scrollHeight - container.scrollTop - container.clientHeight <= 80;
+    const isAtBottom = container.scrollHeight - container.scrollTop - container.clientHeight <= 80;
+    followMessagesRef.current = isAtBottom;
+    wasAtBottomRef.current = isAtBottom;
+    chatScrollTopRef.current = container.scrollTop;
   };
+
+  useEffect(() => {
+    if (workspaceView === 'chat') {
+      const restoreScroll = () => {
+        const container = scrollRef.current;
+        if (!container) return;
+        if (wasAtBottomRef.current) {
+          container.scrollTo({ top: container.scrollHeight, behavior: 'auto' });
+          followMessagesRef.current = true;
+        } else if (chatScrollTopRef.current > 0) {
+          container.scrollTo({ top: chatScrollTopRef.current, behavior: 'auto' });
+          followMessagesRef.current = false;
+        }
+      };
+      const frame1 = window.requestAnimationFrame(() => {
+        restoreScroll();
+        const frame2 = window.requestAnimationFrame(restoreScroll);
+        return () => window.cancelAnimationFrame(frame2);
+      });
+      return () => window.cancelAnimationFrame(frame1);
+    } else {
+      const container = scrollRef.current;
+      if (container && container.clientHeight > 0) {
+        chatScrollTopRef.current = container.scrollTop;
+        wasAtBottomRef.current = container.scrollHeight - container.scrollTop - container.clientHeight <= 80;
+      }
+    }
+  }, [workspaceView]);
 
   const openTaskRun = (runId: string, followRetries = false) => {
     const target = followRetries ? latestRunInRetryChain(runs, runId) : null;
@@ -1425,6 +1463,16 @@ export default function SpaceDetailPage() {
       dismissDiscussion(latestDiscussion.id);
     }
 
+    if (space?.templateId === 'gaming-room' && !options?.reuseLastUserMessage && (content.includes('五子棋') || content.includes('下棋') || content.includes('游戏中心') || content.includes('玩游戏') || content.includes('来一盘') || content.includes('开一局'))) {
+      if (content.includes('五子棋') || content.includes('下棋') || content.includes('来一盘') || content.includes('开一局')) {
+        setGameCenterInitialGame('gomoku');
+      } else {
+        setGameCenterInitialGame(null);
+      }
+      setSidePanel(null);
+      setWorkspaceView('games');
+    }
+
     const activeSkillId = options?.skillIdOverride === undefined ? selectedSkillId : options.skillIdOverride;
     const requestImageGeneration = options?.imageGenerationRequested ?? imageGenerationMode;
     const activeSkill = skills.find((skill) => skill.id === activeSkillId) || null;
@@ -1443,8 +1491,11 @@ export default function SpaceDetailPage() {
       createdAt: new Date().toISOString(),
     };
     const history = options?.historyOverride || messages;
-    const nextMessages = options?.reuseLastUserMessage ? history : [...history, userMessage];
-    setMessages(nextMessages);
+    let currentHistory = options?.reuseLastUserMessage ? history : [...history, userMessage];
+    forceScrollToBottomRef.current = true;
+    followMessagesRef.current = true;
+    wasAtBottomRef.current = true;
+    setMessages(currentHistory);
     if (!options?.reuseLastUserMessage) setInput('');
     if (!options?.reuseLastUserMessage) setSelectedSkillId(null);
     setIsStreaming(true);
@@ -1460,7 +1511,14 @@ export default function SpaceDetailPage() {
       const controller = new AbortController();
       abortRef.current = controller;
       const coordinatorRequested = requestImageGeneration || mentionedAgents(content, [coordinatorAgent as Agent]).length > 0;
-      const targets = coordinatorRequested ? [] : mentionedAgents(content, memberAgents);
+      let targets = coordinatorRequested ? [] : mentionedAgents(content, memberAgents);
+      const isAllMembersRequested = !coordinatorRequested && targets.length === 0 && (
+        /^(大家|全员|所有人|你们|全部成员)/i.test(content.trim()) ||
+        /(大家|全员|所有人|互相|都).*(介绍|聊聊|说|看法|出来|打招呼|谁|怎么看|亮相|整活|开黑)/i.test(content)
+      );
+      if (isAllMembersRequested && memberAgents.length >= 2) {
+        targets = memberAgents;
+      }
       const replyRequests: Array<{
         target: Agent | null;
         message: string;
@@ -1502,7 +1560,7 @@ export default function SpaceDetailPage() {
         const result = await streamSpaceMessage({
           spaceId,
           message: replyRequest.message,
-          history: nextMessages.map((message) => ({
+          history: currentHistory.map((message) => ({
             role: message.role,
             content: message.content,
             speakerAgentId: message.speakerAgentId,
@@ -1615,7 +1673,8 @@ export default function SpaceDetailPage() {
 
         if (index < replyRequests.length - 1) {
           const messageResult = await spacesApi.messages(spaceId, { limit: 60 });
-          setMessages(messageResult.messages);
+          currentHistory = messageResult.messages;
+          setMessages(currentHistory);
         }
       }
 
@@ -2927,6 +2986,26 @@ export default function SpaceDetailPage() {
                 <span className="hidden md:inline">资料</span>
                 {files.length > 0 && <span className="text-xs text-slate-400">{files.length}</span>}
               </button>
+              {space?.templateId === 'gaming-room' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSidePanel(null);
+                    setGameCenterInitialGame(null);
+                    setWorkspaceView('games');
+                  }}
+                  aria-label="游戏中心"
+                  title="开黑游戏中心"
+                  className={`inline-flex h-10 items-center gap-1.5 rounded-lg px-2.5 text-sm font-black transition ${
+                    workspaceView === 'games'
+                      ? 'bg-amber-500 text-white shadow-sm'
+                      : 'bg-amber-500/10 text-amber-700 hover:bg-amber-500/20'
+                  }`}
+                >
+                  <Gamepad2 size={17} className={workspaceView === 'games' ? 'text-white' : 'text-amber-500'} />
+                  <span className="hidden md:inline">游戏中心</span>
+                </button>
+              )}
               {!isPiSpace && <button
                 type="button"
                 onClick={() => setSidePanel('runs')}
@@ -2970,6 +3049,7 @@ export default function SpaceDetailPage() {
               <nav className="flex h-14 shrink-0 items-stretch gap-1 border-b border-black/[0.06] bg-white px-3 sm:px-5" aria-label="空间工作视图">
                 {[
                   { id: 'chat' as const, label: '对话', icon: MessagesSquare },
+                  ...(space.templateId === 'gaming-room' ? [{ id: 'games' as const, label: '游戏中心', icon: Gamepad2 }] : []),
                   { id: 'files' as const, label: '成果', icon: FileText, count: files.length },
                   { id: 'operations' as const, label: '运营', icon: Activity, count: actionRequests.filter((action) => action.status === 'PENDING').length },
                 ].map((item) => {
@@ -2981,6 +3061,10 @@ export default function SpaceDetailPage() {
                       onClick={() => {
                         if (item.id === 'operations') {
                           openOperations();
+                        } else if (item.id === 'games') {
+                          setSidePanel(null);
+                          setGameCenterInitialGame(null);
+                          setWorkspaceView('games');
                         } else {
                           setSidePanel(null);
                           setWorkspaceView(item.id);
@@ -3161,8 +3245,19 @@ export default function SpaceDetailPage() {
                 onUpdateLearningDraft={updateLearningDraft}
                 onApplyLearningAction={applyLearningAction}
               />
-            ) : (
-              <>
+            ) : !isPiSpace && workspaceView === 'games' ? (
+              <SpaceGameCenter
+                spaceAgents={memberAgents}
+                initialGame={gameCenterInitialGame}
+                onBackToChat={() => setWorkspaceView('chat')}
+                onShareToSpace={(text) => {
+                  setWorkspaceView('chat');
+                  void sendMessage(text);
+                }}
+              />
+            ) : null}
+
+            <div className={`min-h-0 flex-1 flex flex-col ${workspaceView === 'chat' ? '' : 'hidden'}`}>
             <div ref={scrollRef} onScroll={handleMessagesScroll} className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-[#fbfaf7] px-4 py-5 sm:px-6 lg:px-10 lg:py-6">
               <div className="mx-auto max-w-4xl space-y-5">
                 {error && <div className="rounded-2xl bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-600">{error}</div>}
@@ -3714,6 +3809,36 @@ export default function SpaceDetailPage() {
                   </>
                 )}
                 <div className="space-y-5">
+                {space.templateId === 'gaming-room' && (
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-amber-200/90 bg-gradient-to-r from-amber-50 via-orange-50/70 to-amber-50 p-4 shadow-sm">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-amber-500 text-xl text-white shadow-md ring-2 ring-amber-300">
+                        🎮
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h3 className="text-sm font-black text-slate-900">开黑游戏中心</h3>
+                          <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-black text-amber-800">1 款游戏就绪</span>
+                        </div>
+                        <p className="mt-0.5 text-xs font-semibold text-amber-900/80">
+                          现已上线五子棋 AI 人机对弈与语音观战，与璐璐、诺克斯、可可边玩边聊！
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSidePanel(null);
+                        setGameCenterInitialGame(null);
+                        setWorkspaceView('games');
+                      }}
+                      className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-lg bg-slate-950 px-4 text-xs font-black text-white shadow-sm transition hover:bg-slate-800"
+                    >
+                      <Gamepad2 size={15} className="text-amber-400" />
+                      进入游戏中心
+                    </button>
+                  </div>
+                )}
                 {messages.length === 0 && !isStreaming && (
                   <div className="rounded-lg border border-dashed border-slate-200 bg-white p-8 text-center">
                     <h2 className="text-lg font-black text-slate-950">先把需求交给协调者</h2>
@@ -3729,8 +3854,14 @@ export default function SpaceDetailPage() {
                             key={prompt}
                             type="button"
                             onClick={() => {
-                              setInput(prompt);
-                              window.requestAnimationFrame(() => textareaRef.current?.focus());
+                              if (prompt.includes('五子棋') || prompt.includes('游戏')) {
+                                setSidePanel(null);
+                                setGameCenterInitialGame(prompt.includes('五子棋') ? 'gomoku' : null);
+                                setWorkspaceView('games');
+                              } else {
+                                setInput(prompt);
+                                window.requestAnimationFrame(() => textareaRef.current?.focus());
+                              }
                             }}
                             className="min-h-9 rounded-lg border border-black/[0.08] bg-white px-3 py-2 text-xs font-black text-slate-600 transition hover:border-slate-300 hover:text-slate-950"
                           >
@@ -3754,6 +3885,15 @@ export default function SpaceDetailPage() {
                     onCopy={() => copyMessage(message)}
                     onRegenerate={isPiSpace ? undefined : regenerateMessage}
                     onDelete={isPiSpace ? undefined : () => setPendingDeleteMessage(message)}
+                    speaking={isTTSPlaying && currentTTSId === message.id}
+                    speakingLoading={isTTSLoading && currentTTSId === message.id}
+                    onSpeak={(id, content, voice) => {
+                      if (isTTSPlaying && currentTTSId === id) {
+                        stopTTS();
+                      } else {
+                        playTTS(content, { id, voice });
+                      }
+                    }}
                     run={messageRunId(message)
                       ? latestRunInRetryChain(runs, messageRunId(message))
                       : null}
@@ -4109,8 +4249,7 @@ export default function SpaceDetailPage() {
                 </ComposerShell>
               </div>
             </footer>
-              </>
-            )}
+            </div>
           </main>
 
           {sidePanel && (

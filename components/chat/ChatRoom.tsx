@@ -12,6 +12,7 @@ import LoadingSpinner from '@/components/shared/LoadingSpinner';
 import AgentDetailsPanel from '@/components/chat/AgentDetailsPanel';
 import ChatComposer from '@/components/chat/ChatComposer';
 import { MessageItem } from '@/components/chat/ChatMessageItem';
+import { useTTS } from '@/hooks/useTTS';
 import { getBuiltInAgents } from '@/lib/agents-data';
 import { generateConversationImage, streamChat, conversations as conversationsApi, agents as agentsApi, user as userApi, uploads } from '@/lib/api';
 import {
@@ -121,6 +122,8 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
   const pendingPrependScrollRef = useRef<{ scrollHeight: number; scrollTop: number } | null>(null);
 
+  const { play: playTTS, stop: stopTTS, isPlaying: isTTSPlaying, isLoading: isTTSLoading, currentId: currentTTSId } = useTTS();
+
   const messagesScrollRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -210,6 +213,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
               tone: conversation.agentTone || found?.tone,
               systemPrompt: conversation.agentSystemPrompt || found?.systemPrompt,
               greeting: found?.greeting,
+              voice: (conversation as any).agentVoice || found?.voice,
             });
             setContextMessageLimit(
               Math.max(
@@ -504,6 +508,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
             tone: displayAgent.tone,
             description: displayAgent.description,
             systemPrompt: displayAgent.systemPrompt,
+            voice: displayAgent.voice,
           }
         : undefined;
       const usesBrowserModel = modelSource === 'OLLAMA';
@@ -932,10 +937,16 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
                   latestAssistantMessageId={latestAssistantMessageId}
                   copiedId={copiedId}
                   activeActionMessageId={activeActionMessageId}
+                  speakingId={isTTSPlaying ? currentTTSId : null}
+                  speakingLoadingId={isTTSLoading ? currentTTSId : null}
                   onActivate={(id) => setActiveActionMessageId((current) => (current === id ? null : id))}
                   onCopy={handleCopy}
                   onRegenerate={handleRegenerate}
                   onDelete={setPendingDeleteMessage}
+                  onSpeak={(id, content) => {
+                    const voice = displayAgent?.voice || undefined;
+                    playTTS(content, { id, voice });
+                  }}
                 />
               ))}
             {isLoggedIn && isStreaming && streamingContent && (

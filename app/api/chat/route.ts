@@ -122,6 +122,7 @@ export async function POST(request: Request) {
           agentTone: snapshot.tone || null,
           agentDescription: snapshot.description || null,
           agentSystemPrompt: snapshot.systemPrompt || context || null,
+          agentVoice: snapshot.voice || null,
           contextMessageLimit: requestedContextLimit,
           title: textMessage.slice(0, 50) || (imageAttachments.length > 0 ? '图片会话' : '新会话'),
         },

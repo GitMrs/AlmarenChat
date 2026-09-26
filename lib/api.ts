@@ -1011,3 +1011,33 @@ export const uploads = {
     return res.json() as Promise<{ attachment: { type: 'image'; url: string; name?: string; mimeType?: string; size?: number } }>;
   },
 };
+
+// TTS
+export const tts = {
+  getVoices: () => request<{ ok: boolean; voices: any[] }>('/tts'),
+  synthesizeBlob: async (text: string, options?: { voice?: string; rate?: string; pitch?: string }) => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    const res = await fetch(`${API_BASE}/tts`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ text, ...options }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'TTS request failed' }));
+      throw new Error(err.error || `HTTP ${res.status}`);
+    }
+    return res.blob();
+  },
+  getAudioUrl: (text: string, options?: { voice?: string; rate?: string; pitch?: string }) => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    const params = new URLSearchParams({ text });
+    if (options?.voice) params.set('voice', options.voice);
+    if (options?.rate) params.set('rate', options.rate);
+    if (options?.pitch) params.set('pitch', options.pitch);
+    if (token) params.set('token', token);
+    return `${API_BASE}/tts?${params.toString()}`;
+  },
+};

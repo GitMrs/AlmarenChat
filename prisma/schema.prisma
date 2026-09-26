@@ -64,6 +64,7 @@ model Agent {
   greeting     String?
   systemPrompt String?
   model        String?
+  voice        String?
   agentType    String         @default("BASIC")
   isPublic     Boolean        @default(true)
   createdAt    DateTime       @default(now())
@@ -487,6 +488,7 @@ model Conversation {
   agentTone           String?
   agentDescription    String?
   agentSystemPrompt   String?
+  agentVoice          String?
   contextMessageLimit Int?
   assistantMode       String?
   title               String?

@@ -1,4 +1,5 @@
 import type { Agent } from '@/types';
+import { GAMING_AGENTS } from './gaming-agents';
 
 const CATEGORY_MAP: Record<string, string> = {
   academic: '学习',
@@ -37,6 +38,7 @@ export interface RawAgent {
     tags: string[];
     title: string;
     category: string;
+    voice?: string;
   };
   description?: string;
 }
@@ -54,6 +56,7 @@ export function transformAgent(raw: RawAgent): Agent {
     tone: CATEGORY_TONE_MAP[category] || '专业',
     greeting: `你好，我是 ${raw.meta.title}。${raw.meta.description}`,
     systemPrompt: raw.description || '',
+    voice: raw.meta.voice,
     isPublic: true,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -67,10 +70,14 @@ export async function getBuiltInAgents(): Promise<Agent[]> {
 
   try {
     const rawAgents: RawAgent[] = await import('@/src/lib/agent.json').then((m) => m.default);
-    agentsCache = rawAgents.map(transformAgent);
+    const gamingIds = new Set(GAMING_AGENTS.map((agent) => agent.id));
+    const standardAgents = rawAgents
+      .filter((raw) => !gamingIds.has(raw.identifier))
+      .map(transformAgent);
+    agentsCache = [...GAMING_AGENTS, ...standardAgents];
     return agentsCache;
   } catch {
-    return [];
+    return GAMING_AGENTS;
   }
 }
 

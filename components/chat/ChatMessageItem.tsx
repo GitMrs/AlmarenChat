@@ -23,6 +23,7 @@ export type DisplayAgent = {
   tone?: string;
   greeting?: string;
   systemPrompt?: string;
+  voice?: string;
 };
 
 type MessageItemProps = {
@@ -32,10 +33,13 @@ type MessageItemProps = {
   latestAssistantMessageId?: string;
   copiedId: string | null;
   activeActionMessageId: string | null;
+  speakingId?: string | null;
+  speakingLoadingId?: string | null;
   onActivate: (id: string) => void;
   onCopy: (id: string, content: string) => void;
   onRegenerate: () => void;
   onDelete: (message: ChatMessage) => void;
+  onSpeak?: (id: string, content: string) => void;
 };
 
 export const MessageItem = memo(function MessageItem({
@@ -45,10 +49,13 @@ export const MessageItem = memo(function MessageItem({
   latestAssistantMessageId,
   copiedId,
   activeActionMessageId,
+  speakingId,
+  speakingLoadingId,
   onActivate,
   onCopy,
   onRegenerate,
   onDelete,
+  onSpeak,
 }: MessageItemProps) {
   return (
     <MessageBubbleFrame
@@ -65,9 +72,12 @@ export const MessageItem = memo(function MessageItem({
           copied={copiedId === message.id}
           active={activeActionMessageId === message.id}
           canRegenerate={message.id === latestAssistantMessageId}
+          speaking={speakingId === message.id}
+          speakingLoading={speakingLoadingId === message.id}
           onCopy={() => onCopy(message.id, message.content)}
           onRegenerate={onRegenerate}
           onDelete={() => onDelete(message)}
+          onSpeak={onSpeak ? () => onSpeak(message.id, message.content) : undefined}
         />
       ) : null}
     >

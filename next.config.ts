@@ -5,7 +5,7 @@ const nextConfig: NextConfig = {
   eslint: { ignoreDuringBuilds: true },
   distDir: process.env.NEXT_DIST_DIR || '.next',
   ...(process.env.BUILD_STANDALONE === '1' ? { output: 'standalone' as const } : {}),
-  serverExternalPackages: ['@earendil-works/pi-coding-agent', '@prisma/adapter-better-sqlite3', 'better-sqlite3'],
+  serverExternalPackages: ['@earendil-works/pi-coding-agent', '@prisma/adapter-better-sqlite3', 'better-sqlite3', 'ws'],
 };
 
 export default nextConfig;
