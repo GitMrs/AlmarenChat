@@ -6,6 +6,7 @@ export interface TTSVoice {
   description: string;
   tags: string[];
   isDefault?: boolean;
+  defaultRate?: string;
 }
 
 export interface TTSOptions {

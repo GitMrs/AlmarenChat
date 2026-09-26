@@ -18,6 +18,7 @@ const PREVIEW_TEXTS: Record<string, string> = {
   'zh-CN-XiaoyiNeural': '你好呀！我是晓伊，今天你想和我聊些什么呢？',
   'zh-CN-YunxiNeural': '你好！我是云希，准备好开始今天的合作了吗？',
   'zh-CN-XiaoxiaoNeural': '您好，我是晓晓。很高兴陪伴在您的身边。',
+  'zh-TW-HsiaoChenNeural': '哈喽！我是晓臻，很高兴认识你，今天也要开开心心的喔！',
   'zh-CN-YunjianNeural': '你好，我是云健。请告诉我你的任务，我们按步骤推进。',
   'zh-CN-YunxiaNeural': '哈喽！我是云夏，元气满满的一天开始啦！',
   'zh-CN-YunyangNeural': '各位好，我是云扬。为您播报最新的动态与分析。',

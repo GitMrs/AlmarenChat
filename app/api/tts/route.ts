@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/app/api/_lib/auth';
-import { getAvailableVoices, synthesizeSpeech } from '@/lib/tts';
+import { cleanMarkdownForTTS, getAvailableVoices, synthesizeSpeech } from '@/lib/tts';
 
 export const runtime = 'nodejs';
 
@@ -8,10 +8,10 @@ export const runtime = 'nodejs';
 export async function GET(request: Request) {
   try {
     const url = new URL(request.url);
-    const text = url.searchParams.get('text');
+    const rawText = url.searchParams.get('text');
 
     // If no text parameter is provided, return available voice presets
-    if (!text) {
+    if (!rawText) {
       return NextResponse.json({
         ok: true,
         voices: getAvailableVoices(),
@@ -20,6 +20,11 @@ export async function GET(request: Request) {
 
     // If text is provided, verify authentication and stream audio
     requireAuth(request);
+
+    const text = cleanMarkdownForTTS(rawText);
+    if (!text) {
+      return NextResponse.json({ error: 'Text to synthesize cannot be empty' }, { status: 400 });
+    }
 
     if (text.length > 2000) {
       return NextResponse.json({ error: 'Text exceeds maximum length of 2000 characters' }, { status: 400 });
@@ -38,11 +43,15 @@ export async function GET(request: Request) {
         'Content-Type': 'audio/mpeg',
         'Content-Length': String(audioBuffer.length),
         'Cache-Control': 'public, max-age=86400, stale-while-revalidate=3600',
+        'X-TTS-Cache': (audioBuffer as any).cacheStatus || 'MISS',
       },
     });
   } catch (error: any) {
     if (error.message === 'Unauthorized') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    if (error.code === 'EMPTY_TEXT' || error.message?.includes('cannot be empty')) {
+      return NextResponse.json({ error: error.message || 'Text to synthesize cannot be empty' }, { status: 400 });
     }
     console.error('[TTS GET Error]:', error);
     return NextResponse.json({ error: error.message || 'TTS synthesis failed' }, { status: 500 });
@@ -55,10 +64,15 @@ export async function POST(request: Request) {
     requireAuth(request);
 
     const body = await request.json().catch(() => ({}));
-    const { text, voice, rate, pitch, cacheNamespace } = body;
+    const { text: rawText, voice, rate, pitch, cacheNamespace } = body;
 
-    if (!text || typeof text !== 'string' || !text.trim()) {
+    if (!rawText || typeof rawText !== 'string' || !rawText.trim()) {
       return NextResponse.json({ error: 'Text is required and must not be empty' }, { status: 400 });
+    }
+
+    const text = cleanMarkdownForTTS(rawText);
+    if (!text) {
+      return NextResponse.json({ error: 'Text to synthesize cannot be empty' }, { status: 400 });
     }
 
     if (text.length > 2000) {
@@ -78,11 +92,15 @@ export async function POST(request: Request) {
         'Content-Type': 'audio/mpeg',
         'Content-Length': String(audioBuffer.length),
         'Cache-Control': 'public, max-age=86400, stale-while-revalidate=3600',
+        'X-TTS-Cache': (audioBuffer as any).cacheStatus || 'MISS',
       },
     });
   } catch (error: any) {
     if (error.message === 'Unauthorized') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    if (error.code === 'EMPTY_TEXT' || error.message?.includes('cannot be empty')) {
+      return NextResponse.json({ error: error.message || 'Text to synthesize cannot be empty' }, { status: 400 });
     }
     console.error('[TTS POST Error]:', error);
     return NextResponse.json({ error: error.message || 'TTS synthesis failed' }, { status: 500 });

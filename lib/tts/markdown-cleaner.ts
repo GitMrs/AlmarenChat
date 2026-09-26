@@ -17,13 +17,16 @@ export function cleanMarkdownForTTS(text: string): string {
   s = s.replace(/<!--[\s\S]*?-->/g, '');
   s = s.replace(/<[^>]+>/g, '');
 
-  // 4. Remove image tags: ![alt](url) -> ""
-  s = s.replace(/!\[([^\]]*)\]\([^)]+\)/g, '');
+  // 4. Remove data URLs (e.g. data:image/png;base64,...)
+  s = s.replace(/data:image\/[^\s)"]+/gi, '');
 
-  // 5. Replace markdown links: [link text](url) -> link text
-  s = s.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
+  // 5. Remove image tags: ![alt](url) -> "" (also handles incomplete or multiline urls)
+  s = s.replace(/!\[([^\]]*)\](?:\([^)]*\)?)?/g, '');
 
-  // 6. Remove raw URLs (http://... or https://...)
+  // 6. Replace markdown links: [link text](url) -> link text
+  s = s.replace(/\[([^\]]+)\](?:\([^)]*\)?)?/g, '$1');
+
+  // 7. Remove raw URLs (http://... or https://...)
   s = s.replace(/https?:\/\/[^\s<]+[^<.,:;"')\]\s]/g, '');
 
   // 7. Inline code: `code` -> code

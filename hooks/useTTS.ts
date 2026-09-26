@@ -14,6 +14,14 @@ export interface PlayTTSOptions {
   onError?: (error: Error) => void;
 }
 
+// Client-side in-memory cache for audio Blobs (avoids redundant network requests for previously played lines)
+const clientBlobCache = new Map<string, Blob>();
+const MAX_CLIENT_CACHE = 100;
+
+function getClientCacheKey(cleanText: string, options: PlayTTSOptions = {}) {
+  return `${options.voice || ''}:${options.rate || ''}:${options.pitch || ''}:${options.cacheNamespace || ''}:${cleanText.trim()}`;
+}
+
 export function useTTS() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -69,18 +77,32 @@ export function useTTS() {
       const sessionId = ++playSessionIdRef.current;
       onEndedCallbackRef.current = options.onEnded || null;
 
-      setIsLoading(true);
+      const clientCacheKey = getClientCacheKey(cleanText, options);
+      const cachedBlob = clientBlobCache.get(clientCacheKey);
+
+      // Only show loading spinner if we need to fetch over network
+      if (!cachedBlob) {
+        setIsLoading(true);
+      }
       setError(null);
       currentIdRef.current = trackId;
       setCurrentId(trackId);
 
       try {
-        const blob = await tts.synthesizeBlob(cleanText, {
+        const blob = cachedBlob || (await tts.synthesizeBlob(cleanText, {
           voice: options.voice,
           rate: options.rate,
           pitch: options.pitch,
           cacheNamespace: options.cacheNamespace,
-        });
+        }));
+
+        if (!cachedBlob && blob) {
+          if (clientBlobCache.size >= MAX_CLIENT_CACHE) {
+            const oldestKey = clientBlobCache.keys().next().value;
+            if (oldestKey) clientBlobCache.delete(oldestKey);
+          }
+          clientBlobCache.set(clientCacheKey, blob);
+        }
 
         // Check if stopped or switched while fetching
         if (playSessionIdRef.current !== sessionId) {

@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Bot, Gamepad2, Lightbulb, Play, Pause, RotateCcw, Share2, SkipForward, Sparkles, User, Users, Volume2, VolumeX, X } from 'lucide-react';
+import { Bot, Gamepad2, Lightbulb, Loader2, Play, Pause, RotateCcw, Share2, SkipForward, Sparkles, User, Users, Volume2, VolumeX, X } from 'lucide-react';
 import Avatar from '@/components/shared/Avatar';
 import GomokuBoard from '@/components/spaces/GomokuBoard';
 import {
@@ -27,10 +27,10 @@ export interface InteractiveGomokuModalProps {
   initialView?: 'center' | 'gomoku';
 }
 
-const DEFAULT_OPPONENTS: Array<{ id: string; name: string; avatar: string; voice: string; role: string }> = [
+const DEFAULT_OPPONENTS: Array<{ id: string; name: string; avatar: string; voice: string; rate?: string; role: string }> = [
   { id: 'gaming-lulu', name: '璐璐', avatar: '🐱', voice: 'zh-CN-XiaoyiNeural', role: '傲娇毒舌陪玩' },
   { id: 'gaming-nox', name: '诺克斯', avatar: '♟️', voice: 'zh-CN-YunxiNeural', role: '战术大局军师' },
-  { id: 'gaming-koko', name: '可可', avatar: '🦊', voice: 'zh-CN-XiaoyiNeural', role: '元气开黑僚机' },
+  { id: 'gaming-koko', name: '可可', avatar: '🦊', voice: 'zh-TW-HsiaoChenNeural', rate: '+12%', role: '元气开黑僚机' },
 ];
 
 // 提取紧凑名字（去除“· 傲娇陪玩搭子”等后缀）
@@ -78,7 +78,7 @@ export default function InteractiveGomokuModal({
   const [speechText, setSpeechText] = useState<string>('哼，快进房间！今天本小姐就大发慈悲，陪你下一盘五子棋~ 你执黑先行！');
   const [autoVoice, setAutoVoice] = useState(false);
 
-  const { play: playGomokuTTS, stop: stopTTS, isPlaying: isSpeaking, isBusy } = useTTS();
+  const { play: playGomokuTTS, stop: stopTTS, isPlaying: isSpeaking, isBusy, isLoading } = useTTS();
   const hintTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastSpokenMoveRef = useRef<number>(0);
 
@@ -489,7 +489,7 @@ export default function InteractiveGomokuModal({
     const cheerSpeech = cleanDialogueLine(getKokoCheer(gameMode === 'eve' ? eveWhiteId : opponent.id, winner));
     setSpeechText(cheerSpeech);
     setActiveSpeakerId('gaming-koko');
-    playGomokuTTS(cheerSpeech, { voice: 'zh-CN-XiaoyiNeural', pitch: '+10Hz', cacheNamespace: 'gomoku' });
+    playGomokuTTS(cheerSpeech, { voice: 'zh-TW-HsiaoChenNeural', rate: '+12%', cacheNamespace: 'gomoku' });
   };
 
   // 悔棋一手 (PVE)
@@ -771,15 +771,64 @@ export default function InteractiveGomokuModal({
                 </div>
 
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-black text-slate-900">{currentSpeaker.name}</span>
-                    <span className="inline-flex items-center gap-1 rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">
-                      <Sparkles size={10} />
-                      {'role' in currentSpeaker ? currentSpeaker.role : currentSpeaker.category || '陪玩成员'}
-                    </span>
+                  <div className="flex items-center justify-between gap-1.5">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className="text-sm font-black text-slate-900 truncate">{currentSpeaker.name}</span>
+                      <span className="inline-flex items-center gap-1 rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 shrink-0">
+                        <Sparkles size={10} />
+                        {'role' in currentSpeaker ? currentSpeaker.role : currentSpeaker.category || '陪玩成员'}
+                      </span>
+                    </div>
+
+                    {/* 声音播放/停止按钮 */}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (isSpeaking) {
+                          stopTTS();
+                        } else if (speechText && currentSpeaker?.voice) {
+                          playGomokuTTS(speechText, { voice: currentSpeaker.voice, rate: (currentSpeaker as any).rate, cacheNamespace: 'gomoku' });
+                        }
+                      }}
+                      disabled={isLoading}
+                      title={isSpeaking ? '点击停止播放' : '点击播放当前台词'}
+                      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold transition shrink-0 cursor-pointer ${
+                        isSpeaking
+                          ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 ring-1 ring-emerald-300 shadow-2xs'
+                          : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100 ring-1 ring-indigo-200/80 shadow-2xs'
+                      }`}
+                    >
+                      {isLoading ? (
+                        <>
+                          <Loader2 size={12} className="animate-spin text-indigo-600" />
+                          <span>合成中</span>
+                        </>
+                      ) : isSpeaking ? (
+                        <>
+                          <Volume2 size={12} className="animate-pulse text-emerald-600" />
+                          <span>停止</span>
+                        </>
+                      ) : (
+                        <>
+                          <Volume2 size={12} />
+                          <span>播放语音</span>
+                        </>
+                      )}
+                    </button>
                   </div>
 
-                  <div className="mt-2 text-xs font-semibold leading-relaxed text-slate-700">
+                  <div
+                    onClick={() => {
+                      if (isSpeaking) {
+                        stopTTS();
+                      } else if (speechText && currentSpeaker?.voice) {
+                        playGomokuTTS(speechText, { voice: currentSpeaker.voice, rate: (currentSpeaker as any).rate, cacheNamespace: 'gomoku' });
+                      }
+                    }}
+                    className="mt-2 text-xs font-semibold leading-relaxed text-slate-700 cursor-pointer hover:text-slate-900 transition"
+                    title="点击也可播放/停止台词语音"
+                  >
                     {speechText}
                   </div>
                 </div>
