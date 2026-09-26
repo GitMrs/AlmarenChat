@@ -285,6 +285,13 @@ function repairKnownMigrationConflict() {
   const executable = process.platform === 'win32'
     ? path.join(projectRoot, 'node_modules', '.bin', 'prisma.cmd')
     : path.join(projectRoot, 'node_modules', '.bin', 'prisma');
+  const spawnOptions = {
+    cwd: projectRoot,
+    env: process.env,
+    stdio: 'inherit',
+    // Windows .cmd shims require a shell when launched through spawnSync.
+    shell: process.platform === 'win32',
+  };
   let resolvedMigration = null;
   while (true) {
     const targetDb = new Database(databasePath, { readonly: true, fileMustExist: true });
@@ -300,10 +307,7 @@ function repairKnownMigrationConflict() {
     if (inspection.action !== 'resolve') {
       if (inspection.action === 'rollback') {
         const result = spawnSync(executable, ['migrate', 'resolve', '--rolled-back', inspection.migration], {
-          cwd: projectRoot,
-          env: process.env,
-          stdio: 'inherit',
-          shell: false,
+          ...spawnOptions,
         });
         if (result.status !== 0) throw new Error(`无法回滚失败的 Prisma 迁移 ${inspection.migration}`);
         resolvedMigration = inspection.migration;
@@ -314,10 +318,7 @@ function repairKnownMigrationConflict() {
         : inspection;
     }
     const result = spawnSync(executable, ['migrate', 'resolve', '--applied', inspection.migration], {
-      cwd: projectRoot,
-      env: process.env,
-      stdio: 'inherit',
-      shell: false,
+      ...spawnOptions,
     });
     if (result.status !== 0) throw new Error(`无法修复 Prisma 迁移 ${inspection.migration}`);
     resolvedMigration = inspection.migration;
@@ -370,12 +371,15 @@ function preparePrismaMigrationHistory() {
   const executable = process.platform === 'win32'
     ? path.join(projectRoot, 'node_modules', '.bin', 'prisma.cmd')
     : path.join(projectRoot, 'node_modules', '.bin', 'prisma');
+  const spawnOptions = {
+    cwd: projectRoot,
+    env: process.env,
+    stdio: 'inherit',
+    shell: process.platform === 'win32',
+  };
   for (const migration of migrations) {
     const result = spawnSync(executable, ['migrate', 'resolve', '--applied', migration], {
-      cwd: projectRoot,
-      env: process.env,
-      stdio: 'inherit',
-      shell: false,
+      ...spawnOptions,
     });
     if (result.status !== 0) throw new Error(`无法将迁移 ${migration} 登记为基线`);
   }

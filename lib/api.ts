@@ -1015,7 +1015,7 @@ export const uploads = {
 // TTS
 export const tts = {
   getVoices: () => request<{ ok: boolean; voices: any[] }>('/tts'),
-  synthesizeBlob: async (text: string, options?: { voice?: string; rate?: string; pitch?: string }) => {
+  synthesizeBlob: async (text: string, options?: { voice?: string; rate?: string; pitch?: string; cacheNamespace?: 'gomoku' }) => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
     const res = await fetch(`${API_BASE}/tts`, {
       method: 'POST',

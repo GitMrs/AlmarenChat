@@ -9,6 +9,7 @@ export interface PlayTTSOptions {
   voice?: string;
   rate?: string;
   pitch?: string;
+  cacheNamespace?: 'gomoku';
   onEnded?: () => void;
   onError?: (error: Error) => void;
 }
@@ -78,6 +79,7 @@ export function useTTS() {
           voice: options.voice,
           rate: options.rate,
           pitch: options.pitch,
+          cacheNamespace: options.cacheNamespace,
         });
 
         // Check if stopped or switched while fetching

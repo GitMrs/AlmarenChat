@@ -78,7 +78,7 @@ export default function InteractiveGomokuModal({
   const [speechText, setSpeechText] = useState<string>('哼，快进房间！今天本小姐就大发慈悲，陪你下一盘五子棋~ 你执黑先行！');
   const [autoVoice, setAutoVoice] = useState(false);
 
-  const { play: playTTS, stop: stopTTS, isPlaying: isSpeaking, isBusy } = useTTS();
+  const { play: playGomokuTTS, stop: stopTTS, isPlaying: isSpeaking, isBusy } = useTTS();
   const hintTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastSpokenMoveRef = useRef<number>(0);
 
@@ -171,7 +171,7 @@ export default function InteractiveGomokuModal({
       setActiveSpeakerId(nextOpponentId);
       if (autoVoice) {
         const targetAgent = getAgent(nextOpponentId);
-        playTTS(greeting, { voice: targetAgent.voice });
+        playGomokuTTS(greeting, { voice: targetAgent.voice, cacheNamespace: 'gomoku' });
       }
     } else {
       const bAgent = getAgent(nextBlack);
@@ -184,8 +184,9 @@ export default function InteractiveGomokuModal({
       isAutoPlayingRef.current = false;
 
       if (autoVoice) {
-        playTTS(greeting, {
+        playGomokuTTS(greeting, {
           voice: bAgent.voice,
+          cacheNamespace: 'gomoku',
         });
       }
     }
@@ -261,7 +262,7 @@ export default function InteractiveGomokuModal({
       setSpeechText(winSpeech);
       setActiveSpeakerId(opponent.id);
       lastSpokenMoveRef.current = nextHistory.length;
-      if (autoVoice) playTTS(winSpeech, { voice: opponent.voice });
+      if (autoVoice) playGomokuTTS(winSpeech, { voice: opponent.voice, cacheNamespace: 'gomoku' });
       return;
     }
 
@@ -307,7 +308,7 @@ export default function InteractiveGomokuModal({
       setSpeechText(aiWinSpeech);
       setActiveSpeakerId(opponent.id);
       lastSpokenMoveRef.current = nextHistory.length;
-      if (autoVoice) playTTS(aiWinSpeech, { voice: opponent.voice });
+      if (autoVoice) playGomokuTTS(aiWinSpeech, { voice: opponent.voice, cacheNamespace: 'gomoku' });
       return;
     }
 
@@ -326,7 +327,7 @@ export default function InteractiveGomokuModal({
 
       if (isDramatic || shouldSpeakRoutine) {
         lastSpokenMoveRef.current = movesCount;
-        playTTS(comment, { voice: opponent.voice });
+      playGomokuTTS(comment, { voice: opponent.voice, cacheNamespace: 'gomoku' });
       }
     }
   };
@@ -372,7 +373,7 @@ export default function InteractiveGomokuModal({
       setSpeechText(winLine);
       setActiveSpeakerId(currentAgentId);
       lastSpokenMoveRef.current = nextHistory.length;
-      if (autoVoice) playTTS(winLine, { voice: currentAgent.voice });
+      if (autoVoice) playGomokuTTS(winLine, { voice: currentAgent.voice, cacheNamespace: 'gomoku' });
       return;
     }
 
@@ -412,8 +413,9 @@ export default function InteractiveGomokuModal({
         }
       }, 7000);
 
-      playTTS(line, {
+      playGomokuTTS(line, {
         voice: currentAgent.voice,
+        cacheNamespace: 'gomoku',
         onEnded: () => {
           if (!timerFired) {
             timerFired = true;
@@ -473,7 +475,7 @@ export default function InteractiveGomokuModal({
         : `【战术指路】建议落子在第 ${hint.row} 行、第 ${hint.col} 列。${hint.reason}`;
     setSpeechText(hintSpeech);
     setActiveSpeakerId('gaming-nox');
-    playTTS(hintSpeech, { voice: 'zh-CN-YunxiNeural' });
+    playGomokuTTS(hintSpeech, { voice: 'zh-CN-YunxiNeural', cacheNamespace: 'gomoku' });
 
     if (hintTimeoutRef.current) clearTimeout(hintTimeoutRef.current);
     hintTimeoutRef.current = setTimeout(() => {
@@ -487,7 +489,7 @@ export default function InteractiveGomokuModal({
     const cheerSpeech = cleanDialogueLine(getKokoCheer(gameMode === 'eve' ? eveWhiteId : opponent.id, winner));
     setSpeechText(cheerSpeech);
     setActiveSpeakerId('gaming-koko');
-    playTTS(cheerSpeech, { voice: 'zh-CN-XiaoyiNeural', pitch: '+10Hz' });
+    playGomokuTTS(cheerSpeech, { voice: 'zh-CN-XiaoyiNeural', pitch: '+10Hz', cacheNamespace: 'gomoku' });
   };
 
   // 悔棋一手 (PVE)
@@ -509,7 +511,7 @@ export default function InteractiveGomokuModal({
     const undoComment = getUndoLine(opponent.id);
     setSpeechText(undoComment);
     setActiveSpeakerId(opponent.id);
-    if (autoVoice) playTTS(undoComment, { voice: opponent.voice });
+    if (autoVoice) playGomokuTTS(undoComment, { voice: opponent.voice, cacheNamespace: 'gomoku' });
   };
 
   // 分享对局战报到空间
@@ -613,7 +615,7 @@ export default function InteractiveGomokuModal({
                         scheduleNextEveTurn(800);
                       }
                     } else if (speechText && currentSpeaker?.voice) {
-                      playTTS(speechText, { voice: currentSpeaker.voice });
+                      playGomokuTTS(speechText, { voice: currentSpeaker.voice, cacheNamespace: 'gomoku' });
                     }
                   }}
                   title={autoVoice ? '点击关闭语音' : '点击开启语音'}

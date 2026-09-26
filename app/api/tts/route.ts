@@ -28,8 +28,9 @@ export async function GET(request: Request) {
     const voice = url.searchParams.get('voice') || undefined;
     const rate = url.searchParams.get('rate') || undefined;
     const pitch = url.searchParams.get('pitch') || undefined;
+    const cacheNamespace = url.searchParams.get('cacheNamespace') === 'gomoku' ? 'gomoku' : undefined;
 
-    const audioBuffer = await synthesizeSpeech(text, { voice, rate, pitch });
+    const audioBuffer = await synthesizeSpeech(text, { voice, rate, pitch, cacheNamespace });
 
     return new Response(new Uint8Array(audioBuffer), {
       status: 200,
@@ -54,7 +55,7 @@ export async function POST(request: Request) {
     requireAuth(request);
 
     const body = await request.json().catch(() => ({}));
-    const { text, voice, rate, pitch } = body;
+    const { text, voice, rate, pitch, cacheNamespace } = body;
 
     if (!text || typeof text !== 'string' || !text.trim()) {
       return NextResponse.json({ error: 'Text is required and must not be empty' }, { status: 400 });
@@ -64,7 +65,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Text exceeds maximum length of 2000 characters' }, { status: 400 });
     }
 
-    const audioBuffer = await synthesizeSpeech(text, { voice, rate, pitch });
+    const audioBuffer = await synthesizeSpeech(text, {
+      voice,
+      rate,
+      pitch,
+      cacheNamespace: cacheNamespace === 'gomoku' ? 'gomoku' : undefined,
+    });
 
     return new Response(new Uint8Array(audioBuffer), {
       status: 200,

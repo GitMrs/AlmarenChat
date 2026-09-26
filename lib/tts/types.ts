@@ -14,6 +14,7 @@ export interface TTSOptions {
   pitch?: string; // e.g. '+0Hz', '+5Hz'
   volume?: string; // e.g. '+0%'
   timeoutMs?: number;
+  cacheNamespace?: 'gomoku';
 }
 
 export interface TTSResult {
