@@ -22,6 +22,35 @@ import type {
   StoryEffects,
   StoryRequirements,
 } from './scenarios.ts';
+import {
+  BLACKWOOD_SANDBOX_ROOMS,
+  SANDBOX_ROOM_TO_NODE_ID,
+  NODE_ID_TO_SANDBOX_ROOM,
+  getSandboxRoomByNodeId,
+  evaluateSandboxPlayerAction,
+  buildSandboxCheckOutcome,
+  MANOR_CLUES,
+  type SandboxRoom,
+  type SandboxInteractable,
+  type SandboxActionEvaluation,
+  type ManorClueDefinition,
+} from './sandbox.ts';
+
+export {
+  BLACKWOOD_SANDBOX_ROOMS,
+  SANDBOX_ROOM_TO_NODE_ID,
+  NODE_ID_TO_SANDBOX_ROOM,
+  getSandboxRoomByNodeId,
+  evaluateSandboxPlayerAction,
+  buildSandboxCheckOutcome,
+  MANOR_CLUES,
+  type SandboxRoom,
+  type SandboxInteractable,
+  type SandboxActionEvaluation,
+  type ManorClueDefinition,
+  type SkillCheckResult,
+  type CheckLevel,
+};
 
 export interface TrpgItemDefinition {
   name: string;
@@ -55,9 +84,13 @@ export interface TrpgHistoryItem {
   };
 }
 
+export type TrpgPlayMode = 'free' | 'classic';
+
 export interface TrpgGameState {
   scenarioId: string;
   scenario: TrpgScenario;
+  playMode: TrpgPlayMode;
+  aiEnabled: boolean;
   character: ScenarioCharacterPreset;
   currentNodeId: string;
   status: 'playing' | 'rolling' | 'game_over' | 'victory';
@@ -163,7 +196,7 @@ function applyStoryEffects(state: TrpgGameState, effects?: StoryEffects): Pick<T
   };
 }
 
-const AGENT_INFO: Record<string, { name: string; avatar: string }> = {
+export const AGENT_INFO: Record<string, { name: string; avatar: string }> = {
   'gaming-lulu': { name: '璐璐 · 傲娇陪玩搭子', avatar: '🐱' },
   'gaming-koko': { name: '可可 · 元气开黑僚机', avatar: '🦊' },
   'gaming-nox': { name: '诺克斯 · 战术复盘军师', avatar: '♟️' },
@@ -434,7 +467,9 @@ export function getItemDefinition(name: string): TrpgItemDefinition {
 export function createTrpgGame(
   scenarioId = 'coc_blackwood_manor',
   presetId?: string,
-  customName?: string
+  customName?: string,
+  playMode: TrpgPlayMode = 'free',
+  aiEnabled = true
 ): TrpgGameState {
   const scenario = SCENARIOS.find((s) => s.id === scenarioId) || SCENARIOS[0];
   const preset =
@@ -464,6 +499,8 @@ export function createTrpgGame(
   return {
     scenarioId: scenario.id,
     scenario,
+    playMode,
+    aiEnabled,
     character,
     currentNodeId: startNode.id,
     status: 'playing',
@@ -493,6 +530,16 @@ export function createTrpgGame(
         }
       : {},
     lastEvent: null,
+  };
+}
+
+/**
+ * 切换对局中的 AI 大模型驱动开关
+ */
+export function setTrpgAiEnabled(state: TrpgGameState, enabled: boolean): TrpgGameState {
+  return {
+    ...state,
+    aiEnabled: enabled,
   };
 }
 
@@ -720,15 +767,19 @@ export function executePendingCheck(
   const nextNodeId = outcome?.nextNodeId || state.currentNodeId;
   const nextNode = state.scenario.nodes[nextNodeId] || state.scenario.nodes[state.currentNodeId];
 
-  // 队友反应
+  // 队友反应（优先使用大成功/大失败专属反应，其次使用分支自身配置的反应）
+  const companionReaction =
+    (checkResult.level === 'critical_success' && choice.criticalSuccessBonus?.companionSpeech) ||
+    (checkResult.level === 'fumble' && choice.fumblePenalty?.companionSpeech) ||
+    outcome?.companionSpeech;
   let companionSpeechItem = undefined;
-  if (outcome?.companionSpeech) {
-    const info = AGENT_INFO[outcome.companionSpeech.agentId] || AGENT_INFO['gaming-koko'];
+  if (companionReaction) {
+    const info = AGENT_INFO[companionReaction.agentId] || AGENT_INFO['gaming-koko'];
     companionSpeechItem = {
-      agentId: outcome.companionSpeech.agentId,
+      agentId: companionReaction.agentId,
       agentName: info.name,
       agentAvatar: info.avatar,
-      text: outcome.companionSpeech.text,
+      text: companionReaction.text,
     };
   }
 
@@ -1076,6 +1127,9 @@ export function rerollWithFatePoint(state: TrpgGameState): TrpgGameState {
 
 /**
  * 执行自由行动 (Free Action)
+ * 若当前处于布莱克伍德古宅沙盘，将调用守秘人语义推演引擎进行环境可交互物、道具和战术的综合裁决；
+ * 若为直接生效行动（如移动或道具使用），即时结算并返回新状态；
+ * 若需要掷骰检定，构建携带环境加权与文学化后果的 customChoice 并转入 rolling 状态。
  */
 export function performFreeAction(
   state: TrpgGameState,
@@ -1084,7 +1138,171 @@ export function performFreeAction(
   if (!actionText.trim()) return state;
   const trimmed = actionText.trim();
 
-  // 根据文本中的关键词匹配检定倾向
+  // 1. 如果是布莱克伍德古宅克苏鲁跑团，调用沙盘推理机
+  if (state.scenarioId === 'coc_blackwood_manor') {
+    const sandboxRoom = getSandboxRoomByNodeId(state.currentNodeId);
+    const evalRes = evaluateSandboxPlayerAction(
+      trimmed,
+      sandboxRoom.id,
+      state.character,
+      state.evidence
+    );
+
+    // 1.1 若无需掷骰（如进入相邻房间、主动使用随身药剂、无需检定的调查）：直接结算
+    if (!evalRes.requiresCheck) {
+      const hpDelta = evalRes.hpDelta || 0;
+      const sanDelta = evalRes.sanDelta || 0;
+      const newHp = Math.max(0, Math.min(state.character.maxHp, state.character.hp + hpDelta));
+      const newSan = state.character.san !== undefined
+        ? Math.max(0, Math.min(state.character.maxSan || 100, state.character.san + sanDelta))
+        : undefined;
+
+      let updatedInventory = [...state.character.inventory];
+      if (evalRes.itemGained && !updatedInventory.includes(evalRes.itemGained)) {
+        updatedInventory.push(evalRes.itemGained);
+      }
+      if (evalRes.itemLost) {
+        updatedInventory = updatedInventory.filter((it) => it !== evalRes.itemLost);
+      }
+
+      let updatedEvidence = [...state.evidence];
+      if (evalRes.clueDiscovered && !updatedEvidence.includes(evalRes.clueDiscovered.title)) {
+        updatedEvidence.push(evalRes.clueDiscovered.title);
+      }
+
+      const nextNodeId = evalRes.targetRoomId
+        ? SANDBOX_ROOM_TO_NODE_ID[evalRes.targetRoomId] || state.currentNodeId
+        : state.currentNodeId;
+      const nextNode = state.scenario.nodes[nextNodeId] || state.scenario.nodes[state.currentNodeId];
+
+      let companionSpeech = undefined;
+      if (evalRes.companionReaction) {
+        const info = AGENT_INFO[evalRes.companionReaction.agentId] || AGENT_INFO['gaming-koko'];
+        companionSpeech = {
+          agentId: evalRes.companionReaction.agentId,
+          agentName: info.name,
+          agentAvatar: info.avatar,
+          text: evalRes.companionReaction.text,
+        };
+      }
+
+      const freeHistoryItem: TrpgHistoryItem = {
+        id: `hist_free_${Date.now()}`,
+        timestamp: Date.now(),
+        nodeId: nextNode.id,
+        nodeTitle: nextNode.title,
+        narration: evalRes.directNarration || `你执行了自由探索行动：${trimmed}`,
+        choiceLabel: `【自由行动】${trimmed}`,
+        outcomeText: evalRes.clueDiscovered ? `🔍【关键线索已获得】${evalRes.clueDiscovered.text}` : undefined,
+        companionSpeech,
+      };
+
+      const isEnding = Boolean(nextNode.isEnding);
+      return {
+        ...state,
+        character: {
+          ...state.character,
+          hp: newHp,
+          san: newSan,
+          inventory: updatedInventory,
+        },
+        evidence: updatedEvidence,
+        currentNodeId: nextNode.id,
+        status: isEnding
+          ? (nextNode.endingType === 'frenzy' || nextNode.endingType === 'tragedy' ? 'game_over' : 'victory')
+          : 'playing',
+        turnCount: state.turnCount + 1,
+        history: [...state.history, freeHistoryItem],
+        lastEvent: {
+          type: 'choice_resolved',
+          summary: `自由探索：${trimmed.slice(0, 20)}`,
+          choiceLabel: trimmed,
+          timestamp: Date.now(),
+        },
+      };
+    }
+
+    // 1.2 需要掷骰检定
+    const rule = evalRes.checkRule || 'coc';
+    const skillName = evalRes.skillName || '侦查';
+    const bonus = evalRes.bonusModifier || 0;
+    const baseTarget = evalRes.baseTargetValue || 60;
+    const targetValue = Math.min(99, baseTarget + bonus);
+
+    const nextNodeId = evalRes.targetRoomId
+      ? SANDBOX_ROOM_TO_NODE_ID[evalRes.targetRoomId] || state.currentNodeId
+      : state.currentNodeId;
+
+    const customChoice: NodeChoice = {
+      id: `custom_sandbox_${Date.now()}`,
+      label: `【自由行动】${trimmed.slice(0, 24)}${trimmed.length > 24 ? '...' : ''}`,
+      description: trimmed + (evalRes.bonusReason ? ` (${evalRes.bonusReason})` : ''),
+      check: {
+        rule,
+        skillName,
+        targetValue,
+        dc: evalRes.targetDC,
+      },
+      successOutcome: {
+        levelGroup: 'success',
+        text: `【✅ 判定成功！】凭借着果断与老练的直觉，你的行动【${trimmed}】顺利奏效！${evalRes.clueDiscovered ? '\n🔍【关键线索已揭露】' + evalRes.clueDiscovered.text : ''}${evalRes.itemGained ? '\n🎒【物品获得】你拾取了【' + evalRes.itemGained + '】！' : ''}`,
+        itemGained: evalRes.itemGained,
+        hpDelta: evalRes.hpDelta,
+        sanDelta: evalRes.sanDelta,
+        nextNodeId,
+        effects: evalRes.clueDiscovered ? { addEvidence: [evalRes.clueDiscovered.title] } : undefined,
+        companionSpeech: evalRes.companionReaction || {
+          agentId: 'gaming-nox',
+          text: '战术动作执行到位，成功规避了环境风险，局势处于绝对受控状态。',
+        },
+      },
+      failureOutcome: {
+        levelGroup: 'failure',
+        text: `【❌ 判定失败】事与愿违，阴暗潮湿的环境阻碍了你的发挥。你的行动【${trimmed}】并未完全奏效，但好在你及时收势，未酿成致命危机。`,
+        hpDelta: evalRes.hpDelta ? -Math.abs(evalRes.hpDelta) : -2,
+        sanDelta: evalRes.sanDelta ? -Math.abs(evalRes.sanDelta) : -3,
+        nextNodeId: state.currentNodeId,
+        companionSpeech: {
+          agentId: 'gaming-koko',
+          text: '没关系的！谁能每次都百发百中呢！调整一下呼吸，我们再试一次！冲鸭！',
+        },
+      },
+      criticalSuccessBonus: {
+        text: `🌟【绝世大成功！】神迹般的超常发挥！你不仅完美达成了意图，更洞察了环境中隐藏的更深层秘辛！`,
+        itemGained: evalRes.itemGained,
+        hpDelta: 3,
+        sanDelta: 5,
+        companionSpeech: {
+          agentId: 'gaming-lulu',
+          text: '哇……！刚才那一下简直帅得犯规！……哼，才、才没有脸红呢！干得漂亮啦！',
+        },
+      },
+      fumblePenalty: {
+        text: `💀【绝望大失败！】命运的剧烈反噬！地面湿滑或机关触动导致你受到意外伤害！（HP -3，SAN -5）`,
+        hpDelta: -3,
+        sanDelta: -5,
+        companionSpeech: {
+          agentId: 'gaming-lulu',
+          text: '喂！小心啊笨蛋！流了好多血……快抓住我的手起来，千万别放弃啊！',
+        },
+      },
+    };
+
+    return {
+      ...state,
+      status: 'rolling',
+      pendingChoice: customChoice,
+      pendingCheck: {
+        rule,
+        skillName,
+        targetValue,
+        modifier: bonus,
+        dc: evalRes.targetDC,
+      },
+    };
+  }
+
+  // 2. 通用兜底自由行动（其他模组）
   let skillName = '机智应变';
   let rule = state.scenario.system;
   let targetValue = 60;
@@ -1108,7 +1326,6 @@ export function performFreeAction(
     dc = 14;
   }
 
-  // 构造一个虚拟的 custom choice
   const customChoice: NodeChoice = {
     id: `custom_${Date.now()}`,
     label: `【自由行动】${trimmed.slice(0, 24)}...`,
@@ -1258,6 +1475,9 @@ export function loadSavedTrpgGame(): TrpgGameState | null {
     if (!latestScenario.nodes[parsed.currentNodeId]) {
       parsed.currentNodeId = latestScenario.startNodeId;
     }
+
+    parsed.playMode = parsed.playMode === 'classic' ? 'classic' : 'free';
+    parsed.aiEnabled = typeof parsed.aiEnabled === 'boolean' ? parsed.aiEnabled : true;
 
     return parsed;
   } catch (err) {

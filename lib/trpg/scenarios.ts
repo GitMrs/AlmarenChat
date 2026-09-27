@@ -70,12 +70,20 @@ export interface NodeChoice {
     itemGained?: string;
     hpDelta?: number;
     sanDelta?: number;
+    companionSpeech?: {
+      agentId: 'gaming-lulu' | 'gaming-koko' | 'gaming-nox';
+      text: string;
+    };
   };
   fumblePenalty?: {
     text: string;
     hpDelta?: number;
     sanDelta?: number;
     itemLost?: string;
+    companionSpeech?: {
+      agentId: 'gaming-lulu' | 'gaming-koko' | 'gaming-nox';
+      text: string;
+    };
   };
 }
 
@@ -570,6 +578,90 @@ export const SCENARIOS: TrpgScenario[] = [
             directNextNodeId: 'node_cellar_corridor',
             directText: '雷诺沿着墙根敲击石砖，迅速标出三处承重薄弱点。你在暗门旁找到一卷【战地急救绷带】，并记住了必要时可以炸塌回廊的撤退位置。',
             effects: { setFlags: ['reyno_marked_escape_route'], addEvidence: ['地窖爆破撤离点'], timeMinutes: 15, chapter: 3 },
+          },
+          {
+            id: 'c_study_to_attic',
+            label: '攀爬走廊尽头的折叠铝梯，前往三楼阁楼观测密室',
+            description: '去古宅最高点利用天文望远镜观测暴雨夜空的异变。',
+            directNextNodeId: 'node_attic',
+            directText: '你拉下走廊天花板上的折叠铝梯，轻巧地攀上了三楼阁楼观测密室。',
+            effects: { setFlags: ['climbed_to_attic'], timeMinutes: 10 },
+          },
+        ],
+      },
+
+      // 第二幕D：三楼阁楼观测密室与夜空深渊
+      node_attic: {
+        id: 'node_attic',
+        title: '第二幕·顶层：阁楼密室与星空深渊',
+        location: '布莱克伍德庄园三楼 · 阁楼天文观测室',
+        environmentAtmosphere: '🔭 暴风雨洗刷天窗 · 黄铜天文望远镜对准诡异夜空',
+        bgGradient: 'from-indigo-950 via-slate-900 to-purple-950',
+        narration:
+          '阁楼天花板倾斜压抑，空气中弥漫着松木与尘土的气息。大厅中央架设着一台军工级黄铜天文望远镜，镜筒穿过天窗对准暴雨翻滚的苍穹。角落里堆放着未拆封的测绘仪器箱与一只贴有阿卡姆大学封条的生铁保险箱。透过天窗外倾斜的雨檐，隐约有一根粗重的铁制排水管道通向外侧庭院。',
+        choices: [
+          {
+            id: 'c_attic_telescope',
+            label: '凑近黄铜望远镜目镜，观测云层深处不可名状的异变',
+            description: '透过目镜直视星空异变的本质，可能洞悉真相但会冲击心智。',
+            tag: '【神秘学 1d100】',
+            check: { rule: 'coc', skillName: '神秘学', targetValue: 65 },
+            successOutcome: {
+              levelGroup: 'success',
+              text: '透过高倍目镜，你震惊地发现暴雨云层深处是一团横跨数公里的紫黑色触须星云！你洞悉了深渊裂隙的力场弱点（SAN -3），并获得了【深空星图坐标】！',
+              sanDelta: -3,
+              itemGained: '深空星图坐标',
+              nextNodeId: 'node_study',
+              effects: { setFlags: ['observed_deep_space'], addEvidence: ['深空触须星云'], timeMinutes: 20, chapter: 3 },
+              companionSpeech: {
+                agentId: 'gaming-nox',
+                text: '宏观天文观测证实了维度裂隙的锚点位置，这对我们封印主祭坛提供了极关键的数据支撑。',
+              },
+            },
+            failureOutcome: {
+              levelGroup: 'failure',
+              text: '目镜中突然睁开了一只布满血丝的巨大虚空眼眸！直视不可名状的深渊瞬间灼痛了你的神经，你惨叫着跌倒在地！',
+              sanDelta: -7,
+              nextNodeId: 'node_study',
+              effects: { setFlags: ['attic_sanity_shaken'], timeMinutes: 15, chapter: 3 },
+              companionSpeech: {
+                agentId: 'gaming-lulu',
+                text: '笨蛋！快离开那个望远镜啦！看你整个人都在发抖……拉着我的手，先下楼！',
+              },
+            },
+          },
+          {
+            id: 'c_attic_safebox',
+            label: '撬开密大封条的生铁保险箱，搜寻医疗与镇静补给',
+            description: '利用精巧手法开启锁扣，获取高价值战术药剂。',
+            tag: '【敏捷闪避 1d100】',
+            check: { rule: 'coc', skillName: '敏捷闪避', targetValue: 60 },
+            successOutcome: {
+              levelGroup: 'success',
+              text: '伴随着清脆的锁簧弹响，生铁箱盖应声掀开！里面整齐收纳着珍贵的【浓缩镇静剂】与【战地急救绷带】！',
+              itemGained: '浓缩镇静剂',
+              nextNodeId: 'node_study',
+              effects: { setFlags: ['opened_attic_safebox'], timeMinutes: 20, chapter: 3 },
+              companionSpeech: {
+                agentId: 'gaming-koko',
+                text: '哇塞！满满的医疗物资！这波补给简直是雪中送炭，我们又能满血复活啦！',
+              },
+            },
+            failureOutcome: {
+              levelGroup: 'failure',
+              text: '别针在锁芯中断裂卡死，箱体防盗机关释放出刺鼻的催泪性烟雾，呛得你眼泪直流。',
+              hpDelta: -2,
+              nextNodeId: 'node_study',
+              effects: { setFlags: ['attic_safe_jammed'], timeMinutes: 15, chapter: 3 },
+            },
+          },
+          {
+            id: 'c_attic_return_study',
+            label: '沿着铝制折叠梯返回二楼学者书斋',
+            description: '整理阁楼所得情报，返回主书房继续推演地窖通道。',
+            directNextNodeId: 'node_study',
+            directText: '你抓紧折叠铝梯的防滑扶手，轻捷地顺着梯级返回了二楼书房。',
+            effects: { timeMinutes: 10 },
           },
         ],
       },
