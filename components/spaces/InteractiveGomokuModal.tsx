@@ -28,9 +28,14 @@ export interface InteractiveGomokuModalProps {
 }
 
 const DEFAULT_OPPONENTS: Array<{ id: string; name: string; avatar: string; voice: string; rate?: string; role: string }> = [
-  { id: 'gaming-lulu', name: '璐璐', avatar: '🐱', voice: 'zh-CN-XiaoyiNeural', role: '傲娇毒舌陪玩' },
+  { id: 'gaming-lulu', name: '璐璐', avatar: '🐱', voice: 'zh-CN-XiaoyiNeural', role: '傲娇猫系搭子' },
   { id: 'gaming-nox', name: '诺克斯', avatar: '♟️', voice: 'zh-CN-YunxiNeural', role: '战术大局军师' },
-  { id: 'gaming-koko', name: '可可', avatar: '🦊', voice: 'zh-TW-HsiaoChenNeural', rate: '+12%', role: '元气开黑僚机' },
+  { id: 'gaming-koko', name: '可可', avatar: '🦊', voice: 'zh-TW-HsiaoChenNeural', rate: '+12%', role: '元气治愈小狐狸' },
+  { id: 'gaming-vivian', name: '薇薇安', avatar: '🔮', voice: 'zh-CN-XiaoxiaoNeural', role: '中二占星魔女' },
+  { id: 'gaming-suisui', name: '岁岁', avatar: '🦥', voice: 'zh-CN-XiaohanNeural', role: '松弛治愈小树懒' },
+  { id: 'gaming-lie', name: '烈', avatar: '🐺', voice: 'zh-CN-YunyangNeural', role: '直球忠犬少年' },
+  { id: 'gaming-mandy', name: '曼蒂', avatar: '🍸', voice: 'zh-CN-XiaomengNeural', role: '深夜树洞调酒师' },
+  { id: 'gaming-zero', name: '零号', avatar: '🤖', voice: 'zh-CN-XiaomoNeural', role: '呆萌仿生女仆' },
 ];
 
 // 提取紧凑名字（去除“· 傲娇陪玩搭子”等后缀）

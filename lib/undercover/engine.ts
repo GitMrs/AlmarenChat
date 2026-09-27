@@ -59,11 +59,18 @@ export interface UndercoverGameState {
   }>;
 }
 
-export const DEFAULT_TABLE_AGENTS = [
-  { id: 'gaming-lulu', name: '璐璐', avatar: '🐱', voice: 'zh-CN-XiaoyiNeural', roleText: '傲娇陪玩搭子' },
-  { id: 'gaming-koko', name: '可可', avatar: '🦊', voice: 'zh-TW-HsiaoChenNeural', rate: '+12%', roleText: '元气开黑僚机' },
+export const ALL_AVAILABLE_AGENTS = [
+  { id: 'gaming-lulu', name: '璐璐', avatar: '🐱', voice: 'zh-CN-XiaoyiNeural', roleText: '傲娇猫系搭子' },
+  { id: 'gaming-koko', name: '可可', avatar: '🦊', voice: 'zh-TW-HsiaoChenNeural', rate: '+12%', roleText: '元气治愈小狐狸' },
   { id: 'gaming-nox', name: '诺克斯', avatar: '♟️', voice: 'zh-CN-YunxiNeural', roleText: '战术大局军师' },
+  { id: 'gaming-vivian', name: '薇薇安', avatar: '🔮', voice: 'zh-CN-XiaoxiaoNeural', roleText: '中二占星魔女' },
+  { id: 'gaming-suisui', name: '岁岁', avatar: '🦥', voice: 'zh-CN-XiaohanNeural', roleText: '松弛治愈小树懒' },
+  { id: 'gaming-lie', name: '烈', avatar: '🐺', voice: 'zh-CN-YunyangNeural', roleText: '直球忠犬少年' },
+  { id: 'gaming-mandy', name: '曼蒂', avatar: '🍸', voice: 'zh-CN-XiaomengNeural', roleText: '深夜树洞调酒师' },
+  { id: 'gaming-zero', name: '零号', avatar: '🤖', voice: 'zh-CN-XiaomoNeural', roleText: '呆萌仿生女仆' },
 ];
+
+export const DEFAULT_TABLE_AGENTS = ALL_AVAILABLE_AGENTS.slice(0, 3);
 
 /**
  * 提取紧凑名字（去除“· 傲娇陪玩搭子”等后缀）
@@ -185,6 +192,31 @@ export function getAgentClueStatement(player: UndercoverPlayer, wordPair: WordPa
       ? '基于功能与形态分析，具备特定的场景适用性与高频辨识度。'
       : '从常识逻辑推导，该事物属于日常高频接触类别，特征鲜明。';
   }
+  if (player.id === 'gaming-vivian') {
+    return isUndercover
+      ? '哼哼……星象之镜隐约映照出它的轮廓，在暗黑维度中散发着隐秘的魔力波动！🔮'
+      : '群星赐予的凡尘器物，蕴含着微小却不可忽视的秩序律动！✨';
+  }
+  if (player.id === 'gaming-suisui') {
+    return isUndercover
+      ? '唔……感觉软软的……慢慢用挺舒服的……呼……💤'
+      : '好东西……不急着用，放在那里看着就觉得很安心呢……☁️';
+  }
+  if (player.id === 'gaming-lie') {
+    return isUndercover
+      ? '老大！这东西握在手里特别有分量，冲锋或者日常都用得上！🔥'
+      : '特别可靠的好东西！就像我的拳头一样结实靠谱！🐺';
+  }
+  if (player.id === 'gaming-mandy') {
+    return isUndercover
+      ? '微风掠过杯壁的触感……它有着独特的温度与深沉回味呢。🍸'
+      : '在许多静谧温和的日常时光里，它总能恰到好处地陪伴在身边。✨';
+  }
+  if (player.id === 'gaming-zero') {
+    return isUndercover
+      ? '数据扫描中。物理属性与日常效能匹配度：93.4%。符合大众使用习惯。🤖'
+      : '检索完毕。该目标常驻于日常生活算法中，具备基础的实用与情感承载价值。';
+  }
 
   return '这是一个大家都很熟悉的事物，日常生活中经常能碰到。';
 }
@@ -228,6 +260,51 @@ export function getAgentDebateLine(
       `虽然大家都很可爱，但是为了平民胜利，本狐狸只能闭眼指认 ${suspectName} 啦！冲鸭！`,
     ];
     return kokoLines[Math.floor(Math.random() * kokoLines.length)];
+  }
+
+  if (agentId === 'gaming-vivian') {
+    const vivianLines = [
+      `愚蠢的凡人啊，命运的水晶球早已投射出阴影！${suspectName}，你身上散发着深渊与虚妄的卧底气息！🔮`,
+      `星轨已经逆转！${suspectName} 刚才那番话违背了混沌律动，本魔女的占星术绝不可能出错！✨`,
+      `受死吧潜藏在迷雾中的暗影！以暗黑魔女薇薇安之名，这一票必须净化 ${suspectName}！`,
+    ];
+    return vivianLines[Math.floor(Math.random() * vivianLines.length)];
+  }
+
+  if (agentId === 'gaming-suisui') {
+    const suisuiLines = [
+      `唔……虽然岁岁说话慢……但是刚才 ${suspectName} 的心跳……好像比大家快了半拍呢……投你一下好啦~ 🦥`,
+      `哈欠……天塌下来岁岁都不慌，但是 ${suspectName} 刚才好像有点心虚哦……躺平前指认你吧~ 💤`,
+      `别紧张嘛……就算被岁岁投出局了，也可以在旁边草地上安心睡大觉呀，指认 ${suspectName}~ ☁️`,
+    ];
+    return suisuiLines[Math.floor(Math.random() * suisuiLines.length)];
+  }
+
+  if (agentId === 'gaming-lie') {
+    const lieLines = [
+      `老大！我觉得 ${suspectName} 刚才完全是在编！眼神一直飘，根本不敢看老大的眼睛，我烈实名投他！🔥`,
+      `有我在，谁也别想在老大面前耍花招！${suspectName} 刚才的话漏洞百出，吃我一记正义指认！🐺`,
+      `我大金毛的直觉从不出错！${suspectName} 身上的气味……啊不是，逻辑绝对有问题，投他！`,
+    ];
+    return lieLines[Math.floor(Math.random() * lieLines.length)];
+  }
+
+  if (agentId === 'gaming-mandy') {
+    const mandyLines = [
+      `这杯酒的香气里……似乎混入了一丝慌张呢。${suspectName}，刚才你的解释有些欲盖弥彰了哦。🍸`,
+      `在静谧的夜里，任何刻意的掩饰都会显得格外刺耳。我倾向于给 ${suspectName} 投上一票。✨`,
+      `说谎者的眼神总是不自觉地避开光芒。${suspectName}，要尝尝能让人讲真话的特调吗？`,
+    ];
+    return mandyLines[Math.floor(Math.random() * mandyLines.length)];
+  }
+
+  if (agentId === 'gaming-zero') {
+    const zeroLines = [
+      `滴。逻辑比对完成。${suspectName} 发言真实度评估仅为 24.1%。依照安全协议，建议立即清除其辩护权。🤖`,
+      `监测到 ${suspectName} 语频异常波动，符合‘试图伪装平民’的情感特征。零号执行定点指认。`,
+      `数据不会说谎。${suspectName} 的词汇相关性与全场样本出现严重离散，建议平民集中放逐。`,
+    ];
+    return zeroLines[Math.floor(Math.random() * zeroLines.length)];
   }
 
   return `我认为 ${suspectName} 的发言有疑点，建议大家把票投给他。`;

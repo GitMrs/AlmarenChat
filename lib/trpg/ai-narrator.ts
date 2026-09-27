@@ -1,11 +1,21 @@
 import { streamChat } from '@/lib/api';
 import { getTrpgAiContext, type TrpgGameState, type SkillCheckResult } from './engine';
 
+export type TrpgCompanionAgentId =
+  | 'gaming-lulu'
+  | 'gaming-koko'
+  | 'gaming-nox'
+  | 'gaming-vivian'
+  | 'gaming-suisui'
+  | 'gaming-lie'
+  | 'gaming-mandy'
+  | 'gaming-zero';
+
 export interface AiNarrationResult {
   narration: string;
   suggestions?: string[];
   companionSpeech?: {
-    agentId: 'gaming-lulu' | 'gaming-koko' | 'gaming-nox';
+    agentId: TrpgCompanionAgentId;
     text: string;
   };
 }
@@ -32,11 +42,19 @@ export function parseAiNarrationResponse(rawText: string): AiNarrationResult | n
         let validCompanion = undefined;
         if (parsed.companionSpeech && parsed.companionSpeech.text) {
           const rawId = String(parsed.companionSpeech.agentId || '');
-          const agentId = ['gaming-lulu', 'gaming-koko', 'gaming-nox'].includes(rawId)
-            ? rawId
-            : 'gaming-koko';
+          const validIds: string[] = [
+            'gaming-lulu',
+            'gaming-koko',
+            'gaming-nox',
+            'gaming-vivian',
+            'gaming-suisui',
+            'gaming-lie',
+            'gaming-mandy',
+            'gaming-zero',
+          ];
+          const agentId = validIds.includes(rawId) ? rawId : 'gaming-koko';
           validCompanion = {
-            agentId: agentId as 'gaming-lulu' | 'gaming-koko' | 'gaming-nox',
+            agentId: agentId as TrpgCompanionAgentId,
             text: String(parsed.companionSpeech.text).trim(),
           };
         }
@@ -91,14 +109,20 @@ export async function generateTrpgAiNarration(
 已掌握线索证据：${aiContext.evidence.length > 0 ? aiContext.evidence.join('、') : '暂无'}
 
 与玩家同行的核心队友搭子（每轮剧情请挑选最契合当前气氛的一位做出反应）：
-- 🐱 璐璐 (agentId: "gaming-lulu")：傲娇毒舌、暴击加持、口嫌体正直、关键时刻非常关心玩家（绝世大成功时惊叹脸红，大失败时焦急拉住玩家）
-- 🦊 可可 (agentId: "gaming-koko")：元气开黑僚机、战术急救、温暖贴心、永不红温的小太阳（失败时元气鼓励，发现新区域时兴奋探路）
-- ♟️ 诺克斯 (agentId: "gaming-nox")：冷静理性、战术推演军师、概率分析、克制沉稳（成功时理智总结，面对机关提供专业剖析）
+- 🐱 璐璐 (agentId: "gaming-lulu")：傲娇猫系少女、暴击加持、口嫌体正直、极度护短（大成功时惊叹脸红但嘴硬，大失败时焦急拉住玩家，表面嫌弃实则最关心）
+- 🦊 可可 (agentId: "gaming-koko")：元气治愈小狐狸、急救包扎、温暖贴心、永不红温的小太阳（大失败时元气鼓励递热茶/绷带，发现新线索时欢快打call）
+- ♟️ 诺克斯 (agentId: "gaming-nox")：冷静理性、战术推演家、概率分析、克制沉稳（成功时理智总结，面对机关险境提供清晰剖析）
+- 🔮 薇薇安 (agentId: "gaming-vivian")：中二占星魔女、塔罗星象占卜、神秘学狂热（遭遇超自然时兴奋咏唱，被怪物吓到时慌乱破防反差）
+- 🦥 岁岁 (agentId: "gaming-suisui")：超绝松弛小树懒、慢吞吞佛系哲学、软萌治愈（全场紧张时慢悠悠吃点心，动作慢反而神奇避开机关）
+- 🐺 烈 (agentId: "gaming-lie")：直球热血忠犬少年、肉盾保护欲拉满（遇到危险挺身挡在老大身前，大成功时疯狂夸赞老大帅炸）
+- 🍸 曼蒂 (agentId: "gaming-mandy")：优雅知性调酒师、成熟从容、善解人意（逆境时优雅淡定，用温和话语稳定全队心神）
+- 🤖 零号 (agentId: "gaming-zero")：三无呆萌仿生女仆、科技弱点扫描（面对恐怖毫无畏惧，被玩家关心时情感处理器过热报错）
 
 【创作任务】：
 根据玩家执行的动作和刚才的掷骰检定结果，创作一段富有沉浸感的小说级场景叙事（120~200字）。
-同时，附上一位队友（璐璐、可可或诺克斯）的真实实时发言。
+同时，附上一位队友的真实实时发言。
 再给出 2~3 个符合当前阶段边界的下一步行动建议。建议只是可自由修改的快捷提示，不得跳过阶段、凭空创造关键道具或提前揭露结局。
+注意：队友台词必须严格贴合当前古宅冒险情境，展现真实性格温度，严禁机械输出脱离情境的现代网游/开黑推塔术语！
 请严格输出为以下纯 JSON 格式，不要包含任何 markdown 标记（如 \`\`\`json）：
 {
   "narration": "守秘人充满氛围感的场景叙事...",

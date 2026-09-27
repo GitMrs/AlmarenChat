@@ -78,7 +78,17 @@ export interface TrpgHistoryItem {
   checkResult?: SkillCheckResult;
   outcomeText?: string;
   companionSpeech?: {
-    agentId: 'gaming-lulu' | 'gaming-koko' | 'gaming-nox' | 'gaming-dm';
+    agentId:
+      | 'gaming-lulu'
+      | 'gaming-koko'
+      | 'gaming-nox'
+      | 'gaming-vivian'
+      | 'gaming-suisui'
+      | 'gaming-lie'
+      | 'gaming-mandy'
+      | 'gaming-zero'
+      | 'gaming-dm'
+      | (string & {});
     agentName: string;
     agentAvatar: string;
     text: string;
@@ -282,9 +292,14 @@ function applyStoryEffects(state: TrpgGameState, effects?: StoryEffects): Pick<T
 }
 
 export const AGENT_INFO: Record<string, { name: string; avatar: string }> = {
-  'gaming-lulu': { name: '璐璐 · 傲娇陪玩搭子', avatar: '🐱' },
-  'gaming-koko': { name: '可可 · 元气开黑僚机', avatar: '🦊' },
+  'gaming-lulu': { name: '璐璐 · 傲娇猫系搭子', avatar: '🐱' },
+  'gaming-koko': { name: '可可 · 元气治愈小狐狸', avatar: '🦊' },
   'gaming-nox': { name: '诺克斯 · 战术复盘军师', avatar: '♟️' },
+  'gaming-vivian': { name: '薇薇安 · 中二占星魔女', avatar: '🔮' },
+  'gaming-suisui': { name: '岁岁 · 超绝松弛小树懒', avatar: '🦥' },
+  'gaming-lie': { name: '烈 · 直球忠犬少年', avatar: '🐺' },
+  'gaming-mandy': { name: '曼蒂 · 深夜树洞调酒师', avatar: '🍸' },
+  'gaming-zero': { name: '零号 · 呆萌仿生女仆', avatar: '🤖' },
   'gaming-dm': { name: '守秘人 · 奇幻跑团 DM', avatar: '📜' },
 };
 
