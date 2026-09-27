@@ -439,16 +439,29 @@ function messageRunId(message: SpaceMessage) {
 }
 
 function mentionedAgents(content: string, agents: Agent[]) {
-  const nameCounts = new Map<string, number>();
+  if (!content.includes('@')) return [];
+  const candidates: Array<{ agent: Agent; alias: string }> = [];
   for (const agent of agents) {
-    const key = agent.name.toLocaleLowerCase();
-    nameCounts.set(key, (nameCounts.get(key) || 0) + 1);
+    candidates.push({ agent, alias: agent.name });
+    candidates.push({ agent, alias: agent.id });
+    const shortName = agent.name.split(/[·•\-_(（]/)[0].trim();
+    if (shortName && shortName !== agent.name && shortName.length >= 2) {
+      candidates.push({ agent, alias: shortName });
+    }
   }
-  return agents.filter((agent) => {
-    if (nameCounts.get(agent.name.toLocaleLowerCase()) !== 1) return false;
-    const escaped = agent.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    return new RegExp(`@${escaped}(?=$|\\s|[，。！？、,.;；:：])`, 'i').test(content);
-  });
+  candidates.sort((a, b) => b.alias.length - a.alias.length);
+
+  const matched = new Set<string>();
+  const results: Agent[] = [];
+  for (const { agent, alias } of candidates) {
+    if (matched.has(agent.id)) continue;
+    const escaped = alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (new RegExp(`@${escaped}(?=$|\\s|[，。！？、,.;；:：])`, 'i').test(content)) {
+      matched.add(agent.id);
+      results.push(agent);
+    }
+  }
+  return results;
 }
 
 function activeMentionToken(value: string, caret: number) {
@@ -1554,6 +1567,8 @@ export default function SpaceDetailPage() {
       let workspaceFilesChanged = 0;
       let streamFailure = '';
       let coordinationQueued = false;
+      const MAX_BOT_MENTION_HOPS = 2;
+      let botChainHops = 0;
 
       for (let index = 0; index < replyRequests.length; index += 1) {
         const replyRequest = replyRequests[index];
@@ -1672,6 +1687,29 @@ export default function SpaceDetailPage() {
               ...participants.map((participant) => participant.id),
               coordinatorAgent.id,
             ]);
+          }
+        }
+
+        // 伙伴间 @ 联动流转机制 (Peer @-Mention Auto Relay)
+        if (!isPiSpace && botChainHops < MAX_BOT_MENTION_HOPS && fullContent) {
+          const currentSpeakerId = replyRequest.target?.id || coordinatorAgent.id;
+          const otherMembers = memberAgents.filter((agent) => agent.id !== currentSpeakerId);
+          const mentionedOtherAgents = mentionedAgents(fullContent, otherMembers);
+          // 挑选正文中被 @ 且尚未进入后续排队的伙伴接话
+          const remainingTargetIds = new Set(replyRequests.slice(index + 1).map((r) => r.target?.id).filter(Boolean));
+          const nextTarget = mentionedOtherAgents.find((agent) => !remainingTargetIds.has(agent.id));
+          if (nextTarget) {
+            botChainHops += 1;
+            replyRequests.push({
+              target: nextTarget,
+              message: fullContent,
+              interactionMode: 'multi_reply',
+              multiReplyIndex: index + 1,
+              skipPersistUserMessage: true,
+              allowWebSearch: false,
+              imageGenerationRequested: false,
+            });
+            setReplyQueueAgentIds((ids) => [...ids, nextTarget.id]);
           }
         }
 

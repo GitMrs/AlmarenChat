@@ -101,50 +101,64 @@ export function resolveMentionTarget(content: string, agents: ResolvedSpaceAgent
 export function resolveMentionTargets(content: string, agents: ResolvedSpaceAgent[]) {
   if (!content.includes('@')) return [];
 
-  const nameCounts = new Map<string, number>();
+  const candidates: Array<{ agent: ResolvedSpaceAgent; alias: string }> = [];
   for (const agent of agents) {
-    const key = agent.name.toLocaleLowerCase();
-    nameCounts.set(key, (nameCounts.get(key) || 0) + 1);
+    candidates.push({ agent, alias: agent.name });
+    candidates.push({ agent, alias: agent.id });
+    const shortName = agent.name.split(/[·•\-_(（]/)[0].trim();
+    if (shortName && shortName !== agent.name && shortName.length >= 2) {
+      candidates.push({ agent, alias: shortName });
+    }
   }
-  const candidates = agents
-    .flatMap((agent) => [
-      ...(nameCounts.get(agent.name.toLocaleLowerCase()) === 1 ? [{ agent, alias: agent.name }] : []),
-      { agent, alias: agent.id },
-    ])
-    .filter((item) => item.alias)
-    .sort((a, b) => b.alias.length - a.alias.length);
+  candidates.sort((a, b) => b.alias.length - a.alias.length);
 
+  const seen = new Set<string>();
   const matches: Array<{ agent: ResolvedSpaceAgent; index: number }> = [];
   for (const { agent, alias } of candidates) {
+    if (seen.has(agent.id)) continue;
     const escaped = alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const pattern = new RegExp(`@${escaped}(?=$|\\s|[，。！？、,.;；:：])`, 'i');
     const match = pattern.exec(content);
-    if (match) matches.push({ agent, index: match.index });
+    if (match) {
+      seen.add(agent.id);
+      matches.push({ agent, index: match.index });
+    }
   }
 
-  const seen = new Set<string>();
   return matches
     .sort((left, right) => left.index - right.index)
-    .filter(({ agent }) => {
-      if (seen.has(agent.id)) return false;
-      seen.add(agent.id);
-      return true;
-    })
     .map(({ agent }) => agent);
 }
 
 export function formatMembersContext(agents: ResolvedSpaceAgent[], targetAgent: ResolvedSpaceAgent) {
   const workers = agents.filter((agent) => agent.id !== SPACE_COORDINATOR_ID);
-  const members = workers
+  const otherMembers = workers.filter((agent) => agent.id !== targetAgent.id);
+  const membersList = workers
     .map((agent) => `- ${agent.name}${agent.category ? `（${agent.category}）` : ''}: ${agent.description || '暂无描述'}`)
     .join('\n');
 
+  const otherMemberNames = otherMembers.map((agent) => {
+    const shortName = agent.name.split(/[·•\-_(（]/)[0].trim();
+    return shortName && shortName !== agent.name ? `「${agent.name}」（可 @${shortName}）` : `「${agent.name}」`;
+  });
+
+  const mentionGuidance = otherMembers.length > 0
+    ? `2. 【群聊 @ 联动机制】：
+   - 当前在场的其他伙伴有：${otherMemberNames.join('、')}。
+   - 当你觉得某个话题适合群里某位在场伙伴、或想调侃、反驳、求证对方时，可以直接在正文中 @ 对方（例如被你 @ 的伙伴将自动收到接力棒接话回应）。
+   - 【极其重要】：你只能 @ 上述【实际在场】的伙伴！如果群里没有某人，绝对不要 @ 任何不在当前群名单中的角色（禁止虚空喊话）。不要 @ 你自己。`
+    : `2. 【单聊/无其他在场成员】：
+   - 当前空间中除你之外没有其他伙伴在场，这是你与用户的单独对话。
+   - 请直接与用户交流，【严禁 @ 任何角色】（群里没有其他人，不要自言自语 @ 任何人）。`;
+
   return `你正在一个名为“空间”的多 Agent 会话中发言。
-当前轮到你以「${targetAgent.name}」的身份回复用户。
+当前轮到你以「${targetAgent.name}」的身份发言。
 你只代表自己发言，不要冒充其他 Agent。
 如果你是空间协调者：没有 @ 时由你默认接话，负责理解需求、给出下一步建议，必要时建议用户 @ 具体成员。
-如果你是普通成员：用户 @ 了你时，请直接回应用户当前问题；如果提到其他成员，可以引用他们的名字但不要替他们发言。
+如果你是普通成员：
+1. 请根据当前上下文与话题自然回应，保持自己的性格特色与人设风格。
+${mentionGuidance}
 
-当前普通成员：
-${members || '- 暂无普通成员。'}`;
+当前普通成员列表：
+${membersList || '- 暂无普通成员。'}`;
 }
