@@ -19,6 +19,8 @@ import type {
   ScenarioNode,
   ScenarioCharacterPreset,
   NodeChoice,
+  StoryEffects,
+  StoryRequirements,
 } from './scenarios.ts';
 
 export interface TrpgItemDefinition {
@@ -76,6 +78,89 @@ export interface TrpgGameState {
   successCount: number;
   fumbleCount: number;
   criticalCount: number;
+  chapter: number;
+  clockMinutes: number;
+  flags: Record<string, boolean>;
+  evidence: string[];
+  npcs: Record<string, { alive: boolean; trust: number }>;
+  lastEvent: TrpgEvent | null;
+}
+
+export interface TrpgEvent {
+  type: 'choice_selected' | 'choice_resolved' | 'check_resolved';
+  summary: string;
+  choiceId?: string;
+  choiceLabel?: string;
+  checkLevel?: string;
+  timestamp: number;
+}
+
+export interface TrpgAiContext {
+  scenario: string;
+  chapter: number;
+  location: string;
+  status: TrpgGameState['status'];
+  character: { name: string; className: string; hp: number; maxHp: number; san?: number; maxSan?: number };
+  clockMinutes: number;
+  evidence: string[];
+  flags: string[];
+  npcs: Record<string, { alive: boolean; trust: number }>;
+  lastEvent: TrpgEvent | null;
+  availableChoices: Array<{ id: string; label: string; description: string; tag?: string }>;
+}
+
+function meetsRequirements(state: TrpgGameState, requirements?: StoryRequirements): boolean {
+  if (!requirements) return true;
+  if (requirements.flags?.some((flag) => !state.flags[flag])) return false;
+  if (requirements.notFlags?.some((flag) => state.flags[flag])) return false;
+  if (requirements.evidence?.some((item) => !state.evidence.includes(item))) return false;
+  if (requirements.minClockMinutes !== undefined && state.clockMinutes < requirements.minClockMinutes) return false;
+  if (requirements.characterIds && !requirements.characterIds.includes(state.character.id)) return false;
+  return true;
+}
+
+export function isChoiceAvailable(state: TrpgGameState, choice: NodeChoice): boolean {
+  const hasItem = !choice.requiredItem || state.character.inventory.some((item) => item.includes(choice.requiredItem!));
+  return hasItem && meetsRequirements(state, choice.requires);
+}
+
+function applyStoryEffects(state: TrpgGameState, effects?: StoryEffects): Pick<TrpgGameState, 'chapter' | 'clockMinutes' | 'flags' | 'evidence' | 'npcs'> {
+  if (!effects) {
+    return {
+      chapter: state.chapter,
+      clockMinutes: state.clockMinutes,
+      flags: state.flags,
+      evidence: state.evidence,
+      npcs: state.npcs,
+    };
+  }
+  const flags = { ...state.flags };
+  effects.setFlags?.forEach((flag) => { flags[flag] = true; });
+  effects.clearFlags?.forEach((flag) => { delete flags[flag]; });
+  const evidence = [...state.evidence];
+  for (const item of effects.addEvidence || []) if (!evidence.includes(item)) evidence.push(item);
+  for (const item of effects.removeEvidence || []) {
+    let index = evidence.indexOf(item);
+    while (index !== -1) {
+      evidence.splice(index, 1);
+      index = evidence.indexOf(item);
+    }
+  }
+  const npcs = { ...state.npcs };
+  for (const [id, change] of Object.entries(effects.npcs || {})) {
+    const current = npcs[id] || { alive: true, trust: 0 };
+    npcs[id] = {
+      alive: change.alive ?? current.alive,
+      trust: current.trust + (change.trustDelta || 0),
+    };
+  }
+  return {
+    chapter: effects.chapter ?? state.chapter,
+    clockMinutes: Math.max(0, state.clockMinutes + (effects.timeMinutes || 0)),
+    flags,
+    evidence,
+    npcs,
+  };
 }
 
 const AGENT_INFO: Record<string, { name: string; avatar: string }> = {
@@ -397,6 +482,17 @@ export function createTrpgGame(
     successCount: 0,
     fumbleCount: 0,
     criticalCount: 0,
+    chapter: 1,
+    clockMinutes: 0,
+    flags: {},
+    evidence: [],
+    npcs: scenario.id === 'coc_blackwood_manor'
+      ? {
+          scholar: { alive: true, trust: 0 },
+          servant: { alive: true, trust: -10 },
+        }
+      : {},
+    lastEvent: null,
   };
 }
 
@@ -412,6 +508,7 @@ export function selectChoice(
 
   const choice = currentNode.choices.find((c) => c.id === choiceId);
   if (!choice) return state;
+  if (!isChoiceAvailable(state, choice)) return state;
 
   // 校验关键道具前置条件
   if (choice.requiredItem) {
@@ -452,8 +549,17 @@ export function selectChoice(
       targetValue = choice.check.dc || choice.check.targetValue || 12;
     }
 
+    const storyState = applyStoryEffects(state, choice.effects);
     return {
       ...state,
+      ...storyState,
+      lastEvent: {
+        type: 'choice_selected',
+        summary: `玩家选择：${choice.label}`,
+        choiceId: choice.id,
+        choiceLabel: choice.label,
+        timestamp: Date.now(),
+      },
       character: {
         ...state.character,
         inventory: updatedInventory,
@@ -485,9 +591,18 @@ export function selectChoice(
   };
 
   const isEnding = Boolean(nextNode.isEnding);
+  const storyState = applyStoryEffects(state, choice.effects);
 
   return {
     ...state,
+    ...storyState,
+    lastEvent: {
+      type: 'choice_resolved',
+      summary: `玩家完成行动：${choice.label}`,
+      choiceId: choice.id,
+      choiceLabel: choice.label,
+      timestamp: Date.now(),
+    },
     character: {
       ...state.character,
       inventory: updatedInventory,
@@ -629,6 +744,8 @@ export function executePendingCheck(
     finalStatus = nextNode.endingType === 'frenzy' || nextNode.endingType === 'tragedy' ? 'game_over' : 'victory';
   }
 
+  const choiceStoryState = applyStoryEffects(state, choice.effects);
+  const storyState = applyStoryEffects({ ...state, ...choiceStoryState }, outcome?.effects);
   const nextHistoryItem: TrpgHistoryItem = {
     id: `hist_${Date.now()}`,
     timestamp: Date.now(),
@@ -643,6 +760,15 @@ export function executePendingCheck(
 
   return {
     ...state,
+    ...storyState,
+    lastEvent: {
+      type: 'check_resolved',
+      summary: `${choice.label}：${checkResult.summary}`,
+      choiceId: choice.id,
+      choiceLabel: choice.label,
+      checkLevel: checkResult.level,
+      timestamp: Date.now(),
+    },
     character: {
       ...state.character,
       hp: updatedHp,
@@ -666,6 +792,37 @@ export function executePendingCheck(
     successCount,
     fumbleCount,
     criticalCount,
+  };
+}
+
+export function getTrpgAiContext(state: TrpgGameState): TrpgAiContext {
+  const node = state.scenario.nodes[state.currentNodeId];
+  return {
+    scenario: state.scenario.title,
+    chapter: state.chapter,
+    location: node?.location || node?.title || '未知地点',
+    status: state.status,
+    character: {
+      name: state.character.name,
+      className: state.character.className,
+      hp: state.character.hp,
+      maxHp: state.character.maxHp,
+      san: state.character.san,
+      maxSan: state.character.maxSan,
+    },
+    clockMinutes: state.clockMinutes,
+    evidence: state.evidence.slice(-12),
+    flags: Object.keys(state.flags).filter((flag) => state.flags[flag]).slice(-24),
+    npcs: state.npcs,
+    lastEvent: state.lastEvent,
+    availableChoices: state.status === 'playing' && node && !node.isEnding
+      ? node.choices.filter((choice) => isChoiceAvailable(state, choice)).map((choice) => ({
+          id: choice.id,
+          label: choice.label,
+          description: choice.description,
+          tag: choice.tag,
+        }))
+      : [],
   };
 }
 
@@ -1024,6 +1181,10 @@ export function generateTrpgBattleReport(state: TrpgGameState): string {
     `- ❤️ **终局生命值 (HP)**: ${char.hp} / ${char.maxHp}`,
     char.san !== undefined ? `- 🧠 **终局理智值 (SAN)**: ${char.san} / ${char.maxSan}` : '',
     `- 🎒 **探索获得道具**: ${inventoryList}`,
+    `- 🧭 **剧情进度**: 第 ${state.chapter} 章 · 已发现证据 ${state.evidence.length} 条 · 庄园时间 ${state.clockMinutes} 分钟`,
+    Object.keys(state.npcs).length > 0
+      ? `- 👥 **关键人物状态**: ${Object.entries(state.npcs).map(([id, npc]) => `${id} ${npc.alive ? '存活' : '失踪/死亡'}（信任 ${npc.trust}）`).join(' · ')}`
+      : '',
     `- 🎲 **命运掷骰总计**: ${state.rollCount} 次 (🌟大成功: ${state.criticalCount} | ✅成功: ${state.successCount} | 💀大失败: ${state.fumbleCount})`,
     `- ⏱️ **历经场景幕数**: ${state.turnCount} 幕`,
     '',
@@ -1086,6 +1247,12 @@ export function loadSavedTrpgGame(): TrpgGameState | null {
     // 重新连接最新 scenario 实例，确保节点与选项引用一致
     const latestScenario = SCENARIOS.find((s) => s.id === parsed.scenarioId) || SCENARIOS[0];
     parsed.scenario = latestScenario;
+    parsed.chapter = Number.isFinite(parsed.chapter) ? parsed.chapter : 1;
+    parsed.clockMinutes = Number.isFinite(parsed.clockMinutes) ? parsed.clockMinutes : 0;
+    parsed.flags = parsed.flags && typeof parsed.flags === 'object' ? parsed.flags : {};
+    parsed.evidence = Array.isArray(parsed.evidence) ? parsed.evidence : [];
+    parsed.npcs = parsed.npcs && typeof parsed.npcs === 'object' ? parsed.npcs : {};
+    parsed.lastEvent = parsed.lastEvent && typeof parsed.lastEvent === 'object' ? parsed.lastEvent : null;
 
     // 校验当前节点是否存在
     if (!latestScenario.nodes[parsed.currentNodeId]) {

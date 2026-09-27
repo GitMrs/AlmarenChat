@@ -45,6 +45,7 @@ import {
   saveTrpgGame,
   loadSavedTrpgGame,
   clearSavedTrpgGame,
+  isChoiceAvailable,
   type TrpgGameState,
   type TrpgHistoryItem,
   type TrpgItemDefinition,
@@ -62,6 +63,8 @@ import {
   type SkillCheckResult,
 } from '@/lib/trpg/dice.ts';
 import { useTTS } from '@/hooks/useTTS';
+
+const EMPTY_SPACE_AGENTS: Agent[] = [];
 import type { Agent } from '@/types';
 
 export interface InteractiveTrpgModalProps {
@@ -75,7 +78,7 @@ export interface InteractiveTrpgModalProps {
 export default function InteractiveTrpgModal({
   isOpen,
   onClose,
-  spaceAgents = [],
+  spaceAgents = EMPTY_SPACE_AGENTS,
   onShareToSpace,
   initialScenarioId = 'coc_blackwood_manor',
 }: InteractiveTrpgModalProps) {
@@ -558,6 +561,24 @@ export default function InteractiveTrpgModal({
                 <span className="font-bold">进度实时保存中</span>
               </div>
             </div>
+          </div>
+        )}
+
+        {mode === 'in_game' && (
+          <div className="shrink-0 flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-slate-200 bg-white px-4 py-1.5 sm:px-6 text-[10px] text-slate-500">
+            <span className="font-black text-slate-700">第 {game.chapter} 章</span>
+            <span className="font-mono">庄园时间 {Math.floor(game.clockMinutes / 60).toString().padStart(2, '0')}:{(game.clockMinutes % 60).toString().padStart(2, '0')}</span>
+            <span className="font-semibold">证据 {game.evidence.length} 条</span>
+            {game.evidence.length > 0 && (
+              <span className="min-w-0 truncate text-slate-400" title={game.evidence.join('、')}>
+                {game.evidence.slice(-3).join(' · ')}
+              </span>
+            )}
+            {Object.keys(game.npcs).length > 0 && (
+              <span className="ml-auto font-semibold text-indigo-600">
+                NPC 状态 {Object.values(game.npcs).filter((npc) => npc.alive).length}/{Object.keys(game.npcs).length} 存活
+              </span>
+            )}
           </div>
         )}
 
@@ -1059,7 +1080,7 @@ export default function InteractiveTrpgModal({
                     {game.status === 'playing' && currentNode && !currentNode.isEnding && (
                       <div className="space-y-2">
                         {currentNode.choices.map((choice) => {
-                          const hasReq = !choice.requiredItem || game.character.inventory.some((it) => it.includes(choice.requiredItem!));
+                          const hasReq = isChoiceAvailable(game, choice);
 
                           return (
                             <button
@@ -1088,10 +1109,22 @@ export default function InteractiveTrpgModal({
                               <p className="mt-1 text-[11px] text-slate-500 leading-relaxed group-hover:text-slate-700">
                                 {choice.description}
                               </p>
-                              {!hasReq && choice.requiredItem && (
+                              {!hasReq && choice.requiredItem && !game.character.inventory.some((it) => it.includes(choice.requiredItem!)) && (
                                 <div className="mt-1.5 flex items-center gap-1 text-[10px] text-rose-600 font-bold">
                                   <Lock size={12} />
                                   <span>需要道具：【{choice.requiredItem}】</span>
+                                </div>
+                              )}
+                              {!hasReq && choice.requires?.flags?.some((flag) => !game.flags[flag]) && (
+                                <div className="mt-1.5 flex items-center gap-1 text-[10px] text-rose-600 font-bold">
+                                  <Lock size={12} />
+                                  <span>尚未满足剧情线索条件</span>
+                                </div>
+                              )}
+                              {!hasReq && choice.requires?.evidence?.some((item) => !game.evidence.includes(item)) && (
+                                <div className="mt-1.5 flex items-center gap-1 text-[10px] text-rose-600 font-bold">
+                                  <Lock size={12} />
+                                  <span>尚未掌握必要证据</span>
                                 </div>
                               )}
                               {hasReq && choice.requiredItem && (

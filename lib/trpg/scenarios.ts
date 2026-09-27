@@ -41,6 +41,7 @@ export interface NodeOutcome {
   itemGained?: string;
   itemLost?: string;
   nextNodeId: string;
+  effects?: StoryEffects;
   companionSpeech?: {
     agentId: 'gaming-lulu' | 'gaming-koko' | 'gaming-nox';
     text: string;
@@ -56,6 +57,8 @@ export interface NodeChoice {
   check?: NodeChoiceCheck;
   requiredItem?: string; // 需要拥有的关键道具 (支持模糊匹配，如 '雕花铜钥匙')
   consumeRequiredItem?: boolean; // 选择后是否消耗该道具
+  requires?: StoryRequirements;
+  effects?: StoryEffects;
   // 直接跳转（若无检定）
   directNextNodeId?: string;
   directText?: string;
@@ -74,6 +77,24 @@ export interface NodeChoice {
     sanDelta?: number;
     itemLost?: string;
   };
+}
+
+export interface StoryRequirements {
+  flags?: string[];
+  notFlags?: string[];
+  evidence?: string[];
+  minClockMinutes?: number;
+  characterIds?: string[];
+}
+
+export interface StoryEffects {
+  setFlags?: string[];
+  clearFlags?: string[];
+  addEvidence?: string[];
+  removeEvidence?: string[];
+  timeMinutes?: number;
+  chapter?: number;
+  npcs?: Record<string, { alive?: boolean; trustDelta?: number }>;
 }
 
 export interface ScenarioNode {
@@ -191,6 +212,7 @@ export const SCENARIOS: TrpgScenario[] = [
               text: '你蹲下身，用手电照亮泥迹。这不是普通的人类脚印，脚尖处有着类似蹼足的蹼痕！你在墙根踢脚线处发现了一枚被慌乱遗落的【雕花铜钥匙】，可无声开启二楼书斋与机关！',
               itemGained: '雕花铜钥匙',
               nextNodeId: 'node_study',
+              effects: { setFlags: ['found_copper_key', 'saw_nonhuman_tracks'], addEvidence: ['蹼足脚印'], timeMinutes: 25, chapter: 2 },
               companionSpeech: {
                 agentId: 'gaming-nox',
                 text: '注意看脚印间距，逃跑者当时步频极乱，而且蹼痕拖拽说明目标具有两栖或深潜异化特征。这把钥匙是关键道具。',
@@ -201,6 +223,7 @@ export const SCENARIOS: TrpgScenario[] = [
               text: '地毯上刺鼻的水腥味突然剧烈翻涌，你揉了揉刺痛的眼睛，只感到头晕目眩，甚至不慎踩翻了旁边的青铜烛台，发出巨大的回声！',
               sanDelta: -2,
               nextNodeId: 'node_study',
+              effects: { setFlags: ['heard_manor_warning'], addEvidence: ['异常水腥味'], timeMinutes: 25, chapter: 2 },
               companionSpeech: {
                 agentId: 'gaming-lulu',
                 text: '笨蛋！走路能不能看路啊！这声响绝对把楼上的怪东西全吵醒了！快握紧手电啦！',
@@ -227,6 +250,7 @@ export const SCENARIOS: TrpgScenario[] = [
               text: '在雷鸣的间隙，你捕捉到了西侧宴会厅传来的低沉祷告与银制餐刀碰撞声。你轻巧地压低脚步，避开了地上的碎玻璃，潜入了宴会大厅！',
               sanDelta: 1,
               nextNodeId: 'node_dining',
+              effects: { setFlags: ['heard_west_wing_ritual'], addEvidence: ['宴会厅祷告声'], timeMinutes: 15, chapter: 2 },
               companionSpeech: {
                 agentId: 'gaming-koko',
                 text: '哇！你耳朵太灵了吧！提前探明西侧有动静，太有侦探范儿了！我们悄悄摸进去！',
@@ -237,6 +261,7 @@ export const SCENARIOS: TrpgScenario[] = [
               text: '你将耳朵贴近门缝，突然一阵尖锐至极的深海尖啸刺穿耳膜！你的脑海里浮现出溺亡在万丈冰渊的幻觉，跌跌撞撞撞进了宴会厅。',
               sanDelta: -4,
               nextNodeId: 'node_dining',
+              effects: { setFlags: ['heard_west_wing_ritual'], timeMinutes: 15, chapter: 2 },
               companionSpeech: {
                 agentId: 'gaming-lulu',
                 text: '喂！你脸色怎么突然变得跟石灰一样惨白？！别吓我啊，快深呼吸！',
@@ -253,6 +278,7 @@ export const SCENARIOS: TrpgScenario[] = [
               levelGroup: 'success',
               text: '你如同一只灵巧的黑猫无声滑过东侧走廊，推开了通往温室画廊的水晶玻璃门。奇异的荧光菌菇在夜色中如星海起伏。',
               nextNodeId: 'node_gallery',
+              effects: { setFlags: ['entered_greenhouse'], addEvidence: ['异界菌菇'], timeMinutes: 20, chapter: 2 },
               companionSpeech: {
                 agentId: 'gaming-nox',
                 text: '完美的潜行轨迹。东侧温室气流充沛，有很大几率藏有古生物样本或药剂原料。',
@@ -263,6 +289,7 @@ export const SCENARIOS: TrpgScenario[] = [
               text: '你在回廊转角踩到了湿滑的苔藓，摔了个结结实实，手肘擦破流血，狼狈地滚入了温室门内。',
               hpDelta: -2,
               nextNodeId: 'node_gallery',
+              effects: { setFlags: ['entered_greenhouse'], timeMinutes: 20, chapter: 2 },
             },
           },
           {
@@ -271,6 +298,7 @@ export const SCENARIOS: TrpgScenario[] = [
             description: '时间紧迫，直接抢占主动权，冲入异变核心。',
             directNextNodeId: 'node_study',
             directText: '你紧握手电与防身武器，踩着咯吱作响的木质楼梯，以最快速度冲上了二楼走廊。',
+            effects: { setFlags: ['rushed_upstairs'], timeMinutes: 10, chapter: 2 },
           },
         ],
       },
@@ -296,6 +324,7 @@ export const SCENARIOS: TrpgScenario[] = [
               text: '你在三世伯爵画像背后摸到了一处弹簧暗掣！暗盒弹开，里面静静躺着一枚雕刻精细的【先祖银制五芒星圣徽】与一瓶密封完好的【浓缩镇静剂】！',
               itemGained: '先祖银制五芒星圣徽',
               nextNodeId: 'node_cellar_corridor',
+              effects: { setFlags: ['found_silver_seal'], addEvidence: ['先祖银制五芒星圣徽'], timeMinutes: 30, chapter: 3 },
               companionSpeech: {
                 agentId: 'gaming-nox',
                 text: '银质五芒星圣徽是对抗深渊眷族的核心信物，不仅能稳固精神理智，还能共鸣削弱邪神护盾。重大战术斩获。',
@@ -306,6 +335,7 @@ export const SCENARIOS: TrpgScenario[] = [
               text: '触碰画框的刹那，画像中先祖的眼球突然流出污血！强烈的精神污染震荡了你的神智，你尖叫着后退，撞翻了餐台！',
               sanDelta: -5,
               nextNodeId: 'node_cellar_corridor',
+              effects: { setFlags: ['angered_portrait'], timeMinutes: 30, chapter: 3 },
               companionSpeech: {
                 agentId: 'gaming-lulu',
                 text: '咿呀！画里的人怎么在瞪着我们看啦！快别摸了，吓死人了！',
@@ -324,6 +354,7 @@ export const SCENARIOS: TrpgScenario[] = [
               sanDelta: 3,
               itemGained: '旧神星印残卷',
               nextNodeId: 'node_cellar_corridor',
+              effects: { setFlags: ['decoded_ritual_weakness'], addEvidence: ['祭仪的银器弱点'], timeMinutes: 35, chapter: 3 },
             },
             failureOutcome: {
               levelGroup: 'failure',
@@ -331,6 +362,7 @@ export const SCENARIOS: TrpgScenario[] = [
               sanDelta: -6,
               hpDelta: -2,
               nextNodeId: 'node_cellar_corridor',
+              effects: { setFlags: ['decoded_ritual_failed'], timeMinutes: 35, chapter: 3 },
             },
           },
           {
@@ -339,6 +371,7 @@ export const SCENARIOS: TrpgScenario[] = [
             description: '避开正门，通过厨房隐秘通道直捣黄龙。',
             directNextNodeId: 'node_cellar_corridor',
             directText: '你戴上皮手套，抓紧粗麻缆绳，顺着狭窄的送餐井轻巧地滑落至地窖阴暗的回廊。',
+            effects: { setFlags: ['used_service_lift'], timeMinutes: 20, chapter: 3 },
           },
         ],
       },
@@ -364,6 +397,7 @@ export const SCENARIOS: TrpgScenario[] = [
               text: '你小心翼翼地切取下最纯净的荧光孢子。这种异界植物汁液具有不可思议的安神与愈合奇效！你获得了【异界荧光舒缓草】（HP+6, SAN+6）！',
               itemGained: '异界荧光舒缓草',
               nextNodeId: 'node_cellar_corridor',
+              effects: { setFlags: ['harvested_luminous_herb'], addEvidence: ['异界菌菇样本'], timeMinutes: 25, chapter: 3 },
               companionSpeech: {
                 agentId: 'gaming-koko',
                 text: '太神奇了！这草药发着柔和的光，闻一闻就觉得神清气爽！好东西，快收好！',
@@ -375,6 +409,7 @@ export const SCENARIOS: TrpgScenario[] = [
               hpDelta: -3,
               sanDelta: -3,
               nextNodeId: 'node_cellar_corridor',
+              effects: { setFlags: ['contaminated_by_spores'], timeMinutes: 25, chapter: 3 },
             },
           },
           {
@@ -388,6 +423,7 @@ export const SCENARIOS: TrpgScenario[] = [
               text: '随着罗盘指针咔哒归位，石雕眼窝处亮起纯净的群星蓝光！雕像基座轰然旋开，露出了暗格内的【旧神星印残卷】，一条干燥平整的直达地窖秘道展现在眼前！',
               itemGained: '旧神星印残卷',
               nextNodeId: 'node_cellar_corridor',
+              effects: { setFlags: ['decoded_star_compass'], addEvidence: ['星轨罗盘暗道'], timeMinutes: 30, chapter: 3 },
               companionSpeech: {
                 agentId: 'gaming-nox',
                 text: '古老星图机关被完美破译，跳过了所有伏兵警戒区，直达深渊前哨。',
@@ -398,6 +434,7 @@ export const SCENARIOS: TrpgScenario[] = [
               text: '罗盘对位错误！石雕内部喷射出高压冰霜寒流，冻伤了你的双手，石阶暗门粗暴地卡在半空。',
               hpDelta: -4,
               nextNodeId: 'node_cellar_corridor',
+              effects: { setFlags: ['failed_star_compass'], timeMinutes: 30, chapter: 3 },
             },
           },
           {
@@ -406,6 +443,7 @@ export const SCENARIOS: TrpgScenario[] = [
             description: '折返前往艾伯纳学者的私人核心书房。',
             directNextNodeId: 'node_study',
             directText: '你顺着回旋木梯快步登楼，推开了二楼藏书斋的暗门。',
+            effects: { setFlags: ['returned_to_study'], timeMinutes: 15, chapter: 3 },
           },
         ],
       },
@@ -428,6 +466,7 @@ export const SCENARIOS: TrpgScenario[] = [
             directNextNodeId: 'node_cellar_corridor',
             directText:
               '你将雕花铜钥匙插入暗柜锁孔，轻轻一拧，咔哒一声机簧无声滑开！不仅暗门平稳洞开，柜内还完好保留了一套【战地急救绷带】！',
+            effects: { setFlags: ['opened_study_secret_door'], addEvidence: ['学者暗柜'], timeMinutes: 20, chapter: 3 },
           },
           {
             id: 'c1_read_necronomicon',
@@ -441,6 +480,7 @@ export const SCENARIOS: TrpgScenario[] = [
               sanDelta: -2,
               itemGained: '旧神星印残卷',
               nextNodeId: 'node_cellar_corridor',
+              effects: { setFlags: ['decoded_ritual_formula'], addEvidence: ['封印仪式公式'], timeMinutes: 35, chapter: 3 },
               companionSpeech: {
                 agentId: 'gaming-nox',
                 text: '高风险高收益。获得了封印公式，我们直捣黄龙胜算将提升至 85% 以上。',
@@ -451,6 +491,7 @@ export const SCENARIOS: TrpgScenario[] = [
               text: '那些非人类的文字仿佛在羊皮纸上扭曲蠕动，直往你的眼眶里钻！你目睹了无垠星海中不可名状的巨大眼眸，san 值剧烈暴跌！',
               sanDelta: -8,
               nextNodeId: 'node_cellar_corridor',
+              effects: { setFlags: ['read_forbidden_text'], timeMinutes: 35, chapter: 3 },
               companionSpeech: {
                 agentId: 'gaming-koko',
                 text: '别看啦别看啦！快把书合上！可恶，这些古籍简直是有毒的！喝口热水缓一缓！',
@@ -500,6 +541,36 @@ export const SCENARIOS: TrpgScenario[] = [
             directNextNodeId: 'node_cellar_corridor',
             directText: '你在壁炉旁的铁盒里搜出了一瓶【高纯度医疗酒精与止血绷带】（HP +4），随后推开暗门踏入地窖深处。',
           },
+          {
+            id: 'c_study_allen_caseboard',
+            label: '【艾伦专属】重建案发现场，找出学者最后的行动轨迹',
+            description: '把壁炉灰烬、门锁磨痕和湿脚印拼成一条完整的逃生路线。',
+            requires: { characterIds: ['investigator-allen'] },
+            tag: '【私家侦探专属】',
+            directNextNodeId: 'node_cellar_corridor',
+            directText: '艾伦没有急着翻动书页，而是先把灰烬和门锁磨痕画在随身案情板上。线索拼合后，你确认艾伯纳是主动走进地窖的，并在暗柜夹层找到一枚【沾血铜牌】。',
+            effects: { setFlags: ['allen_reconstructed_scene'], addEvidence: ['学者主动进入地窖', '沾血的铜牌'], timeMinutes: 20, chapter: 3 },
+          },
+          {
+            id: 'c_study_sara_marginalia',
+            label: '【塞拉专属】比对古籍旁注，解读被抹去的旧神祷文',
+            description: '民俗学者能看懂书页边缘留下的早期仪式注释。',
+            requires: { characterIds: ['investigator-sara'] },
+            tag: '【密大民俗学者专属】',
+            directNextNodeId: 'node_cellar_corridor',
+            directText: '塞拉用羽毛笔蘸取墨水，沿着几乎被刮掉的旁注重新描摹。祷文揭示了“不要回应祭坛回声”的禁忌，你还在书脊里找到一片【旧神星印残卷】。',
+            effects: { setFlags: ['sara_decoded_marginalia'], addEvidence: ['祭坛回声规则', '旧神星印残卷'], timeMinutes: 25, chapter: 3 },
+          },
+          {
+            id: 'c_study_reyno_breach',
+            label: '【雷诺专属】检查暗门结构，寻找最快的撤离与爆破点',
+            description: '退役军官优先判断建筑承重和战术撤离路线。',
+            requires: { characterIds: ['investigator-reyno'] },
+            tag: '【退役军官专属】',
+            directNextNodeId: 'node_cellar_corridor',
+            directText: '雷诺沿着墙根敲击石砖，迅速标出三处承重薄弱点。你在暗门旁找到一卷【战地急救绷带】，并记住了必要时可以炸塌回廊的撤退位置。',
+            effects: { setFlags: ['reyno_marked_escape_route'], addEvidence: ['地窖爆破撤离点'], timeMinutes: 15, chapter: 3 },
+          },
         ],
       },
 
@@ -514,6 +585,31 @@ export const SCENARIOS: TrpgScenario[] = [
           '穿过暗门与陡峭石阶，你来到了庄园地下的古老石砌回廊。地表风暴的轰鸣在这里被吸收殆尽，取而代之的是无处不在的滴水声。回廊两侧摆满了浸泡着不可名状器官的福尔马林玻璃罐。前方廊道中，两名面部已严重畸变、长出两栖鱼鳃与凸出眼珠的异化仆从正手持锈蚀钢叉来回巡逻，喉咙深处发出“咕噜……克苏鲁……”的狂热碎语。',
         choices: [
           {
+            id: 'c_cellar_search_archive',
+            label: '沿着蹼足脚印，搜查回廊尽头的旧档案柜',
+            description: '门厅发现的非人足迹在这里再次出现，柜中可能保存庄园历任主人的实验记录。',
+            requires: { evidence: ['蹼足脚印'] },
+            tag: '【侦查 1d100】',
+            check: { rule: 'coc', skillName: '侦查', targetValue: 60 },
+            successOutcome: {
+              levelGroup: 'success',
+              text: '你沿着湿漉漉的蹼足脚印找到一只嵌在石墙里的铅封档案柜。里面的记录证明，艾伯纳并非第一个被庄园主人带到祭坛的学者，旧档案还标出了祭坛的第二处封印阵眼。',
+              nextNodeId: 'node_archive_vault',
+              effects: { setFlags: ['found_archive_record', 'learned_second_seal'], addEvidence: ['庄园人体实验档案', '第二处封印阵眼'], timeMinutes: 35, chapter: 4 },
+              companionSpeech: {
+                agentId: 'gaming-nox',
+                text: '这不是单纯的祭祀，而是一场持续数十年的人体实验。第二处阵眼或许能让我们在祭坛上获得一次补救机会。',
+              },
+            },
+            failureOutcome: {
+              levelGroup: 'failure',
+              text: '档案柜的铅封突然裂开，里面积存的黑色霉尘扑面而来。你只来得及撕下一页残纸，便听见巡逻仆从朝这边逼近。',
+              sanDelta: -4,
+              nextNodeId: 'node_basement',
+              effects: { setFlags: ['disturbed_archive'], addEvidence: ['残缺实验记录'], timeMinutes: 35, chapter: 4 },
+            },
+          },
+          {
             id: 'c_cellar_ambush',
             label: '潜伏阴影之中，雷霆突袭制服异化仆从！',
             description: '凭借过硬的近战格斗与突袭本能，无声放倒守卫。',
@@ -524,6 +620,7 @@ export const SCENARIOS: TrpgScenario[] = [
               text: '你如猎豹般跃出阴影，一记重击砸晕首名守卫，顺势缴下钢叉逼停另一人！惊恐的异化仆从在濒死时颤抖着吐露实情：“艾伯纳老爷在深渊祭坛……虚空之裂……就在前面大厅……”你在其身上搜出了一卷【战地急救绷带】！',
               itemGained: '战地急救绷带',
               nextNodeId: 'node_basement',
+              effects: { setFlags: ['learned_altar_location'], addEvidence: ['异化仆从口供'], timeMinutes: 20, chapter: 4 },
               companionSpeech: {
                 agentId: 'gaming-nox',
                 text: '干净利落的突袭打击。逼问出的情报确认了目标方位，前方就是终局祭坛。',
@@ -534,6 +631,7 @@ export const SCENARIOS: TrpgScenario[] = [
               text: '异化仆从的皮肤坚韧如鱼鳞，滑开了你的拳锋！锈蚀钢叉狠狠划破了你的大腿，鲜血直流，守卫的嘶吼引得地穴深处震动！',
               hpDelta: -5,
               nextNodeId: 'node_basement',
+              effects: { setFlags: ['alerted_altar_guard'], timeMinutes: 15, chapter: 4 },
               companionSpeech: {
                 agentId: 'gaming-lulu',
                 text: '喂！流了好多血！你没事吧笨蛋！快甩掉他们往前跑！',
@@ -572,6 +670,229 @@ export const SCENARIOS: TrpgScenario[] = [
             directNextNodeId: 'node_basement',
             directText:
               '强光瞬间刺痛了仆从的眼睛！你飞身上前，精准将浓缩镇静剂扎入其颈动脉。仆从眼中的浑浊狂乱缓缓褪去，流下悔恨的眼泪：“谢谢你……调查员……快去祭坛！用纯银的星之护符嵌入祭坛顶端……方能平息撕裂空间的深渊！”他将一枚【银制旧神星之护符】交到你的掌心！',
+            effects: { setFlags: ['calmed_mutated_servant'], addEvidence: ['祭坛封印提示'], timeMinutes: 10, chapter: 4, npcs: { servant: { trustDelta: 30 } } },
+          },
+        ],
+      },
+
+      // 第四幕前置：旧档案库（调查中段扩展节点）
+      node_archive_vault: {
+        id: 'node_archive_vault',
+        title: '第四幕前置：旧档案库与失踪者名册',
+        location: '庄园地下旧档案区 · 铅封档案库',
+        environmentAtmosphere: '📚 潮湿纸页翻动声 · 墙后传来断续的呼吸与抓挠',
+        bgGradient: 'from-stone-950 via-slate-900 to-indigo-950',
+        narration:
+          '铅封档案柜后藏着一间狭窄的石室。墙面钉满了历代调查者与仆人的名牌，许多名字被黑墨粗暴划去。中央的长桌上摊着三本不同年代的实验账册，最上面那本还残留着新鲜的潮气。墙后传来三短一长的敲击声，像有人在用最后的力气求救。',
+        choices: [
+          {
+            id: 'c_archive_read_ledger',
+            label: '完整解读三本实验账册，拼出祭坛运作规律',
+            description: '把失踪者名册、星象记录和封印损耗互相对照。',
+            tag: '【神秘学 1d100】',
+            check: { rule: 'coc', skillName: '神秘学', targetValue: 70 },
+            successOutcome: {
+              levelGroup: 'success',
+              text: '你将三本账册按年份重排，发现庄园每隔十三年就会更换一次祭品。最后一页还画出了礼拜堂的第二封印路线，并标注：银制护符必须在裂隙完全张开前嵌入阵眼。',
+              nextNodeId: 'node_hidden_chapel',
+              effects: { setFlags: ['decoded_archive_ledger'], addEvidence: ['封印仪式公式', '失踪者名册'], timeMinutes: 45, chapter: 5 },
+              companionSpeech: {
+                agentId: 'gaming-nox',
+                text: '账册确认了时间窗口。我们还有机会在裂隙完全张开前完成双重封印。',
+              },
+            },
+            failureOutcome: {
+              levelGroup: 'failure',
+              text: '账册中的星图在你眼前重叠成一片旋转的黑色海面。你没能读完，但撕下了标有银色阵眼的那一页，墙后的敲击声也突然停止。',
+              sanDelta: -6,
+              nextNodeId: 'node_hidden_chapel',
+              effects: { setFlags: ['damaged_archive_ledger'], addEvidence: ['残缺封印公式'], timeMinutes: 35, chapter: 5 },
+            },
+          },
+          {
+            id: 'c_archive_search_relic',
+            label: '翻找失踪者遗物，寻找能抵抗深渊低语的物品',
+            description: '不继续阅读禁书，优先寻找能在终局保命的实物。',
+            tag: '【侦查 1d100】',
+            check: { rule: 'coc', skillName: '侦查', targetValue: 65 },
+            successOutcome: {
+              levelGroup: 'success',
+              text: '你在一只标有“艾伯纳·B”的铁盒里找到一枚银制旧神星之护符，以及一张写着“不要相信祭坛回声”的便条。护符的边缘还刻着礼拜堂入口的方向。',
+              itemGained: '银制旧神星之护符',
+              nextNodeId: 'node_hidden_chapel',
+              effects: { setFlags: ['found_relic_in_archive'], addEvidence: ['祭坛回声警告'], timeMinutes: 30, chapter: 5 },
+              companionSpeech: {
+                agentId: 'gaming-koko',
+                text: '这枚护符看起来就是最后的保命牌！先把它收好，千万别弄丢啦！',
+              },
+            },
+            failureOutcome: {
+              levelGroup: 'failure',
+              text: '铁盒里的弹簧机关突然弹开，腐蚀性的黑水溅上你的手腕。你只抢到一张沾血的名牌，便听见档案库外传来钢叉拖地的声音。',
+              hpDelta: -3,
+              nextNodeId: 'node_hidden_chapel',
+              effects: { setFlags: ['triggered_archive_alarm'], addEvidence: ['沾血的失踪者名牌'], timeMinutes: 25, chapter: 5 },
+            },
+          },
+          {
+            id: 'c_archive_follow_breathing',
+            label: '放弃翻阅，拆开墙板追踪求救声',
+            description: '优先确认墙后是否还有活人，可能错过部分档案线索。',
+            directNextNodeId: 'node_hidden_chapel',
+            directText:
+              '你用肩膀撞开潮湿的墙板。后面没有活人，只有一条通往地下礼拜堂的狭缝，以及一串刚刚留下的湿脚印。',
+            effects: { setFlags: ['followed_archive_breathing'], addEvidence: ['礼拜堂湿脚印'], timeMinutes: 15, chapter: 5 },
+          },
+        ],
+      },
+
+      // 隐藏支线：旧档案标记出的地下礼拜堂
+      node_hidden_chapel: {
+        id: 'node_hidden_chapel',
+        title: '第四幕前置：被遗忘的地下礼拜堂',
+        location: '庄园地下旧档案区 · 封闭礼拜堂',
+        environmentAtmosphere: '🕯️ 熄灭的蜡烛 · 墙面残留着无法辨认的祷文',
+        bgGradient: 'from-indigo-950 via-slate-950 to-stone-950',
+        narration:
+          '档案中标记的暗门通向一座被石墙封死的小礼拜堂。褪色壁画描绘着两道交错的银色圆环，地面散落着庄园历代仆人的铜制名牌。角落里传来微弱的呼吸声，像是还有人被困在这里。',
+        choices: [
+          {
+            id: 'c_chapel_restore_mural',
+            label: '依照档案修复墙面的第二封印圆环',
+            description: '将残缺的符文重新排列，为祭坛终局提前准备备用封印。',
+            tag: '【神秘学 1d100】',
+            check: { rule: 'coc', skillName: '神秘学', targetValue: 65 },
+            successOutcome: {
+              levelGroup: 'success',
+              text: '你用炭笔补全了壁画中缺失的符号。两道圆环短暂亮起，地下深处传来一声压抑的嘶鸣，仿佛某种力量已经察觉到你的准备。',
+              nextNodeId: 'node_chapel_ritual',
+              effects: { setFlags: ['prepared_backup_seal'], addEvidence: ['备用封印已准备'], timeMinutes: 30, chapter: 5 },
+              companionSpeech: { agentId: 'gaming-nox', text: '备用阵眼已经预热。终局时即使主封印失败，也有机会争取一次补救。' },
+            },
+            failureOutcome: {
+              levelGroup: 'failure',
+              text: '符文排列错了一笔，礼拜堂里的蜡烛同时熄灭。你只能记住大概位置，带着不完整的修复结果继续前进。',
+              sanDelta: -3,
+              nextNodeId: 'node_basement',
+              effects: { setFlags: ['damaged_backup_seal'], timeMinutes: 30, chapter: 5 },
+            },
+          },
+          {
+            id: 'c_chapel_rescue_servant',
+            label: '循着呼吸声，解救被锁在祭坛旁的老仆人',
+            description: '冒险打开锈死的铁笼，确认他是否知道艾伯纳学者的下落。',
+            tag: '【力量/敏捷 1d100】',
+            check: { rule: 'coc', skillName: '力量破拆', targetValue: 60 },
+            successOutcome: {
+              levelGroup: 'success',
+              text: '铁锁在你的撬动下断裂。老仆人告诉你，艾伯纳还活着，但祭坛上的主裂隙已经开始吞噬他的记忆。',
+              nextNodeId: 'node_chapel_ritual',
+              effects: { setFlags: ['rescued_old_servant', 'learned_scholar_alive'], addEvidence: ['艾伯纳仍然活着'], timeMinutes: 20, chapter: 5, npcs: { servant: { trustDelta: 45 } } },
+            },
+            failureOutcome: {
+              levelGroup: 'failure',
+              text: '铁笼的锁芯在最后一刻卡死，老仆人只能把一枚沾血的铜牌塞进你手里，催促你立刻前往祭坛。',
+              hpDelta: -2,
+              nextNodeId: 'node_basement',
+              effects: { setFlags: ['received_servant_token'], addEvidence: ['沾血的铜牌'], timeMinutes: 20, chapter: 5 },
+            },
+          },
+        ],
+      },
+
+      // 第四幕前置：第二封印仪式准备
+      node_chapel_ritual: {
+        id: 'node_chapel_ritual',
+        title: '第四幕前置：第二封印的仪式准备',
+        location: '庄园地下旧礼拜堂 · 双环阵眼',
+        environmentAtmosphere: '🔔 远处祭坛震动 · 银色圆环忽明忽暗 · 老仆人的低声祷告',
+        bgGradient: 'from-indigo-950 via-slate-950 to-violet-950',
+        narration:
+          '礼拜堂中央的两道银色圆环开始缓慢转动。每一次重合，地面就传来一次沉闷的震动，仿佛深处有什么东西在敲门。油灯在壁龛中摇曳，墙后隐约传来老仆人或祭坛回声的低语：只要在这里完成准备，祭坛上的裂隙就不会立刻吞噬你们。',
+        choices: [
+          {
+            id: 'c_ritual_align_rings',
+            label: '按照档案公式对齐两道银环，准备备用封印',
+            description: '把已经获得的线索转化为终局时可以使用的安全窗口。',
+            requires: { evidence: ['封印仪式公式'] },
+            tag: '【神秘学 1d100】',
+            check: { rule: 'coc', skillName: '神秘学', targetValue: 70 },
+            successOutcome: {
+              levelGroup: 'success',
+              text: '两道银环在最后一刻完全重合。礼拜堂的墙壁上浮现出一条通往祭坛的安全路线，你把备用阵眼的启动顺序牢牢记在脑中。',
+              nextNodeId: 'node_basement',
+              effects: { setFlags: ['prepared_backup_seal', 'aligned_second_seal'], addEvidence: ['备用封印已准备'], timeMinutes: 35, chapter: 6 },
+              companionSpeech: {
+                agentId: 'gaming-nox',
+                text: '备用阵眼已进入可用状态。终局至少多出一次纠错窗口。',
+              },
+            },
+            failureOutcome: {
+              levelGroup: 'failure',
+              text: '银环错开半寸，反噬的震动让你的牙龈渗出血丝。虽然没有完成准备，但你看清了阵眼真正的启动方向。',
+              sanDelta: -4,
+              nextNodeId: 'node_basement',
+              effects: { setFlags: ['misaligned_second_seal'], addEvidence: ['残缺备用封印线索'], timeMinutes: 25, chapter: 6 },
+            },
+          },
+          {
+            id: 'c_ritual_question_servant',
+            label: '先询问老仆人：艾伯纳究竟为什么打开裂隙',
+            description: '用剩余时间确认幕后动机，也许能发现终局的隐藏条件。',
+            requires: { flags: ['rescued_old_servant'] },
+            tag: '【心理学 1d100】',
+            check: { rule: 'coc', skillName: '心理学', targetValue: 60 },
+            successOutcome: {
+              levelGroup: 'success',
+              text: '老仆人承认，艾伯纳并非被迫研究星之眷族，而是想用自己的记忆交换亡妻的复生。你得知祭坛回声会模仿死者的声音，任何回应都会增强裂隙。',
+              nextNodeId: 'node_basement',
+              effects: { setFlags: ['learned_scholar_motive', 'understood_altar_echo'], addEvidence: ['祭坛回声规则'], timeMinutes: 30, chapter: 6, npcs: { servant: { trustDelta: 20 } } },
+              companionSpeech: {
+                agentId: 'gaming-lulu',
+                text: '原来那个学者是自己跳进坑里的……到了祭坛，千万别回应任何像亲人在叫你的声音！',
+              },
+            },
+            failureOutcome: {
+              levelGroup: 'failure',
+              text: '老仆人被远处的低语吓得语无伦次，只反复说着“不要回应”。你没能问出完整真相，只能带着这句警告赶往祭坛。',
+              sanDelta: -2,
+              nextNodeId: 'node_basement',
+              effects: { setFlags: ['heard_do_not_answer'], addEvidence: ['不要回应的警告'], timeMinutes: 20, chapter: 6 },
+            },
+          },
+          {
+            id: 'c_ritual_listen_echo',
+            label: '没有活人回应，贴近墙面辨认祭坛回声的规律',
+            description: '老仆人没有被救出，只能从墙后的低语中寻找可用信息。',
+            requires: { notFlags: ['rescued_old_servant'] },
+            tag: '【聆听 1d100】',
+            check: { rule: 'coc', skillName: '聆听', targetValue: 65 },
+            successOutcome: {
+              levelGroup: 'success',
+              text: '你分辨出低语并不是老仆人的声音，而是祭坛模仿死者时重复的诱饵。只要不回应，它就无法锁定你的精神位置。',
+              nextNodeId: 'node_basement',
+              effects: { setFlags: ['understood_altar_echo'], addEvidence: ['祭坛回声规则'], timeMinutes: 20, chapter: 6 },
+              companionSpeech: {
+                agentId: 'gaming-koko',
+                text: '听到了吗？那不是人在说话！我们记住规律，到了祭坛千万别被它骗啦！',
+              },
+            },
+            failureOutcome: {
+              levelGroup: 'failure',
+              text: '低语在墙后突然变成你最熟悉的声音。你没有回应，却仍被那阵回声震得头晕目眩，只能赶紧离开礼拜堂。',
+              sanDelta: -5,
+              nextNodeId: 'node_basement',
+              effects: { setFlags: ['heard_false_echo'], timeMinutes: 15, chapter: 6 },
+            },
+          },
+          {
+            id: 'c_ritual_burn_records',
+            label: '烧毁剩余实验账册，切断庄园与祭坛的共鸣',
+            description: '牺牲一部分真相，换取进入终局时更低的精神污染。',
+            directNextNodeId: 'node_basement',
+            directText:
+              '你把最危险的账册投入礼拜堂的油灯。黑烟升起时，庄园深处的震动短暂减弱，通往祭坛的石门终于停止渗出冷雾。',
+            effects: { setFlags: ['burned_ritual_records'], addEvidence: ['共鸣暂时中断'], timeMinutes: 15, chapter: 6 },
           },
         ],
       },
@@ -587,9 +908,81 @@ export const SCENARIOS: TrpgScenario[] = [
           '走下百级潮湿冰冷的石阶，你来到了庄园地底的巨型古老拱顶神庙。石柱上生满了散发微弱磷光的菌菇，中央的黑曜石祭坛四周沸腾着紫黑色的粘稠液体。学者艾伯纳倒在祭坛边缘生死未卜，而祭坛上方——一团由无数眼珠、触须与翻滚黑雾构成的星之眷族正在撕开现实维度的裂隙！四周的空间开始坍塌！',
         choices: [
           {
+            id: 'c0_confront_scholar',
+            label: '【线索专属】先唤醒艾伯纳，追问他为何主动打开裂隙',
+            description: '只有确认学者还活着，并掌握相关线索后，才有机会当面对质。',
+            requires: { evidence: ['艾伯纳仍然活着'], notFlags: ['scholar_confronted'] },
+            tag: '【心理学 1d100】',
+            check: { rule: 'coc', skillName: '心理学', targetValue: 65 },
+            successOutcome: {
+              levelGroup: 'success',
+              text: '艾伯纳在你的质问中睁开眼睛。他承认自己为了复活亡妻，主动用调查者和仆人的记忆喂养裂隙。可当他听见祭坛模仿亡妻的声音时，终于意识到自己被骗了。他把最后一枚银色阵钉交给你，请你结束这一切。',
+              nextNodeId: 'node_basement',
+              effects: { setFlags: ['scholar_confronted', 'scholar_regrets'], addEvidence: ['艾伯纳的忏悔', '银色阵钉'], timeMinutes: 10, chapter: 7, npcs: { scholar: { trustDelta: 25 } } },
+              companionSpeech: {
+                agentId: 'gaming-nox',
+                text: '动机已确认：这是人为开启的裂隙，不是单纯的外神入侵。银色阵钉可能是最后的稳定工具。',
+              },
+            },
+            failureOutcome: {
+              levelGroup: 'failure',
+              text: '艾伯纳在半梦半醒间只吐出一句“她还在回声里”。祭坛的低语立刻盖过了他的声音，你没能得到完整解释，但确认他仍然拒绝面对真相。',
+              sanDelta: -4,
+              nextNodeId: 'node_basement',
+              effects: { setFlags: ['scholar_confronted', 'scholar_unrepentant'], addEvidence: ['艾伯纳的回声执念'], timeMinutes: 8, chapter: 7 },
+            },
+          },
+          {
+            id: 'c0_scholar_counterseal',
+            label: '【隐藏路线】让悔悟的艾伯纳握住银色阵钉，共同完成反制封印',
+            description: '只有先让艾伯纳承认错误，并找到银色阵钉，才能尝试这条高风险协作路线。',
+            requires: { flags: ['scholar_regrets'], evidence: ['银色阵钉'] },
+            tag: '【神秘学 1d100】',
+            check: { rule: 'coc', skillName: '神秘学', targetValue: 75 },
+            successOutcome: {
+              levelGroup: 'success',
+              text: '艾伯纳用最后的力气将银色阵钉刺入祭坛核心。你接过他念到一半的旧神祷文，两道银环与主阵眼同时亮起。裂隙没有爆裂，而是在悔悟者的记忆中缓慢闭合。',
+              sanDelta: -4,
+              nextNodeId: 'ending_triumph',
+              effects: { setFlags: ['scholar_redeemed', 'sealed_the_rift'], addEvidence: ['悔悟者完成反制封印'], timeMinutes: 15, npcs: { scholar: { trustDelta: 40 } } },
+              companionSpeech: { agentId: 'gaming-koko', text: '你们做到了！这次不是一个人扛下所有东西，而是让犯错的人亲手把裂隙关上了！' },
+            },
+            failureOutcome: {
+              levelGroup: 'failure',
+              text: '银色阵钉刺入的瞬间，祭坛回声反过来夺走了艾伯纳的意识。你只能拽着他从崩塌的石阶撤离，封印没有完成，但裂隙暂时被压回了地下。',
+              hpDelta: -4,
+              sanDelta: -8,
+              nextNodeId: 'ending_escape',
+              effects: { setFlags: ['scholar_lost_to_echo', 'buried_the_altar'], timeMinutes: 15, npcs: { scholar: { alive: false } } },
+            },
+          },
+          {
+            id: 'c0_reinforce_second_seal',
+            label: '根据旧档案，先修复祭坛下方的第二处封印阵眼',
+            description: '绕开正面冲突，利用调查途中获得的档案寻找被掩盖的备用阵眼。',
+            requires: { evidence: ['第二处封印阵眼'] },
+            tag: '【神秘学 1d100】',
+            check: { rule: 'coc', skillName: '神秘学', targetValue: 70 },
+            successOutcome: {
+              levelGroup: 'success',
+              text: '你按照旧档案中的逆向符号修复了祭坛底部的第二阵眼。两道银白色光环同时收束，裂隙被压回原本的尺度，艾伯纳也从昏迷中苏醒。',
+              sanDelta: -5,
+              nextNodeId: 'ending_triumph',
+              effects: { setFlags: ['reinforced_second_seal', 'rescued_scholar'], addEvidence: ['双阵眼封印成功'], timeMinutes: 25, npcs: { scholar: { trustDelta: 40 } } },
+            },
+            failureOutcome: {
+              levelGroup: 'failure',
+              text: '逆向符号缺失了一角，第二阵眼只维持了片刻便再次崩裂。你趁着短暂的收束间隙背起艾伯纳逃离祭坛。',
+              hpDelta: -5,
+              nextNodeId: 'ending_escape',
+              effects: { setFlags: ['failed_second_seal', 'rescued_scholar'], timeMinutes: 25, npcs: { scholar: { trustDelta: 15 } } },
+            },
+          },
+          {
             id: 'c1_cast_seal_ritual',
             label: '冲向黑曜石祭坛中心，施展旧神星之封印！',
             description: '用理智与意志抵抗深渊凝视，将封印符文嵌入祭坛阵眼。',
+            requires: { evidence: ['封印仪式公式'] },
             tag: '【意志 POW 1d100】',
             check: { rule: 'coc', skillName: '意志', targetValue: 70 },
             successOutcome: {
@@ -597,6 +990,7 @@ export const SCENARIOS: TrpgScenario[] = [
               text: '你高举护符，迎着呼啸的虚空狂风咬破舌尖保持清醒！伴随着古老言灵的律动，一道炫目的璀璨银光自祭坛冲天而起，触须在光芒中发出凄厉的惨叫，虚空裂隙被硬生生合拢！',
               sanDelta: -3,
               nextNodeId: 'ending_triumph',
+              effects: { setFlags: ['sealed_the_rift'], addEvidence: ['成功封印裂隙'], timeMinutes: 20 },
               companionSpeech: {
                 agentId: 'gaming-koko',
                 text: '光！看啊！好耀眼的光芒！！裂缝关上了！我们赢了！！呜呜呜太帅了！！',
@@ -608,6 +1002,7 @@ export const SCENARIOS: TrpgScenario[] = [
               sanDelta: -30,
               hpDelta: -6,
               nextNodeId: 'ending_frenzy',
+              effects: { setFlags: ['failed_the_seal'], timeMinutes: 20 },
               companionSpeech: {
                 agentId: 'gaming-lulu',
                 text: '喂！！醒醒！别看它的眼睛啊啊啊！！……可恶，来不及了吗……',
@@ -635,6 +1030,7 @@ export const SCENARIOS: TrpgScenario[] = [
               text: '引信在火花中嗤嗤作响！你扛起学者狂奔上楼，在千钧一发之际跃出暗门。身后伴随着轰然巨响，数十吨巨石彻底将深渊祭坛与怪物掩埋！',
               hpDelta: -2,
               nextNodeId: 'ending_escape',
+              effects: { setFlags: ['buried_the_altar', 'rescued_scholar'], addEvidence: ['祭坛被掩埋'], timeMinutes: 15, npcs: { scholar: { trustDelta: 25 } } },
               companionSpeech: {
                 agentId: 'gaming-nox',
                 text: '炸药爆速 6800m/s，落石冲击波封锁了所有空间裂口。战术撤退非常成功，我们活下来了。',
@@ -645,6 +1041,7 @@ export const SCENARIOS: TrpgScenario[] = [
               text: '崩塌的碎石砸中了你的后背！剧痛让你险些昏厥，虽然勉强爬出了地窖，但重伤与毒雾让你倒在了废墟中……',
               hpDelta: -8,
               nextNodeId: 'ending_escape',
+              effects: { setFlags: ['buried_the_altar'], timeMinutes: 15, npcs: { scholar: { alive: false } } },
               companionSpeech: {
                 agentId: 'gaming-koko',
                 text: '坚持住啊！我们已经跑出来了！救护车和支援马上就到！千万不要闭眼！',
@@ -655,6 +1052,7 @@ export const SCENARIOS: TrpgScenario[] = [
             id: 'c3_secret_symbiosis',
             label: '👁️【禁断抉择】直面深渊不可名状意志，达成意识共生契约！',
             description: '放弃凡人的平庸伪装，以无上神髓拥抱浩瀚星辰真相。',
+            requires: { flags: ['read_forbidden_text'] },
             tag: '【神秘学 1d100】',
             check: { rule: 'coc', skillName: '神秘学', targetValue: 65 },
             successOutcome: {
@@ -663,6 +1061,7 @@ export const SCENARIOS: TrpgScenario[] = [
               sanDelta: -20,
               hpDelta: 10,
               nextNodeId: 'ending_secret_pact',
+              effects: { setFlags: ['accepted_the_abyss'], timeMinutes: 10 },
               companionSpeech: {
                 agentId: 'gaming-nox',
                 text: '神经信号未崩溃……相反，脑波频率呈现非欧几何量子态。你成为了跨维度的共生宿主。',
@@ -673,6 +1072,7 @@ export const SCENARIOS: TrpgScenario[] = [
               text: '凡人的脑髓根本无法承载虚空之海！狂暴的信息流瞬间烧毁了你的神经中枢，你在惨笑中被深渊同化为一具傀儡……',
               sanDelta: -40,
               nextNodeId: 'ending_frenzy',
+              effects: { setFlags: ['lost_to_the_abyss'], timeMinutes: 10 },
             },
           },
           {
