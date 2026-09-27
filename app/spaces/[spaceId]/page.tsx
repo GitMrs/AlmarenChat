@@ -530,7 +530,7 @@ export default function SpaceDetailPage() {
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [mode, setMode] = useState<'chat' | 'task'>('chat');
   const [workspaceView, setWorkspaceView] = useState<'chat' | 'files' | 'operations' | 'games'>('chat');
-  const [gameCenterInitialGame, setGameCenterInitialGame] = useState<'gomoku' | null>(null);
+  const [gameCenterInitialGame, setGameCenterInitialGame] = useState<'gomoku' | 'undercover' | 'trpg' | null>(null);
   const [operationsTab, setOperationsTab] = useState<SpaceOperationsTab>('overview');
   const [sidePanel, setSidePanel] = useState<'members' | 'files' | 'skills' | 'runs' | 'operations' | 'publications' | 'settings' | 'automation' | 'notifications' | 'connector' | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1463,9 +1463,13 @@ export default function SpaceDetailPage() {
       dismissDiscussion(latestDiscussion.id);
     }
 
-    if (space?.templateId === 'gaming-room' && !options?.reuseLastUserMessage && (content.includes('五子棋') || content.includes('下棋') || content.includes('游戏中心') || content.includes('玩游戏') || content.includes('来一盘') || content.includes('开一局'))) {
-      if (content.includes('五子棋') || content.includes('下棋') || content.includes('来一盘') || content.includes('开一局')) {
+    if (space?.templateId === 'gaming-room' && !options?.reuseLastUserMessage && (content.includes('五子棋') || content.includes('下棋') || content.includes('谁是卧底') || content.includes('卧底') || content.includes('跑团') || content.includes('骰子') || content.includes('TRPG') || content.includes('游戏中心') || content.includes('玩游戏') || content.includes('来一盘') || content.includes('开一局'))) {
+      if (content.includes('五子棋') || content.includes('下棋')) {
         setGameCenterInitialGame('gomoku');
+      } else if (content.includes('谁是卧底') || content.includes('卧底')) {
+        setGameCenterInitialGame('undercover');
+      } else if (content.includes('跑团') || content.includes('骰子') || content.includes('TRPG')) {
+        setGameCenterInitialGame('trpg');
       } else {
         setGameCenterInitialGame(null);
       }
