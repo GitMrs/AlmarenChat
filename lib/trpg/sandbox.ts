@@ -366,9 +366,32 @@ export function evaluateSandboxPlayerAction(
   const text = playerActionText.trim();
   const room = BLACKWOOD_SANDBOX_ROOMS[currentRoomId] || BLACKWOOD_SANDBOX_ROOMS.foyer;
 
+  // 与同行角色交流应直接交给队友回应，不应被误判为一次技能检定。
+  const companionMatch = text.match(/(可可|璐璐|诺克斯)/);
+  if (companionMatch && /怎么|如何|建议|觉得|商量|问|聊|说|提醒|帮我|怎么办/.test(text)) {
+    const companionId = companionMatch[1] === '可可'
+      ? 'gaming-koko'
+      : companionMatch[1] === '璐璐'
+        ? 'gaming-lulu'
+        : 'gaming-nox';
+    const companionText = companionId === 'gaming-koko'
+      ? '我在呢！先观察周围环境，再决定下一步，别急着往前冲！'
+      : companionId === 'gaming-lulu'
+        ? '哼，终于想起要问我了？先把线索和手里的东西理清楚再行动。'
+        : '建议先核对当前线索与可用道具，再选择风险最低的路线。';
+    return {
+      actionText: text,
+      intent: 'talk',
+      requiresCheck: false,
+      directNarration: `你向${companionMatch[1]}征求意见。`,
+      companionReaction: { agentId: companionId, text: companionText },
+      newSuggestions: room.defaultSuggestions,
+    };
+  }
+
   // 1. 移动意图检测 (Move to other room)
   for (const [exitKey, targetId] of Object.entries(room.exits)) {
-    if (text.includes(exitKey) && (text.includes('去') || text.includes('走') || text.includes('进') || text.includes('入') || text.includes('滑') || text.includes('爬') || text.includes('上') || text.includes('下') || text.includes('穿过') || text.includes('前往') || text.includes('跑到') || text.includes('到') || text.includes('回'))) {
+    if (text.includes(exitKey) && (text.includes('去') || text.includes('走') || text.includes('进') || text.includes('入') || text.includes('滑') || text.includes('爬') || text.includes('上') || text.includes('下') || text.includes('穿过') || text.includes('前往') || text.includes('跑到') || text.includes('到') || text.includes('回') || text.includes('直奔') || text.includes('登楼') || text.includes('楼梯') || text.includes('沿着') || text.includes('踏入'))) {
       const targetRoom = BLACKWOOD_SANDBOX_ROOMS[targetId];
       if (targetRoom) {
         return {

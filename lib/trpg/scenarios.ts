@@ -52,6 +52,9 @@ export interface NodeChoice {
   id: string;
   label: string;
   description: string;
+  /** 自由行动在检定完成后使用的临时 DM 裁决文本。 */
+  narration?: string;
+  suggestions?: string[];
   icon?: string;
   tag?: string; // 标识偏向，如【侦查 1d100】、【力量 1d20】
   check?: NodeChoiceCheck;

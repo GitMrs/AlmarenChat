@@ -131,6 +131,8 @@ export default function InteractiveTrpgModal({
   const rollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const noticeTimerRef = useRef<NodeJS.Timeout | null>(null);
   const abortAiRef = useRef<AbortController | null>(null);
+  const autoVoicePrimedRef = useRef(false);
+  const lastAutoVoiceKeyRef = useRef('');
 
   useEffect(() => {
     setMounted(true);
@@ -152,6 +154,8 @@ export default function InteractiveTrpgModal({
       setIsRollingAnimation(false);
       setIsAiThinking(false);
       setActionNotice(null);
+      autoVoicePrimedRef.current = false;
+      lastAutoVoiceKeyRef.current = '';
       const originalOverflow = document.body.style.overflow;
       document.body.style.overflow = 'hidden';
       return () => {
@@ -164,6 +168,8 @@ export default function InteractiveTrpgModal({
       if (abortAiRef.current) abortAiRef.current.abort();
       setIsRollingAnimation(false);
       setIsAiThinking(false);
+      autoVoicePrimedRef.current = false;
+      lastAutoVoiceKeyRef.current = '';
     }
   }, [isOpen, stopTTS]);
 
@@ -194,6 +200,7 @@ export default function InteractiveTrpgModal({
   const activePreset =
     activeScenario.characterPresets.find((p) => p.id === selectedPresetId) ||
     activeScenario.characterPresets[0];
+  const dmVoice = spaceAgents.find((agent) => agent.id === 'gaming-dm')?.voice || 'zh-CN-YunjianNeural';
 
   // 仅在对话流容器内部滚动到底部
   const scrollToBottom = useCallback((smooth = true) => {
@@ -211,20 +218,28 @@ export default function InteractiveTrpgModal({
     }
   }, [game.history.length, isAiThinking, mode, scrollToBottom]);
 
-  // 当进入新场景时自动朗读 DM 剧情
+  // 只朗读真正产生的新叙事；打开、恢复或刷新对局时跳过已有历史。
   useEffect(() => {
-    if (mode === 'in_game' && autoVoice && game.history.length > 0) {
-      const latestItem = game.history[game.history.length - 1];
-      if (latestItem && latestItem.narration) {
-        const dmAgent = spaceAgents.find((a) => a.id === 'gaming-dm');
-        const voice = dmAgent?.voice || 'zh-CN-YunjianNeural';
-        playTTS(latestItem.narration.slice(0, 180), {
-          voice,
-          rate: '-4%',
-        });
-      }
+    if (mode !== 'in_game' || game.history.length === 0) return;
+
+    const latestItem = game.history[game.history.length - 1];
+    if (!latestItem?.narration) return;
+
+    // 同一轮行动可能先有本地叙事、后被 AI 改写；按历史记录 ID 去重，避免同一轮播放两次。
+    const voiceKey = latestItem.id;
+    if (!autoVoicePrimedRef.current) {
+      autoVoicePrimedRef.current = true;
+      lastAutoVoiceKeyRef.current = voiceKey;
+      return;
     }
-  }, [game.history.length, mode, autoVoice, spaceAgents, playTTS]);
+    if (!autoVoice || isAiThinking || lastAutoVoiceKeyRef.current === voiceKey) return;
+
+    lastAutoVoiceKeyRef.current = voiceKey;
+    playTTS(latestItem.narration.slice(0, 180), {
+      voice: dmVoice,
+      rate: '-4%',
+    });
+  }, [game.history, mode, autoVoice, isAiThinking, dmVoice, playTTS]);
 
   const triggerNotice = (text: string) => {
     if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current);
@@ -239,6 +254,8 @@ export default function InteractiveTrpgModal({
     if (!savedGame) return;
     stopTTS();
     if (abortAiRef.current) abortAiRef.current.abort();
+    autoVoicePrimedRef.current = false;
+    lastAutoVoiceKeyRef.current = '';
     setIsAiThinking(false);
     setGame(savedGame);
     setSelectedScenarioId(savedGame.scenarioId);
@@ -262,6 +279,8 @@ export default function InteractiveTrpgModal({
   const handleStartAdventure = () => {
     stopTTS();
     if (abortAiRef.current) abortAiRef.current.abort();
+    autoVoicePrimedRef.current = false;
+    lastAutoVoiceKeyRef.current = '';
     setIsAiThinking(false);
     clearSavedTrpgGame();
     setSavedGame(null);
@@ -406,6 +425,7 @@ export default function InteractiveTrpgModal({
             updatedHistory[updatedHistory.length - 1] = {
               ...target,
               narration: aiResult.narration,
+              suggestions: aiResult.suggestions?.length ? aiResult.suggestions : target.suggestions,
               companionSpeech,
             };
             return {
@@ -482,6 +502,7 @@ export default function InteractiveTrpgModal({
                   updatedHistory[updatedHistory.length - 1] = {
                     ...target,
                     narration: aiResult.narration,
+                    suggestions: aiResult.suggestions?.length ? aiResult.suggestions : target.suggestions,
                     companionSpeech,
                   };
                   return {
@@ -526,6 +547,14 @@ export default function InteractiveTrpgModal({
   const sandboxRoom = game.scenarioId === 'coc_blackwood_manor'
     ? getSandboxRoomByNodeId(game.currentNodeId)
     : null;
+  const latestHistorySuggestions = game.history[game.history.length - 1]?.suggestions;
+  const actionSuggestions = latestHistorySuggestions?.length
+    ? latestHistorySuggestions
+    : sandboxRoom?.defaultSuggestions || [
+        '利用随身道具仔细探查周围环境',
+        '放轻脚步，潜行摸索前路',
+        '握紧武器，戒备未知的动静',
+      ];
 
   // 游玩模式下右侧面板有效激活 Tab（自由共创模式完全隐藏预设分支 Tab）
   const effectiveRightTab = (game.playMode === 'free' && rightPanelTab === 'choices') ? 'clues' : rightPanelTab;
@@ -623,7 +652,7 @@ export default function InteractiveTrpgModal({
                   {(mode === 'setup' ? selectedPlayMode : game.playMode) === 'free' ? '🎲 自由共创' : '📜 经典抉择'}
                 </span>
                 <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600">
-                  {mode === 'setup' ? '配置角色与模式' : `第 ${game.turnCount} 幕 · 探险中`}
+                  {mode === 'setup' ? '配置角色与模式' : `第 ${game.turnCount} 回合 · 探险中`}
                 </span>
               </div>
               <p className="text-[11px] text-slate-500 font-medium truncate max-w-md mt-0.5">
@@ -860,7 +889,7 @@ export default function InteractiveTrpgModal({
                             {savedGame.aiEnabled !== false ? '🤖 AI 深度大脑' : '⚡ 本地沙盘'}
                           </span>
                           <span className="text-xs font-bold text-slate-500 font-mono">
-                            第 {savedGame.turnCount} 幕 · 探险中
+                            第 {savedGame.turnCount} 回合 · 探险中
                           </span>
                         </div>
                         <h4 className="text-sm font-black text-slate-900 mt-1">
@@ -1274,7 +1303,7 @@ export default function InteractiveTrpgModal({
                     <div key={item.id || idx} className="space-y-3">
                       
                       {/* 1. 守秘人 DM 场景描摹 */}
-                      {item.narration && (
+                      {item.narration && (idx === 0 || item.nodeId !== game.history[idx - 1]?.nodeId || item.narration !== game.history[idx - 1]?.narration) && (
                         <div className="flex items-start gap-3 rounded-xl border border-amber-200/90 bg-white p-4 shadow-2xs">
                           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-500/10 border border-amber-200 text-xl text-amber-700">
                             📜
@@ -1287,7 +1316,7 @@ export default function InteractiveTrpgModal({
                               </span>
                               <button
                                 type="button"
-                                onClick={() => playTTS(item.narration.slice(0, 180), { voice: 'zh-CN-YunjianNeural', rate: '-4%' })}
+                                onClick={() => playTTS(item.narration.slice(0, 180), { voice: dmVoice, rate: '-4%' })}
                                 className="text-slate-400 hover:text-amber-700 transition cursor-pointer p-0.5"
                                 title="语音朗读该段落"
                               >
@@ -1411,7 +1440,7 @@ export default function InteractiveTrpgModal({
                             {currentNode?.endingTitle || (game.status === 'victory' ? '冒险胜利达成！' : '旅途陨落……')}
                           </h4>
                           <p className="text-xs text-slate-600 mt-0.5">
-                            历经 {game.turnCount} 幕 ｜ 命运掷骰 {game.rollCount} 次 (🌟大成功: {game.criticalCount} / ✅成功: {game.successCount} / 💀大失败: {game.fumbleCount})
+                            历经 {game.turnCount} 回合 ｜ 命运掷骰 {game.rollCount} 次 (🌟大成功: {game.criticalCount} / ✅成功: {game.successCount} / 💀大失败: {game.fumbleCount})
                           </p>
                         </div>
                       </div>
@@ -1484,11 +1513,7 @@ export default function InteractiveTrpgModal({
 
                       {/* 2~3 个动态灵感行动建议 Chips */}
                       <div className="flex flex-wrap items-center gap-1.5">
-                        {(sandboxRoom?.defaultSuggestions || [
-                          '利用随身道具仔细探查周围环境',
-                          '放轻脚步，潜行摸索前路',
-                          '握紧武器，戒备未知的动静',
-                        ]).map((sug, idx) => (
+                        {actionSuggestions.map((sug, idx) => (
                           <button
                             key={idx}
                             type="button"

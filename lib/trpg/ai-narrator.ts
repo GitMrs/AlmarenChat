@@ -3,6 +3,7 @@ import { getTrpgAiContext, type TrpgGameState, type SkillCheckResult } from './e
 
 export interface AiNarrationResult {
   narration: string;
+  suggestions?: string[];
   companionSpeech?: {
     agentId: 'gaming-lulu' | 'gaming-koko' | 'gaming-nox';
     text: string;
@@ -41,6 +42,13 @@ export function parseAiNarrationResponse(rawText: string): AiNarrationResult | n
         }
         return {
           narration: parsed.narration.trim(),
+          suggestions: Array.isArray(parsed.suggestions)
+            ? parsed.suggestions
+                .filter((item: unknown): item is string => typeof item === 'string')
+                .map((item: string) => item.trim())
+                .filter(Boolean)
+                .slice(0, 3)
+            : undefined,
           companionSpeech: validCompanion,
         };
       }
@@ -75,6 +83,10 @@ export async function generateTrpgAiNarration(
   const systemPrompt = `你是一位世界顶级的 TRPG 跑团守秘人（Keeper / DM），精通 ${isCoc ? '克苏鲁神话体系（COC 7th）风格：充满阴冷悬疑、洛夫克拉夫特式不可名状与宇宙恐怖' : '龙与地下城（DND 5e）风格：充满宏大史诗感、奇幻探险与地城秘辛'}。
 当前剧本：《${scenarioTitle}》· ${state.scenario.systemName}
 当前地点：${aiContext.location}（第 ${aiContext.chapter} 章）
+当前阶段：${aiContext.phase.title}
+阶段目标：${aiContext.phase.goal}
+推进边界：${aiContext.phase.progression}
+本阶段允许的范围：${aiContext.phase.allowedScope.join('、')}
 玩家角色：${aiContext.character.name}（${aiContext.character.className}，HP: ${aiContext.character.hp}/${aiContext.character.maxHp}${aiContext.character.san !== undefined ? `，SAN: ${aiContext.character.san}/${aiContext.character.maxSan}` : ''}）
 已掌握线索证据：${aiContext.evidence.length > 0 ? aiContext.evidence.join('、') : '暂无'}
 
@@ -86,9 +98,11 @@ export async function generateTrpgAiNarration(
 【创作任务】：
 根据玩家执行的动作和刚才的掷骰检定结果，创作一段富有沉浸感的小说级场景叙事（120~200字）。
 同时，附上一位队友（璐璐、可可或诺克斯）的真实实时发言。
+再给出 2~3 个符合当前阶段边界的下一步行动建议。建议只是可自由修改的快捷提示，不得跳过阶段、凭空创造关键道具或提前揭露结局。
 请严格输出为以下纯 JSON 格式，不要包含任何 markdown 标记（如 \`\`\`json）：
 {
   "narration": "守秘人充满氛围感的场景叙事...",
+  "suggestions": ["当前阶段内的行动建议 1", "当前阶段内的行动建议 2", "当前阶段内的行动建议 3"],
   "companionSpeech": {
     "agentId": "gaming-lulu",
     "text": "队友的实时反应台词"

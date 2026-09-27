@@ -73,6 +73,7 @@ export interface TrpgHistoryItem {
   nodeId: string;
   nodeTitle: string;
   narration: string;
+  suggestions?: string[];
   choiceLabel?: string;
   checkResult?: SkillCheckResult;
   outcomeText?: string;
@@ -131,6 +132,13 @@ export interface TrpgEvent {
 export interface TrpgAiContext {
   scenario: string;
   chapter: number;
+  phase: {
+    id: string;
+    title: string;
+    goal: string;
+    progression: string;
+    allowedScope: string[];
+  };
   location: string;
   status: TrpgGameState['status'];
   character: { name: string; className: string; hp: number; maxHp: number; san?: number; maxSan?: number };
@@ -140,6 +148,83 @@ export interface TrpgAiContext {
   npcs: Record<string, { alive: boolean; trust: number }>;
   lastEvent: TrpgEvent | null;
   availableChoices: Array<{ id: string; label: string; description: string; tag?: string }>;
+}
+
+export function getTrpgPhaseContext(state: TrpgGameState): TrpgAiContext['phase'] {
+  if (state.scenarioId !== 'coc_blackwood_manor') {
+    return {
+      id: `chapter-${state.chapter}`,
+      title: `第 ${state.chapter} 章`,
+      goal: '在当前场景中推进冒险并回应玩家行动。',
+      progression: '只有满足当前故事节点的条件后才能进入下一阶段。',
+      allowedScope: ['当前场景', '当前节点可用的行动与线索'],
+    };
+  }
+
+  const phaseByNode: Record<string, TrpgAiContext['phase']> = {
+    node_foyer: {
+      id: 'manor-foyer',
+      title: '第一幕：暴雨门厅调查',
+      goal: '确认庄园异常并取得至少两条可靠线索。',
+      progression: '不能提前进入地窖或祭坛；需要先完成门厅调查或找到通往庄园内部的路径。',
+      allowedScope: ['门厅', '座钟', '血迹与脚印', '壁炉', '通往宴会厅、温室和书斋的道路'],
+    },
+    node_dining: {
+      id: 'manor-exploration', title: '第二幕：庄园探索',
+      goal: '探索宴会厅、温室、书斋或阁楼，寻找封印资料。',
+      progression: '不能直接揭露祭坛真相；需要获得关键资料或找到进入地窖的线索。',
+      allowedScope: ['宴会厅', '温室画廊', '书斋', '阁楼', '庄园 NPC 与局部危险'],
+    },
+    node_gallery: {
+      id: 'manor-exploration', title: '第二幕：庄园探索',
+      goal: '探索宴会厅、温室、书斋或阁楼，寻找封印资料。',
+      progression: '不能直接揭露祭坛真相；需要获得关键资料或找到进入地窖的线索。',
+      allowedScope: ['宴会厅', '温室画廊', '书斋', '阁楼', '庄园 NPC 与局部危险'],
+    },
+    node_study: {
+      id: 'manor-exploration', title: '第二幕：庄园探索',
+      goal: '探索宴会厅、温室、书斋或阁楼，寻找封印资料。',
+      progression: '不能直接揭露祭坛真相；需要获得关键资料或找到进入地窖的线索。',
+      allowedScope: ['宴会厅', '温室画廊', '书斋', '阁楼', '庄园 NPC 与局部危险'],
+    },
+    node_attic: {
+      id: 'manor-exploration', title: '第二幕：庄园探索',
+      goal: '探索宴会厅、温室、书斋或阁楼，寻找封印资料。',
+      progression: '不能直接揭露祭坛真相；需要获得关键资料或找到进入地窖的线索。',
+      allowedScope: ['宴会厅', '温室画廊', '书斋', '阁楼', '庄园 NPC 与局部危险'],
+    },
+    node_cellar_corridor: {
+      id: 'manor-cellar', title: '第三幕：地窖与封印准备',
+      goal: '处理地窖中的守卫、档案和封印准备工作。',
+      progression: '不能直接跳过仪式准备进入结局；需要完成当前地窖线索和 NPC 条件。',
+      allowedScope: ['地窖回廊', '旧档案库', '隐秘礼拜堂', '守卫与仆人', '封印准备'],
+    },
+    node_archive_vault: {
+      id: 'manor-cellar', title: '第三幕：地窖与封印准备',
+      goal: '处理地窖中的守卫、档案和封印准备工作。',
+      progression: '不能直接跳过仪式准备进入结局；需要完成当前地窖线索和 NPC 条件。',
+      allowedScope: ['地窖回廊', '旧档案库', '隐秘礼拜堂', '守卫与仆人', '封印准备'],
+    },
+    node_hidden_chapel: {
+      id: 'manor-cellar', title: '第三幕：地窖与封印准备',
+      goal: '处理地窖中的守卫、档案和封印准备工作。',
+      progression: '不能直接跳过仪式准备进入结局；需要完成当前地窖线索和 NPC 条件。',
+      allowedScope: ['地窖回廊', '旧档案库', '隐秘礼拜堂', '守卫与仆人', '封印准备'],
+    },
+    node_chapel_ritual: {
+      id: 'manor-cellar', title: '第三幕：地窖与封印准备',
+      goal: '处理地窖中的守卫、档案和封印准备工作。',
+      progression: '不能直接跳过仪式准备进入结局；需要完成当前地窖线索和 NPC 条件。',
+      allowedScope: ['地窖回廊', '旧档案库', '隐秘礼拜堂', '守卫与仆人', '封印准备'],
+    },
+    node_basement: {
+      id: 'manor-finale', title: '第四幕：深渊祭坛决战',
+      goal: '根据已获得的线索、道具和 NPC 状态完成封印或作出最终抉择。',
+      progression: '只能使用已经获得的事实和道具，结局由本地规则与前置条件决定。',
+      allowedScope: ['深渊祭坛', '星之眷族', '封印仪式', '最终抉择'],
+    },
+  };
+  return phaseByNode[state.currentNodeId] || phaseByNode.node_foyer;
 }
 
 function meetsRequirements(state: TrpgGameState, requirements?: StoryRequirements): boolean {
@@ -632,7 +717,8 @@ export function selectChoice(
     timestamp: Date.now(),
     nodeId: nextNode.id,
     nodeTitle: nextNode.title,
-    narration: nextNode.narration,
+    narration: choice.narration || nextNode.narration,
+    suggestions: choice.suggestions,
     choiceLabel: choice.label,
     outcomeText: choice.directText,
   };
@@ -802,7 +888,7 @@ export function executePendingCheck(
     timestamp: Date.now(),
     nodeId: nextNode.id,
     nodeTitle: nextNode.title,
-    narration: nextNode.narration,
+    narration: choice.narration || nextNode.narration,
     choiceLabel: choice.label,
     checkResult,
     outcomeText,
@@ -851,6 +937,7 @@ export function getTrpgAiContext(state: TrpgGameState): TrpgAiContext {
   return {
     scenario: state.scenario.title,
     chapter: state.chapter,
+    phase: getTrpgPhaseContext(state),
     location: node?.location || node?.title || '未知地点',
     status: state.status,
     character: {
@@ -1192,6 +1279,7 @@ export function performFreeAction(
         nodeId: nextNode.id,
         nodeTitle: nextNode.title,
         narration: evalRes.directNarration || `你执行了自由探索行动：${trimmed}`,
+        suggestions: evalRes.newSuggestions,
         choiceLabel: `【自由行动】${trimmed}`,
         outcomeText: evalRes.clueDiscovered ? `🔍【关键线索已获得】${evalRes.clueDiscovered.text}` : undefined,
         companionSpeech,
@@ -1237,6 +1325,8 @@ export function performFreeAction(
       id: `custom_sandbox_${Date.now()}`,
       label: `【自由行动】${trimmed.slice(0, 24)}${trimmed.length > 24 ? '...' : ''}`,
       description: trimmed + (evalRes.bonusReason ? ` (${evalRes.bonusReason})` : ''),
+      narration: evalRes.directNarration || `守秘人正在裁决你的自由行动：${trimmed}`,
+      suggestions: evalRes.newSuggestions,
       check: {
         rule,
         skillName,
@@ -1403,7 +1493,7 @@ export function generateTrpgBattleReport(state: TrpgGameState): string {
       ? `- 👥 **关键人物状态**: ${Object.entries(state.npcs).map(([id, npc]) => `${id} ${npc.alive ? '存活' : '失踪/死亡'}（信任 ${npc.trust}）`).join(' · ')}`
       : '',
     `- 🎲 **命运掷骰总计**: ${state.rollCount} 次 (🌟大成功: ${state.criticalCount} | ✅成功: ${state.successCount} | 💀大失败: ${state.fumbleCount})`,
-    `- ⏱️ **历经场景幕数**: ${state.turnCount} 幕`,
+    `- ⏱️ **历经回合数**: ${state.turnCount} 回合`,
     '',
     '#### 📜 守秘人史诗终局批语',
     `> ${currentNode?.narration.replace(/\n/g, '\n> ') || '命运的齿轮在夜幕中停止了转动，旅行者的传奇将长存于群星之下。'}`,
