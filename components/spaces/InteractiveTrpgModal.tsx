@@ -42,6 +42,9 @@ import {
   getItemDefinition,
   useInventoryItem,
   triggerCompanionAssist,
+  saveTrpgGame,
+  loadSavedTrpgGame,
+  clearSavedTrpgGame,
   type TrpgGameState,
   type TrpgHistoryItem,
   type TrpgItemDefinition,
@@ -94,7 +97,11 @@ export default function InteractiveTrpgModal({
   const [rollingDisplayNum, setRollingDisplayNum] = useState<number>(20);
 
   // 道具与援护使用反馈气泡提示
+  // 道具与援护使用反馈气泡提示
   const [actionNotice, setActionNotice] = useState<string | null>(null);
+
+  // 本地存储的未完成对局存档
+  const [savedGame, setSavedGame] = useState<TrpgGameState | null>(null);
 
   const { play: playTTS, stop: stopTTS, isPlaying: isSpeaking } = useTTS();
   const chatContainerRef = useRef<HTMLDivElement | null>(null);
@@ -105,9 +112,15 @@ export default function InteractiveTrpgModal({
     setMounted(true);
   }, []);
 
-  // 弹窗开启时重置为选择界面并锁定外部滚动
+  // 弹窗开启时检测本地未完成对局，并锁定外部滚动
   useEffect(() => {
     if (isOpen) {
+      const existingSave = loadSavedTrpgGame();
+      if (existingSave && (existingSave.status === 'playing' || existingSave.status === 'rolling')) {
+        setSavedGame(existingSave);
+      } else {
+        setSavedGame(null);
+      }
       setMode('setup');
       setFreeActionInput('');
       setIsRollingAnimation(false);
@@ -124,6 +137,18 @@ export default function InteractiveTrpgModal({
       setIsRollingAnimation(false);
     }
   }, [isOpen, stopTTS]);
+
+  // 进行中实时无感自动保存游戏进度
+  useEffect(() => {
+    if (mode === 'in_game') {
+      if (game.status === 'playing' || game.status === 'rolling') {
+        saveTrpgGame(game);
+      } else if (game.status === 'victory' || game.status === 'game_over') {
+        clearSavedTrpgGame();
+        setSavedGame(null);
+      }
+    }
+  }, [game, mode]);
 
   // 选中的剧本对象
   const activeScenario = SCENARIOS.find((s) => s.id === selectedScenarioId) || SCENARIOS[0];
@@ -180,11 +205,33 @@ export default function InteractiveTrpgModal({
     }, 2800);
   };
 
-  // 开启跑团冒险
+  // 恢复未完成的对局存档
+  const handleResumeSavedGame = () => {
+    if (!savedGame) return;
+    stopTTS();
+    setGame(savedGame);
+    setSelectedScenarioId(savedGame.scenarioId);
+    setMode('in_game');
+    setFreeActionInput('');
+    setIsRollingAnimation(false);
+    triggerNotice(`已继续《${savedGame.scenario.title}》的冒险进度！`);
+  };
+
+  // 放弃旧存档并清除
+  const handleDiscardSavedGame = () => {
+    clearSavedTrpgGame();
+    setSavedGame(null);
+    triggerNotice('已清除旧存档，可挑选新剧本开启全新冒险');
+  };
+
+  // 开启全新跑团冒险
   const handleStartAdventure = () => {
     stopTTS();
+    clearSavedTrpgGame();
+    setSavedGame(null);
     const newGame = createTrpgGame(selectedScenarioId, selectedPresetId, customHeroName);
     setGame(newGame);
+    saveTrpgGame(newGame);
     setMode('in_game');
     setFreeActionInput('');
     setActionNotice(null);
@@ -196,6 +243,10 @@ export default function InteractiveTrpgModal({
     if (rollingIntervalRef.current) clearInterval(rollingIntervalRef.current);
     setIsRollingAnimation(false);
     setActionNotice(null);
+    const existingSave = loadSavedTrpgGame();
+    if (existingSave && (existingSave.status === 'playing' || existingSave.status === 'rolling')) {
+      setSavedGame(existingSave);
+    }
     setMode('setup');
   };
 
@@ -497,6 +548,15 @@ export default function InteractiveTrpgModal({
                 <span className="font-bold">背包:</span>
                 <span className="font-mono font-black text-amber-900">{game.character.inventory.length} 件</span>
               </div>
+
+              {/* 实时自动保存指示 */}
+              <div
+                className="flex items-center gap-1.5 text-[10px] text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md shadow-2xs"
+                title="游戏进度已实时自动保存在本地，随时可安心关闭并在下次一键恢复"
+              >
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                <span className="font-bold">进度实时保存中</span>
+              </div>
             </div>
           </div>
         )}
@@ -508,6 +568,69 @@ export default function InteractiveTrpgModal({
             <div className="flex-1 flex flex-col min-h-0 bg-[#fbfaf7]">
               {/* 向上滚动的内容区 */}
               <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
+                
+                {/* 发现未完成的冒险进度卡片 */}
+                {savedGame && (
+                  <div className="rounded-2xl border-2 border-amber-400 bg-gradient-to-r from-amber-500/10 via-amber-100/40 to-orange-500/10 p-4 sm:p-5 shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="flex items-start gap-3.5">
+                      <span className="text-3xl shrink-0 p-2.5 rounded-2xl bg-amber-500/20 border border-amber-300 shadow-inner">
+                        {savedGame.character.avatar || '📜'}
+                      </span>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="rounded-md bg-amber-600 text-white font-black text-[10px] px-2 py-0.5 shadow-2xs">
+                            发现进行中的冒险存档
+                          </span>
+                          <span className="text-xs font-bold text-slate-500 font-mono">
+                            第 {savedGame.turnCount} 幕 · 探险中
+                          </span>
+                        </div>
+                        <h4 className="text-sm font-black text-slate-900 mt-1">
+                          《{savedGame.scenario.title}》· {savedGame.character.name}（{savedGame.character.className}）
+                        </h4>
+                        <p className="text-[11px] text-slate-600 mt-0.5 font-medium">
+                          📍 停留在：{savedGame.scenario.nodes[savedGame.currentNodeId]?.title || savedGame.scenario.nodes[savedGame.currentNodeId]?.location || '探索途中'}
+                        </p>
+                        <div className="mt-2 flex flex-wrap items-center gap-2.5 text-[11px] font-mono">
+                          <span className="text-rose-700 font-bold bg-white/90 border border-rose-200 px-2 py-0.5 rounded-md shadow-2xs">
+                            ❤️ HP {savedGame.character.hp}/{savedGame.character.maxHp}
+                          </span>
+                          {savedGame.character.san !== undefined && (
+                            <span className="text-purple-800 font-bold bg-white/90 border border-purple-200 px-2 py-0.5 rounded-md shadow-2xs">
+                              🧠 SAN {savedGame.character.san}/{savedGame.character.maxSan || 100}
+                            </span>
+                          )}
+                          <span className="text-amber-900 font-bold bg-white/90 border border-amber-200 px-2 py-0.5 rounded-md shadow-2xs">
+                            🎒 背包 {savedGame.character.inventory.length} 件
+                          </span>
+                          <span className="text-slate-700 font-bold bg-white/90 border border-slate-200 px-2 py-0.5 rounded-md shadow-2xs">
+                            ✨ 幸运: {savedGame.character.luck}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                      <button
+                        type="button"
+                        onClick={handleResumeSavedGame}
+                        className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 px-5 py-2.5 text-xs font-black text-white hover:brightness-105 shadow-md shadow-amber-500/20 active:scale-98 transition cursor-pointer"
+                      >
+                        <Play size={14} className="fill-white" />
+                        <span>▶ 继续本次冒险</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleDiscardSavedGame}
+                        className="inline-flex items-center gap-1 rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-xs font-bold text-slate-500 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200 transition cursor-pointer shadow-2xs"
+                        title="放弃旧存档并清除"
+                      >
+                        <span>放弃存档</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 <div>
                   <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
                     <Compass size={17} className="text-amber-600" />

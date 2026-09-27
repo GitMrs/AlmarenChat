@@ -1037,3 +1037,77 @@ export function generateTrpgBattleReport(state: TrpgGameState): string {
 
   return report;
 }
+
+export const STORAGE_KEY_TRPG_SAVE = 'almaren_trpg_active_save';
+
+function getStorage(): Storage | null {
+  if (typeof window !== 'undefined' && window.localStorage) {
+    return window.localStorage;
+  }
+  if (typeof globalThis !== 'undefined' && (globalThis as unknown as { localStorage?: Storage }).localStorage) {
+    return (globalThis as unknown as { localStorage: Storage }).localStorage;
+  }
+  return null;
+}
+
+/**
+ * 将当前进行中的对局持久化至本地存储
+ */
+export function saveTrpgGame(state: TrpgGameState): void {
+  const storage = getStorage();
+  if (!storage) return;
+  try {
+    if (state.status === 'victory' || state.status === 'game_over') {
+      clearSavedTrpgGame();
+      return;
+    }
+    storage.setItem(STORAGE_KEY_TRPG_SAVE, JSON.stringify(state));
+  } catch (err) {
+    console.error('Failed to save TRPG game state:', err);
+  }
+}
+
+/**
+ * 从本地存储加载进行中的冒险存档
+ */
+export function loadSavedTrpgGame(): TrpgGameState | null {
+  const storage = getStorage();
+  if (!storage) return null;
+  try {
+    const raw = storage.getItem(STORAGE_KEY_TRPG_SAVE);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as TrpgGameState;
+
+    // 基础完整性校验
+    if (!parsed.scenarioId || !parsed.currentNodeId || !parsed.character) {
+      return null;
+    }
+
+    // 重新连接最新 scenario 实例，确保节点与选项引用一致
+    const latestScenario = SCENARIOS.find((s) => s.id === parsed.scenarioId) || SCENARIOS[0];
+    parsed.scenario = latestScenario;
+
+    // 校验当前节点是否存在
+    if (!latestScenario.nodes[parsed.currentNodeId]) {
+      parsed.currentNodeId = latestScenario.startNodeId;
+    }
+
+    return parsed;
+  } catch (err) {
+    console.error('Failed to load TRPG game state:', err);
+    return null;
+  }
+}
+
+/**
+ * 清除已保存的冒险进度
+ */
+export function clearSavedTrpgGame(): void {
+  const storage = getStorage();
+  if (!storage) return;
+  try {
+    storage.removeItem(STORAGE_KEY_TRPG_SAVE);
+  } catch (err) {
+    console.error('Failed to clear TRPG game state:', err);
+  }
+}
