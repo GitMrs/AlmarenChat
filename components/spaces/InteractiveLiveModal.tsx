@@ -7,6 +7,10 @@ import { useTTS } from '@/hooks/useTTS';
 import type { Agent } from '@/types';
 import luluImage from '@/src/lib/imgs/gaming-lulu.png';
 import kekeImage from '@/src/lib/imgs/gaming-koko.png';
+import mandyImage from '@/src/lib/imgs/gaming-mandy.png';
+import suisuiImage from '@/src/lib/imgs/gaming-suisui.png';
+import vivianImage from '@/src/lib/imgs/gaming-vivian.png';
+import zeroImage from '@/src/lib/imgs/gaming-zero.png';
 
 type LiveEvent =
   | { type: 'agent'; id: string; agent: Agent; content: string; replyTo?: string }
@@ -21,6 +25,15 @@ const LIVE_THEMES = [
   { id: 'starlight', label: '星空观测站', className: 'bg-[radial-gradient(circle_at_50%_15%,#dbeafe,#eef2ff_52%,#e0e7ff)]' },
   { id: 'tavern', label: '深夜酒馆', className: 'bg-[radial-gradient(circle_at_50%_15%,#ffedd5,#fff7ed_52%,#fef3c7)]' },
 ] as const;
+
+const HOST_IMAGES = {
+  'gaming-lulu': luluImage,
+  'gaming-koko': kekeImage,
+  'gaming-mandy': mandyImage,
+  'gaming-suisui': suisuiImage,
+  'gaming-vivian': vivianImage,
+  'gaming-zero': zeroImage,
+};
 
 function compactLiveContent(content: string, maxLength = 1200) {
   const normalized = content.replace(/\s+/g, ' ').trim();
@@ -138,6 +151,8 @@ export default function InteractiveLiveModal({
   const luluShortName = hosts.lulu?.name?.split('·')[0].trim() || '主播 1';
   const kekeShortName = hosts.keke?.name?.split('·')[0].trim() || '主播 2';
   const liveTheme = LIVE_THEMES.find((theme) => theme.id === selectedThemeId) || LIVE_THEMES[0];
+  const leftHostImage = (hosts.lulu && HOST_IMAGES[hosts.lulu.id as keyof typeof HOST_IMAGES]) || luluImage;
+  const rightHostImage = (hosts.keke && HOST_IMAGES[hosts.keke.id as keyof typeof HOST_IMAGES]) || kekeImage;
   const hostNames = `${luluShortName}和${kekeShortName}`;
   const liveGroundingRules = `这是一个浏览器内的 AI 主题聊天室脚本，目前没有真实弹幕、在线观众消息或外部事实输入。不得编造观众用户名、弹幕内容、观众经历、实时观看人数、点赞量或“大家正在刷屏”等现场反应；不得把${hostNames}虚构的过去经历说成已被系统证实的真实事实。需要举例时必须明确说“假设一个虚构例子”，并控制在简短口播范围内。`;
   const liveAudienceRules = '你是在面对聊天室里的观众说话，不是在和另一位成员私聊。每段台词必须让观众单独看也能理解，优先回应主题或用户刚刚提出的问题。默认不要使用 @、不要向另一位成员提问、不要把结尾写成等待对方接招；只有确实需要对方补充时才自然提及一次，而且不要连续两段都点名。';
@@ -284,16 +299,16 @@ export default function InteractiveLiveModal({
               <button type="button" onClick={startLive} disabled={!canStart || busy} className="mt-5 inline-flex h-11 items-center gap-2 rounded-xl bg-rose-500 px-5 text-sm font-black text-white shadow-lg shadow-rose-950/30 transition hover:bg-rose-400 disabled:cursor-not-allowed disabled:opacity-40"><Play size={16} fill="currentColor" />开始对话</button>
             </div>
             <div className={`relative flex min-h-[340px] items-end justify-center overflow-hidden rounded-3xl border border-rose-100 ${liveTheme.className} p-4`}>
-              <img src={luluImage.src} alt={`${luluShortName}立绘`} className="absolute bottom-0 left-2 h-[92%] w-[52%] object-contain object-bottom drop-shadow-2xl" />
-              <img src={kekeImage.src} alt={`${kekeShortName}立绘`} className="absolute bottom-0 right-1 h-[82%] w-[52%] object-contain object-bottom drop-shadow-2xl" />
+              <img src={leftHostImage.src} alt={`${luluShortName}立绘`} className="absolute bottom-0 left-2 h-[92%] w-[52%] object-contain object-bottom drop-shadow-2xl" />
+              <img src={rightHostImage.src} alt={`${kekeShortName}立绘`} className="absolute bottom-0 right-1 h-[82%] w-[52%] object-contain object-bottom drop-shadow-2xl" />
               <div className="relative z-10 mb-2 rounded-full border border-white/80 bg-white/75 px-3 py-1 text-[11px] font-black text-slate-700 shadow-sm backdrop-blur">双人对话预览</div>
             </div>
           </div>
         ) : (
           <div className="grid min-h-0 flex-1 lg:grid-cols-[minmax(0,1fr)_minmax(360px,520px)]">
             <section className={`relative flex min-h-[44vh] flex-col overflow-hidden border-b border-rose-100 ${liveTheme.className} p-4 sm:min-h-[52vh] sm:p-8 lg:min-h-0 lg:border-b-0 lg:border-r`}>
-              <img src={luluImage.src} alt={`${luluShortName}立绘`} className={`absolute bottom-0 left-0 h-[90%] w-[57%] object-contain object-bottom drop-shadow-2xl transition duration-500 ${activeHostId === hosts.lulu.id ? 'scale-[1.04] opacity-100' : busy ? 'pointer-events-none opacity-30' : 'opacity-65'}`} />
-              <img src={kekeImage.src} alt={`${kekeShortName}立绘`} className={`absolute bottom-0 right-0 h-[82%] w-[55%] object-contain object-bottom drop-shadow-2xl transition duration-500 ${activeHostId === hosts.keke.id ? 'scale-[1.04] opacity-100' : busy ? 'pointer-events-none opacity-30' : 'opacity-65'}`} />
+              <img src={leftHostImage.src} alt={`${luluShortName}立绘`} className={`absolute bottom-0 left-0 h-[90%] w-[57%] object-contain object-bottom drop-shadow-2xl transition duration-500 ${activeHostId === hosts.lulu.id ? 'scale-[1.04] opacity-100' : busy ? 'pointer-events-none opacity-30' : 'opacity-65'}`} />
+              <img src={rightHostImage.src} alt={`${kekeShortName}立绘`} className={`absolute bottom-0 right-0 h-[82%] w-[55%] object-contain object-bottom drop-shadow-2xl transition duration-500 ${activeHostId === hosts.keke.id ? 'scale-[1.04] opacity-100' : busy ? 'pointer-events-none opacity-30' : 'opacity-65'}`} />
               <div className="absolute left-4 right-4 top-4 z-10 sm:left-8 sm:right-8">
                 <div className="flex items-center justify-between gap-3 rounded-full border border-white/80 bg-white/80 px-4 py-2.5 shadow-sm backdrop-blur-md"><span className="min-w-0 truncate text-xs font-black text-rose-600">● LIVE · {topic}</span><span className="shrink-0 text-[11px] font-bold text-slate-400">{agentTurns.length} 段</span></div>
               </div>
