@@ -112,7 +112,7 @@ export default function SpaceGameCenter({
                 当前开放 4 款
               </span>
             </div>
-            <span className="text-xs text-slate-400 font-semibold">类型：棋盘博弈 · 语言推理 · TRPG · AI 直播</span>
+            <span className="text-xs text-slate-400 font-semibold">类型：棋盘博弈 · 语言推理 · TRPG · AI 主题聊天室</span>
           </div>
 
           {/* 游戏卡片 1：五子棋 */}
@@ -285,19 +285,19 @@ export default function SpaceGameCenter({
             </div>
           </div>
 
-          {/* 游戏卡片 4：AI 虚拟直播 */}
+          {/* 游戏卡片 4：AI 主题聊天室 */}
           <div className="relative overflow-hidden rounded-2xl border-2 border-rose-200 bg-white p-6 text-slate-900 shadow-sm transition hover:border-rose-300 hover:shadow-md">
             <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex items-start gap-4">
                 <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-rose-500 to-orange-400 text-3xl shadow-lg ring-4 ring-rose-950/30">📺</div>
                 <div>
                   <div className="flex flex-wrap items-center gap-2.5">
-                    <h4 className="text-lg font-black text-slate-900">AI 虚拟直播 · 璐璐 × 可可</h4>
+                    <h4 className="text-lg font-black text-slate-900">AI 主题聊天室 · 双人对话</h4>
                     <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-black text-amber-800">首版体验</span>
-                    <span className="rounded-full bg-rose-50 px-2.5 py-0.5 text-xs font-black text-rose-700">语音直播</span>
+                    <span className="rounded-full bg-rose-50 px-2.5 py-0.5 text-xs font-black text-rose-700">语音对话</span>
                   </div>
                   <p className="mt-2 max-w-2xl text-xs leading-relaxed text-slate-600">
-                    让璐璐负责控场吐槽，可可负责接梗和照顾观众。先从主题对话、字幕、语音和观众提问开始，未来接入动态背景、弹幕和虚拟形象动作。
+                    从当前空间选择两位成员作为主播，围绕主题进行双人对话。先从字幕、语音和观众提问开始，未来接入动态背景、弹幕和虚拟形象动作。
                   </p>
                   <div className="mt-3.5 flex flex-wrap gap-2 text-xs font-semibold text-slate-500">
                     <span className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1">🎙️ 双人主持</span>
@@ -307,7 +307,7 @@ export default function SpaceGameCenter({
                 </div>
               </div>
               <button type="button" onClick={() => setIsLiveModalOpen(true)} className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-rose-500 px-6 text-xs font-black text-white shadow-md transition hover:bg-rose-400">
-                <Camera size={16} />进入直播间
+                <Camera size={16} />进入聊天室
               </button>
             </div>
           </div>
