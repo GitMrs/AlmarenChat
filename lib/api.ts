@@ -899,6 +899,9 @@ export async function streamSpaceMessage(data: {
   webSearchEnabled?: boolean;
   imageGenerationRequested?: boolean;
   skipPersistUserMessage?: boolean;
+  persistMessages?: boolean;
+  isolatedContext?: boolean;
+  contextAgentIds?: string[];
   skillId?: string;
   workId?: string;
   signal?: AbortSignal;
@@ -921,6 +924,9 @@ export async function streamSpaceMessage(data: {
       webSearchEnabled: data.webSearchEnabled,
       imageGenerationRequested: data.imageGenerationRequested,
       skipPersistUserMessage: data.skipPersistUserMessage,
+      persistMessages: data.persistMessages,
+      isolatedContext: data.isolatedContext,
+      contextAgentIds: data.contextAgentIds,
       skillId: data.skillId,
       workId: data.workId,
     }),

@@ -30,14 +30,18 @@ interface CompressionStats {
 
 interface UseContextCompressionOptions {
   spaceId?: string;
+  enabled?: boolean;
   autoRefresh?: boolean;
   refreshInterval?: number; // milliseconds
+  refreshKey?: string | number;
 }
 
 export function useContextCompression({
   spaceId,
+  enabled = true,
   autoRefresh = false,
   refreshInterval = 30000,
+  refreshKey,
 }: UseContextCompressionOptions = {}) {
   const [stats, setStats] = useState<CompressionStats | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -62,7 +66,11 @@ export function useContextCompression({
   }, []);
 
   useEffect(() => {
-    if (!spaceId) return;
+    if (!spaceId || !enabled) {
+      setStats(null);
+      setIsLoading(false);
+      return;
+    }
     setStats(null);
 
     fetchCompressionStats(spaceId);
@@ -76,7 +84,7 @@ export function useContextCompression({
       if (interval) clearInterval(interval);
       requestSequence.current += 1;
     };
-  }, [spaceId, autoRefresh, refreshInterval, fetchCompressionStats]);
+  }, [spaceId, enabled, autoRefresh, refreshInterval, refreshKey, fetchCompressionStats]);
 
   return {
     stats,

@@ -101,12 +101,19 @@ export function resolveMentionTarget(content: string, agents: ResolvedSpaceAgent
 export function resolveMentionTargets(content: string, agents: ResolvedSpaceAgent[]) {
   if (!content.includes('@')) return [];
 
+  const shortNameCounts = new Map<string, number>();
+  for (const agent of agents) {
+    const shortName = agent.name.split(/[·•\-_(（]/)[0].trim();
+    if (shortName && shortName !== agent.name && shortName.length >= 2) {
+      shortNameCounts.set(shortName, (shortNameCounts.get(shortName) || 0) + 1);
+    }
+  }
   const candidates: Array<{ agent: ResolvedSpaceAgent; alias: string }> = [];
   for (const agent of agents) {
     candidates.push({ agent, alias: agent.name });
     candidates.push({ agent, alias: agent.id });
     const shortName = agent.name.split(/[·•\-_(（]/)[0].trim();
-    if (shortName && shortName !== agent.name && shortName.length >= 2) {
+    if (shortName && shortName !== agent.name && shortName.length >= 2 && shortNameCounts.get(shortName) === 1) {
       candidates.push({ agent, alias: shortName });
     }
   }
@@ -137,15 +144,24 @@ export function formatMembersContext(agents: ResolvedSpaceAgent[], targetAgent: 
     .map((agent) => `- ${agent.name}${agent.category ? `（${agent.category}）` : ''}: ${agent.description || '暂无描述'}`)
     .join('\n');
 
+  const shortNameCounts = new Map<string, number>();
+  for (const agent of workers) {
+    const shortName = agent.name.split(/[·•\-_(（]/)[0].trim();
+    if (shortName && shortName !== agent.name && shortName.length >= 2) {
+      shortNameCounts.set(shortName, (shortNameCounts.get(shortName) || 0) + 1);
+    }
+  }
   const otherMemberNames = otherMembers.map((agent) => {
     const shortName = agent.name.split(/[·•\-_(（]/)[0].trim();
-    return shortName && shortName !== agent.name ? `「${agent.name}」（可 @${shortName}）` : `「${agent.name}」`;
+    return shortName && shortName !== agent.name && shortNameCounts.get(shortName) === 1
+      ? `「${agent.name}」（可 @${shortName}）`
+      : `「${agent.name}」`;
   });
 
   const mentionGuidance = otherMembers.length > 0
     ? `2. 【群聊 @ 联动机制】：
    - 当前在场的其他伙伴有：${otherMemberNames.join('、')}。
-   - 当你觉得某个话题适合群里某位在场伙伴、或想调侃、反驳、求证对方时，可以直接在正文中 @ 对方（例如被你 @ 的伙伴将自动收到接力棒接话回应）。
+   - 只有在你明确希望另一位伙伴接着发言时，才能在正文中使用 @ 对方；被你 @ 的伙伴会自动收到接力棒接话回应。普通提到对方姓名时不要使用 @。
    - 【极其重要】：你只能 @ 上述【实际在场】的伙伴！如果群里没有某人，绝对不要 @ 任何不在当前群名单中的角色（禁止虚空喊话）。不要 @ 你自己。`
     : `2. 【单聊/无其他在场成员】：
    - 当前空间中除你之外没有其他伙伴在场，这是你与用户的单独对话。

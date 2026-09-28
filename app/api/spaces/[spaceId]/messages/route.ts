@@ -337,6 +337,7 @@ async function handlePiMessage(options: {
   selectedSkill: Awaited<ReturnType<typeof getSpaceSkill>>;
   textMessage: string;
   skipPersistUserMessage: boolean;
+  persistMessages: boolean;
   allowWebSearch: boolean;
   imageGenerationRequested: boolean;
   agentMemoryContext: string;
@@ -346,7 +347,7 @@ async function handlePiMessage(options: {
 }) {
   const {
     userId, spaceId, space, targetAgent, memberAgents, selectedSkill, textMessage,
-    skipPersistUserMessage, allowWebSearch, imageGenerationRequested, agentMemoryContext, interactionMode, coordinationScope, multiReplyIndex,
+    skipPersistUserMessage, persistMessages, allowWebSearch, imageGenerationRequested, agentMemoryContext, interactionMode, coordinationScope, multiReplyIndex,
   } = options;
   let persistedMemory = await prisma.spaceMemory.findUnique({ where: { spaceId } });
   if (!persistedMemory || spaceMemoryNeedsTrustedRebuild(persistedMemory)) {
@@ -357,7 +358,7 @@ async function handlePiMessage(options: {
     ? selectRelevantProjectMemory(spaceMemoryContext(persistedMemory), coordinationScope.topic)
     : '';
   let persistedUserMessage: { id: string; createdAt: Date } | null = null;
-  if (!skipPersistUserMessage) {
+  if (persistMessages && !skipPersistUserMessage) {
     persistedUserMessage = await prisma.spaceMessage.create({
       data: {
         spaceId,
@@ -439,7 +440,7 @@ async function handlePiMessage(options: {
           const content = execution?.status === 'cancelled'
             ? 'Pi 已取消本轮处理。'
             : 'Pi 执行失败，请稍后重试或检查模型配置。';
-          if (execution) {
+          if (execution && persistMessages) {
             await prisma.spaceMessage.create({
               data: {
                 spaceId,
@@ -465,20 +466,23 @@ async function handlePiMessage(options: {
           participantIds: coordinationScope.participantIds,
           summary: result.content,
         } : null;
-        const [, assistantMessage] = await prisma.$transaction([
-          prisma.space.update({ where: { id: spaceId }, data: { updatedAt: new Date() } }),
-          prisma.spaceMessage.create({
-            data: {
-              spaceId,
-              role: 'assistant',
-              speakerAgentId: targetAgent.id,
-              content: result.content,
-              attachments: [result.execution, ...(memoryEpisode ? [memoryEpisode] : [])] as Prisma.InputJsonValue,
-            },
-            select: { id: true, createdAt: true },
-          }),
-        ]);
-        if (memoryEpisode) {
+        let assistantMessage: { id: string; createdAt: Date } | null = null;
+        if (persistMessages) {
+          [, assistantMessage] = await prisma.$transaction([
+            prisma.space.update({ where: { id: spaceId }, data: { updatedAt: new Date() } }),
+            prisma.spaceMessage.create({
+              data: {
+                spaceId,
+                role: 'assistant',
+                speakerAgentId: targetAgent.id,
+                content: result.content,
+                attachments: [result.execution, ...(memoryEpisode ? [memoryEpisode] : [])] as Prisma.InputJsonValue,
+              },
+              select: { id: true, createdAt: true },
+            }),
+          ]);
+        }
+        if (memoryEpisode && assistantMessage) {
           await persistSpaceMemory(spaceId, [{
             type: 'coordination_summary',
             actor: targetAgent.name,
@@ -538,9 +542,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
     const { spaceId } = await params;
     const {
       message, targetAgentId, history, skipPersistUserMessage, interactionMode, coordinationScope,
-      multiReplyIndex, webSearchEnabled, imageGenerationRequested, skillId, workId,
+      multiReplyIndex, webSearchEnabled, imageGenerationRequested, skillId, workId, persistMessages,
+      isolatedContext, contextAgentIds,
     } = await request.json();
     const textMessage = typeof message === 'string' ? message.trim() : '';
+    const shouldPersistMessages = persistMessages !== false;
+    const useIsolatedContext = isolatedContext === true;
     const allowWebSearch = webSearchEnabled === true;
     const explicitImageRequest = imageGenerationRequested === true;
     if (!textMessage) return NextResponse.json({ error: '消息不能为空' }, { status: 400 });
@@ -564,7 +571,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
     if (workId && !selectedWork) return NextResponse.json({ error: '指定成果不存在' }, { status: 404 });
 
     const memberAgents = await resolveManyAgents(space.members.map((member) => member.agentId), userId);
-    const allAgents = [SPACE_COORDINATOR, ...memberAgents];
+    const contextIds = Array.isArray(contextAgentIds) ? new Set(contextAgentIds.filter((id): id is string => typeof id === 'string')) : null;
+    const contextAgents = useIsolatedContext && contextIds
+      ? memberAgents.filter((agent) => contextIds.has(agent.id))
+      : memberAgents;
+    const allAgents = [SPACE_COORDINATOR, ...contextAgents];
 
     const explicitTarget = targetAgentId ? await resolveAgent(String(targetAgentId), userId) : null;
     const mentionedTarget = resolveMentionTarget(textMessage, memberAgents);
@@ -607,6 +618,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
         selectedSkill,
         textMessage,
         skipPersistUserMessage: Boolean(skipPersistUserMessage),
+        persistMessages: shouldPersistMessages,
         allowWebSearch,
         imageGenerationRequested: explicitImageRequest,
         agentMemoryContext: agentMemory,
@@ -623,8 +635,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
       await rebuildSpaceMemory(spaceId);
       persistedMemory = await prisma.spaceMemory.findUnique({ where: { spaceId } });
     }
-    const projectMemory = spaceMemoryContext(persistedMemory);
-    const teamLearning = spaceLearningContext(await readSpaceLearning({ projectRoot: process.cwd(), userId, spaceId }));
+    const projectMemory = useIsolatedContext ? '' : spaceMemoryContext(persistedMemory);
+    const teamLearning = useIsolatedContext ? '' : spaceLearningContext(await readSpaceLearning({ projectRoot: process.cwd(), userId, spaceId }));
     const recentRuns = selectedWork ? await prisma.agentRun.findMany({
       where: { spaceId, workId: selectedWork.id },
       orderBy: { createdAt: 'desc' },
@@ -644,10 +656,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
         },
       },
     }) : [];
-    const runEvidence = recentRunEvidenceContext(recentRuns);
+    const runEvidence = useIsolatedContext ? '' : recentRunEvidenceContext(recentRuns);
 
     let persistedUserMessage: { id: string; createdAt: Date } | null = null;
-    if (!skipPersistUserMessage) {
+    if (shouldPersistMessages && !skipPersistUserMessage) {
       persistedUserMessage = await prisma.spaceMessage.create({
         data: {
           spaceId,
@@ -703,7 +715,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
       createdAt: checkpoint.updatedAt,
     } : null;
     const persistedMessages = checkpoint ? persistedHistory : [...persistedHistory].reverse();
-    const rawHistory = persistedMessages.length > 0
+    const rawHistory = useIsolatedContext
+      ? fallbackHistory.slice(-settings.contextMessageLimit * 2)
+      : persistedMessages.length > 0
       ? (checkpointMessage ? [checkpointMessage, ...persistedMessages] : persistedMessages)
       : fallbackHistory.slice(-settings.contextMessageLimit * 2);
     const pendingProposalMessage = [...rawHistory].reverse().find((item: { attachments?: unknown }) => pendingTaskProposal(item.attachments));
@@ -796,8 +810,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
       targetAgent.systemPrompt || targetAgent.description || `你是 ${targetAgent.name}。`,
       agentMemory,
       formatMembersContext(allAgents, targetAgent),
-      space.description ? `当前空间说明：${space.description}` : '',
-      space.instructions ? `当前空间规则：\n${space.instructions}` : '',
+      useIsolatedContext ? '当前是一个独立直播上下文。只允许璐璐和可可参与，不得提及、@或邀请空间中的其他成员；不要引用直播之外的历史对话、任务或游戏。' : '',
+      !useIsolatedContext && space.description ? `当前空间说明：${space.description}` : '',
+      !useIsolatedContext && space.instructions ? `当前空间规则：\n${space.instructions}` : '',
       selectedWork ? `当前正在继续处理：${selectedWork.title}。只读取和修改该成果目录中的文件。` : '当前处于新成果模式，不继承已有成果目录中的文件。',
       space.templateId === 'wechat-article'
         ? '公众号空间的 shared/content-strategy.md 是空间级账号策略：所有成果均可读取，更新时仍须通过已确认的后台任务；article.md、publish-info.md 和 assets/cover.<实际扩展名> 只属于当前成果。'
@@ -1029,6 +1044,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
               }));
             },
           });
+
+          if (!shouldPersistMessages) {
+            try { controller.close(); } catch { /* client disconnected */ }
+            return;
+          }
 
           const result = await prisma.$transaction(async (tx) => {
             if (taskProposal && pendingProposalMessage?.id) {

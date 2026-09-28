@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import {
+  Camera,
   Gamepad2,
   MessagesSquare,
   User,
@@ -10,13 +11,15 @@ import {
 import InteractiveGomokuModal from '@/components/spaces/InteractiveGomokuModal';
 import InteractiveUndercoverModal from '@/components/spaces/InteractiveUndercoverModal';
 import InteractiveTrpgModal from '@/components/spaces/InteractiveTrpgModal';
+import InteractiveLiveModal from '@/components/spaces/InteractiveLiveModal';
 import type { Agent } from '@/types';
 
 export interface SpaceGameCenterProps {
   spaceAgents?: Agent[];
   onShareToSpace?: (content: string) => void;
   onBackToChat?: () => void;
-  initialGame?: 'gomoku' | 'undercover' | 'trpg' | null;
+  initialGame?: 'gomoku' | 'undercover' | 'trpg' | 'live' | null;
+  spaceId: string;
 }
 
 export default function SpaceGameCenter({
@@ -24,10 +27,12 @@ export default function SpaceGameCenter({
   onShareToSpace,
   onBackToChat,
   initialGame = null,
+  spaceId,
 }: SpaceGameCenterProps) {
   const [isGomokuModalOpen, setIsGomokuModalOpen] = useState(Boolean(initialGame === 'gomoku'));
   const [isUndercoverModalOpen, setIsUndercoverModalOpen] = useState(Boolean(initialGame === 'undercover'));
   const [isTrpgModalOpen, setIsTrpgModalOpen] = useState(Boolean(initialGame === 'trpg'));
+  const [isLiveModalOpen, setIsLiveModalOpen] = useState(Boolean(initialGame === 'live'));
   const [gomokuMode, setGomokuMode] = useState<'pve' | 'eve'>('pve');
 
   useEffect(() => {
@@ -38,6 +43,8 @@ export default function SpaceGameCenter({
       setIsUndercoverModalOpen(true);
     } else if (initialGame === 'trpg') {
       setIsTrpgModalOpen(true);
+    } else if (initialGame === 'live') {
+      setIsLiveModalOpen(true);
     }
   }, [initialGame]);
 
@@ -100,12 +107,12 @@ export default function SpaceGameCenter({
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <h3 className="text-base font-black text-slate-900">精选游戏库</h3>
+                <h3 className="text-base font-black text-slate-900">精选玩法</h3>
               <span className="rounded-md bg-amber-500/10 border border-amber-200 px-2 py-0.5 text-xs font-black text-amber-800">
-                当前开放 3 款
+                当前开放 4 款
               </span>
             </div>
-            <span className="text-xs text-slate-400 font-semibold">类型：棋盘博弈 · 语言推理桌游 · TRPG 跑团</span>
+            <span className="text-xs text-slate-400 font-semibold">类型：棋盘博弈 · 语言推理 · TRPG · AI 直播</span>
           </div>
 
           {/* 游戏卡片 1：五子棋 */}
@@ -277,6 +284,33 @@ export default function SpaceGameCenter({
               </div>
             </div>
           </div>
+
+          {/* 游戏卡片 4：AI 虚拟直播 */}
+          <div className="relative overflow-hidden rounded-2xl border-2 border-rose-200 bg-white p-6 text-slate-900 shadow-sm transition hover:border-rose-300 hover:shadow-md">
+            <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex items-start gap-4">
+                <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-rose-500 to-orange-400 text-3xl shadow-lg ring-4 ring-rose-950/30">📺</div>
+                <div>
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    <h4 className="text-lg font-black text-slate-900">AI 虚拟直播 · 璐璐 × 可可</h4>
+                    <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-black text-amber-800">首版体验</span>
+                    <span className="rounded-full bg-rose-50 px-2.5 py-0.5 text-xs font-black text-rose-700">语音直播</span>
+                  </div>
+                  <p className="mt-2 max-w-2xl text-xs leading-relaxed text-slate-600">
+                    让璐璐负责控场吐槽，可可负责接梗和照顾观众。先从主题对话、字幕、语音和观众提问开始，未来接入动态背景、弹幕和虚拟形象动作。
+                  </p>
+                  <div className="mt-3.5 flex flex-wrap gap-2 text-xs font-semibold text-slate-500">
+                    <span className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1">🎙️ 双人主持</span>
+                    <span className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1">💬 观众提问</span>
+                    <span className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1">🔊 TTS 播放队列</span>
+                  </div>
+                </div>
+              </div>
+              <button type="button" onClick={() => setIsLiveModalOpen(true)} className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-rose-500 px-6 text-xs font-black text-white shadow-md transition hover:bg-rose-400">
+                <Camera size={16} />进入直播间
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* 筹备中游戏企划卡片 */}
@@ -348,6 +382,17 @@ export default function SpaceGameCenter({
         spaceAgents={spaceAgents}
         onShareToSpace={(text) => {
           setIsTrpgModalOpen(false);
+          onShareToSpace?.(text);
+        }}
+      />
+
+      <InteractiveLiveModal
+        isOpen={isLiveModalOpen}
+        spaceId={spaceId}
+        spaceAgents={spaceAgents}
+        onClose={() => setIsLiveModalOpen(false)}
+        onShareToSpace={(text) => {
+          setIsLiveModalOpen(false);
           onShareToSpace?.(text);
         }}
       />

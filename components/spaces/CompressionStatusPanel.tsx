@@ -18,19 +18,24 @@ import { spaces as spacesApi } from '@/lib/api';
 
 interface CompressionStatusPanelProps {
   spaceId: string;
+  enabled?: boolean;
+  refreshKey?: string | number;
   compact?: boolean;
   showMessageCount?: boolean;
 }
 
 export function CompressionStatusPanel({
   spaceId,
+  enabled = true,
+  refreshKey,
   compact = false,
   showMessageCount = true,
 }: CompressionStatusPanelProps) {
   const { stats, isLoading, refetch } = useContextCompression({
     spaceId,
-    autoRefresh: true,
-    refreshInterval: 60000, // 每分钟刷新一次
+    enabled,
+    autoRefresh: false,
+    refreshKey,
   });
 
   const [showDetails, setShowDetails] = useState(true);
