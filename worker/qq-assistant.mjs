@@ -238,39 +238,22 @@ async function handleMessage(entry, msg) {
 
     const qqStream = entry.bot.openStream({ target: msg.replyTarget });
     let streamError = null;
-    let progressBusy = false;
-    const updateProgress = async (text) => {
-      if (streamError || progressBusy) return;
-      progressBusy = true;
-      try {
-        await qqStream.update(text);
-      } catch (error) {
-        streamError = error;
-        qqStream.cancel();
-      } finally {
-        progressBusy = false;
-      }
-    };
-    await updateProgress('已收到消息，正在思考…');
-    const progressTimer = setInterval(() => {
-      void updateProgress('正在思考…');
-    }, 8_000);
-    let result;
-    try {
-      result = await requestAssistant(
-        binding,
-        content,
-        msg.messageId,
-        qqWebSearchEnabled(msg.messageScene?.ext),
-        attachments,
-        async (fullContent) => {
-          if (streamError || !fullContent) return;
-          await updateProgress(fullContent);
+    const result = await requestAssistant(
+      binding,
+      content,
+      msg.messageId,
+      qqWebSearchEnabled(msg.messageScene?.ext),
+      attachments,
+      async (fullContent) => {
+        if (streamError || !fullContent) return;
+        try {
+          await qqStream.update(fullContent);
+        } catch (error) {
+          streamError = error;
+          qqStream.cancel();
         }
-      );
-    } finally {
-      clearInterval(progressTimer);
-    }
+      }
+    );
 
     if (streamError || !result.streamed) {
       qqStream.cancel();
