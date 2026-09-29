@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { ADVISOR_MAX_ATTEMPTS, ADVISOR_TOOL_ITERATIONS, EXECUTOR_MAX_ATTEMPTS, EXECUTOR_TOOL_ITERATIONS, runAdvisorHarness, runExecutorHarness } from './agent-harness.mjs';
 import { ADVISOR_MODEL_REQUEST_LIMIT, EXECUTOR_MODEL_REQUEST_LIMIT } from '../../lib/task-execution-plan.mjs';
 import { executeWorkspaceTool } from '../../lib/agent-runtime/runtime-tools.mjs';
 
-const run = { id: 'run-1', input: '完成页面' };
+const run = { id: 'run-1', input: '完成页面', runtimeVersion: 3 };
 const task = {
   id: 'task-1',
   title: '实现页面',
@@ -18,6 +18,10 @@ const agent = { id: 'frontend', name: '前端', systemPrompt: '你是前端工�
 const context = {
   model: {},
   space: { instructions: '输出使用中文' },
+  authorization: {
+    capabilities: ['workspace_read', 'workspace_write', 'code_execute', 'image_generate'],
+    networkPolicy: 'allowed',
+  },
   researchContext: '',
   projectMemory: '',
   touchedPaths: new Set(),
@@ -448,7 +452,7 @@ test('executor pauses immediately after any image generation failure', async () 
 test('executor retries two empty reasoning responses before accepting the third response', async () => {
   let requests = 0;
   const events = [];
-  const result = await runExecutorHarness({
+    const result = await runExecutorHarness({
     run,
     task,
     agent,
@@ -539,12 +543,21 @@ test('executor repairs a rejected workspace artifact in the same attempt', async
     taskId: 'task-1',
     attempt: 1,
   };
+  await mkdir(path.join(projectRoot, 'data', 'spaces', 'user-1', 'space-1', 'workspace'), { recursive: true });
   let requests = 0;
   let validations = 0;
   try {
     const result = await runExecutorHarness({
       run,
-      task,
+      task: {
+        ...task,
+        skillSnapshot: {
+          id: 'document-writer',
+          version: '1.0.0',
+          allowedTools: ['list_files', 'read_file', 'check_files', 'write_file', 'patch_file', 'patch_files'],
+          artifactExtensions: ['.json', '.html', '.md'],
+        },
+      },
       agent,
       context: { ...context, touchedPaths: new Set() },
       previousResults: [],
@@ -647,9 +660,19 @@ test('authorized advisor can create a staged workspace artifact', async () => {
   const registered = [];
   let requestCount = 0;
   try {
+    await mkdir(path.join(projectRoot, 'data', 'spaces', 'user-1', 'space-1', 'workspace'), { recursive: true });
     const result = await runAdvisorHarness({
-      run,
-      task: { ...task, instruction: '把规则写入 docs/spec.md' },
+    run,
+      task: {
+        ...task,
+        instruction: '把规则写入 docs/spec.md',
+        skillSnapshot: {
+          id: 'document-writer',
+          version: '1.0.0',
+          allowedTools: ['list_files', 'read_file', 'check_files', 'write_file', 'patch_file', 'patch_files'],
+          artifactExtensions: ['.md'],
+        },
+      },
       agent,
       context: { ...context, touchedPaths: new Set() },
       previousResults: [],

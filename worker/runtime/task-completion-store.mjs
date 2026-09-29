@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { coordinatorWakeupKey, taskCompletionKey } from '../../lib/agent-runtime-v2-policy.mjs';
+import { coordinatorWakeupKey, taskCompletionKey } from '../../lib/agent-runtime-protocol.mjs';
 import { appendRunEvent } from './event-store.mjs';
 import { enqueueRuntimeIntent, OUTBOX_KINDS } from './runtime-outbox.mjs';
 

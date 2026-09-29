@@ -754,7 +754,7 @@ model AgentRun {
   modelRequestLimit Int  @default(12)
   executionEngine String  @default("native")
   engineVersion   String  @default("1")
-  runtimeVersion Int      @default(1)
+  runtimeVersion Int      @default(3)
   eventSequence  Int      @default(0)
   coordinatorState Json?
   createdAt   DateTime  @default(now())

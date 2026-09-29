@@ -57,7 +57,7 @@ export function createResearchRuntime({
   now = () => new Date().toISOString(),
   search = searchWeb,
 }) {
-  function taskNeedsResearchContext(task, runtimeVersion = 3) {
+  function taskNeedsResearchContext(task) {
     return wantsWebResearch(`${task.title}\n${task.instruction}`);
   }
 
@@ -237,22 +237,20 @@ export function createResearchRuntime({
       authorization: context.authorization,
       operationLimit: 2,
     }));
-    if (run.runtimeVersion >= 3 && !authorizationAllowsCapability(context.authorization, 'web_research')) return '';
+    if (!authorizationAllowsCapability(context.authorization, 'web_research')) return '';
     // A task field must not opt in to research. The concrete input being
     // processed is the runtime signal; callers can pass a focused research
     // request when the current action actually needs external facts.
-    if (run.runtimeVersion >= 3 && options.task && !options.forceResearch && !wantsWebResearch(researchInput)) return '';
-    if (run.runtimeVersion >= 3 && options.task
+    if (options.task && !options.forceResearch && !wantsWebResearch(researchInput)) return '';
+    if (options.task
       ? explicitlyForbidsResearchExecution(researchInput)
       : explicitlyForbidsWebResearch(researchInput)) return '';
-    if (!(run.runtimeVersion >= 3 && options.task) && !wantsWebResearch(researchInput)) return '';
+    if (!options.task && !wantsWebResearch(researchInput)) return '';
     const { queries, officialDomains } = await createResearchPlan(run, context, researchInput);
     if (queries.length === 0) return '';
-    const permission = run.runtimeVersion >= 3
-      ? runtimePermissions.consume('web_research', 'web_search')
-      : { allowed: true };
+    const permission = runtimePermissions.consume('web_research', 'web_search');
     if (!permission.allowed) {
-      if (permission.pending && run.runtimeVersion >= 3) {
+      if (permission.pending) {
         const request = {
           capability: 'web_research',
           query: String(researchInput).slice(0, 600),
@@ -308,9 +306,7 @@ export function createResearchRuntime({
             query: followupQuery,
             issues: result.audit.issues || [],
           });
-          const retryPermission = run.runtimeVersion >= 3
-            ? runtimePermissions.consume('web_research', 'web_search_retry')
-            : { allowed: true };
+          const retryPermission = runtimePermissions.consume('web_research', 'web_search_retry');
           if (!retryPermission.allowed) {
             addEvent(run.id, 'WEB_SEARCH_RETRY_BLOCKED', retryPermission.error, { code: retryPermission.code, usage: runtimePermissions.usage });
           } else {

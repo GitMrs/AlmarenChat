@@ -278,6 +278,10 @@ export const agents = {
   list: () => request<{ agents: any[] }>('/agents'),
   mine: () => request<{ agents: any[] }>('/agents?scope=mine'),
   get: (id: string) => request<{ agent: any }>(`/agents/${id}`),
+  getMainConversation: (id: string, agentSnapshot?: any) => request<{ conversation: any; created: boolean }>(`/agents/${id}/main-conversation`, {
+    method: 'POST',
+    body: JSON.stringify({ agentSnapshot }),
+  }),
   create: (data: any) =>
     request<{ agent: any }>('/agents', {
       method: 'POST',

@@ -115,9 +115,9 @@ test('V3 task fields cannot force research without a runtime research request', 
 
 test('research failures become explicit context and a failed source audit', async () => {
   const current = fixture({ search: async () => { throw new Error('provider unavailable'); } });
-  const context = { authorization: null, model: {}, tavilyApiKey: null };
+  const context = { authorization: { capabilities: ['web_research'], networkPolicy: 'allowed' }, model: {}, tavilyApiKey: null };
   const result = await current.runtime.buildResearchContext(
-    { id: 'run-1', input: '联网调研资料', runtimeVersion: 2 },
+    { id: 'run-1', input: '联网调研资料', runtimeVersion: 3 },
     context
   );
   assert.match(result, /provider unavailable/);

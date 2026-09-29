@@ -9,7 +9,6 @@ import {
   executeWorkspaceTool,
   snapshotWorkspace,
   wantsWebResearch,
-  wantsWorkspaceWrite,
 } from '../lib/agent-runtime/runtime-tools.mjs';
 import {
   completionOutcome,
@@ -22,7 +21,6 @@ import {
 } from './policies/run-policy.mjs';
 import { shouldRefreshResearch } from './policies/research-policy.mjs';
 import { taskModelRequestLimit } from '../lib/task-execution-plan.mjs';
-import { taskRequiresWorkspaceWrite } from '../lib/workspace-write-intent.mjs';
 import { COORDINATOR_ACTION_TOOL, COORDINATOR_ACTION_TOOL_NAME, COORDINATOR_REVIEW_TOOL, COORDINATOR_REVIEW_TOOL_NAME, authorizationAllowsCapability, authorizationRequirements, automatedSinglePassCoverage, coordinatorDecisionTrigger, coordinatorTaskReviewInstructions, coordinatorTaskReviewRequest, dispatchConstraintFromFeedback, dispatchRequiresApproval, requestCoordinatorAction, requestCoordinatorReviewAction, structuredToolOutput } from '../lib/agent-runtime-v3-policy.mjs';
 import { completionIdFor } from '../lib/agent-completion-policy.mjs';
 import { isExecutionBudgetWait, isResearchSourceWait } from '../lib/agent-wait-policy.mjs';
@@ -49,7 +47,6 @@ import { runWorkerLoop } from './runtime/worker-loop.mjs';
 import { createWorkerModelClient } from './runtime/model-client.mjs';
 import { createResearchRuntime } from './runtime/research-runtime.mjs';
 import { createWorkspaceArtifactRuntime } from './runtime/workspace-artifact-runtime.mjs';
-import { createPlanRuntime } from './runtime/plan-runtime.mjs';
 import { createDiscussionRuntime } from './runtime/discussion-runtime.mjs';
 import { createRelayRuntime } from './runtime/relay-runtime.mjs';
 import { createWorkspaceRecoveryRuntime } from './runtime/workspace-recovery-runtime.mjs';
@@ -190,18 +187,6 @@ const {
   db,
   projectRoot,
   addEvent,
-  now,
-});
-
-const {
-  createPlan,
-  dispatchNextAuthorizedTask,
-  savePlan,
-} = createPlanRuntime({
-  db,
-  complete,
-  addEvent,
-  fakeMode,
   now,
 });
 
@@ -391,7 +376,7 @@ function loadRunContext(run) {
   const apiKey = useCustomModel ? user.apiKey : process.env.apiKey;
   if (!fakeMode && !apiKey) throw new Error('未配置可用的模型 API Key');
   const memory = loadOrCreateSpaceMemory(run.spaceId);
-  const coordinatorState = run.runtimeVersion >= 3 ? readCoordinatorState(db, run.id) : null;
+  const coordinatorState = readCoordinatorState(db, run.id);
   const authorization = coordinatorState?.authorization || null;
 
   let persistedMcpServers = [];
@@ -451,10 +436,7 @@ function loadRunContext(run) {
 }
 
 function taskWorkspaceWriteAllowed(run, task, context) {
-  return run.runtimeVersion >= 3
-    ? authorizationAllowsCapability(context.authorization, 'workspace_write')
-    : taskRequiresWorkspaceWrite(`${task.title}\n${task.instruction}\n${task.acceptanceCriteria || ''}`)
-      && wantsWorkspaceWrite(run.input);
+  return authorizationAllowsCapability(context.authorization, 'workspace_write');
 }
 
 async function coordinateNextWork(run, context, triggerEventId) {
@@ -885,10 +867,8 @@ async function reviewSubmittedTask(run, task, context, completion) {
       addEvent(run.id, 'TASK_ACCEPTED', action.publicNote || `${task.agentName}的提交已通过验收`, { taskId: task.id, agentId: task.agentId, attempt: task.attempt, actor: 'coordinator', summary: action.summary }, `task-accepted:${completion.id}`);
       let nextDecision;
       try {
-        const coordinatorState = run.runtimeVersion >= 3 ? readCoordinatorState(db, run.id) : null;
-        const allTasks = run.runtimeVersion >= 3
-          ? db.prepare('SELECT * FROM "AgentTask" WHERE "runId" = ? ORDER BY "sortOrder" ASC').all(run.id)
-          : [];
+        const coordinatorState = readCoordinatorState(db, run.id);
+        const allTasks = db.prepare('SELECT * FROM "AgentTask" WHERE "runId" = ? ORDER BY "sortOrder" ASC').all(run.id);
         const singlePassCoverage = automatedSinglePassCoverage(coordinatorState, allTasks);
         if (singlePassCoverage) {
           const nextState = {
@@ -907,12 +887,9 @@ async function reviewSubmittedTask(run, task, context, completion) {
           }, `automation-single-pass-finished:${run.id}`);
           nextDecision = { type: 'finish', taskIds: [], coverage: singlePassCoverage };
         } else {
-          nextDecision = run.runtimeVersion >= 3
-            ? await coordinateNextWork(run, context, `task-accepted:${completion.id}`)
-            : { type: 'dispatch', tasks: dispatchNextAuthorizedTask(run) };
+          nextDecision = await coordinateNextWork(run, context, `task-accepted:${completion.id}`);
         }
       } catch (error) {
-        if (run.runtimeVersion < 3) throw error;
         const deferredAt = now();
         deferCoordinatorDecision(db, run.id, error, deferredAt);
         completeCoordinatorTurn(db, turn.id, action, deferredAt);
@@ -931,9 +908,7 @@ async function reviewSubmittedTask(run, task, context, completion) {
         }, `coordinator-decision-deferred:${completion.id}`);
         return { ...action, nextDecisionDeferred: true };
       }
-      const nextTaskIds = run.runtimeVersion >= 3
-        ? (nextDecision.taskIds || [])
-        : nextDecision.tasks.map((nextTask) => nextTask.id);
+      const nextTaskIds = nextDecision.taskIds || [];
       if (nextTaskIds.length > 0) {
         action.nextTaskIds = nextTaskIds;
         const otherActive = db.prepare(
@@ -990,7 +965,7 @@ async function reviewSubmittedTask(run, task, context, completion) {
   }
 }
 
-function submitV2Task(run, task, result, manifest) {
+function submitTask(run, task, result, manifest) {
   return submitTaskCompletion(db, {
     runId: run.id, spaceId: run.spaceId, taskId: task.id, attempt: task.attempt, workerId,
     agentId: task.agentId, agentName: task.agentName, report: result,
@@ -999,7 +974,6 @@ function submitV2Task(run, task, result, manifest) {
 }
 
 function markAgentWorking(run, task) {
-  if (run.runtimeVersion < 2) return;
   const timestamp = now();
   db.prepare(
     `INSERT INTO "AgentSession"
@@ -1024,7 +998,7 @@ async function executeTask(run, task, context, previousResults) {
         }),
       }
       : assignedAgent;
-  if (run.runtimeVersion >= 3 && !context.researchContext && wantsWebResearch(run.input) && taskNeedsResearchContext(task, run.runtimeVersion)) {
+  if (!context.researchContext && wantsWebResearch(run.input) && taskNeedsResearchContext(task)) {
     context.researchContext = await buildResearchContext(run, context, {
       task,
       researchInput: `${task.title}\n${task.instruction}\n${task.acceptanceCriteria || ''}`,
@@ -1143,7 +1117,7 @@ async function executeTask(run, task, context, previousResults) {
   if (isTaskCancelRequested(task.id)) throw new Error('步骤已取消');
   if (!result) throw new Error(`${agent.name}没有返回任务结果`);
 
-  if (context.researchContext && taskNeedsResearchContext(task, run.runtimeVersion) && context.researchAudit) {
+  if (context.researchContext && taskNeedsResearchContext(task) && context.researchAudit) {
     const resultAudit = assessResearchResult(result, context.researchSources, {
       timeSensitive: context.researchAudit.timeSensitive,
     });
@@ -1176,30 +1150,8 @@ async function executeTask(run, task, context, previousResults) {
   const skillValidation = validateSkillArtifacts(taskSkill(task), manifest.entries);
   if (!skillValidation.valid) throw new Error(skillValidation.issues.join('；'));
 
-  if (run.runtimeVersion >= 2) {
-    const completion = submitV2Task(run, task, result, manifest);
-    await reviewSubmittedTask(run, task, context, completion);
-    return result;
-  }
-
-  const completedAt = now();
-  const completed = db.transaction(() => {
-    const changed = db.prepare(
-      `UPDATE "AgentTask" SET "status" = 'WAITING_APPROVAL', "result" = ?, "completedAt" = ?, "updatedAt" = ? WHERE "id" = ? AND "status" = 'RUNNING'`
-    ).run(result, completedAt, completedAt, task.id);
-    if (changed.changes === 1) {
-      db.prepare(
-        `UPDATE "SpaceFile" SET "status" = 'WAITING_APPROVAL', "updatedAt" = ? WHERE "taskId" = ? AND "status" = 'GENERATING'`
-      ).run(completedAt, task.id);
-    }
-    return changed;
-  })();
-  if (completed.changes !== 1) throw new Error('步骤已取消');
-  addEvent(run.id, 'TASK_WAITING_APPROVAL', `${agent.name}已提交：${task.title}`, {
-    taskId: task.id,
-    agentId: agent.id,
-    attempt: task.attempt,
-  });
+  const completion = submitTask(run, task, result, manifest);
+  await reviewSubmittedTask(run, task, context, completion);
   return result;
 }
 
@@ -1265,22 +1217,8 @@ async function executeAdvisorTask(run, task, context, previousResults, agent) {
   }
   const skillValidation = validateSkillArtifacts(taskSkill(task), manifest?.entries || []);
   if (!skillValidation.valid) throw new Error(skillValidation.issues.join('；'));
-  if (run.runtimeVersion >= 2) {
-    const completion = submitV2Task(run, task, result, manifest);
-    await reviewSubmittedTask(run, task, context, completion);
-    return result;
-  }
-  const completedAt = now();
-  const changed = db.prepare(
-    `UPDATE "AgentTask" SET "status" = 'WAITING_APPROVAL', "result" = ?, "completedAt" = ?, "updatedAt" = ? WHERE "id" = ? AND "status" = 'RUNNING'`
-  ).run(result, completedAt, completedAt, task.id);
-  if (changed.changes !== 1) throw new Error('步骤已取消');
-  addEvent(run.id, 'TASK_WAITING_APPROVAL', `${agent.name}已提交：${task.title}`, {
-    taskId: task.id,
-    agentId: agent.id,
-    mode: 'advisor',
-    attempt: task.attempt,
-  });
+  const completion = submitTask(run, task, result, manifest);
+  await reviewSubmittedTask(run, task, context, completion);
   return result;
 }
 
@@ -1360,14 +1298,10 @@ async function processRun(run) {
     addEvent(
       run.id,
       'RUN_STARTED',
-      run.runtimeVersion >= 2
-        ? (tasks.length > 0 ? `协调者继续推进 ${tasks.length} 项已创建工作` : '协调者开始安排工作')
-        : (tasks.length > 0 ? `已开始执行确认的 ${tasks.length} 步成员链` : '协调者开始分析旧任务')
+      tasks.length > 0 ? `协调者继续推进 ${tasks.length} 项已创建工作` : '协调者开始安排工作'
     );
-    const v3CoordinatorState = run.runtimeVersion >= 3 ? readCoordinatorState(db, run.id) : null;
-    const v3DecisionTrigger = run.runtimeVersion >= 3
-      ? coordinatorDecisionTrigger(run.id, tasks, v3CoordinatorState)
-      : null;
+    const v3CoordinatorState = readCoordinatorState(db, run.id);
+    const v3DecisionTrigger = coordinatorDecisionTrigger(run.id, tasks, v3CoordinatorState);
     if (v3DecisionTrigger) {
       await coordinateNextWork(run, context, v3DecisionTrigger);
       tasks = db.prepare('SELECT * FROM "AgentTask" WHERE "runId" = ? ORDER BY "sortOrder" ASC').all(run.id);
@@ -1375,11 +1309,11 @@ async function processRun(run) {
     const reusableResearch = restoreReusableResearch(run.id);
     const runRequestsResearch = wantsWebResearch(run.input);
     const refreshTask = tasks.find(
-      (task) => runRequestsResearch && task.status === 'PENDING' && taskNeedsResearchContext(task, run.runtimeVersion) && shouldRefreshResearch(task.reviewFeedback)
+      (task) => runRequestsResearch && task.status === 'PENDING' && taskNeedsResearchContext(task) && shouldRefreshResearch(task.reviewFeedback)
     );
     const resumedResearchTask = tasks.find(
       (task) => runRequestsResearch && task.status === 'PENDING'
-        && taskNeedsResearchContext(task, run.runtimeVersion)
+        && taskNeedsResearchContext(task)
         && isResearchSourceWait(task.waitReason)
         && String(task.waitAnswer || '').trim()
     );
@@ -1400,26 +1334,7 @@ async function processRun(run) {
           researchInput: `${refreshTask.title}\n${refreshTask.instruction}\n${refreshTask.acceptanceCriteria || ''}\n\n用户明确要求更新调研：${refreshTask.reviewFeedback}`,
           refreshed: true,
         })
-    : reusableResearch?.context || (
-          run.runtimeVersion < 3 && tasks.length === 0
-            ? await buildResearchContext(run, context, {})
-            : ''
-        );
-    if (context.researchAudit?.accepted === false && run.runtimeVersion < 3 && tasks.length === 0) {
-      const issues = context.researchAudit.issues?.join('；') || '联网来源未达到任务要求';
-      addEvent(run.id, 'RESEARCH_BLOCKED_BEFORE_DISPATCH', '补查后来源仍未通过验收，已停止派发成员工作', { issues: context.researchAudit.issues || [] });
-      throw Object.assign(new Error(`联网资料未通过验收：${issues}`), { code: 'TASK_BLOCKED' });
-    }
-    if (tasks.length === 0 && run.runtimeVersion === 2) {
-      dispatchNextAuthorizedTask(run);
-      tasks = db.prepare('SELECT * FROM "AgentTask" WHERE "runId" = ? ORDER BY "sortOrder" ASC').all(run.id);
-    }
-    if (tasks.length === 0 && run.runtimeVersion < 3) {
-      const plan = await createPlan(run, context);
-      if (isCancelRequested(run.id)) return cancelRun(run.id);
-      savePlan(run.id, plan, context.agents);
-      tasks = db.prepare('SELECT * FROM "AgentTask" WHERE "runId" = ? ORDER BY "sortOrder" ASC').all(run.id);
-    }
+    : reusableResearch?.context || '';
     const proposedTasks = tasks.filter((task) => task.status === 'PROPOSED');
     if (proposedTasks.length > 0 && !tasks.some((task) => task.status === 'PENDING')) {
       db.prepare(`UPDATE "AgentRun" SET "status" = 'WAITING_APPROVAL', "workerId" = NULL, "heartbeatAt" = NULL, "updatedAt" = ? WHERE "id" = ?`).run(now(), run.id);
@@ -1434,7 +1349,7 @@ async function processRun(run) {
     const previousResults = tasks
       .filter((task) => task.status === 'COMPLETED' && task.result)
       .map((task) => ({ title: task.title, result: task.result }));
-    if (run.runtimeVersion >= 2) {
+    {
       const parallelTasks = tasks.filter((task) => task.status === 'PENDING');
       if (parallelTasks.length > 1) {
         addEvent(run.id, 'PARALLEL_WORK_STARTED', `${parallelTasks.length} 项无前置依赖的工作已并行开始`, {
@@ -1500,7 +1415,7 @@ async function processRun(run) {
         cancelTask(task.id, run.id, task.agentName);
         continue;
       }
-      if (run.runtimeVersion >= 2 && ['SUBMITTED', 'REVIEWING'].includes(task.status)) {
+      if (['SUBMITTED', 'REVIEWING'].includes(task.status)) {
         const completion = db.prepare(
           `SELECT * FROM "AgentTaskCompletion" WHERE "taskId" = ? AND "attempt" = ? AND "active" = 1`
         ).get(task.id, task.attempt);
@@ -1521,25 +1436,15 @@ async function processRun(run) {
         await executeTask(run, task, context, previousResults);
         const executedTask = db.prepare('SELECT "status" FROM "AgentTask" WHERE "id" = ?').get(task.id);
         if (executedTask?.status === 'WAITING') return;
-        if (run.runtimeVersion >= 2) {
-          if (executedTask?.status === 'COMPLETED') {
-            const acceptedTask = db.prepare('SELECT "title", "result" FROM "AgentTask" WHERE "id" = ?').get(task.id);
-            if (acceptedTask?.result) previousResults.push(acceptedTask);
-            const runStatus = db.prepare('SELECT "status" FROM "AgentRun" WHERE "id" = ?').get(run.id)?.status;
-            if (shouldPauseRunProcessing(runStatus)) return;
-            continue;
-          }
-          if (['PENDING', 'WAITING_APPROVAL'].includes(executedTask?.status)) return;
-          throw new Error(`协调者验收后任务状态异常：${executedTask?.status || 'UNKNOWN'}`);
+        if (executedTask?.status === 'COMPLETED') {
+          const acceptedTask = db.prepare('SELECT "title", "result" FROM "AgentTask" WHERE "id" = ?').get(task.id);
+          if (acceptedTask?.result) previousResults.push(acceptedTask);
+          const runStatus = db.prepare('SELECT "status" FROM "AgentRun" WHERE "id" = ?').get(run.id)?.status;
+          if (shouldPauseRunProcessing(runStatus)) return;
+          continue;
         }
-        const waitingAt = now();
-        db.prepare(`UPDATE "AgentRun" SET "status" = 'WAITING_APPROVAL', "updatedAt" = ? WHERE "id" = ?`).run(waitingAt, run.id);
-        addEvent(run.id, 'RUN_WAITING_APPROVAL', `等待审核：${task.title}`, {
-          taskId: task.id,
-          agentId: task.agentId,
-          attempt: task.attempt,
-        });
-        return;
+        if (['PENDING', 'WAITING_APPROVAL'].includes(executedTask?.status)) return;
+        throw new Error(`协调者验收后任务状态异常：${executedTask?.status || 'UNKNOWN'}`);
       } catch (error) {
         const currentTaskStatus = db.prepare(
           `SELECT "status" FROM "AgentTask" WHERE "id" = ?`
@@ -1608,9 +1513,7 @@ async function processRun(run) {
       `SELECT 1 FROM "AgentTask" WHERE "runId" = ? AND "status" IN ('SKIPPED', 'CANCELLED') LIMIT 1`
     ).get(run.id));
     const finalWorkspaceIssues = [];
-    const expectsWorkspaceWrite = run.runtimeVersion >= 3
-      ? authorizationAllowsCapability(context.authorization, 'workspace_write')
-      : wantsWorkspaceWrite(run.input);
+    const expectsWorkspaceWrite = authorizationAllowsCapability(context.authorization, 'workspace_write');
     if (expectsWorkspaceWrite && verifiedTouchedPaths.length === 0 && !intentionallySkippedFileStep) {
       finalWorkspaceIssues.push('任务要求产出或修改工作区文件，但没有提交任何净文件变化');
     }
@@ -1636,7 +1539,7 @@ async function processRun(run) {
       manifests,
       events: acceptanceEvents,
     } = loadCoordinatorAcceptanceEvidence(db, run.id);
-    const acceptanceCoordinatorState = run.runtimeVersion >= 3 ? readCoordinatorState(db, run.id) : null;
+    const acceptanceCoordinatorState = readCoordinatorState(db, run.id);
     const acceptance = evaluateCoordinatorAcceptance({
       goal: run.input,
       tasks: completedTasks,
@@ -1646,8 +1549,8 @@ async function processRun(run) {
       researchAudit: context.researchAudit,
       researchResultAudits: context.researchResultAudits,
       platformIssues: finalWorkspaceIssues,
-      authorization: run.runtimeVersion >= 3 ? acceptanceCoordinatorState.authorization : null,
-      goalCoverage: run.runtimeVersion >= 3 ? acceptanceCoordinatorState.lastCoverage : [],
+      authorization: acceptanceCoordinatorState.authorization,
+      goalCoverage: acceptanceCoordinatorState.lastCoverage || [],
     });
     context.acceptanceAudit = acceptance;
     addEvent(run.id, 'RUN_ACCEPTANCE_COMPLETED', acceptance.accepted ? 'Coordinator 自动验收通过' : 'Coordinator 自动验收未通过', acceptance);
@@ -1666,14 +1569,12 @@ async function processRun(run) {
 
     const timestamp = now();
     const storedCoordinatorState = db.prepare(`SELECT "coordinatorState" FROM "AgentRun" WHERE "id" = ?`).get(run.id)?.coordinatorState;
-    const finalCoordinatorState = run.runtimeVersion >= 2
-      ? JSON.stringify({
-          ...(storedCoordinatorState ? JSON.parse(storedCoordinatorState) : {}),
-          phase: 'completed',
-          currentTaskId: null,
-          completedAt: timestamp,
-        })
-      : storedCoordinatorState || null;
+    const finalCoordinatorState = JSON.stringify({
+      ...(storedCoordinatorState ? JSON.parse(storedCoordinatorState) : {}),
+      phase: 'completed',
+      currentTaskId: null,
+      completedAt: timestamp,
+    });
     const outcome = completionOutcome(completedTasks, context.researchAudit, context.researchResultAudits, acceptance);
     db.transaction(() => {
         for (const workspaceArtifact of workspaceArtifacts) {

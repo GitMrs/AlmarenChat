@@ -4,7 +4,6 @@ import {
   executeWorkspaceTool,
   safeCommandToolSchema,
   wantsWebResearch,
-  wantsWorkspaceWrite,
   workspaceToolSchemas,
 } from '../../lib/agent-runtime/runtime-tools.mjs';
 import { blocksUnapprovedFullOverwrite } from '../policies/workspace-write-policy.mjs';
@@ -137,21 +136,16 @@ export async function runExecutorHarness({
   }
 
   const skill = taskSkill(task);
-  const workspaceWriteAllowed = run.runtimeVersion >= 3
-    ? authorizationAllowsCapability(context.authorization, 'workspace_write')
-      && (skillAllowsTool(skill, 'write_file') || skillAllowsTool(skill, 'patch_file')
-        || skillAllowsTool(skill, 'generate_images') || skillAllowsTool(skill, 'generate_image'))
-    : wantsWorkspaceWrite(run.input)
-      && (skillAllowsTool(skill, 'write_file') || skillAllowsTool(skill, 'patch_file'));
-  const codeExecutionAllowed = run.runtimeVersion >= 3
-    && authorizationAllowsCapability(context.authorization, 'workspace_read')
+  const workspaceWriteAllowed = authorizationAllowsCapability(context.authorization, 'workspace_write')
+    && (skillAllowsTool(skill, 'write_file') || skillAllowsTool(skill, 'patch_file')
+      || skillAllowsTool(skill, 'generate_images') || skillAllowsTool(skill, 'generate_image'));
+  const codeExecutionAllowed = authorizationAllowsCapability(context.authorization, 'workspace_read')
     && authorizationAllowsCapability(context.authorization, 'code_execute')
     && skillAllowsTool(skill, 'run_skill')
     && Boolean(skill.execution);
   const skillToolSchema = codeExecutionAllowed ? skillExecutionToolSchema(skill) : null;
   const skillReferenceTool = spaceSkillReferenceToolSchema(skill);
-  const imageGenerationAllowed = run.runtimeVersion >= 3
-    && workspaceWriteAllowed
+  const imageGenerationAllowed = workspaceWriteAllowed
     && authorizationAllowsCapability(context.authorization, 'image_generate')
     && (skillAllowsTool(skill, 'generate_images') || skillAllowsTool(skill, 'generate_image'))
     && Boolean(context.imageModel);

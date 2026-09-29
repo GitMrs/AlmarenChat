@@ -55,16 +55,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ run
     }));
     const validationRetry = existing.status === 'FAILED_VALIDATION';
     const retryContext = retryContextFromRuns(retryHistoryWithManifests);
-    const firstIncompleteTask = validationRetry
-      ? existing.tasks[0]
-      : existing.tasks.find((task) => task.status !== 'COMPLETED');
-    const taskEntriesToCopy = existing.runtimeVersion >= 3
-      ? retryContext.completedEntries
-      : existing.runtimeVersion >= 2
-        ? []
-        : existing.tasks.map((task) => ({ task, manifest: null }));
+    const taskEntriesToCopy = retryContext.completedEntries;
     const copiedTasks = taskEntriesToCopy.map(({ task, manifest }) => {
-      const completed = task.status === 'COMPLETED' && (existing.runtimeVersion >= 3 || !validationRetry);
+      const completed = task.status === 'COMPLETED' && !validationRetry;
       return {
         id: randomUUID(),
         agentId: task.agentId,
@@ -72,7 +65,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ run
         title: task.title,
         instruction: task.instruction,
         acceptanceCriteria: task.acceptanceCriteria,
-        origin: existing.runtimeVersion >= 3 ? 'retry_inherited' : task.origin,
+        origin: 'retry_inherited',
         mode: task.mode,
         skillId: task.skillId,
         skillVersion: task.skillVersion,
@@ -95,29 +88,20 @@ export async function POST(request: Request, { params }: { params: Promise<{ run
         inheritedManifest: completed ? manifest : null,
       };
     });
-    const resumeMessage = existing.runtimeVersion >= 2
-      ? copiedTasks.length > 0
-        ? `第 ${existing.attempt + 1} 次尝试已进入队列，已继承 ${copiedTasks.length} 项验收成果，将只处理未完成内容`
-        : `第 ${existing.attempt + 1} 次尝试已进入队列，协调者将重新派发工作`
-      : firstIncompleteTask
-      ? `第 ${existing.attempt + 1} 次尝试已进入队列，将从“${firstIncompleteTask.title}”继续`
-      : `第 ${existing.attempt + 1} 次尝试已进入队列，将重新汇总已有结果`;
-    const previousCoordinatorState = existing.coordinatorState && typeof existing.coordinatorState === 'object'
-      ? existing.coordinatorState as Record<string, Prisma.JsonValue>
-      : null;
+    const resumeMessage = copiedTasks.length > 0
+      ? `第 ${existing.attempt + 1} 次尝试已进入队列，已继承 ${copiedTasks.length} 项验收成果，将只处理未完成内容`
+      : `第 ${existing.attempt + 1} 次尝试已进入队列，协调者将重新派发工作`;
     const inheritedAuthorization = retryContext.authorization && typeof retryContext.authorization === 'object'
       ? retryContext.authorization as Record<string, Prisma.JsonValue>
       : {};
-    const refreshedAuthorization = existing.runtimeVersion >= 3
-      ? coordinatorAuthorization(taskProposalWithServerCapabilities({
-          goal: typeof inheritedAuthorization.objective === 'string' ? inheritedAuthorization.objective : existing.input,
-          steps: inheritedAuthorization.steps,
-          deliverables: inheritedAuthorization.deliverables,
-          artifacts: inheritedAuthorization.artifacts,
-          capabilities: inheritedAuthorization.capabilities,
-          networkPolicy: inheritedAuthorization.networkPolicy,
-        }, { networkPolicyAuthoritative: true }))
-      : null;
+    const refreshedAuthorization = coordinatorAuthorization(taskProposalWithServerCapabilities({
+      goal: typeof inheritedAuthorization.objective === 'string' ? inheritedAuthorization.objective : existing.input,
+      steps: inheritedAuthorization.steps,
+      deliverables: inheritedAuthorization.deliverables,
+      artifacts: inheritedAuthorization.artifacts,
+      capabilities: inheritedAuthorization.capabilities,
+      networkPolicy: inheritedAuthorization.networkPolicy,
+    }, { networkPolicyAuthoritative: true }));
 
     const automationExecution = retryContext.automated
       ? await prisma.spaceAutomationExecution.findFirst({
@@ -137,21 +121,17 @@ export async function POST(request: Request, { params }: { params: Promise<{ run
         attempt: existing.attempt + 1,
         executionEngine: existing.executionEngine,
         engineVersion: existing.engineVersion,
-        runtimeVersion: existing.runtimeVersion,
+        runtimeVersion: 3,
         eventSequence: 1,
-        coordinatorState: existing.runtimeVersion >= 2 && previousCoordinatorState
-          ? existing.runtimeVersion >= 3
-            ? {
-                authorization: refreshedAuthorization as Prisma.InputJsonValue,
-                phase: 'coordinating',
-                authorizedAt: new Date().toISOString(),
-                iteration: 0,
-                taskCount: copiedTasks.length,
-                currentTaskIds: [],
-                ...(retryContext.automated ? { automated: true, automationId: retryContext.automationId } : {}),
-              }
-            : { ...previousCoordinatorState, phase: 'authorized', cursor: 0, currentTaskId: null }
-          : undefined,
+        coordinatorState: {
+          authorization: refreshedAuthorization as Prisma.InputJsonValue,
+          phase: 'coordinating',
+          authorizedAt: new Date().toISOString(),
+          iteration: 0,
+          taskCount: copiedTasks.length,
+          currentTaskIds: [],
+          ...(retryContext.automated ? { automated: true, automationId: retryContext.automationId } : {}),
+        },
         modelRequestLimit: existing.modelRequestLimit,
         ...(copiedTasks.length > 0 ? { tasks: { create: copiedTasks.map(({ inheritedManifest, ...task }) => task) } } : {}),
         events: {
@@ -160,7 +140,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ run
             message: resumeMessage,
             sequence: 1,
             actor: 'user',
-            payload: firstIncompleteTask ? { resumeFromSortOrder: firstIncompleteTask.sortOrder } : undefined,
           },
         },
         },

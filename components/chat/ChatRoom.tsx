@@ -184,8 +184,10 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
         setAgent(found || null);
 
         // Load user settings for model config
+        let authenticated = false;
         try {
           const { user: u } = await userApi.get();
+          authenticated = true;
           setIsLoggedIn(true);
           setContextMessageLimit(Math.max(1, Math.min(MAX_CONTEXT_MESSAGE_LIMIT, u.contextMessageLimit || DEFAULT_CONTEXT_MESSAGE_LIMIT)));
           setUserSettings({
@@ -199,11 +201,18 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
           // Not logged in or failed, use defaults
         }
 
-        // Load existing conversation snapshot and messages
-        if (existingConversationId) {
-          setConversationId(existingConversationId);
+        // Agent chat uses one persistent main conversation per user and agent.
+        const mainConversation = !existingConversationId && found && authenticated
+          ? (await agentsApi.getMainConversation(found.id, found).catch(() => null))?.conversation
+          : null;
+        const activeConversationId = existingConversationId || mainConversation?.id || null;
+
+        if (activeConversationId) {
+          setConversationId(activeConversationId);
           try {
-            const { conversation } = await conversationsApi.get(existingConversationId);
+            const { conversation } = mainConversation
+              ? { conversation: mainConversation }
+              : await conversationsApi.get(activeConversationId);
             setConversationAgent({
               id: conversation.agentId || agentId || existingConversationId,
               name: conversation.agentName || found?.name || '未知 Agent',
@@ -225,7 +234,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
               )
             );
 
-            const { messages: existingMessages, hasMore } = await conversationsApi.getMessages(existingConversationId, {
+            const { messages: existingMessages, hasMore } = await conversationsApi.getMessages(activeConversationId, {
               limit: MESSAGE_PAGE_SIZE,
             });
             setShouldStickToBottom(true);

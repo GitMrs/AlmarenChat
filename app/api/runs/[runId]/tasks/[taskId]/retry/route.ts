@@ -88,7 +88,7 @@ export async function POST(
           attempt: existing.attempt + 1,
           executionEngine: existing.executionEngine,
           engineVersion: existing.engineVersion,
-          runtimeVersion: existing.runtimeVersion,
+          runtimeVersion: 3,
           modelRequestLimit: existing.modelRequestLimit,
           coordinatorState: {
             ...previousState,

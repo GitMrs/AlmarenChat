@@ -1065,7 +1065,7 @@ try {
     if (!hasColumn('AgentRun', 'modelRequestLimit')) db.exec('ALTER TABLE "AgentRun" ADD COLUMN "modelRequestLimit" INTEGER NOT NULL DEFAULT 12');
     if (!hasColumn('AgentRun', 'executionEngine')) db.exec(`ALTER TABLE "AgentRun" ADD COLUMN "executionEngine" TEXT NOT NULL DEFAULT 'native'`);
     if (!hasColumn('AgentRun', 'engineVersion')) db.exec(`ALTER TABLE "AgentRun" ADD COLUMN "engineVersion" TEXT NOT NULL DEFAULT '1'`);
-    if (!hasColumn('AgentRun', 'runtimeVersion')) db.exec('ALTER TABLE "AgentRun" ADD COLUMN "runtimeVersion" INTEGER NOT NULL DEFAULT 1');
+    if (!hasColumn('AgentRun', 'runtimeVersion')) db.exec('ALTER TABLE "AgentRun" ADD COLUMN "runtimeVersion" INTEGER NOT NULL DEFAULT 3');
     if (!hasColumn('AgentRun', 'eventSequence')) db.exec('ALTER TABLE "AgentRun" ADD COLUMN "eventSequence" INTEGER NOT NULL DEFAULT 0');
     if (!hasColumn('AgentRun', 'coordinatorState')) db.exec('ALTER TABLE "AgentRun" ADD COLUMN "coordinatorState" JSONB');
     if (!hasColumn('AgentRun', 'workId')) db.exec('ALTER TABLE "AgentRun" ADD COLUMN "workId" TEXT REFERENCES "SpaceWork"("id") ON DELETE SET NULL ON UPDATE CASCADE');
