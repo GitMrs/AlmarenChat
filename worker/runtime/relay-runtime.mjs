@@ -9,6 +9,7 @@ import {
   validateGomokuAction,
 } from '../../lib/relay/gomoku.mjs';
 import { relayStageDecision } from '../../lib/relay/stage-policy.mjs';
+import { currentTimeContext } from '../../lib/current-time-context.mjs';
 
 const RELAY_ACTION_TOOL = {
   type: 'function',
@@ -442,6 +443,7 @@ export function createRelayRuntime({
             {
               role: 'system',
               content: [
+                currentTimeContext(),
                 currentAgent.systemPrompt || currentAgent.description || `你是 ${currentAgent.name}。`,
                 currentAgent.memoryContext || '',
                 `你正在参加一个持久化接力协作，当前只以“${currentAgent.name}”身份完成自己这一轮。`,
@@ -464,6 +466,7 @@ export function createRelayRuntime({
             {
               role: 'system',
               content: [
+                currentTimeContext(),
                 currentAgent.systemPrompt || currentAgent.description || `你是 ${currentAgent.name}。`,
                 currentAgent.memoryContext || '',
                 `你正在参加由空间协调者组织的接力协作。当前只以“${currentAgent.name}”身份完成自己这一轮。`,

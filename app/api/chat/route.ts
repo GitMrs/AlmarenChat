@@ -8,6 +8,8 @@ import { formatKnowledgeContext, getKnowledgeHits } from '@/lib/knowledge';
 import { createModelClient, resolveModelName } from '@/lib/model-client';
 import { reserveChatQuota } from '@/lib/chat-quota';
 import { loadAgentMemoryContext } from '@/lib/agent-memory';
+import { currentTimeContext } from '@/lib/current-time-context.mjs';
+import { buildUserMemoryContext, loadUserMemoryItems } from '@/lib/personal-assistant/user-memory';
 import { compressConversationContext, estimateMessagesTokens } from '@/lib/context-compression';
 import { conversationContextTargetTokens } from '@/lib/model-limits.mjs';
 
@@ -112,10 +114,15 @@ export async function POST(request: Request) {
     if (userId && !resolvedConversationId && agentId) {
       const agent = await prisma.agent.findUnique({ where: { id: agentId } });
       const snapshot = agent || agentSnapshot || {};
-      const conversation = await prisma.conversation.create({
+      const existingMain = await prisma.conversation.findFirst({
+        where: { userId, agentId, kind: 'AGENT', agentMode: 'MAIN' },
+        orderBy: { createdAt: 'asc' },
+      });
+      const conversation = existingMain || await prisma.conversation.create({
         data: {
           userId,
           agentId,
+          agentMode: 'MAIN',
           agentName: snapshot.name || null,
           agentAvatar: snapshot.avatar || null,
           agentCategory: snapshot.category || null,
@@ -126,6 +133,9 @@ export async function POST(request: Request) {
           contextMessageLimit: requestedContextLimit,
           title: textMessage.slice(0, 50) || (imageAttachments.length > 0 ? '图片会话' : '新会话'),
         },
+      }).catch(async (error: any) => {
+        if (error?.code !== 'P2002') throw error;
+        return prisma.conversation.findFirstOrThrow({ where: { userId, agentId, kind: 'AGENT', agentMode: 'MAIN' } });
       });
       resolvedConversationId = conversation.id;
     }
@@ -181,8 +191,11 @@ export async function POST(request: Request) {
     const client = createModelClient(apiBaseUrl, apiKey);
     const model = resolveModelName(modelName);
 
-    const employeeMemory = await loadAgentMemoryContext({ userId, agentId, query: textMessage });
-    let finalContext = [context, employeeMemory].filter(Boolean).join('\n\n');
+    const [employeeMemory, userMemories] = await Promise.all([
+      loadAgentMemoryContext({ userId, agentId, query: textMessage }),
+      loadUserMemoryItems(userId, agentId),
+    ]);
+    let finalContext = [currentTimeContext(), context, buildUserMemoryContext(userMemories), employeeMemory].filter(Boolean).join('\n\n');
     if (knowledgeEnabled && agentId && textMessage.trim()) {
       const hits = await getKnowledgeHits(agentId, textMessage);
       if (hits.length > 0) {

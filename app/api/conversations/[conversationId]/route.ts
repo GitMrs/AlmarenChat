@@ -18,7 +18,6 @@ export async function GET(
     if (!conversation) {
       return NextResponse.json({ error: 'Conversation not found' }, { status: 404 });
     }
-
     return NextResponse.json({ conversation });
   } catch (e: any) {
     if (e.message === 'Unauthorized') {
@@ -43,6 +42,9 @@ export async function DELETE(
     if (!conversation) {
       return NextResponse.json({ error: 'Conversation not found' }, { status: 404 });
     }
+    if (conversation.agentMode === 'MAIN') {
+      return NextResponse.json({ error: 'Main conversation cannot be deleted' }, { status: 400 });
+    }
 
     const messages = await prisma.message.findMany({ where: { conversationId }, select: { attachments: true } });
     await prisma.message.deleteMany({ where: { conversationId } });
@@ -65,7 +67,7 @@ export async function PATCH(
   try {
     const userId = requireAuth(request);
     const { conversationId } = await params;
-    const { title, contextMessageLimit } = await request.json();
+    const { title, contextMessageLimit, archived } = await request.json();
 
     const conversation = await prisma.conversation.findFirst({
       where: { id: conversationId, userId, kind: 'AGENT' },
@@ -75,7 +77,17 @@ export async function PATCH(
       return NextResponse.json({ error: 'Conversation not found' }, { status: 404 });
     }
 
-    const data: { title?: string; contextMessageLimit?: number } = {};
+    const data: { title?: string; contextMessageLimit?: number; archived?: boolean } = {};
+
+    if (archived !== undefined) {
+      if (conversation.agentMode === 'MAIN') {
+        return NextResponse.json({ error: 'Main conversation cannot be archived' }, { status: 400 });
+      }
+      if (typeof archived !== 'boolean') {
+        return NextResponse.json({ error: 'Archived value is invalid' }, { status: 400 });
+      }
+      data.archived = archived;
+    }
 
     if (title !== undefined) {
       const nextTitle = typeof title === 'string' ? title.trim() : '';

@@ -43,6 +43,7 @@ export async function POST(request: Request) {
     const userId = requireAuth(request);
     const body = await request.json();
     const mode: 'single' | 'conversation' = body.mode === 'conversation' ? 'conversation' : 'single';
+    const agentId = typeof body.agentId === 'string' && body.agentId.trim() ? body.agentId.trim() : null;
 
     let dialogueContext = '';
 
@@ -51,7 +52,9 @@ export async function POST(request: Request) {
       const assistantMsg = typeof body.assistantMessage === 'string' ? body.assistantMessage.trim() : '';
       const conversationId = typeof body.conversationId === 'string' ? body.conversationId.trim() : '';
       const conversation = conversationId ? await prisma.conversation.findFirst({
-        where: { id: conversationId, userId, kind: 'PERSONAL_ASSISTANT', assistantMode: 'MAIN' },
+        where: agentId
+          ? { id: conversationId, userId, kind: 'AGENT', agentId, agentMode: 'MAIN' }
+          : { id: conversationId, userId, kind: 'PERSONAL_ASSISTANT', assistantMode: 'MAIN' },
         select: { id: true },
       }) : null;
       if (!conversation) return NextResponse.json({ suggestions: [] });
@@ -64,9 +67,12 @@ export async function POST(request: Request) {
       if (!conversationId) return NextResponse.json({ suggestions: [] });
 
       const conversation = await prisma.conversation.findFirst({
-        where: { id: conversationId, userId, kind: 'PERSONAL_ASSISTANT' },
+        where: agentId
+          ? { id: conversationId, userId, kind: 'AGENT', agentId }
+          : { id: conversationId, userId, kind: 'PERSONAL_ASSISTANT' },
         select: {
           assistantMode: true,
+          agentMode: true,
           messages: {
             orderBy: { createdAt: 'desc' },
             take: 16,
@@ -75,7 +81,7 @@ export async function POST(request: Request) {
         },
       });
       if (!conversation) return NextResponse.json({ error: '会话不存在' }, { status: 404 });
-      if (conversation.assistantMode !== 'MAIN') return NextResponse.json({ suggestions: [] });
+      if (agentId ? conversation.agentMode !== 'MAIN' : conversation.assistantMode !== 'MAIN') return NextResponse.json({ suggestions: [] });
 
       const messages = conversation.messages;
       if (messages.length < 2) return NextResponse.json({ suggestions: [] });
@@ -87,7 +93,7 @@ export async function POST(request: Request) {
     }
 
     const existingMemories = await prisma.assistantMemoryItem.findMany({
-      where: { userId, status: 'ACTIVE' },
+      where: { userId, status: 'ACTIVE', ...(agentId ? { agentId } : { agentId: null }) },
       select: { content: true },
     });
 
@@ -95,8 +101,8 @@ export async function POST(request: Request) {
       ? existingMemories.slice(0, 40).map((m) => `- ${m.content}`).join('\n')
       : '（暂无已记录的记忆）';
 
-    const prompt = `你是一个温暖、克制、敏锐的专属陪伴助理记忆提炼器。
-请分析以下对话，判断用户是否明确表达了【长期有效、值得专属陪伴助理长期记住】的个人偏好、生活习惯、工作技术栈或关键背景事实。
+    const prompt = `你是一个温暖、克制、敏锐的${agentId ? 'Agent 专属' : '陪伴助理'}记忆提炼器。
+请分析以下对话，判断用户是否明确表达了【长期有效、值得${agentId ? '当前 Agent' : '专属陪伴助理'}长期记住】的个人偏好、生活习惯、工作技术栈或关键背景事实。
 
 【提取准则】：
 1. 必须是关于用户的长期个人事实（例如：“平时喝咖啡不加糖”、“写代码习惯用 TypeScript”、“养了一只英短猫”、“做 AlmarenChat 项目”）。

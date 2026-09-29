@@ -6,6 +6,7 @@ import { ensurePersonalAssistant } from '@/lib/personal-assistant/profile';
 export async function GET(request: Request) {
   try {
     const userId = requireAuth(request);
+    const agentId = new URL(request.url).searchParams.get('agentId')?.trim() || null;
     const profile = await ensurePersonalAssistant(userId);
     const [messages, memories, experiences, reminders] = await Promise.all([
       prisma.message.findMany({
@@ -14,7 +15,7 @@ export async function GET(request: Request) {
         take: 60,
       }),
       prisma.assistantMemoryItem.findMany({
-        where: { userId },
+        where: { userId, agentId },
         orderBy: { updatedAt: 'desc' },
       }),
       prisma.assistantExperience.findMany({

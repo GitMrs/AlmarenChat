@@ -11,9 +11,11 @@ export async function GET(request: Request) {
       ? Math.min(100, Math.round(requestedLimit))
       : undefined;
     const includeLastMessage = searchParams.get('includeLastMessage') !== 'false';
+    const includeArchived = searchParams.get('includeArchived') === 'true';
+    const agentId = searchParams.get('agentId')?.trim() || undefined;
 
     const conversations = await prisma.conversation.findMany({
-      where: { userId, kind: 'AGENT' },
+      where: { userId, kind: 'AGENT', ...(agentId ? { agentId } : {}), ...(includeArchived ? {} : { archived: false }) },
       include: includeLastMessage ? {
         messages: {
           orderBy: { createdAt: 'desc' },
@@ -60,6 +62,7 @@ export async function POST(request: Request) {
       data: {
         userId,
         agentId,
+        agentMode: 'TEMPORARY',
         agentName: snapshot.name || null,
         agentAvatar: snapshot.avatar || null,
         agentCategory: snapshot.category || null,

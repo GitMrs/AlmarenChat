@@ -7,17 +7,20 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import Avatar from '@/components/shared/Avatar';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
+import TextInputDialog from '@/components/shared/TextInputDialog';
 import LoginRequired from '@/components/auth/LoginRequired';
 import LoadingSpinner from '@/components/shared/LoadingSpinner';
 import AgentDetailsPanel from '@/components/chat/AgentDetailsPanel';
 import ChatComposer from '@/components/chat/ChatComposer';
 import { MessageItem } from '@/components/chat/ChatMessageItem';
+import MemorySuggestionDialog, { type MemorySuggestion } from '@/components/chat/MemorySuggestionDialog';
 import { useTTS } from '@/hooks/useTTS';
 import { getBuiltInAgents } from '@/lib/agents-data';
-import { generateConversationImage, streamChat, conversations as conversationsApi, agents as agentsApi, user as userApi, uploads } from '@/lib/api';
+import { assistant as assistantApi, generateConversationImage, streamChat, conversations as conversationsApi, agents as agentsApi, user as userApi, uploads } from '@/lib/api';
 import {
   DEFAULT_BROWSER_MODEL_CONFIG,
   readBrowserModelConfigForScope,
+  saveBrowserModelConfig,
   streamBrowserModel,
 } from '@/lib/browser-model';
 import { cn } from '@/lib/utils';
@@ -25,6 +28,7 @@ import { CATEGORY_COLORS } from '@/types';
 import type { Agent, MessageAttachment } from '@/types';
 import type { ChatMessage, DisplayAgent } from '@/components/chat/ChatMessageItem';
 import type { BrowserModelConfig, BrowserModelSource } from '@/lib/browser-model';
+import { shouldExtractMemorySuggestion } from '@/lib/personal-assistant/memory-intent.mjs';
 
 const promptMap: Record<string, string[]> = {
   写作: ['帮我把这段话改得更有吸引力', '生成 5 个标题', '把内容改成小红书风格'],
@@ -92,7 +96,16 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [mobileDetailsOpen, setMobileDetailsOpen] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
+  const [conversationMode, setConversationMode] = useState<'MAIN' | 'TEMPORARY'>('MAIN');
+  const [temporaryConversations, setTemporaryConversations] = useState<{ id: string; title?: string | null; archived: boolean }[]>([]);
+  const [renameConversationTarget, setRenameConversationTarget] = useState<{ id: string; title: string } | null>(null);
+  const [renamingConversation, setRenamingConversation] = useState(false);
+  const [pendingMemorySuggestions, setPendingMemorySuggestions] = useState<{ suggestions: MemorySuggestion[]; selected: Set<number> } | null>(null);
+  const [savingMemorySuggestions, setSavingMemorySuggestions] = useState(false);
   const [pendingDeleteMessage, setPendingDeleteMessage] = useState<ChatMessage | null>(null);
+  const [pendingDeleteConversation, setPendingDeleteConversation] = useState<{ id: string; title: string } | null>(null);
+  const [pendingArchiveConversation, setPendingArchiveConversation] = useState<{ id: string; title: string } | null>(null);
+  const [archivingConversation, setArchivingConversation] = useState(false);
   const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
   const [activeActionMessageId, setActiveActionMessageId] = useState<string | null>(null);
   const [confirmClearOpen, setConfirmClearOpen] = useState(false);
@@ -224,6 +237,13 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
               greeting: found?.greeting,
               voice: (conversation as any).agentVoice || found?.voice,
             });
+            setConversationMode((conversation as any).agentMode === 'TEMPORARY' ? 'TEMPORARY' : 'MAIN');
+            const conversationList = await conversationsApi.list({ agentId: conversation.agentId || agentId, limit: 100, includeLastMessage: false, includeArchived: true }).catch(() => ({ conversations: [] }));
+            setTemporaryConversations(
+              conversationList.conversations
+                .filter((item: any) => item.agentMode === 'TEMPORARY')
+                .map((item: any) => ({ id: item.id, title: item.title, archived: Boolean(item.archived) }))
+            );
             setContextMessageLimit(
               Math.max(
                 1,
@@ -270,6 +290,136 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
 
     loadAgent();
   }, [agentId, existingConversationId]);
+
+  const openMainConversation = () => {
+    const targetAgentId = conversationAgent?.id || agent?.id || agentId;
+    if (!targetAgentId || conversationMode === 'MAIN') return;
+    router.replace(`/chat/${targetAgentId}`);
+  };
+
+  const createTemporaryConversation = async () => {
+    if (!isLoggedIn || !displayAgent || isStreaming) return;
+
+    try {
+      const created = await conversationsApi.create({
+        agentId: displayAgent.id || agentId,
+        title: `${displayAgent.name}的临时聊天`,
+        agentSnapshot: displayAgent,
+      });
+      router.push(`/conversations/${created.conversation.id}`);
+    } catch (error) {
+      console.error('Create temporary conversation failed:', error);
+    }
+  };
+
+  const selectConversation = (targetConversationId: string) => {
+    router.replace(`/conversations/${targetConversationId}`);
+  };
+
+  const archiveConversation = async (targetConversationId: string, archived: boolean) => {
+    if (archived) {
+      const target = temporaryConversations.find((item) => item.id === targetConversationId);
+      setPendingArchiveConversation({ id: targetConversationId, title: target?.title || '临时聊天' });
+      return;
+    }
+    await conversationsApi.update(targetConversationId, { archived });
+    if (targetConversationId === conversationId) {
+      router.replace(`/chat/${conversationAgent?.id || agent?.id || agentId}`);
+    } else {
+      setTemporaryConversations((items) => items.map((item) => item.id === targetConversationId ? { ...item, archived } : item));
+    }
+  };
+
+  const confirmArchiveConversation = async () => {
+    if (!pendingArchiveConversation || archivingConversation) return;
+    setArchivingConversation(true);
+    try {
+      const { id } = pendingArchiveConversation;
+      await conversationsApi.update(id, { archived: true });
+      setPendingArchiveConversation(null);
+      if (id === conversationId) {
+        router.replace(`/chat/${conversationAgent?.id || agent?.id || agentId}`);
+      } else {
+        setTemporaryConversations((items) => items.map((item) => item.id === id ? { ...item, archived: true } : item));
+      }
+    } finally {
+      setArchivingConversation(false);
+    }
+  };
+
+  const deleteConversation = async (targetConversationId: string) => {
+    const target = temporaryConversations.find((item) => item.id === targetConversationId);
+    setPendingDeleteConversation({ id: targetConversationId, title: target?.title || '临时聊天' });
+  };
+
+  const confirmDeleteConversation = async () => {
+    if (!pendingDeleteConversation) return;
+    const { id } = pendingDeleteConversation;
+    await conversationsApi.delete(id);
+    setPendingDeleteConversation(null);
+    if (id === conversationId) {
+      router.replace(`/chat/${conversationAgent?.id || agent?.id || agentId}`);
+    } else {
+      setTemporaryConversations((items) => items.filter((item) => item.id !== id));
+    }
+  };
+
+  const renameConversation = async (targetConversationId: string) => {
+    const current = temporaryConversations.find((item) => item.id === targetConversationId);
+    setRenameConversationTarget({ id: targetConversationId, title: current?.title || '临时聊天' });
+  };
+
+  const submitConversationRename = async (title: string) => {
+    if (!renameConversationTarget || renamingConversation) return;
+    setRenamingConversation(true);
+    try {
+      const { id } = renameConversationTarget;
+      await conversationsApi.update(id, { title });
+      setTemporaryConversations((items) => items.map((item) => item.id === id ? { ...item, title } : item));
+      setRenameConversationTarget(null);
+    } finally {
+      setRenamingConversation(false);
+    }
+  };
+
+  const extractAgentMemorySuggestions = async (userMessage: string, assistantMessage: string, targetConversationId: string) => {
+    if (conversationMode !== 'MAIN' || !displayAgent?.id || !shouldExtractMemorySuggestion(userMessage)) return;
+    const payload = { mode: 'single' as const, userMessage, assistantMessage, conversationId: targetConversationId, agentId: displayAgent.id };
+    let result;
+    if (modelSource !== 'OLLAMA') {
+      result = await assistantApi.extractMemories(payload);
+    } else {
+      const prepared = await assistantApi.extractMemories({ ...payload, localOnly: true });
+      if (!prepared.modelMessages?.length) return;
+      const stream = await streamBrowserModel({ config: { ...browserModelConfig, source: modelSource }, messages: prepared.modelMessages });
+      const reader = stream.getReader();
+      const decoder = new TextDecoder();
+      let localResponse = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        localResponse += decoder.decode(value, { stream: true });
+      }
+      result = await assistantApi.extractMemories({ ...payload, localResponse });
+    }
+    if (result.suggestions?.length) {
+      setPendingMemorySuggestions({ suggestions: result.suggestions, selected: new Set(result.suggestions.map((_, index) => index)) });
+    }
+  };
+
+  const saveMemorySuggestions = async () => {
+    if (!pendingMemorySuggestions || !displayAgent?.id || savingMemorySuggestions) return;
+    setSavingMemorySuggestions(true);
+    try {
+      await Promise.all([...pendingMemorySuggestions.selected].map((index) => {
+        const suggestion = pendingMemorySuggestions.suggestions[index];
+        return assistantApi.addMemory({ content: suggestion.content, category: suggestion.category, agentId: displayAgent.id });
+      }));
+      setPendingMemorySuggestions(null);
+    } finally {
+      setSavingMemorySuggestions(false);
+    }
+  };
 
   useEffect(() => {
     if (isLoggedIn && initialPrompt && agent && messages.length <= 1 && !existingConversationId) {
@@ -668,6 +818,9 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
           await conversationsApi.sendMessage(result.conversationId, fullContent, { role: 'assistant' });
         }
         await syncConversationMessages(result.conversationId, messagesWithAssistant);
+        if (fullContent && content) {
+          extractAgentMemorySuggestions(content, fullContent, result.conversationId).catch(() => {});
+        }
       }
     } catch (error: any) {
       if (error.name !== 'AbortError') {
@@ -872,6 +1025,32 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
         top: viewportOffsetTop ? `${viewportOffsetTop}px` : 0,
       }}
     >
+      {pendingMemorySuggestions && (
+        <MemorySuggestionDialog
+          suggestions={pendingMemorySuggestions.suggestions}
+          selected={pendingMemorySuggestions.selected}
+          loading={savingMemorySuggestions}
+          onToggle={(index) => setPendingMemorySuggestions((current) => {
+            if (!current) return current;
+            const selected = new Set(current.selected);
+            if (selected.has(index)) selected.delete(index);
+            else selected.add(index);
+            return { ...current, selected };
+          })}
+          onCancel={() => setPendingMemorySuggestions(null)}
+          onConfirm={saveMemorySuggestions}
+        />
+      )}
+      <TextInputDialog
+        open={Boolean(renameConversationTarget)}
+        title="重命名聊天"
+        label="聊天名称"
+        defaultValue={renameConversationTarget?.title || ''}
+        placeholder="输入聊天名称"
+        loading={renamingConversation}
+        onCancel={() => setRenameConversationTarget(null)}
+        onConfirm={submitConversationRename}
+      />
       <AgentDetailsPanel
         displayAgent={displayAgent}
         categoryColor={categoryColor}
@@ -880,12 +1059,19 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
         isLoggedIn={isLoggedIn}
         contextMessageLimit={contextMessageLimit}
         maxContextMessageLimit={MAX_CONTEXT_MESSAGE_LIMIT}
-        modelConfig={{ ...browserModelConfig, source: modelSource }}
         onBack={() => router.back()}
         onToggleDetails={() => setDetailsOpen((value) => !value)}
         onOpenMobileDetails={() => setMobileDetailsOpen(true)}
         onCloseMobileDetails={() => setMobileDetailsOpen(false)}
         onContextMessageLimitChange={updateContextMessageLimit}
+        conversationMode={conversationMode}
+        onOpenMainConversation={openMainConversation}
+        onCreateTemporaryConversation={createTemporaryConversation}
+        temporaryConversations={temporaryConversations}
+        onSelectConversation={selectConversation}
+        onArchiveConversation={archiveConversation}
+        onDeleteConversation={deleteConversation}
+        onRenameConversation={renameConversation}
       />
 
       <main className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -1030,7 +1216,9 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
             modelSource={modelSource}
             ollamaAvailable={Boolean(browserModelConfig.baseUrl && browserModelConfig.model)}
             onModelSourceChange={(source) => {
-              setModelSource(source);
+              const nextConfig = saveBrowserModelConfig({ ...browserModelConfig, source }, 'GLOBAL');
+              setBrowserModelConfig(nextConfig);
+              setModelSource(nextConfig.source);
               if (source === 'OLLAMA') {
                 setWebSearchEnabled(false);
                 setChatMode('chat');
@@ -1043,6 +1231,27 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
           />
         )}
       </main>
+      <ConfirmDialog
+        open={Boolean(pendingArchiveConversation)}
+        title="归档这个临时聊天？"
+        description={`${pendingArchiveConversation?.title || '临时聊天'}将从当前列表隐藏，但之后仍可在“已归档”中恢复。`}
+        cancelText="先保留"
+        confirmText="确认归档"
+        loading={archivingConversation}
+        onCancel={() => setPendingArchiveConversation(null)}
+        onConfirm={confirmArchiveConversation}
+      />
+      <ConfirmDialog
+        open={Boolean(pendingDeleteConversation)}
+        title="永久删除这个临时聊天？"
+        description={`${pendingDeleteConversation?.title || '临时聊天'}及其消息将被永久删除，无法恢复。`}
+        icon={<Trash2 size={20} />}
+        cancelText="先保留"
+        confirmText="确认删除"
+        destructive
+        onCancel={() => setPendingDeleteConversation(null)}
+        onConfirm={confirmDeleteConversation}
+      />
       <ConfirmDialog
         open={Boolean(pendingDeleteMessage)}
         title="删除这条消息？"

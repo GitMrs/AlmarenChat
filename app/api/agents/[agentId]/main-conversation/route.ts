@@ -10,15 +10,17 @@ export async function GET(request: Request, { params }: { params: Promise<{ agen
     if (!agent) return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
 
     const existing = await prisma.conversation.findFirst({
-      where: { userId, agentId, kind: 'AGENT' },
+      where: { userId, agentId, kind: 'AGENT', agentMode: 'MAIN' },
       orderBy: { createdAt: 'asc' },
     });
     if (existing) return NextResponse.json({ conversation: existing, created: false });
 
+    let created = true;
     const conversation = await prisma.conversation.create({
       data: {
         userId,
         agentId,
+        agentMode: 'MAIN',
         agentName: agent.name,
         agentAvatar: agent.avatar,
         agentCategory: agent.category,
@@ -28,8 +30,12 @@ export async function GET(request: Request, { params }: { params: Promise<{ agen
         agentVoice: agent.voice,
         title: `${agent.name}的主聊天`,
       },
+    }).catch(async (error: any) => {
+      if (error?.code !== 'P2002') throw error;
+      created = false;
+      return prisma.conversation.findFirstOrThrow({ where: { userId, agentId, kind: 'AGENT', agentMode: 'MAIN' } });
     });
-    return NextResponse.json({ conversation, created: true });
+    return NextResponse.json({ conversation, created });
   } catch (error: any) {
     if (error.message === 'Unauthorized') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     return NextResponse.json({ error: error.message || 'Failed to load main conversation' }, { status: 500 });
@@ -46,15 +52,17 @@ export async function POST(request: Request, { params }: { params: Promise<{ age
     if (!snapshot.name) return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
 
     const existing = await prisma.conversation.findFirst({
-      where: { userId, agentId, kind: 'AGENT' },
+      where: { userId, agentId, kind: 'AGENT', agentMode: 'MAIN' },
       orderBy: { createdAt: 'asc' },
     });
     if (existing) return NextResponse.json({ conversation: existing, created: false });
 
+    let created = true;
     const conversation = await prisma.conversation.create({
       data: {
         userId,
         agentId,
+        agentMode: 'MAIN',
         agentName: snapshot.name || null,
         agentAvatar: snapshot.avatar || null,
         agentCategory: snapshot.category || null,
@@ -64,8 +72,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ age
         agentVoice: snapshot.voice || null,
         title: `${snapshot.name}的主聊天`,
       },
+    }).catch(async (error: any) => {
+      if (error?.code !== 'P2002') throw error;
+      created = false;
+      return prisma.conversation.findFirstOrThrow({ where: { userId, agentId, kind: 'AGENT', agentMode: 'MAIN' } });
     });
-    return NextResponse.json({ conversation, created: true });
+    return NextResponse.json({ conversation, created });
   } catch (error: any) {
     if (error.message === 'Unauthorized') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     return NextResponse.json({ error: error.message || 'Failed to create main conversation' }, { status: 500 });

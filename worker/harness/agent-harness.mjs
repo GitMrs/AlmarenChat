@@ -14,6 +14,7 @@ import { executeSkill } from '../runtime/builtin-skill-runtime.mjs';
 import { generateImageToolSchema, generateImagesToolSchema, generateWorkspaceImages } from '../runtime/image-generation-runtime.mjs';
 import { continuationIterationsFromAnswer } from '../../lib/agent-wait-policy.mjs';
 import { taskContextTargetTokens } from '../../lib/model-limits.mjs';
+import { currentTimeContext } from '../../lib/current-time-context.mjs';
 
 const READ_TOOLS = new Set(['list_files', 'read_file', 'check_files']);
 export const EXECUTOR_TOOL_ITERATIONS = 10;
@@ -180,6 +181,7 @@ export async function runExecutorHarness({
     {
       role: 'system',
       content:
+        `${currentTimeContext()}\n\n` +
         `${agent.systemPrompt || agent.description || `你是${agent.name}。`}\n\n` +
         `${agent.memoryContext ? `${agent.memoryContext}\n\n` : ''}` +
         (canProduceArtifacts
@@ -553,7 +555,8 @@ export async function runAdvisorHarness({
     const messages = [
       {
         role: 'system',
-        content: `${agent.systemPrompt || agent.description || `你是${agent.name}。`}\n\n` +
+        content: `${currentTimeContext()}\n\n` +
+          `${agent.systemPrompt || agent.description || `你是${agent.name}。`}\n\n` +
           `${agent.memoryContext ? `${agent.memoryContext}\n\n` : ''}` +
           '你是本任务的专业顾问，负责产出当前步骤需要的判断、规则、约束和可供后续执行者直接采用的建议。' +
           '你可以使用只读工具查看和检查当前空间工作区，不要声称做过未实际执行的操作。' +

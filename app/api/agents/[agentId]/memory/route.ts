@@ -33,10 +33,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ agen
   try {
     const userId = requireAuth(request);
     const { agentId } = await params;
-    if (!(await isEmployeeAgent(agentId))) {
-      return NextResponse.json({ error: '普通 Agent 没有成长档案' }, { status: 404 });
-    }
-    await synchronizeAgentMemory(userId, agentId);
+    const agent = await prisma.agent.findUnique({ where: { id: agentId }, select: { id: true, agentType: true } });
+    if (!agent) return NextResponse.json({ error: 'Agent 不存在' }, { status: 404 });
+    if (agent.agentType === 'EMPLOYEE') await synchronizeAgentMemory(userId, agentId);
     return NextResponse.json(await responseFor(userId, agentId));
   } catch (error: any) {
     if (error.message === 'Unauthorized') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

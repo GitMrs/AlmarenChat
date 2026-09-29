@@ -33,6 +33,8 @@ import { createCollaborationState } from '@/lib/relay/collaboration.mjs';
 import { createGomokuState } from '@/lib/relay/gomoku.mjs';
 import { relayStagePolicy } from '@/lib/relay/stage-policy.mjs';
 import { loadAgentMemoryContext } from '@/lib/agent-memory';
+import { currentTimeContext } from '@/lib/current-time-context.mjs';
+import { buildUserMemoryContext, loadUserMemoryItems } from '@/lib/personal-assistant/user-memory';
 import { createRuntimePermissionBroker } from '@/lib/runtime-permission-broker.mjs';
 
 const MESSAGE_PAGE_SIZE = 40;
@@ -590,11 +592,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
     const normalizedInteractionMode = ['multi_reply', 'coordinated_turn', 'coordination_summary'].includes(interactionMode)
       ? interactionMode
       : 'chat';
-    const agentMemory = await loadAgentMemoryContext({
-      userId,
-      agentId: targetAgent.id,
-      query: textMessage,
-    });
+    const [agentMemory, userMemories] = await Promise.all([
+      loadAgentMemoryContext({ userId, agentId: targetAgent.id, query: textMessage }),
+      loadUserMemoryItems(userId, targetAgent.id),
+    ]);
     const selectedSkill = skillId
       ? await getSpaceSkill({ projectRoot: process.cwd(), userId, spaceId, skillId: String(skillId) })
       : null;
@@ -621,7 +622,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
         persistMessages: shouldPersistMessages,
         allowWebSearch,
         imageGenerationRequested: explicitImageRequest,
-        agentMemoryContext: agentMemory,
+        agentMemoryContext: [buildUserMemoryContext(userMemories), agentMemory].filter(Boolean).join('\n\n'),
         interactionMode: normalizedInteractionMode,
         coordinationScope: normalizedCoordinationScope,
         multiReplyIndex: Number.isInteger(multiReplyIndex) && multiReplyIndex > 0
@@ -807,6 +808,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
       : '';
 
     const systemPrompt = [
+      currentTimeContext(),
       targetAgent.systemPrompt || targetAgent.description || `你是 ${targetAgent.name}。`,
       agentMemory,
       formatMembersContext(allAgents, targetAgent),

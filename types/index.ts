@@ -111,6 +111,7 @@ export interface PersonalAssistantProfile {
 
 export interface AssistantMemoryItem {
   id: string;
+  agentId?: string | null;
   category: string;
   content: string;
   status: 'ACTIVE' | 'DISABLED';

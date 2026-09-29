@@ -8,22 +8,26 @@ function cleanText(value, limit) {
 export function loadAgentMemoryContextSync(db, { userId, agentId, query }) {
   if (!userId || !agentId) return '';
   const agent = db.prepare(
-    `SELECT 1 FROM "Agent" WHERE "id" = ? AND "agentType" = 'EMPLOYEE' LIMIT 1`
+    `SELECT "agentType" FROM "Agent" WHERE "id" = ? LIMIT 1`
   ).get(agentId);
   if (!agent) return '';
-  const rules = db.prepare(
+  const rules = agent.agentType === 'EMPLOYEE' ? db.prepare(
     `SELECT "category", "title", "instruction", "status", "evidenceCount", "updatedAt"
      FROM "AgentMemoryRule"
      WHERE "userId" = ? AND "agentId" = ? AND "status" = 'ACTIVE'
      ORDER BY "updatedAt" DESC LIMIT 60`
+  ).all(userId, agentId) : [];
+  const experiences = db.prepare(
+    `SELECT "title", "summary", "outcome", "createdAt"
+     FROM "AgentExperience"
+     WHERE "userId" = ? AND "agentId" = ? AND "outcome" = 'ACCEPTED'
+     ORDER BY "updatedAt" DESC LIMIT 30`
   ).all(userId, agentId);
-  return agentMemoryContext({ rules, query });
+  return agentMemoryContext({ rules, experiences, query });
 }
 
 export function recordAcceptedAgentExperiences(db, { run, tasks, accepted, timestamp }) {
-  const isEmployee = db.prepare(
-    `SELECT 1 FROM "Agent" WHERE "id" = ? AND "agentType" = 'EMPLOYEE' LIMIT 1`
-  );
+  const agentExists = db.prepare(`SELECT 1 FROM "Agent" WHERE "id" = ? LIMIT 1`);
   const statement = db.prepare(
     `INSERT INTO "AgentExperience"
       ("id", "userId", "agentId", "spaceId", "runId", "taskId", "title", "summary", "outcome", "tags", "createdAt", "updatedAt")
@@ -34,7 +38,7 @@ export function recordAcceptedAgentExperiences(db, { run, tasks, accepted, times
        "updatedAt" = excluded."updatedAt"`
   );
   for (const task of tasks) {
-    if (!task?.agentId || !isEmployee.get(task.agentId) || !cleanText(task.result, 1)) continue;
+    if (!task?.agentId || !agentExists.get(task.agentId) || !cleanText(task.result, 1)) continue;
     statement.run(
       randomUUID(),
       run.userId,

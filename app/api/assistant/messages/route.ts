@@ -12,6 +12,7 @@ import { ensurePersonalAssistant } from '@/lib/personal-assistant/profile';
 import { buildPersonalAssistantPrompt } from '@/lib/personal-assistant/prompt-builder';
 import { buildAssistantActivityContext, buildAssistantPlatformContext } from '@/lib/personal-assistant/platform-context';
 import { archiveOldMainChatMessages, loadAssistantMemoryContext } from '@/lib/personal-assistant/experience-memory';
+import { loadUserMemoryItems } from '@/lib/personal-assistant/user-memory';
 import { buildTimedAssistantHistory } from '@/lib/personal-assistant/history-context.mjs';
 import { compressConversationContext } from '@/lib/context-compression';
 import { conversationContextTargetTokens } from '@/lib/model-limits.mjs';
@@ -197,12 +198,7 @@ export async function POST(request: Request) {
         historyLimit: contextLimit,
         includeExperiences: conversationMode === 'MAIN',
       }),
-      prisma.assistantMemoryItem.findMany({
-        where: { userId, status: 'ACTIVE' },
-        orderBy: { updatedAt: 'desc' },
-        take: 30,
-        select: { category: true, content: true },
-      }),
+      loadUserMemoryItems(userId),
       buildAssistantPlatformContext(userId, contextSources),
       buildAssistantActivityContext(userId, textMessage, contextSources),
       webSearchEnabled ? buildWebSearchContext(messageForModel, userSettings.tavilyApiKey) : Promise.resolve(null),

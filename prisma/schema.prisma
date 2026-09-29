@@ -481,6 +481,8 @@ model Conversation {
   userId              String
   user                User      @relation(fields: [userId], references: [id])
   kind                String    @default("AGENT")
+  agentMode           String    @default("MAIN")
+  archived            Boolean   @default(false)
   agentId             String?
   agentName           String?
   agentAvatar         String?
@@ -500,6 +502,8 @@ model Conversation {
   assistantQQBinding  AssistantQQBinding?
 
   @@index([userId, kind, updatedAt])
+  @@index([userId, agentId, agentMode])
+  @@index([userId, agentId, agentMode, archived])
 }
 
 model Message {
@@ -540,6 +544,7 @@ model AssistantMemoryItem {
   id              String   @id @default(uuid())
   userId          String
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agentId         String?
   category        String   @default("preference")
   content         String
   status          String   @default("ACTIVE")
@@ -549,6 +554,7 @@ model AssistantMemoryItem {
   updatedAt       DateTime @updatedAt
 
   @@index([userId, status, updatedAt])
+  @@index([userId, agentId, status, updatedAt])
 }
 
 model AssistantExperience {

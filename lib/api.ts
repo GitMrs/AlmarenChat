@@ -65,7 +65,7 @@ export const auth = {
 };
 
 export const assistant = {
-  get: () => request<PersonalAssistantBootstrap>('/assistant'),
+  get: (agentId?: string) => request<PersonalAssistantBootstrap>(`/assistant${agentId ? `?agentId=${encodeURIComponent(agentId)}` : ''}`),
   getContextStats: (conversationId?: string) =>
     request<AssistantContextStats>(`/assistant/experiences${conversationId ? `?conversationId=${encodeURIComponent(conversationId)}` : ''}`),
   archiveExperience: (data?: { conversationId?: string; preserveRecent?: number }) =>
@@ -106,19 +106,20 @@ export const assistant = {
     }),
   updateProfile: (data: Partial<PersonalAssistantProfile>) =>
     request<{ profile: PersonalAssistantProfile }>('/assistant/profile', { method: 'PATCH', body: JSON.stringify(data) }),
-  addMemory: (data: { content: string; category?: string }) =>
+  addMemory: (data: { content: string; category?: string; agentId?: string }) =>
     request<{ memory: AssistantMemoryItem }>('/assistant/memories', { method: 'POST', body: JSON.stringify(data) }),
   updateMemory: (id: string, data: { content?: string; status?: 'ACTIVE' | 'DISABLED' }) =>
     request<{ memory: AssistantMemoryItem }>(`/assistant/memories/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
   deleteMemory: (id: string) =>
     request<{ success: true }>(`/assistant/memories/${id}`, { method: 'DELETE' }),
-  clearAllMemories: () =>
-    request<{ success: true }>('/assistant/memories', { method: 'DELETE' }),
+  clearAllMemories: (agentId?: string) =>
+    request<{ success: true }>(`/assistant/memories${agentId ? `?agentId=${encodeURIComponent(agentId)}` : ''}`, { method: 'DELETE' }),
   extractMemories: (data: {
     mode: 'single' | 'conversation';
     userMessage?: string;
     assistantMessage?: string;
     conversationId?: string;
+    agentId?: string;
     localOnly?: boolean;
     localResponse?: string;
   }) =>
@@ -342,10 +343,12 @@ export const agents = {
 
 // Conversations
 export const conversations = {
-  list: (options?: { limit?: number; includeLastMessage?: boolean }) => {
+  list: (options?: { limit?: number; agentId?: string; includeLastMessage?: boolean; includeArchived?: boolean }) => {
     const params = new URLSearchParams();
     if (options?.limit) params.set('limit', String(options.limit));
+    if (options?.agentId) params.set('agentId', options.agentId);
     if (options?.includeLastMessage === false) params.set('includeLastMessage', 'false');
+    if (options?.includeArchived) params.set('includeArchived', 'true');
     const query = params.toString();
     return request<{ conversations: any[] }>(`/conversations${query ? `?${query}` : ''}`);
   },
@@ -370,7 +373,7 @@ export const conversations = {
     request<{ success: boolean }>(`/conversations/${id}`, {
       method: 'DELETE',
     }),
-  update: (id: string, data: { title?: string; contextMessageLimit?: number }) =>
+  update: (id: string, data: { title?: string; contextMessageLimit?: number; archived?: boolean }) =>
     request<{ conversation: any }>(`/conversations/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
