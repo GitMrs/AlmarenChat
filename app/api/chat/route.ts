@@ -219,10 +219,10 @@ export async function POST(request: Request) {
       }
     }
     if (webSearchEnabled) {
-      const webSearchContext = await Promise.race([
-        buildWebSearchContext(buildWebSearchQuery(textMessage, sourceHistory), userSettings.tavilyApiKey),
-        new Promise<string>((_, reject) => setTimeout(() => reject(new Error('联网搜索超时（20秒）')), 20_000)),
-      ]);
+      const webSearchContext = await buildWebSearchContext(
+        buildWebSearchQuery(textMessage, sourceHistory),
+        userSettings.tavilyApiKey
+      );
       finalContext = [finalContext, webSearchContext].filter(Boolean).join('\n\n');
       const webpageContext = await buildWebpageContext(textMessage);
       finalContext = [finalContext, webpageContext].filter(Boolean).join('\n\n');

@@ -23,7 +23,7 @@ import { spaceMemoryContext } from '@/lib/space-memory-policy.mjs';
 import { persistSpaceMemory, rebuildSpaceMemory, spaceMemoryNeedsTrustedRebuild } from '@/app/api/_lib/space-memory';
 import { recentRunEvidenceContext } from '@/lib/agent-run-evidence.mjs';
 import { readSpaceLearning, spaceLearningContext } from '@/lib/space-learning.mjs';
-import { buildWebSearchContext } from '@/lib/web-search';
+import { buildWebSearchContext, buildWebSearchQuery } from '@/lib/web-search';
 import { createModelClient, DEFAULT_BASE_URL, DEFAULT_MODEL, resolveModelName } from '@/lib/model-client';
 import { getSpaceSkill, readSpaceSkillFile } from '@/lib/space-skills.mjs';
 import { spaceSkillReferenceToolSchema } from '@/lib/agent-runtime/skill-registry.mjs';
@@ -925,7 +925,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
                 if (!query) return { ok: false, error: '搜索关键词不能为空' };
                 const permission = runtimePermissions.consume('web_research', 'web_search');
                 if (!permission.allowed) return { ok: false, error: permission.error };
-                return { ok: true, context: await buildWebSearchContext(query, settings.tavilyApiKey) };
+                return {
+                  ok: true,
+                  context: await buildWebSearchContext(
+                    buildWebSearchQuery(query, sourceHistory),
+                    settings.tavilyApiKey
+                  ),
+                };
               }
               if (name === 'web_fetch') {
                 if (!allowWebSearch || isMultiReply) throw new Error('本轮没有获得联网权限');

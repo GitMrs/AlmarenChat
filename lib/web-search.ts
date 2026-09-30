@@ -132,7 +132,7 @@ async function searchDuckDuckGo(query: string, intent: SearchIntent): Promise<Se
   }));
 }
 
-export async function buildWebSearchContext(query: string, apiKey?: string | null) {
+async function buildWebSearchContextInternal(query: string, apiKey?: string | null) {
   const key = apiKey?.trim() || null;
   const intent = detectWebSearchIntent(query);
   const retrievedAt = new Date().toISOString();
@@ -179,4 +179,18 @@ ${freshnessRule}
 
 ${answer}Search results:
 ${sources}`.slice(0, MAX_CONTEXT_LENGTH);
+}
+
+export async function buildWebSearchContext(query: string, apiKey?: string | null, timeoutMs = 20_000) {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      buildWebSearchContextInternal(query, apiKey),
+      new Promise<string>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`联网搜索超时（${timeoutMs / 1000}秒）`)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
