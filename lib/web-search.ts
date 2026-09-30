@@ -23,6 +23,9 @@ type SearchIntent = {
 
 const MAX_RESULT_CONTENT = 3_500;
 const MAX_CONTEXT_LENGTH = 28_000;
+const MAX_SEARCH_QUERY_LENGTH = 1_200;
+const MAX_SEARCH_HISTORY_MESSAGE_LENGTH = 400;
+const CONTEXTUAL_QUERY_PATTERN = /(这个|那个|这些|那些|它|它们|上面|前面|刚才提到|之前提到|其中|\b(?:that|this|it|they|them|above|previously mentioned|mentioned earlier)\b)/i;
 
 const DDG_TIME_RANGE: Record<SearchTimeRange, SearchTimeType> = {
   day: SearchTimeType.DAY,
@@ -33,26 +36,33 @@ const DDG_TIME_RANGE: Record<SearchTimeRange, SearchTimeType> = {
 
 export function buildWebSearchQuery(
   currentQuery: string,
-  history: Array<{ role?: string; content?: string }> = [],
-  maxHistoryMessages = 6
+  history: Array<{ role?: string; content?: string }> = []
 ) {
   const query = String(currentQuery || '').trim();
+  if (!CONTEXTUAL_QUERY_PATTERN.test(query)) return query.slice(0, MAX_SEARCH_QUERY_LENGTH);
+
   const historyItems = Array.isArray(history) ? history : [];
   const last = historyItems.at(-1);
   const historyWithoutCurrent = last?.role === 'user' && String(last.content || '').trim() === query
     ? historyItems.slice(0, -1)
     : historyItems;
-  const context = historyWithoutCurrent
-    .slice(-maxHistoryMessages)
-    .map((item) => {
-      const content = String(item.content || '').trim();
-      if (!content) return '';
-      return `${item.role === 'user' ? '用户' : '助手'}：${content.slice(0, 800)}`;
-    })
-    .filter(Boolean)
-    .join('\n');
+  const current = query.slice(0, 700);
+  const contextBudget = Math.max(0, MAX_SEARCH_QUERY_LENGTH - current.length - 12);
+  const contextItems: string[] = [];
+  let contextLength = 0;
+  for (const item of historyWithoutCurrent.slice(-6).reverse()) {
+    const content = String(item.content || '').trim();
+    if (!content || content.length > MAX_SEARCH_HISTORY_MESSAGE_LENGTH) continue;
+    const candidate = `${item.role === 'user' ? '用户' : '助手'}：${content}`;
+    const separatorLength = contextItems.length > 0 ? 1 : 0;
+    if (contextLength + separatorLength + candidate.length > contextBudget) continue;
+    contextItems.unshift(candidate);
+    contextLength += separatorLength + candidate.length;
+    if (contextItems.length >= 2) break;
+  }
+  const context = contextItems.join('\n');
 
-  return (context ? `${context}\n用户当前问题：${query}` : query).slice(-4_000);
+  return context ? `${context}\n当前问题：${current}` : current;
 }
 
 export function detectWebSearchIntent(query: string): SearchIntent {
