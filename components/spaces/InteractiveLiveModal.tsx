@@ -155,7 +155,7 @@ export default function InteractiveLiveModal({
   const rightHostImage = (hosts.keke && HOST_IMAGES[hosts.keke.id as keyof typeof HOST_IMAGES]) || kekeImage;
   const hostNames = `${luluShortName}和${kekeShortName}`;
   const liveGroundingRules = `这是一个浏览器内的 AI 主题聊天室脚本，目前没有真实弹幕、在线观众消息或外部事实输入。不得编造观众用户名、弹幕内容、观众经历、实时观看人数、点赞量或“大家正在刷屏”等现场反应；不得把${hostNames}虚构的过去经历说成已被系统证实的真实事实。需要举例时必须明确说“假设一个虚构例子”，并控制在简短口播范围内。`;
-  const liveAudienceRules = '你是在面对聊天室里的观众说话，不是在和另一位成员私聊。每段台词必须让观众单独看也能理解，优先回应主题或用户刚刚提出的问题。默认不要使用 @、不要向另一位成员提问、不要把结尾写成等待对方接招；只有确实需要对方补充时才自然提及一次，而且不要连续两段都点名。';
+  const liveAudienceRules = '你是在面对聊天室里的观众说话，不是在和另一位成员私聊。每段台词必须让观众单独看也能理解。接着上一位成员发言时，必须先回应上一段中的一个具体细节（不要只复述主题），再在同一个子话题内补充一个不同角度，最后把话题落回观众。这里的“新角度”只能是对同一件事的反应、对比、追问或延伸，不是立刻更换主题；当前子话题至少连续推进几轮，除非用户明确提出新问题或原话题已经自然收束。不要每段都另起一个无关的完整故事或例子；只有确实有助于说明时才使用简短的假设性例子，并明确它是虚构的。默认不要使用 @、不要向另一位成员提问、不要把结尾写成等待对方接招；只有确实需要对方补充时才自然提及一次。';
 
   const generateTurn = async (agent: Agent, prompt: string, persistUserMessage: boolean, contextEvents = events, replyTo?: string) => {
     setBusy(true);
@@ -205,7 +205,9 @@ export default function InteractiveLiveModal({
   const handoff = async () => {
     if (busy || status !== 'live') return;
     const hostName = nextHostShortName;
-    await generateTurn(nextHost, `${liveGroundingRules}\n${liveAudienceRules}\n你正在参与只有${hostNames}的 AI 主题聊天室。主题是“${topic.trim()}”。用户点击了“${nextHostShortName}接话”，所以现在轮到你面向观众继续说，不代表你必须向另一位成员传话。保持${hostName}自己的语气和风格；上一位成员的内容是已发生的对话，不要重复整段或重新回答已经处理过的问题。不要声称收到了弹幕、看到了观众反应或记得未经提供的真实经历。可以进行轻松的虚构玩笑，但必须让它听起来像当场编的段子。只输出要对观众说的话。`, false);
+    const previousTurn = agentTurns[agentTurns.length - 1];
+    const previousSummary = previousTurn ? compactLiveContent(previousTurn.content, 700) : '暂无上一段台词';
+    await generateTurn(nextHost, `${liveGroundingRules}\n${liveAudienceRules}\n你正在参与只有${hostNames}的 AI 主题聊天室。主题是“${topic.trim()}”。用户点击了“${nextHostShortName}接话”，所以现在轮到你面向观众继续说，不代表你必须向另一位成员传话。保持${hostName}自己的语气和风格。上一位成员刚才的台词如下：\n“${previousSummary}”\n请先针对这段台词中的一个明确细节作出自然回应，再围绕同一个子话题推进一个观点、追问或轻松转折；不要突然引入全新的主题，也不要重复上一段的结论。最后用一句面向观众的开放式话题收束，但不要虚构弹幕或观众反应。不要声称收到了弹幕、看到了观众反应或记得未经提供的真实经历。只输出要对观众说的话。`, false);
   };
 
   const askQuestion = async () => {
