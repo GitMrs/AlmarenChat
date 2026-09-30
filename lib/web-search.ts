@@ -31,6 +31,30 @@ const DDG_TIME_RANGE: Record<SearchTimeRange, SearchTimeType> = {
   year: SearchTimeType.YEAR,
 };
 
+export function buildWebSearchQuery(
+  currentQuery: string,
+  history: Array<{ role?: string; content?: string }> = [],
+  maxHistoryMessages = 6
+) {
+  const query = String(currentQuery || '').trim();
+  const historyItems = Array.isArray(history) ? history : [];
+  const last = historyItems.at(-1);
+  const historyWithoutCurrent = last?.role === 'user' && String(last.content || '').trim() === query
+    ? historyItems.slice(0, -1)
+    : historyItems;
+  const context = historyWithoutCurrent
+    .slice(-maxHistoryMessages)
+    .map((item) => {
+      const content = String(item.content || '').trim();
+      if (!content) return '';
+      return `${item.role === 'user' ? '用户' : '助手'}：${content.slice(0, 800)}`;
+    })
+    .filter(Boolean)
+    .join('\n');
+
+  return (context ? `${context}\n用户当前问题：${query}` : query).slice(-4_000);
+}
+
 export function detectWebSearchIntent(query: string): SearchIntent {
   const text = String(query || '');
   const liveData = /(天气|气温|温度|空气质量|股价|股票价格|汇率|现价|实时价格|weather|temperature|air quality|stock price|exchange rate|live price)/i.test(text);

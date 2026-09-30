@@ -3,7 +3,8 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
-import { buildWebSearchContext } from '@/lib/web-search';
+import { buildWebSearchContext, buildWebSearchQuery } from '@/lib/web-search';
+import { buildWebpageContext } from '@/lib/fetch-webpage';
 import { formatKnowledgeContext, getKnowledgeHits } from '@/lib/knowledge';
 import { createModelClient, resolveModelName } from '@/lib/model-client';
 import { reserveChatQuota } from '@/lib/chat-quota';
@@ -218,8 +219,13 @@ export async function POST(request: Request) {
       }
     }
     if (webSearchEnabled) {
-      const webSearchContext = await buildWebSearchContext(textMessage, userSettings.tavilyApiKey);
+      const webSearchContext = await Promise.race([
+        buildWebSearchContext(buildWebSearchQuery(textMessage, sourceHistory), userSettings.tavilyApiKey),
+        new Promise<string>((_, reject) => setTimeout(() => reject(new Error('联网搜索超时（20秒）')), 20_000)),
+      ]);
       finalContext = [finalContext, webSearchContext].filter(Boolean).join('\n\n');
+      const webpageContext = await buildWebpageContext(textMessage);
+      finalContext = [finalContext, webpageContext].filter(Boolean).join('\n\n');
     }
 
     if (finalContext) openaiMessages.unshift({ role: 'system', content: finalContext });
@@ -264,24 +270,29 @@ export async function POST(request: Request) {
     const encoder = new TextEncoder();
     const readable = new ReadableStream({
       async start(controller) {
-        for await (const chunk of stream) {
-          const text = chunk.choices[0]?.delta?.content;
-          if (text) {
-            fullContent += text;
-            controller.enqueue(encoder.encode(text));
+        try {
+          for await (const chunk of stream) {
+            const choice = chunk.choices[0];
+            const text = choice?.delta?.content;
+            if (text) {
+              fullContent += text;
+              controller.enqueue(encoder.encode(text));
+            }
           }
-        }
-        controller.close();
+          controller.close();
 
-        // Persist assistant message after stream completes
-        if (resolvedConversationId && fullContent) {
-          await prisma.message.create({
-            data: { conversationId: resolvedConversationId, role: 'assistant', content: fullContent },
-          });
-          await prisma.conversation.update({
-            where: { id: resolvedConversationId },
-            data: { updatedAt: new Date() },
-          });
+          // Persist assistant message after stream completes
+          if (resolvedConversationId && fullContent) {
+            await prisma.message.create({
+              data: { conversationId: resolvedConversationId, role: 'assistant', content: fullContent },
+            });
+            await prisma.conversation.update({
+              where: { id: resolvedConversationId },
+              data: { updatedAt: new Date() },
+            });
+          }
+        } catch (error) {
+          controller.error(error);
         }
       },
     });

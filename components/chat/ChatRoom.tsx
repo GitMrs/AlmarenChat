@@ -262,7 +262,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
             forceScrollToBottomRef.current = true;
             setHasMoreMessages(Boolean(hasMore));
             setMessages(
-              existingMessages.map((msg: any) => ({
+              existingMessages.filter((msg: any) => !(msg.role === 'assistant' && !String(msg.content || '').trim())).map((msg: any) => ({
                 id: msg.id,
                 role: msg.role,
                 content: msg.content,
@@ -481,7 +481,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
   const syncConversationMessages = async (id: string, localPendingMessages: ChatMessage[] = []) => {
     const { messages: latestMessages, hasMore } = await conversationsApi.getMessages(id, { limit: MESSAGE_PAGE_SIZE });
     setHasMoreMessages(Boolean(hasMore));
-    const serverMessages = latestMessages.map(toChatMessage);
+    const serverMessages = latestMessages.filter((message: any) => !(message.role === 'assistant' && !String(message.content || '').trim())).map(toChatMessage);
     const serverMessageKeys = new Set(
       serverMessages.map((message) => `${message.role}|${message.content}|${message.attachments?.map((attachment) => attachment.url).join(',') || ''}`)
     );
@@ -798,6 +798,10 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
         const chunk = decoder.decode(value, { stream: true });
         fullContent += chunk;
         setStreamingContent(fullContent);
+      }
+
+      if (!fullContent.trim()) {
+        throw new Error('模型没有返回可展示的正文');
       }
 
       const assistantMessage: ChatMessage = {

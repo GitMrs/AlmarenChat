@@ -3,7 +3,8 @@ import { NextResponse } from 'next/server';
 import prisma from '@/app/api/_lib/db';
 import { reserveChatQuota } from '@/lib/chat-quota';
 import { createModelClient, resolveModelName } from '@/lib/model-client';
-import { buildWebSearchContext } from '@/lib/web-search';
+import { buildWebSearchContext, buildWebSearchQuery } from '@/lib/web-search';
+import { buildWebpageContext } from '@/lib/fetch-webpage';
 import { buildAssistantActivityContext, buildAssistantPlatformContext } from '@/lib/personal-assistant/platform-context';
 import { buildPersonalAssistantPrompt } from '@/lib/personal-assistant/prompt-builder';
 import { ensurePersonalAssistant } from '@/lib/personal-assistant/profile';
@@ -121,7 +122,7 @@ export async function POST(request: Request) {
       tasks: profile.includeTaskContext,
       chats: profile.includeChatContext,
     };
-    const [memoryContext, memories, platformContext, activityContext, webContext] = await Promise.all([
+    const [memoryContext, memories, platformContext, activityContext] = await Promise.all([
       loadAssistantMemoryContext({
         userId,
         conversationId: binding.conversationId,
@@ -137,8 +138,11 @@ export async function POST(request: Request) {
       }),
       buildAssistantPlatformContext(userId, contextSources),
       buildAssistantActivityContext(userId, message, contextSources),
-      webSearchEnabled ? buildWebSearchContext(message, userSettings.tavilyApiKey) : Promise.resolve(null),
     ]);
+    const webContext = webSearchEnabled
+      ? await buildWebSearchContext(buildWebSearchQuery(message, memoryContext.history), userSettings.tavilyApiKey)
+      : null;
+    const webpageContext = webSearchEnabled ? await buildWebpageContext(message) : null;
 
     const systemPrompt = [
       buildPersonalAssistantPrompt({
@@ -150,7 +154,8 @@ export async function POST(request: Request) {
         webEnabled: webSearchEnabled,
         experienceContext: memoryContext.experienceContext,
       }),
-      webContext ? `本轮联网结果：\n${webContext}` : '',
+      webContext ? `本轮联网搜索结果：\n${webContext}` : '',
+      webpageContext ? `本轮直接网页/JSON 结果：\n${webpageContext}` : '',
       '【当前渠道】：你正在 QQ 私聊中回复用户。QQ 与网页共用同一个主聊天上下文；不要提供站内相对链接，可以使用 QQ 支持的标准 Markdown，但避免 HTML 和复杂表格，回答保持适合即时消息阅读。长期记忆、任务和提醒也与网页共享。用户要求提醒时不要声称已经创建，系统会在回复末尾附加真实创建结果。',
     ].filter(Boolean).join('\n\n');
     const compressedHistory = compressConversationContext(
