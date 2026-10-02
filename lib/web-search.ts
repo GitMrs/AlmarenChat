@@ -191,7 +191,7 @@ ${answer}Search results:
 ${sources}`.slice(0, MAX_CONTEXT_LENGTH);
 }
 
-export async function buildWebSearchContext(query: string, apiKey?: string | null, timeoutMs = 20_000) {
+export async function buildWebSearchContext(query: string, apiKey?: string | null, timeoutMs = 60_000) {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([

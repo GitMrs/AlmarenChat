@@ -154,14 +154,15 @@ export function formatMembersContext(agents: ResolvedSpaceAgent[], targetAgent: 
   const otherMemberNames = otherMembers.map((agent) => {
     const shortName = agent.name.split(/[·•\-_(（]/)[0].trim();
     return shortName && shortName !== agent.name && shortNameCounts.get(shortName) === 1
-      ? `「${agent.name}」（可 @${shortName}）`
+      ? `「${agent.name}」（呼叫名：${shortName}）`
       : `「${agent.name}」`;
   });
 
   const mentionGuidance = otherMembers.length > 0
-    ? `2. 【群聊 @ 联动机制】：
+    ? `2. 【伙伴称呼与 @ 协作规范】：
    - 当前在场的其他伙伴有：${otherMemberNames.join('、')}。
-   - 只有在你明确希望另一位伙伴接着发言时，才能在正文中使用 @ 对方；被你 @ 的伙伴会自动收到接力棒接话回应。普通提到对方姓名时不要使用 @。
+   - 【日常闲聊场景】：提及、接梗、玩笑或回应在场伙伴时，直接称呼其名字或昵称（如“可可”、“璐璐”），【严禁在正文中使用 @ 符号】，保持人声口语自然，避免机械符号破坏阅读与语音朗读体验。全员轮流发言或闲聊讨论时，已由系统有序流转，切勿使用 @。
+   - 【工作协作与专业补充场景】：当你在分析、工作或探讨方案时，如果觉得当前问题超出了自己的专业领域，或需要特定专长的伙伴进一步补充、验证、提供专业支持，且希望系统自动呼叫对方接话时，才在正文中明确使用「@伙伴名」（例如：“关于这部分的战术风险，请 @诺克斯 补充评估”）。
    - 【极其重要】：你只能 @ 上述【实际在场】的伙伴！如果群里没有某人，绝对不要 @ 任何不在当前群名单中的角色（禁止虚空喊话）。不要 @ 你自己。`
     : `2. 【单聊/无其他在场成员】：
    - 当前空间中除你之外没有其他伙伴在场，这是你与用户的单独对话。

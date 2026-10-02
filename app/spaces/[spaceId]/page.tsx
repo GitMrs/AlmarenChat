@@ -1738,15 +1738,19 @@ export default function SpaceDetailPage() {
         }
       }
 
-      const [messageResult, fileResult, relayResult] = await Promise.all([
+      const [messageResult, fileResult, relayResult, discussionResult, runResult] = await Promise.all([
         spacesApi.messages(spaceId, { limit: 60 }),
         (isPiSpace || workspaceFilesChanged > 0) ? spacesApi.files(spaceId) : Promise.resolve(null),
         spacesApi.relays(spaceId),
+        spacesApi.discussions(spaceId),
+        spacesApi.runs(spaceId),
         refreshSpace(),
       ]);
       setMessages(messageResult.messages);
       if (fileResult) setFiles(fileResult.files);
       setRelays(relayResult.relays);
+      setDiscussions(discussionResult.discussions);
+      setRuns(runResult.runs);
       if (requestImageGeneration) setImageGenerationMode(false);
       if (streamFailure) setError(streamFailure);
     } catch (err: any) {
