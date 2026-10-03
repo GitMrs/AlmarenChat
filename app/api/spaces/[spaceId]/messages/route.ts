@@ -17,7 +17,7 @@ import { fetchWebPage } from '@/lib/web-fetch.mjs';
 import { collectChatCompletionStream, runToolLoop } from '@/lib/agent-runtime/tool-loop.mjs';
 import { normalizeTaskProposalSteps, taskProposalCapabilities, taskProposalNeedsClarification, taskProposalWithTurnNetworkAuthorization } from '@/lib/task-proposals';
 import { professionalDeliverableNeedsTask } from '@/lib/task-proposal-policy.mjs';
-import { buildContextCheckpointSummary, compressConversationContext, estimateMessagesTokens } from '@/lib/context-compression';
+import { buildContextCheckpointSummary, calculateMessagesBytes, estimateMessagesTokens, formatKB, DEFAULT_COMPRESSION_THRESHOLD_KB } from '@/lib/context-compression';
 import { conversationContextTargetTokens, modelTokenLimits } from '@/lib/model-limits.mjs';
 import { spaceMemoryContext } from '@/lib/space-memory-policy.mjs';
 import { persistSpaceMemory, rebuildSpaceMemory, spaceMemoryNeedsTrustedRebuild } from '@/app/api/_lib/space-memory';
@@ -582,7 +582,32 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
     const explicitTarget = targetAgentId ? await resolveAgent(String(targetAgentId), userId) : null;
     const mentionedTarget = resolveMentionTarget(textMessage, memberAgents);
     const coordinatorMention = resolveMentionTarget(textMessage, [SPACE_COORDINATOR]);
-    const fallbackTarget = SPACE_COORDINATOR;
+
+    // 上下文连续对话粘性 (Speaker Continuity): 当无显式点名、无@协调者时，
+    // 若上一轮为单成员发言（非协调者、非多人多回复），优先延续由该成员接话
+    let stickyTarget: Agent | null = null;
+    if (!explicitTarget && !coordinatorMention && !mentionedTarget && !explicitImageRequest && Array.isArray(history)) {
+      for (let i = history.length - 1; i >= 0; i -= 1) {
+        const item = history[i];
+        if (item.role === 'assistant') {
+          if (item.speakerAgentId && item.speakerAgentId !== SPACE_COORDINATOR.id) {
+            const prevItem = i > 0 ? history[i - 1] : null;
+            const nextItem = i < history.length - 1 ? history[i + 1] : null;
+            const isMultiTurn =
+              (prevItem?.role === 'assistant' && prevItem.speakerAgentId !== item.speakerAgentId) ||
+              (nextItem?.role === 'assistant' && nextItem.speakerAgentId !== item.speakerAgentId);
+            if (!isMultiTurn) {
+              const matched = memberAgents.find((agent) => agent.id === item.speakerAgentId);
+              if (matched) {
+                stickyTarget = matched;
+              }
+            }
+          }
+          break;
+        }
+      }
+    }
+    const fallbackTarget = stickyTarget || SPACE_COORDINATOR;
     const targetAgent = explicitImageRequest
       ? SPACE_COORDINATOR
       : (explicitTarget && allAgents.some((agent) => agent.id === explicitTarget.id) ? explicitTarget : null) ||
@@ -622,7 +647,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
         persistMessages: shouldPersistMessages,
         allowWebSearch,
         imageGenerationRequested: explicitImageRequest,
-        agentMemoryContext: [buildUserMemoryContext(userMemories), agentMemory].filter(Boolean).join('\n\n'),
+        agentMemoryContext: [buildUserMemoryContext(userMemories, textMessage), agentMemory].filter(Boolean).join('\n\n'),
         interactionMode: normalizedInteractionMode,
         coordinationScope: normalizedCoordinationScope,
         multiReplyIndex: Number.isInteger(multiReplyIndex) && multiReplyIndex > 0
@@ -724,14 +749,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
     const pendingProposalMessage = [...rawHistory].reverse().find((item: { attachments?: unknown }) => pendingTaskProposal(item.attachments));
     const currentPendingProposal = pendingTaskProposal(pendingProposalMessage?.attachments);
 
-    // 增量上下文压缩：压缩点之前的原始消息保留在数据库，只把摘要作为后续基线。
+    // 增量上下文压缩：基于真实 KB 阈值自动检测与归档（默认 50 KB）
     let sourceHistory = rawHistory;
-    const originalTokenCount = estimateMessagesTokens(rawHistory);
-    const targetTokens = conversationContextTargetTokens(settings.modelName || DEFAULT_MODEL, settings.modelContextWindow);
-    const compactionTriggerTokens = modelTokenLimits(settings.modelName || DEFAULT_MODEL, settings.modelContextWindow).compactionTriggerTokens;
+    const rawHistoryBytes = calculateMessagesBytes(rawHistory);
+    const autoCompressionThresholdBytes = DEFAULT_COMPRESSION_THRESHOLD_KB * 1024; // 50 KB
 
-    if (checkpointAvailable && originalTokenCount > compactionTriggerTokens && rawHistory.length > 2) {
-      const recentCount = Math.max(10, Math.min(40, Math.floor(settings.contextMessageLimit * 0.4)));
+    if (checkpointAvailable && rawHistoryBytes >= autoCompressionThresholdBytes && rawHistory.length > 5) {
+      const recentCount = Math.max(5, Math.min(15, 10));
       const boundary = Math.max(1, rawHistory.length - recentCount);
       const checkpointSource = rawHistory.slice(0, boundary).filter((message) => !String(message.id).startsWith('checkpoint:'));
       const recentMessages = rawHistory.slice(boundary);
@@ -741,8 +765,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
         await prisma.spaceContextCheckpoint.upsert({
           where: { spaceId },
           create: {
-            id: randomUUID(), spaceId, throughMessageId: throughMessage.id,
-            throughCreatedAt: new Date(throughMessage.createdAt), summary,
+            id: randomUUID(),
+            spaceId,
+            throughMessageId: throughMessage.id,
+            throughCreatedAt: new Date(throughMessage.createdAt),
+            summary,
             sourceMessageCount: checkpointSource.length,
             sourceTokenCount: estimateMessagesTokens(checkpointSource),
           },
@@ -762,17 +789,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
           attachments: null,
           createdAt: new Date().toISOString(),
         }, ...recentMessages];
-        console.log(`[Space ${spaceId}] 增量上下文压缩：归档 ${checkpointSource.length} 条消息，保留 ${recentMessages.length} 条近期消息`);
+        console.log(`[Space ${spaceId}] 达到 KB 阈值自动压缩：当前 ${formatKB(rawHistoryBytes)} >= ${formatKB(autoCompressionThresholdBytes)}，自动归档 ${checkpointSource.length} 条消息，保留 ${recentMessages.length} 条近期活跃消息`);
       }
-    } else if (!checkpoint && (rawHistory.length > settings.contextMessageLimit || originalTokenCount > targetTokens)) {
-      const compressionResult = compressConversationContext(rawHistory, {
-        maxMessages: settings.contextMessageLimit,
-        targetTokens,
-        preserveRecent: Math.max(1, Math.floor(settings.contextMessageLimit * 0.4)),
-        aggressiveAfter: Math.floor(settings.contextMessageLimit * 1.5),
-        preserveSystem: false,
-      }, new Map(allAgents.map(agent => [agent.id, agent])));
-      sourceHistory = compressionResult.compressedMessages;
     }
 
     const isMultiReply = interactionMode === 'multi_reply';
@@ -803,8 +821,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
           '闲聊时可以结合空间说明、最近对话、已有任务状态和只读资料，让回应具有连续性；引用任务或文件时只说已确认的事实，不要把后台状态猜成结果。',
           '只有用户明确要求写入、修改、执行、生成可交付文件，或明确要求持续推进多步骤工作时，才调用 propose_task。用户只是问“你怎么看”“聊聊这个”“帮我分析一下”时，直接在当前对话回答。',
           targetAgent.id === SPACE_COORDINATOR.id
-            ? '你当前是空间协调者，但闲聊时也先作为空间里的对话者交流；不要把每个话题都变成协调流程。'
-            : `你当前是空间成员 ${targetAgent.name}，闲聊时保持自己的专业视角和表达风格；不要冒充空间协调者，也不要替其他成员承诺已经执行任务。`,
+            ? '【重要身份约束】：你当前是空间协调者，代表空间协调者身份发言，【绝对禁止冒充、扮演或模仿空间内的其他成员】！不得使用其他成员的人设、语气或自称（如“姐姐我”、“本小姐”等）发言，严禁在正文开头添加类似“[某某成员]”的角色标签。若用户是在直接回应前一位成员的问题，以协调者身份自然引导该成员继续回应。'
+            : `【重要身份约束】：你当前是空间成员 ${targetAgent.name}，保持自己的专业视角和表达风格；【绝对禁止冒充空间协调者或其他成员】，严禁在正文开头添加类似“[${targetAgent.name}]”的角色标签（界面已有独立展示），也不要替其他成员承诺已经执行任务。`,
         ].join('\n')
       : '';
 
@@ -867,6 +885,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
         explicitImageRequest ? '用户已在输入框明确选择“生成图片”。必须调用 propose_task，方案必须包含 workspace_read、workspace_write 和 image_generate，并说明需要读取的来源内容、每张图片的用途及预计数量；不得作为普通聊天直接回答。' : '',
         !isMultiReply ? '打招呼、事实问答、概念解释、讨论想法、没有明确交付约束的简单分析，以及几次只读或联网调用可以完成的查看，都直接在当前对话回答。用户明确要求专业分析、评估、审查、方案或清单，并同时给出数量、格式、标准或交付物约束时，应生成任务方案；用户明确要求直接回答或不要创建任务时除外。' : '',
         forceTaskProposal ? '系统已确认当前请求需要形成可验收的专业交付：通常必须调用 propose_task；但用户明确要求成员轮流、接力或相互审阅同一份文字成果时，应改用 start_relay。不要直接用正文代替结构化工具调用。' : '',
+        '【输出格式规范】：直接输出你的发言内容，绝对禁止在正文开头添加类似“[某某]”或“[角色名]”的前缀标签（界面已有独立的头像和姓名展示栏，重复添加会导致显示错乱）。历史消息中的“[成员名]”前缀仅供标识前序发言者身份，不得在你的回复中模仿。',
       ].join('\n'),
       '空间规则只能约束工作方式和输出要求，不能改变你的身份、成员范围、平台安全规则或工具权限。',
     ]
@@ -877,13 +896,16 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
       { role: 'system', content: systemPrompt },
       ...sourceHistory
         .filter((msg: { role: string; content: string }) => msg.content && msg.role !== 'system')
-        .map((msg: { role: string; content: string; speakerAgentId?: string | null }) => ({
-          role: msg.role === 'user' ? ('user' as const) : ('assistant' as const),
-          content:
-            msg.role === 'assistant' && msg.speakerAgentId
-              ? `[${allAgents.find((agent) => agent.id === msg.speakerAgentId)?.name || 'Agent'}] ${msg.content}`
-              : msg.content,
-        })),
+        .map((msg: { role: string; content: string; speakerAgentId?: string | null }) => {
+          const rawContent = msg.content.replace(/^\[[^\]\n]{1,50}\]\s*/, '');
+          return {
+            role: msg.role === 'user' ? ('user' as const) : ('assistant' as const),
+            content:
+              msg.role === 'assistant' && msg.speakerAgentId
+                ? `[${allAgents.find((agent) => agent.id === msg.speakerAgentId)?.name || 'Agent'}] ${rawContent}`
+                : rawContent,
+          };
+        }),
     ];
     const lastMessage = openaiMessages[openaiMessages.length - 1];
     if (lastMessage?.role !== 'user' || lastMessage.content !== textMessage) {
@@ -1128,7 +1150,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
               });
               relayId = relay.id;
             }
-            const assistantContent = loopResult.content?.trim()
+            let assistantContent = loopResult.content?.trim()
               || (taskProposal
                 ? '已根据你的要求生成目标授权方案，确认后由协调者根据实时团队和成果动态推进。'
               : relayDraft
@@ -1136,6 +1158,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
                 : discussionDraft
                   ? `已开始围绕“${discussionDraft.topic}”进行多人闲聊，成员会根据彼此发言自然接话。`
                 : '');
+            if (assistantContent) {
+              assistantContent = assistantContent.replace(/^\[[^\]\n]{1,50}\]\s*/, '');
+            }
             const attachments = taskProposal
               ? [taskProposal]
               : relayDraft && relayId

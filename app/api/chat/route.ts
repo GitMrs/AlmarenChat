@@ -196,7 +196,7 @@ export async function POST(request: Request) {
       loadAgentMemoryContext({ userId, agentId, query: textMessage }),
       loadUserMemoryItems(userId, agentId),
     ]);
-    let finalContext = [currentTimeContext(), context, buildUserMemoryContext(userMemories), employeeMemory].filter(Boolean).join('\n\n');
+    let finalContext = [currentTimeContext(), context, buildUserMemoryContext(userMemories, textMessage), employeeMemory].filter(Boolean).join('\n\n');
     if (knowledgeEnabled && agentId && textMessage.trim()) {
       const hits = await getKnowledgeHits(agentId, textMessage);
       if (hits.length > 0) {

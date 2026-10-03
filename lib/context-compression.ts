@@ -42,6 +42,31 @@ export const DEFAULT_COMPRESSION_CONFIG: CompressionConfig = {
   preserveSystem: true,
 };
 
+export const DEFAULT_COMPRESSION_THRESHOLD_KB = 50;
+
+/** Calculate bytes of text content using UTF-8 (works in both Node.js and browser) */
+export function calculateTextBytes(text: string | null | undefined): number {
+  if (!text) return 0;
+  if (typeof Buffer !== 'undefined') {
+    return Buffer.byteLength(text, 'utf8');
+  }
+  return new TextEncoder().encode(text).length;
+}
+
+export function calculateMessageBytes(message: Pick<CompressionMessage, 'content'>): number {
+  return calculateTextBytes(message.content);
+}
+
+export function calculateMessagesBytes(messages: Pick<CompressionMessage, 'content'>[]): number {
+  return messages.reduce((total, message) => total + calculateMessageBytes(message), 0);
+}
+
+export function formatKB(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 KB';
+  const kb = bytes / 1024;
+  return `${kb >= 10 ? Math.round(kb) : kb.toFixed(1)} KB`;
+}
+
 interface MessageScore {
   messageId: string;
   score: number;

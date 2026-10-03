@@ -1,7 +1,7 @@
 'use client';
 
-import { ArrowLeft, ChevronDown, ChevronUp, MessageSquarePlus, SlidersHorizontal, X } from 'lucide-react';
-import { useState } from 'react';
+import { ArrowLeft, ChevronDown, ChevronUp, MessageSquarePlus, SlidersHorizontal, Sparkles, X } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import Avatar from '@/components/shared/Avatar';
@@ -120,6 +120,13 @@ export default function AgentDetailsPanel({
   const [memoryLoading, setMemoryLoading] = useState(false);
   const [newMemory, setNewMemory] = useState('');
 
+  useEffect(() => {
+    if (!isLoggedIn || !displayAgent?.id) return;
+    assistantApi.get(displayAgent.id).then((res) => {
+      setAgentMemories((res.memories || []).filter((m) => m.agentId === displayAgent.id));
+    }).catch(() => {});
+  }, [displayAgent?.id, isLoggedIn]);
+
   const openMemoryDrawer = async () => {
     setMemoryDrawerOpen(true);
     setMemoryLoading(true);
@@ -202,6 +209,32 @@ export default function AgentDetailsPanel({
         <ChevronDown size={15} className="text-slate-400" />
       </button>
   );
+
+  const memoryWidget = (
+    <button
+      type="button"
+      onClick={openMemoryDrawer}
+      className="mt-3 flex w-full items-center justify-between rounded-2xl border border-amber-200/80 bg-gradient-to-r from-amber-50/70 to-orange-50/40 p-2.5 text-left transition hover:border-amber-300 hover:shadow-xs group cursor-pointer"
+      title="查看与管理这个 Agent 掌握的专属认知"
+    >
+      <div className="flex min-w-0 items-center gap-2.5">
+        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-amber-500 text-white shadow-xs">
+          <Sparkles size={14} />
+        </div>
+        <div className="min-w-0">
+          <div className="text-xs font-black text-slate-900 group-hover:text-amber-950">
+            Agent 记忆档案
+          </div>
+          <div className="text-[11px] font-semibold text-slate-500 truncate">
+            {agentMemories.length > 0 ? `已建立 ${agentMemories.length} 条专属认知` : '点击查看或记录新偏好'}
+          </div>
+        </div>
+      </div>
+      <span className="flex shrink-0 items-center rounded-full bg-white px-2 py-0.5 text-[11px] font-black text-amber-700 border border-amber-200/60 shadow-2xs">
+        {agentMemories.length}
+      </span>
+    </button>
+  );
   const conversationDrawer = conversationDrawerOpen && (
         <div className="fixed inset-0 z-[60] bg-slate-950/25" onClick={() => setConversationDrawerOpen(false)}>
           <div className="absolute inset-y-0 left-0 flex w-[min(360px,90vw)] flex-col bg-white p-5 shadow-2xl" onClick={(event) => event.stopPropagation()}>
@@ -243,7 +276,20 @@ export default function AgentDetailsPanel({
   const memoryDrawer = memoryDrawerOpen && (
     <div className="fixed inset-0 z-[60] bg-slate-950/25" onClick={() => setMemoryDrawerOpen(false)}>
       <div className="absolute inset-y-0 right-0 flex w-[min(420px,92vw)] flex-col bg-white p-5 shadow-2xl" onClick={(event) => event.stopPropagation()}>
-        <div className="flex items-center justify-between border-b border-black/[0.06] pb-4"><div><h2 className="text-lg font-black text-slate-950">{displayAgent.name}的长期记忆</h2><p className="mt-1 text-xs font-semibold text-slate-400">只属于这个 Agent</p></div><button type="button" onClick={() => setMemoryDrawerOpen(false)} className="rounded-full bg-[#fbfaf7] p-2 text-slate-500"><X size={18} /></button></div>
+        <div className="flex items-center justify-between border-b border-black/[0.06] pb-4">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-amber-500 text-white shadow-2xs">
+              <Sparkles size={16} />
+            </div>
+            <div>
+              <h2 className="text-lg font-black text-slate-950">{displayAgent.name}的记忆档案</h2>
+              <p className="mt-0.5 text-xs font-semibold text-slate-400">只属于当前 Agent，会在对话中智能唤醒</p>
+            </div>
+          </div>
+          <button type="button" onClick={() => setMemoryDrawerOpen(false)} className="rounded-full bg-[#fbfaf7] p-2 text-slate-500 hover:bg-slate-100 cursor-pointer">
+            <X size={18} />
+          </button>
+        </div>
         <div className="mt-4 flex gap-2"><input value={newMemory} onChange={(event) => setNewMemory(event.target.value)} placeholder="添加一条长期记忆" className="min-w-0 flex-1 rounded-xl border border-black/[0.08] px-3 py-2 text-sm outline-none" /><button type="button" onClick={addAgentMemory} className="rounded-xl bg-slate-950 px-3 py-2 text-xs font-black text-white">添加</button></div>
         <div className="mt-4 flex-1 space-y-5 overflow-y-auto">{memoryLoading && <p className="py-8 text-center text-sm font-semibold text-slate-400">加载中...</p>}{!memoryLoading && <><section><h3 className="mb-2 text-xs font-black text-slate-400">专属长期记忆</h3>{agentMemories.length === 0 ? <p className="py-4 text-center text-sm font-semibold text-slate-400">还没有专属长期记忆。</p> : <div className="space-y-2">{agentMemories.map((memory) => <div key={memory.id} className="rounded-xl border border-black/[0.06] bg-[#fbfaf7] p-3"><p className={memory.status === 'ACTIVE' ? 'text-sm leading-6 text-slate-700' : 'text-sm leading-6 text-slate-400 line-through'}>{memory.content}</p><div className="mt-2 flex gap-3 text-xs font-bold text-slate-400"><button type="button" onClick={() => renameAgentMemory(memory)}>修改</button><button type="button" onClick={() => toggleAgentMemory(memory)}>{memory.status === 'ACTIVE' ? '停用' : '启用'}</button><button type="button" onClick={() => deleteAgentMemory(memory)} className="text-red-400">删除</button></div></div>)}</div>}</section><section><h3 className="mb-2 text-xs font-black text-slate-400">工作经历</h3>{agentExperiences.length === 0 ? <p className="py-4 text-center text-sm font-semibold text-slate-400">还没有已完成的工作经历。</p> : <div className="space-y-2">{agentExperiences.map((experience) => <article key={experience.id} className="rounded-xl border border-black/[0.06] bg-[#fbfaf7] p-3"><p className="text-sm font-bold text-slate-700">{experience.title}</p><p className="mt-1 text-sm leading-6 text-slate-500">{experience.summary}</p><p className="mt-2 text-[11px] font-semibold text-slate-400">{new Date(experience.createdAt).toLocaleDateString('zh-CN')}</p></article>)}</div>}</section></>}</div>
       </div>
@@ -316,7 +362,10 @@ export default function AgentDetailsPanel({
         </div>
 
         <div className="mt-5 rounded-[28px] border border-black/[0.06] bg-white p-5 shadow-sm">
-          <div className="mb-5 border-b border-black/[0.06] pb-5">{conversationSwitcher}<button type="button" onClick={openMemoryDrawer} className="mt-3 w-full text-left text-xs font-black text-slate-700">管理这个 Agent 的长期记忆</button></div>
+          <div className="mb-5 border-b border-black/[0.06] pb-5">
+            {conversationSwitcher}
+            {memoryWidget}
+          </div>
           {isLoggedIn && (
             <ContextLimitControl
               value={contextMessageLimit}
@@ -352,12 +401,23 @@ export default function AgentDetailsPanel({
           <h1 className="truncate text-sm font-black text-slate-950">{displayAgent.name}</h1>
           <p className="text-xs font-medium text-slate-400">{displayAgent.category} · {displayAgent.tone}</p>
         </div>
-        <button
-          onClick={onOpenMobileDetails}
-          className="rounded-full border border-black/[0.06] bg-white px-3 py-2 text-xs font-black text-slate-600 shadow-sm"
-        >
-          详情
-        </button>
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={openMemoryDrawer}
+            className="inline-flex items-center gap-1 rounded-full border border-amber-200/80 bg-amber-50/80 px-2.5 py-1.5 text-xs font-black text-amber-800 shadow-2xs cursor-pointer"
+            title="查看与管理记忆档案"
+          >
+            <Sparkles size={12} className="text-amber-600 fill-amber-600" />
+            <span>{agentMemories.length}</span>
+          </button>
+          <button
+            onClick={onOpenMobileDetails}
+            className="rounded-full border border-black/[0.06] bg-white px-3 py-2 text-xs font-black text-slate-600 shadow-sm cursor-pointer"
+          >
+            详情
+          </button>
+        </div>
       </header>
 
       {mobileDetailsOpen && (
@@ -386,7 +446,10 @@ export default function AgentDetailsPanel({
                   onChange={onContextMessageLimitChange}
                 />
               )}
-              <div className="border-b border-black/[0.06] pb-4">{conversationSwitcher}<button type="button" onClick={openMemoryDrawer} className="mt-3 w-full text-left text-xs font-black text-slate-700">管理这个 Agent 的长期记忆</button></div>
+              <div className="border-b border-black/[0.06] pb-4">
+                {conversationSwitcher}
+                {memoryWidget}
+              </div>
               <p className="rounded-2xl bg-[#fbfaf7] p-4 text-sm leading-6 text-slate-600">
                 {displayAgent.description || '这个 Agent 会根据你的问题给出清晰、具体、可执行的帮助。'}
               </p>

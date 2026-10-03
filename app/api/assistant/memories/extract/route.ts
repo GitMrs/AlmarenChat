@@ -53,7 +53,7 @@ export async function POST(request: Request) {
       const conversationId = typeof body.conversationId === 'string' ? body.conversationId.trim() : '';
       const conversation = conversationId ? await prisma.conversation.findFirst({
         where: agentId
-          ? { id: conversationId, userId, kind: 'AGENT', agentId, agentMode: 'MAIN' }
+          ? { id: conversationId, userId, kind: 'AGENT', agentId }
           : { id: conversationId, userId, kind: 'PERSONAL_ASSISTANT', assistantMode: 'MAIN' },
         select: { id: true },
       }) : null;
@@ -81,7 +81,7 @@ export async function POST(request: Request) {
         },
       });
       if (!conversation) return NextResponse.json({ error: '会话不存在' }, { status: 404 });
-      if (agentId ? conversation.agentMode !== 'MAIN' : conversation.assistantMode !== 'MAIN') return NextResponse.json({ suggestions: [] });
+      if (!agentId && conversation.assistantMode !== 'MAIN') return NextResponse.json({ suggestions: [] });
 
       const messages = conversation.messages;
       if (messages.length < 2) return NextResponse.json({ suggestions: [] });

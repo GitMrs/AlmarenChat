@@ -36,7 +36,7 @@ import {
 import { isEditableSpaceFile, isPreviewableSpaceImage } from '@/lib/space-files';
 import { spaceAssetRoleLabel } from '@/lib/space-asset-policy.mjs';
 import { createClientId } from '@/lib/client-id';
-import { estimateMessagesTokens } from '@/lib/context-compression';
+
 import type { Agent, AgentRun, AgentRunEvent, AgentTask, SpaceActionRequest, SpaceAutomation, SpaceConnector, SpaceDiscussion, SpaceFile, SpaceLearning, SpaceLearningItem, SpaceMessage, SpaceMcpServer, SpaceOperationOutcome, SpaceOperationsSummary, SpacePiCoordinationRequest, SpacePiExecutionActivity, SpacePiExecutionNote, SpacePiSkillApproval, SpaceRelay, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal, SpaceWebhook, SpaceWork, SpaceWorkVersion } from '@/types';
 
 const FALLBACK_COLOR = '#4f46e5';
@@ -704,8 +704,7 @@ export default function SpaceDetailPage() {
   const selectedSkill = skills.find((skill) => skill.id === selectedSkillId) || null;
   const latestRun = runs[0] || null;
   const activeRun = runs.find((run) => ACTIVE_RUN_STATUSES.has(run.status)) || null;
-  const compressionTokenEstimate = useMemo(() => estimateMessagesTokens(messages), [messages]);
-  const shouldCheckCompression = messages.length >= 40 || compressionTokenEstimate >= 6000;
+  const shouldCheckCompression = Boolean(spaceId);
   const compressionRefreshKey = `${messages.length}:${messages.at(-1)?.id || ''}`;
   const latestDiscussion = discussions[0] || null;
   const activeDiscussion = discussions.find((discussion) => ['QUEUED', 'RUNNING', 'WAITING_RESEARCH', 'PAUSE_REQUESTED', 'PAUSED', 'CANCEL_REQUESTED'].includes(discussion.status)) || null;
@@ -1570,6 +1569,29 @@ export default function SpaceDetailPage() {
       if (isAllMembersRequested && memberAgents.length >= 2) {
         targets = memberAgents;
       }
+      // 上下文连续对话粘性 (Speaker Continuity): 当用户未指定对象、未呼叫协调者、未呼叫全员时，
+      // 如果上一轮是单个成员发言（非协调者、非多人广播、非讨论/接力总结），自动延续由该成员继续回应。
+      if (!coordinatorRequested && targets.length === 0 && !isAllMembersRequested) {
+        for (let i = currentHistory.length - 2; i >= 0; i -= 1) {
+          const item = currentHistory[i];
+          if (item.role === 'assistant') {
+            if (item.speakerAgentId && item.speakerAgentId !== coordinatorAgent.id) {
+              const prevItem = i > 0 ? currentHistory[i - 1] : null;
+              const nextItem = i < currentHistory.length - 2 ? currentHistory[i + 1] : null;
+              const isMultiTurn =
+                (prevItem?.role === 'assistant' && prevItem.speakerAgentId !== item.speakerAgentId) ||
+                (nextItem?.role === 'assistant' && nextItem.speakerAgentId !== item.speakerAgentId);
+              if (!isMultiTurn) {
+                const found = memberAgents.find((agent) => agent.id === item.speakerAgentId);
+                if (found) {
+                  targets = [found];
+                }
+              }
+            }
+            break;
+          }
+        }
+      }
       // 用户点名多个成员或请求全员响应时固定参与者；未点名或只点名一人时允许受控交接。
       const allowPeerMentionRelay = !coordinatorRequested && targets.length <= 1 && !isAllMembersRequested;
       const replyRequests: Array<{
@@ -1592,7 +1614,7 @@ export default function SpaceDetailPage() {
             imageGenerationRequested: false,
           }))
         : [{
-            target: null,
+            target: targets.length === 1 ? targets[0] : null,
             message: content,
             interactionMode: 'chat',
             skipPersistUserMessage: Boolean(options?.reuseLastUserMessage),

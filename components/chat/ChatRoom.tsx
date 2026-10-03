@@ -384,7 +384,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
   };
 
   const extractAgentMemorySuggestions = async (userMessage: string, assistantMessage: string, targetConversationId: string) => {
-    if (conversationMode !== 'MAIN' || !displayAgent?.id || !shouldExtractMemorySuggestion(userMessage)) return;
+    if (!displayAgent?.id || !shouldExtractMemorySuggestion(userMessage)) return;
     const payload = { mode: 'single' as const, userMessage, assistantMessage, conversationId: targetConversationId, agentId: displayAgent.id };
     let result;
     if (modelSource !== 'OLLAMA') {

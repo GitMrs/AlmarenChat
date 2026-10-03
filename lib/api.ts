@@ -693,7 +693,7 @@ export const spaces = {
 
     return res.json() as Promise<{ file: any }>;
   },
-  getCompressionStats: (id: string) =>
+  getCompressionStats: (id: string, thresholdKB?: number) =>
     request<{
       originalCount: number;
       originalTokens: number;
@@ -717,7 +717,7 @@ export const spaces = {
         compressedTokens: number;
       }>;
       lastCompressedAt: string | null;
-    }>(`/spaces/${id}/compression-stats`),
+    }>(`/spaces/${id}/compression-stats${thresholdKB ? `?thresholdKB=${thresholdKB}` : ''}`),
   createCheckpoint: (id: string, options?: { preserveRecent?: number }) =>
     request<{ success: boolean; checkpoint: any; archivedCount: number; preservedCount: number }>(
       `/spaces/${id}/compression-stats`,
