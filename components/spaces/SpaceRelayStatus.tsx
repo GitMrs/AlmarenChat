@@ -1,5 +1,6 @@
 'use client';
 
+import { memo } from 'react';
 import { ExternalLink, Loader2, Repeat2, RotateCcw, Square, X } from 'lucide-react';
 import type { Agent, SpaceRelay } from '@/types';
 import GomokuBoard from './GomokuBoard';
@@ -7,7 +8,7 @@ import { relayStagePolicy } from '@/lib/relay/stage-policy.mjs';
 
 const ACTIVE = new Set(['QUEUED', 'RUNNING', 'PAUSE_REQUESTED', 'WAITING_APPROVAL', 'PAUSED', 'CANCEL_REQUESTED']);
 
-export default function SpaceRelayStatus({ relay, agents, busy, onAction, onOpen, onDismiss }: {
+const SpaceRelayStatus = memo(function SpaceRelayStatus({ relay, agents, busy, onAction, onOpen, onDismiss }: {
   relay: SpaceRelay;
   agents: Agent[];
   busy: boolean;
@@ -96,4 +97,6 @@ export default function SpaceRelayStatus({ relay, agents, busy, onAction, onOpen
       </div>
     </div>
   );
-}
+});
+
+export default SpaceRelayStatus;

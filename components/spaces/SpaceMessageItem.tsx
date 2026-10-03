@@ -1,5 +1,6 @@
 'use client';
 
+import { memo } from 'react';
 import { Activity, BookOpen, Check, CheckCircle2, ChevronRight, Clock3, Code2, FileText, Globe2, Image as ImageIcon, ListTodo, Loader2, Repeat2, RotateCcw, Settings2, SkipForward, X, Pencil } from 'lucide-react';
 import MessageActions from '@/components/chat/MessageActions';
 import MessageBubbleFrame from '@/components/chat/MessageBubbleFrame';
@@ -378,7 +379,7 @@ function TaskProposal({
   );
 }
 
-export default function SpaceMessageItem({
+const SpaceMessageItem = memo(function SpaceMessageItem({
   message,
   speaker,
   fallbackColor,
@@ -526,4 +527,24 @@ export default function SpaceMessageItem({
       )}
     </MessageBubbleFrame>
   );
-}
+}, (prev, next) => {
+  return (
+    prev.message === next.message &&
+    prev.speaker === next.speaker &&
+    prev.fallbackColor === next.fallbackColor &&
+    prev.latestAssistantMessageId === next.latestAssistantMessageId &&
+    prev.copied === next.copied &&
+    prev.active === next.active &&
+    prev.speaking === next.speaking &&
+    prev.speakingLoading === next.speakingLoading &&
+    prev.run === next.run &&
+    prev.proposalBusy === next.proposalBusy &&
+    prev.proposalDisabled === next.proposalDisabled &&
+    prev.dispatchAction === next.dispatchAction &&
+    prev.reviewAction === next.reviewAction &&
+    prev.dispatchError === next.dispatchError &&
+    prev.reviewError === next.reviewError
+  );
+});
+
+export default SpaceMessageItem;

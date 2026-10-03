@@ -44,7 +44,8 @@ const promptMap: Record<string, string[]> = {
 const DEFAULT_CONTEXT_MESSAGE_LIMIT = 40;
 const MAX_CONTEXT_MESSAGE_LIMIT = 80;
 const MESSAGE_PAGE_SIZE = 30;
-const LARGE_PASTE_TEXT_LIMIT = 8000;
+const LARGE_PASTE_TEXT_LIMIT = 2000;
+const LARGE_PASTE_LINES_LIMIT = 30;
 
 function getLargeTextKind(text: string) {
   try {
@@ -561,7 +562,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
     const file = Array.from(event.clipboardData.files).find((item) => item.type.startsWith('image/'));
     if (!file) {
       const text = event.clipboardData.getData('text');
-      if (text.length <= LARGE_PASTE_TEXT_LIMIT) return;
+      if (text.length <= LARGE_PASTE_TEXT_LIMIT && text.split('\n').length <= LARGE_PASTE_LINES_LIMIT) return;
 
       event.preventDefault();
       pendingLargeTextRef.current = text;

@@ -48,6 +48,21 @@ const DEFAULT_COORDINATOR = {
   category: '协调者',
   description: '默认接收未 @ 的消息，负责理解需求和协调成员。',
 };
+const LARGE_PASTE_TEXT_LIMIT = 2000;
+const LARGE_PASTE_LINES_LIMIT = 30;
+
+function getLargeTextKind(text: string) {
+  const trimmed = text.trim();
+  if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+    try {
+      JSON.parse(trimmed);
+      return 'json' as const;
+    } catch {
+      return 'text' as const;
+    }
+  }
+  return 'text' as const;
+}
 
 const ACTIVE_RUN_STATUSES = new Set(['QUEUED', 'PLANNING', 'RUNNING', 'WAITING', 'WAITING_APPROVAL', 'SUMMARIZING', 'CANCEL_REQUESTED']);
 const RUN_STATUS_LABELS: Record<string, string> = {
@@ -559,6 +574,7 @@ export default function SpaceDetailPage() {
   const [needsLogin, setNeedsLogin] = useState(false);
   const [error, setError] = useState('');
   const [input, setInput] = useState('');
+  const [pendingLargeTextMeta, setPendingLargeTextMeta] = useState<{ chars: number; kind: 'json' | 'text' } | null>(null);
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
   const [imageGenerationMode, setImageGenerationMode] = useState(false);
   const [skills, setSkills] = useState<SpaceSkill[]>([]);
@@ -644,6 +660,9 @@ export default function SpaceDetailPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const skillZipInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const pendingLargeTextRef = useRef<string | null>(null);
+  const largeTextPasteGuardRef = useRef(false);
+  const ignoreInputUntilRef = useRef(0);
   const composerToolsRef = useRef<HTMLDivElement>(null);
   const wechatConnector = connectors.find((connector) => connector.provider === 'WECHAT_OFFICIAL_ACCOUNT') || null;
 
@@ -1453,6 +1472,7 @@ export default function SpaceDetailPage() {
   };
 
   const syncMentionFromCaret = (value: string, caret: number) => {
+    if (!value.includes('@') && !mentionMenuOpen) return;
     const token = activeMentionToken(value, caret);
     if (!token) {
       if (mentionRange) {
@@ -2447,9 +2467,42 @@ export default function SpaceDetailPage() {
     }
   };
 
+  const handlePaste = async (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const imageFile = Array.from(event.clipboardData.files).find((item) => item.type.startsWith('image/'));
+    if (imageFile) {
+      event.preventDefault();
+      if (!uploadingFile) {
+        await uploadFile(imageFile);
+      }
+      return;
+    }
+
+    const text = event.clipboardData.getData('text');
+    const shouldTreatAsLarge = text.length > LARGE_PASTE_TEXT_LIMIT || text.split('\n').length > LARGE_PASTE_LINES_LIMIT;
+    if (!shouldTreatAsLarge) return;
+
+    event.preventDefault();
+    pendingLargeTextRef.current = text;
+    largeTextPasteGuardRef.current = true;
+    ignoreInputUntilRef.current = Date.now() + 1000;
+    setPendingLargeTextMeta({ chars: text.length, kind: getLargeTextKind(text) });
+  };
+
   const send = () => {
     setMentionMenuOpen(false);
-    const content = input.trim();
+    const textTyped = input.trim();
+    const largeText = pendingLargeTextRef.current;
+    const content = largeText
+      ? (textTyped ? `${textTyped}\n\n${largeText}` : largeText)
+      : textTyped;
+
+    if (!content) return;
+
+    if (largeText) {
+      pendingLargeTextRef.current = null;
+      setPendingLargeTextMeta(null);
+    }
+
     const addSkill = /^\/skill\s+add\s+(\S+)\s*$/i.exec(content);
     if (addSkill) {
       setInput('');
@@ -4063,6 +4116,35 @@ export default function SpaceDetailPage() {
 
             <footer className="border-t border-black/[0.06] bg-white p-3 sm:p-4 lg:bg-[#fbfaf7] lg:px-10 lg:pb-4 lg:pt-3">
               <div className="mx-auto max-w-4xl">
+                {pendingLargeTextMeta && (
+                  <div className="mb-2 flex items-center justify-between gap-3 rounded-2xl border border-black/[0.06] bg-white px-3.5 py-2.5 shadow-sm">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-xs font-black tracking-wider text-slate-600">
+                        {pendingLargeTextMeta.kind === 'json' ? 'JSON' : 'TXT'}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-bold text-slate-800">
+                          {pendingLargeTextMeta.kind === 'json' ? '已添加 JSON 数据' : '已添加大段文本'}
+                        </p>
+                        <p className="text-xs font-semibold text-slate-400">
+                          {pendingLargeTextMeta.chars.toLocaleString('zh-CN')} 字符 · 发送时将随消息完整提交
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        pendingLargeTextRef.current = null;
+                        setPendingLargeTextMeta(null);
+                      }}
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                      aria-label="移除文件"
+                      title="移除"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                )}
                 <ComposerShell toolbar={(selectedSkill || imageGenerationMode) ? (
                   <div className="flex max-w-full flex-wrap items-center gap-2">
                     {selectedSkill && (
@@ -4247,12 +4329,33 @@ export default function SpaceDetailPage() {
                 <textarea
                   ref={textareaRef}
                   value={input}
+                  onPaste={handlePaste}
                   onChange={(event) => {
+                    if (largeTextPasteGuardRef.current) {
+                      largeTextPasteGuardRef.current = false;
+                      return;
+                    }
                     const value = event.target.value;
+                    if (Date.now() < ignoreInputUntilRef.current) {
+                      return;
+                    }
+                    if (value.length > LARGE_PASTE_TEXT_LIMIT || (value.length > 500 && value.split('\n').length > LARGE_PASTE_LINES_LIMIT)) {
+                      pendingLargeTextRef.current = value;
+                      ignoreInputUntilRef.current = Date.now() + 1000;
+                      setPendingLargeTextMeta({ chars: value.length, kind: getLargeTextKind(value) });
+                      setInput('');
+                      return;
+                    }
                     setInput(value);
-                    syncMentionFromCaret(value, event.target.selectionStart);
+                    if (mentionMenuOpen || value.includes('@')) {
+                      syncMentionFromCaret(value, event.target.selectionStart);
+                    }
                   }}
-                  onSelect={(event) => syncMentionFromCaret(event.currentTarget.value, event.currentTarget.selectionStart)}
+                  onSelect={(event) => {
+                    if (mentionMenuOpen || event.currentTarget.value.includes('@')) {
+                      syncMentionFromCaret(event.currentTarget.value, event.currentTarget.selectionStart);
+                    }
+                  }}
                   onKeyDown={(event) => {
                     if (event.nativeEvent.isComposing) return;
                     if (mentionMenuOpen) {
@@ -4305,7 +4408,7 @@ export default function SpaceDetailPage() {
                 ) : (
                   <button
                     onClick={send}
-                    disabled={!input.trim() || Boolean(activeRelay)}
+                    disabled={(!input.trim() && !pendingLargeTextMeta) || Boolean(activeRelay)}
                     className="mb-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-slate-950 text-white disabled:bg-slate-200 disabled:text-slate-400"
                   >
                     <Send size={17} />

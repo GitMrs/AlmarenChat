@@ -1,11 +1,12 @@
 'use client';
 
+import { memo } from 'react';
 import { Globe2, Loader2, MessagesSquare, Pause, Play, Square, X } from 'lucide-react';
 import type { Agent, SpaceDiscussion } from '@/types';
 
 const ACTIVE = new Set(['QUEUED', 'RUNNING', 'WAITING_RESEARCH', 'PAUSE_REQUESTED', 'PAUSED', 'CANCEL_REQUESTED']);
 
-export default function SpaceDiscussionStatus({
+const SpaceDiscussionStatus = memo(function SpaceDiscussionStatus({
   discussion,
   agents,
   busy,
@@ -110,4 +111,6 @@ export default function SpaceDiscussionStatus({
       </div>
     </div>
   );
-}
+});
+
+export default SpaceDiscussionStatus;
