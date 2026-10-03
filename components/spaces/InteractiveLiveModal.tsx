@@ -86,6 +86,7 @@ export default function InteractiveLiveModal({
   const [events, setEvents] = useState<LiveEvent[]>([]);
   const [selectedHostIds, setSelectedHostIds] = useState<[string, string]>(['', '']);
   const [selectedThemeId, setSelectedThemeId] = useState('warm');
+  const [nextTurnStyle, setNextTurnStyle] = useState<'long' | 'short'>('short');
   const [status, setStatus] = useState<'setup' | 'live' | 'paused' | 'ended'>('setup');
   const [busy, setBusy] = useState(false);
   const [question, setQuestion] = useState('');
@@ -123,11 +124,12 @@ export default function InteractiveLiveModal({
     try {
       const saved = localStorage.getItem(storageKey);
       if (!saved) return;
-      const parsed = JSON.parse(saved) as { topic?: string; events?: unknown; turns?: unknown; hostIds?: string[]; themeId?: string; status?: 'setup' | 'live' | 'paused' | 'ended' };
+      const parsed = JSON.parse(saved) as { topic?: string; events?: unknown; turns?: unknown; hostIds?: string[]; themeId?: string; nextTurnStyle?: 'long' | 'short'; status?: 'setup' | 'live' | 'paused' | 'ended' };
       if (parsed.topic) setTopic(parsed.topic);
       setEvents(normalizeLiveEvents(parsed.events ?? parsed.turns));
       if (Array.isArray(parsed.hostIds) && parsed.hostIds.length >= 2) setSelectedHostIds([parsed.hostIds[0], parsed.hostIds[1]]);
       if (parsed.themeId && LIVE_THEMES.some((theme) => theme.id === parsed.themeId)) setSelectedThemeId(parsed.themeId);
+      if (parsed.nextTurnStyle === 'long' || parsed.nextTurnStyle === 'short') setNextTurnStyle(parsed.nextTurnStyle);
       if (parsed.status) setStatus(parsed.status);
     } catch {
       localStorage.removeItem(storageKey);
@@ -136,8 +138,8 @@ export default function InteractiveLiveModal({
 
   useEffect(() => {
     if (status === 'setup' && events.length === 0) return;
-    localStorage.setItem(storageKey, JSON.stringify({ topic, events: events.slice(-LIVE_STORAGE_EVENT_LIMIT), hostIds: selectedHostIds, themeId: selectedThemeId, status }));
-  }, [storageKey, status, topic, events, selectedHostIds, selectedThemeId]);
+    localStorage.setItem(storageKey, JSON.stringify({ topic, events: events.slice(-LIVE_STORAGE_EVENT_LIMIT), hostIds: selectedHostIds, themeId: selectedThemeId, nextTurnStyle, status }));
+  }, [storageKey, status, topic, events, selectedHostIds, selectedThemeId, nextTurnStyle]);
 
   if (!isOpen) return null;
   const agentTurns = events.filter((event): event is Extract<LiveEvent, { type: 'agent' }> => event.type === 'agent');
@@ -155,7 +157,7 @@ export default function InteractiveLiveModal({
   const rightHostImage = (hosts.keke && HOST_IMAGES[hosts.keke.id as keyof typeof HOST_IMAGES]) || kekeImage;
   const hostNames = `${luluShortName}和${kekeShortName}`;
   const liveGroundingRules = `这是一个浏览器内的 AI 主题聊天室脚本，目前没有真实弹幕、在线观众消息或外部事实输入。不得编造观众用户名、弹幕内容、观众经历、实时观看人数、点赞量或“大家正在刷屏”等现场反应；不得把${hostNames}虚构的过去经历说成已被系统证实的真实事实。需要举例时必须明确说“假设一个虚构例子”，并控制在简短口播范围内。`;
-  const liveAudienceRules = '你是在面对聊天室里的观众说话，不是在和另一位成员私聊。每段台词必须让观众单独看也能理解。接着上一位成员发言时，必须先回应上一段中的一个具体细节（不要只复述主题），再在同一个子话题内补充一个不同角度，最后把话题落回观众。这里的“新角度”只能是对同一件事的反应、对比、追问或延伸，不是立刻更换主题；当前子话题至少连续推进几轮，除非用户明确提出新问题或原话题已经自然收束。不要每段都另起一个无关的完整故事或例子；只有确实有助于说明时才使用简短的假设性例子，并明确它是虚构的。默认不要使用 @、不要向另一位成员提问、不要把结尾写成等待对方接招；只有确实需要对方补充时才自然提及一次。';
+  const liveAudienceRules = '你是在面对聊天室里的观众说话，不是在和另一位成员私聊。每段台词必须让观众单独看也能理解。两位成员采用“主讲 + 接话”的节奏，而不是各自写一篇完整稿件：主讲者负责推进当前子话题，接话者先回应上一段的具体细节，再补充一个简短反应、反差或延伸。普通接话控制在约 30-100 字，避免重新铺垫、重复例子或再次总结；只有开场、重要观点或话题自然转折时，才允许约 80-180 字的较完整展开。当前子话题应连续推进几轮，除非用户明确提出新问题或原话题自然收束。不要每段都另起一个无关的完整故事或例子；只有确实有助于说明时才使用简短的假设性例子，并明确它是虚构的。不要每段都向观众提问或用“大家有没有”“你们会不会”收尾；可以用观点、情绪、一个自然停顿或一句简短总结结束。只有主题确实适合征集看法、用户刚提出问题，或连续几段没有互动入口时，才向观众提出一个具体且不重复的问题。默认不要使用 @、不要向另一位成员提问、不要把结尾写成等待对方接招；只有确实需要对方补充时才自然提及一次。';
 
   const generateTurn = async (agent: Agent, prompt: string, persistUserMessage: boolean, contextEvents = events, replyTo?: string) => {
     setBusy(true);
@@ -197,9 +199,12 @@ export default function InteractiveLiveModal({
 
   const startLive = async () => {
     if (!canStart || busy) return;
+    const openingStyle: 'long' | 'short' = Math.random() < 0.5 ? 'long' : 'short';
+    setNextTurnStyle(openingStyle === 'long' ? 'short' : 'long');
     setEvents([]);
     setStatus('live');
-    await generateTurn(hosts.lulu, `${liveGroundingRules}\n${liveAudienceRules}\n你正在主持一场只有${hostNames}参加的 AI 主题聊天室。主题是“${topic.trim()}”。请用自然、热闹、适合对话的方式开场，但只能泛泛称呼正在观看的人，不要假装看到了弹幕或观众回应。不要强行把话题交给另一位主持人。只输出要对观众说的话。`, true, []);
+    const openingLength = openingStyle === 'long' ? '约 80-180 字，完整建立主题和氛围' : '约 30-100 字，简短建立主题和氛围';
+    await generateTurn(hosts.lulu, `${liveGroundingRules}\n${liveAudienceRules}\n你正在主持一场只有${hostNames}参加的 AI 主题聊天室。主题是“${topic.trim()}”。这是开场发言，本轮随机采用${openingStyle === 'long' ? '较长' : '较短'}表达：请用${openingLength}的自然方式开场。后续接话者必须使用与本轮相反的长度，不能连续两轮都长讲或都短讲。只能泛泛称呼正在观看的人，不要假装看到了弹幕或观众回应。不要强行把话题交给另一位主持人。只输出要对观众说的话。`, true, []);
   };
 
   const handoff = async () => {
@@ -207,7 +212,12 @@ export default function InteractiveLiveModal({
     const hostName = nextHostShortName;
     const previousTurn = agentTurns[agentTurns.length - 1];
     const previousSummary = previousTurn ? compactLiveContent(previousTurn.content, 700) : '暂无上一段台词';
-    await generateTurn(nextHost, `${liveGroundingRules}\n${liveAudienceRules}\n你正在参与只有${hostNames}的 AI 主题聊天室。主题是“${topic.trim()}”。用户点击了“${nextHostShortName}接话”，所以现在轮到你面向观众继续说，不代表你必须向另一位成员传话。保持${hostName}自己的语气和风格。上一位成员刚才的台词如下：\n“${previousSummary}”\n请先针对这段台词中的一个明确细节作出自然回应，再围绕同一个子话题推进一个观点、追问或轻松转折；不要突然引入全新的主题，也不要重复上一段的结论。最后用一句面向观众的开放式话题收束，但不要虚构弹幕或观众反应。不要声称收到了弹幕、看到了观众反应或记得未经提供的真实经历。只输出要对观众说的话。`, false);
+    const style = nextTurnStyle;
+    setNextTurnStyle(style === 'long' ? 'short' : 'long');
+    const lengthInstruction = style === 'long'
+      ? '本轮使用较长表达，约 80-180 字，可以完整展开一个观点，但不要重复上一段。'
+      : '本轮使用较短表达，约 30-100 字，只做精准接话和一个简短延伸，不要重新写一篇稿件。';
+    await generateTurn(nextHost, `${liveGroundingRules}\n${liveAudienceRules}\n你正在参与只有${hostNames}的 AI 主题聊天室。主题是“${topic.trim()}”。用户点击了“${nextHostShortName}接话”，所以现在轮到你面向观众继续说，不代表你必须向另一位成员传话。保持${hostName}自己的语气和风格。上一位成员刚才的台词如下：\n“${previousSummary}”\n${lengthInstruction}上一轮与本轮必须一长一短，不要连续两轮使用相同长度。请先针对这段台词中的一个明确细节作出自然回应，再围绕同一个子话题推进；不要突然引入全新的主题，也不要重复上一段的结论。根据语境自然结束这一段：不要为了制造互动而强行向观众提问，除非当前确实适合征集看法。不要虚构弹幕或观众反应，不要声称收到了弹幕、看到了观众反应或记得未经提供的真实经历。只输出要对观众说的话。`, false);
   };
 
   const askQuestion = async () => {
@@ -232,6 +242,7 @@ export default function InteractiveLiveModal({
     localStorage.removeItem(storageKey);
     setEvents([]);
     setStatus('setup');
+    setNextTurnStyle('short');
     setQuestion('');
     setError('');
   };
