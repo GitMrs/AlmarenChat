@@ -16,6 +16,7 @@ import { isValidInternalQQSecret } from '@/lib/qq-assistant/credentials.mjs';
 import { classifyQQCommand, qqImageAttachments } from '@/lib/qq-assistant/policy.mjs';
 import { compressConversationContext } from '@/lib/context-compression';
 import { conversationContextTargetTokens } from '@/lib/model-limits.mjs';
+import { detectTrendingIntent, formatTrendingForPrompt, getTrendingSnapshot, getCompositeTrendingSnapshot } from '@/lib/trending';
 
 export const runtime = 'nodejs';
 
@@ -144,6 +145,22 @@ export async function POST(request: Request) {
       : null;
     const webpageContext = webSearchEnabled ? await buildWebpageContext(message) : null;
 
+    let trendingContext = '';
+    const trendingIntent = detectTrendingIntent(message);
+    if (trendingIntent.wantsTrending) {
+      try {
+        const source = trendingIntent.preferredSource || 'all';
+        const snapshot = source === 'all'
+          ? await getCompositeTrendingSnapshot(['zhihu', 'weibo', 'baidu'])
+          : await getTrendingSnapshot(source);
+        if (snapshot.items && snapshot.items.length > 0) {
+          trendingContext = formatTrendingForPrompt(snapshot, { limit: 8 });
+        }
+      } catch (err: any) {
+        console.warn('[qq/trending] Auto trending injection failed:', err?.message);
+      }
+    }
+
     const systemPrompt = [
       buildPersonalAssistantPrompt({
         userName: userSettings.name,
@@ -156,6 +173,7 @@ export async function POST(request: Request) {
       }),
       webContext ? `本轮联网搜索结果：\n${webContext}` : '',
       webpageContext ? `本轮直接网页/JSON 结果：\n${webpageContext}` : '',
+      trendingContext ? trendingContext : '',
       '【当前渠道】：你正在 QQ 私聊中回复用户。QQ 与网页共用同一个主聊天上下文；不要提供站内相对链接，可以使用 QQ 支持的标准 Markdown，但避免 HTML 和复杂表格，回答保持适合即时消息阅读。长期记忆、任务和提醒也与网页共享。用户要求提醒时不要声称已经创建，系统会在回复末尾附加真实创建结果。',
     ].filter(Boolean).join('\n\n');
     const compressedHistory = compressConversationContext(

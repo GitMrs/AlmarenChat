@@ -16,7 +16,7 @@ import { loadUserMemoryItems } from '@/lib/personal-assistant/user-memory';
 import { buildTimedAssistantHistory } from '@/lib/personal-assistant/history-context.mjs';
 import { compressConversationContext } from '@/lib/context-compression';
 import { conversationContextTargetTokens } from '@/lib/model-limits.mjs';
-import { detectTrendingIntent, formatTrendingForPrompt, getTrendingSnapshot } from '@/lib/trending';
+import { detectTrendingIntent, formatTrendingForPrompt, getTrendingSnapshot, getCompositeTrendingSnapshot } from '@/lib/trending';
 import { parseMcpServers } from '@/lib/agent-runtime/mcp-config.mjs';
 import { createAssistantToolBroker } from '@/lib/personal-assistant/tool-broker.mjs';
 import { runAssistantToolLoop } from '@/lib/personal-assistant/tool-loop.mjs';
@@ -210,7 +210,10 @@ export async function POST(request: Request) {
     const trendingIntent = detectTrendingIntent(textMessage);
     if (trendingIntent.wantsTrending) {
       try {
-        const snapshot = await getTrendingSnapshot(trendingIntent.preferredSource || 'zhihu');
+        const source = trendingIntent.preferredSource || 'all';
+        const snapshot = source === 'all'
+          ? await getCompositeTrendingSnapshot(['zhihu', 'weibo', 'baidu'])
+          : await getTrendingSnapshot(source);
         if (snapshot.items && snapshot.items.length > 0) {
           trendingContext = formatTrendingForPrompt(snapshot, { limit: 8 });
         }
