@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { Bot, Compass, Sparkles, UserRound, MessageCircle, PanelsTopLeft } from 'lucide-react';
+import { Bot, Compass, Flame, Sparkles, UserRound, MessageCircle, PanelsTopLeft } from 'lucide-react';
 import BottomNav from './BottomNav';
 import { cn } from '@/lib/utils';
 

@@ -16,6 +16,7 @@ import { loadUserMemoryItems } from '@/lib/personal-assistant/user-memory';
 import { buildTimedAssistantHistory } from '@/lib/personal-assistant/history-context.mjs';
 import { compressConversationContext } from '@/lib/context-compression';
 import { conversationContextTargetTokens } from '@/lib/model-limits.mjs';
+import { detectTrendingIntent, formatTrendingForPrompt, getTrendingSnapshot } from '@/lib/trending';
 import { parseMcpServers } from '@/lib/agent-runtime/mcp-config.mjs';
 import { createAssistantToolBroker } from '@/lib/personal-assistant/tool-broker.mjs';
 import { runAssistantToolLoop } from '@/lib/personal-assistant/tool-loop.mjs';
@@ -203,6 +204,21 @@ export async function POST(request: Request) {
       buildAssistantActivityContext(userId, textMessage, contextSources),
       webSearchEnabled ? buildWebpageContext(messageForModel).catch(() => null) : Promise.resolve(null),
     ]);
+    
+    // 智能热点感知注入
+    let trendingContext = '';
+    const trendingIntent = detectTrendingIntent(textMessage);
+    if (trendingIntent.wantsTrending) {
+      try {
+        const snapshot = await getTrendingSnapshot(trendingIntent.preferredSource || 'zhihu');
+        if (snapshot.items && snapshot.items.length > 0) {
+          trendingContext = formatTrendingForPrompt(snapshot, { limit: 8 });
+        }
+      } catch (err: any) {
+        console.warn('[assistant/trending] Auto trending injection failed:', err?.message);
+      }
+    }
+
     const webContext = webSearchEnabled
       ? await buildWebSearchContext(buildWebSearchQuery(messageForModel, memoryContext.history), userSettings.tavilyApiKey)
       : null;
@@ -246,6 +262,7 @@ export async function POST(request: Request) {
           conversationMode === 'TEMPORARY' ? '【会话模式】：这是临时聊天，不将本轮内容视为长期经历。' : '',
           webContext ? `本轮联网结果：\n${webContext}` : '',
           webpageContext ? `本轮网页/JSON 数据：\n${webpageContext}` : '',
+          trendingContext ? trendingContext : '',
         ].filter(Boolean).join('\n\n'),
       },
       ...compressedHistory.map((item) => ({

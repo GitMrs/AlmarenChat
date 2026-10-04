@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Activity, ArrowLeft, BookOpen, CalendarClock, Check, CheckCircle2, ChevronRight, Code2, Copy, Download, ExternalLink, FilePenLine, FileText, Gamepad2, Globe2, History, Image as ImageIcon, ListTodo, Loader2, MessagesSquare, Newspaper, PackagePlus, Paperclip, Play, Plus, RotateCcw, Save, Send, Settings2, ShieldCheck, SkipForward, Square, Trash2, UploadCloud, UsersRound, X } from 'lucide-react';
+import { Activity, ArrowLeft, BookOpen, Flame, CalendarClock, Check, CheckCircle2, ChevronRight, Code2, Copy, Download, ExternalLink, FilePenLine, FileText, Gamepad2, Globe2, History, Image as ImageIcon, ListTodo, Loader2, MessagesSquare, Newspaper, PackagePlus, Paperclip, Play, Plus, RotateCcw, Save, Send, Settings2, ShieldCheck, SkipForward, Square, Trash2, UploadCloud, UsersRound, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import AppShell from '@/components/layout/AppShell';
@@ -21,6 +21,7 @@ import SpaceGameCenter from '@/components/spaces/SpaceGameCenter';
 import SpaceDiscussionStatus from '@/components/spaces/SpaceDiscussionStatus';
 import SpaceRelayStatus from '@/components/spaces/SpaceRelayStatus';
 import SpaceOperationsCenter, { type SpaceOperationsTab } from '@/components/spaces/SpaceOperationsCenter';
+import TrendingTopicPicker from '@/components/trending/TrendingTopicPicker';
 import { CompressionStatusPanel } from '@/components/spaces/CompressionStatusPanel';
 import { agentRuns as agentRunsApi, agents as agentsApi, spaces as spacesApi, streamSpaceMessage } from '@/lib/api';
 import { getBuiltInAgents } from '@/lib/agents-data';
@@ -587,6 +588,14 @@ export default function SpaceDetailPage() {
   const [pendingExecutionSkill, setPendingExecutionSkill] = useState<SpaceSkill | null>(null);
   const [approvedScriptDraft, setApprovedScriptDraft] = useState<string[]>([]);
   const [composerToolsOpen, setComposerToolsOpen] = useState(false);
+  const [trendingPickerOpen, setTrendingPickerOpen] = useState(false);
+
+  const handleSelectTrendingTopic = (_prompt: string, item: any) => {
+    setTrendingPickerOpen(false);
+    const spacePrompt = `【今日全网热议探讨】看看来自${item.sourceName}的实时热点：\n《${item.title}》${item.heat ? `（热度：${item.heat}）` : ''}\n${item.desc ? `> ${item.desc}\n` : ''}\n@全员 请各位结合各自的角色专长和立场，对这个热点发表见解，展开圆桌讨论！`;
+    setInput(spacePrompt);
+    window.requestAnimationFrame(() => textareaRef.current?.focus());
+  };
   const [mentionMenuOpen, setMentionMenuOpen] = useState(false);
   const [mentionQuery, setMentionQuery] = useState('');
   const [mentionRange, setMentionRange] = useState<{ start: number; end: number } | null>(null);
@@ -1563,10 +1572,11 @@ export default function SpaceDetailPage() {
       const coordinatorRequested = requestImageGeneration || mentionedAgents(content, [coordinatorAgent as Agent]).length > 0;
       let targets = coordinatorRequested ? [] : mentionedAgents(content, memberAgents);
       const isAllMembersRequested = !coordinatorRequested && targets.length === 0 && (
+        /@(全员|所有人|大家|all)/i.test(content) ||
         /^(大家|全员|所有人|你们|全部成员)/i.test(content.trim()) ||
-        /(大家|全员|所有人|互相|都).*(介绍|聊聊|说|看法|出来|打招呼|谁|怎么看|亮相|整活|开黑)/i.test(content)
+        /(大家|全员|所有人|互相|都).*(介绍|聊聊|说|看法|见解|探讨|讨论|交流|出来|打招呼|谁|怎么看|亮相|整活|开黑|圆桌|发表)/i.test(content)
       );
-      if (isAllMembersRequested && memberAgents.length >= 2) {
+      if (isAllMembersRequested && memberAgents.length >= 1) {
         targets = memberAgents;
       }
       // 上下文连续对话粘性 (Speaker Continuity): 当用户未指定对象、未呼叫协调者、未呼叫全员时，
@@ -2865,7 +2875,7 @@ export default function SpaceDetailPage() {
         <div className="flex justify-center py-24 text-slate-400">
           <Loader2 className="animate-spin" size={24} />
         </div>
-      </AppShell>
+    </AppShell>
     );
   }
 
@@ -4258,6 +4268,18 @@ export default function SpaceDetailPage() {
                         <MessagesSquare size={16} />
                         <span className="min-w-0 flex-1 whitespace-nowrap">发起讨论</span>
                       </button>}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setComposerToolsOpen(false);
+                          setTrendingPickerOpen(true);
+                        }}
+                        disabled={isStreaming || isRunActive}
+                        className="flex h-10 w-full items-center gap-3 rounded-md px-3 text-left text-xs font-black text-amber-700 hover:bg-amber-50 hover:text-amber-800 transition disabled:text-slate-300"
+                      >
+                        <Flame size={16} className="text-amber-500 fill-amber-500" />
+                        <span className="min-w-0 flex-1 whitespace-nowrap">投喂今日热议</span>
+                      </button>
                       <div className="my-1 border-t border-black/[0.06]" />
                       <button
                         type="button"
@@ -4337,9 +4359,9 @@ export default function SpaceDetailPage() {
                       setComposerToolsOpen((open) => !open);
                     }}
                     disabled={isStreaming || Boolean(activeRelay)}
-                    aria-label={composerToolsOpen ? '关闭工具菜单' : '打开工具菜单'}
+                    aria-label={composerToolsOpen ? '关闭更多功能' : '打开更多功能'}
                     aria-expanded={composerToolsOpen}
-                    title="工具"
+                    title="更多"
                     className={`relative flex h-11 w-11 items-center justify-center rounded-xl transition disabled:text-slate-300 ${composerToolsOpen ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-500 hover:bg-white hover:text-slate-950'}`}
                   >
                     <Plus size={19} className={`transition-transform ${composerToolsOpen ? 'rotate-45' : ''}`} />
@@ -5836,6 +5858,12 @@ export default function SpaceDetailPage() {
         loading={Boolean(pendingDeleteMessage && deletingMessageId === pendingDeleteMessage.id)}
         onCancel={() => setPendingDeleteMessage(null)}
         onConfirm={deleteMessage}
+      />
+          <TrendingTopicPicker
+        isOpen={trendingPickerOpen}
+        onClose={() => setTrendingPickerOpen(false)}
+        onSelectTopic={handleSelectTrendingTopic}
+        mode="space"
       />
     </AppShell>
   );

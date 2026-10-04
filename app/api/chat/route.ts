@@ -13,6 +13,7 @@ import { currentTimeContext } from '@/lib/current-time-context.mjs';
 import { buildUserMemoryContext, loadUserMemoryItems } from '@/lib/personal-assistant/user-memory';
 import { compressConversationContext, estimateMessagesTokens } from '@/lib/context-compression';
 import { conversationContextTargetTokens } from '@/lib/model-limits.mjs';
+import { detectTrendingIntent, formatTrendingForPrompt, getTrendingSnapshot } from '@/lib/trending';
 
 const TEXT_CHAT_COST = 1;
 const IMAGE_CHAT_COST = 3;
@@ -197,6 +198,19 @@ export async function POST(request: Request) {
       loadUserMemoryItems(userId, agentId),
     ]);
     let finalContext = [currentTimeContext(), context, buildUserMemoryContext(userMemories, textMessage), employeeMemory].filter(Boolean).join('\n\n');
+
+    const trendingIntent = detectTrendingIntent(textMessage);
+    if (trendingIntent.wantsTrending) {
+      try {
+        const snapshot = await getTrendingSnapshot(trendingIntent.preferredSource || 'zhihu');
+        if (snapshot.items && snapshot.items.length > 0) {
+          const trendingContext = formatTrendingForPrompt(snapshot, { limit: 10 });
+          finalContext = [finalContext, trendingContext].filter(Boolean).join('\n\n');
+        }
+      } catch (err: any) {
+        console.warn('[chat/trending] Auto trending injection failed:', err?.message);
+      }
+    }
     if (knowledgeEnabled && agentId && textMessage.trim()) {
       const hits = await getKnowledgeHits(agentId, textMessage);
       if (hits.length > 0) {

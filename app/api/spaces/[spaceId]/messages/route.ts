@@ -36,6 +36,7 @@ import { loadAgentMemoryContext } from '@/lib/agent-memory';
 import { currentTimeContext } from '@/lib/current-time-context.mjs';
 import { buildUserMemoryContext, loadUserMemoryItems } from '@/lib/personal-assistant/user-memory';
 import { createRuntimePermissionBroker } from '@/lib/runtime-permission-broker.mjs';
+import { detectTrendingIntent, formatTrendingForPrompt, getTrendingSnapshot } from '@/lib/trending';
 
 const MESSAGE_PAGE_SIZE = 40;
 const READ_ONLY_WORKSPACE_TOOLS = new Set(['list_files', 'read_file', 'check_files']);
@@ -585,7 +586,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
 
     // 上下文连续对话粘性 (Speaker Continuity): 当无显式点名、无@协调者时，
     // 若上一轮为单成员发言（非协调者、非多人多回复），优先延续由该成员接话
-    let stickyTarget: Agent | null = null;
+    let stickyTarget: any = null;
     if (!explicitTarget && !coordinatorMention && !mentionedTarget && !explicitImageRequest && Array.isArray(history)) {
       for (let i = history.length - 1; i >= 0; i -= 1) {
         const item = history[i];
@@ -826,8 +827,22 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
         ].join('\n')
       : '';
 
+    let spaceTrendingContext = '';
+    const trendingIntent = detectTrendingIntent(textMessage);
+    if (trendingIntent.wantsTrending) {
+      try {
+        const snapshot = await getTrendingSnapshot(trendingIntent.preferredSource || 'zhihu');
+        if (snapshot.items && snapshot.items.length > 0) {
+          spaceTrendingContext = formatTrendingForPrompt(snapshot, { limit: 10 });
+        }
+      } catch (err: any) {
+        console.warn('[spaces/trending] Auto trending injection failed:', err?.message);
+      }
+    }
+
     const systemPrompt = [
       currentTimeContext(),
+      spaceTrendingContext,
       targetAgent.systemPrompt || targetAgent.description || `你是 ${targetAgent.name}。`,
       agentMemory,
       formatMembersContext(allAgents, targetAgent),

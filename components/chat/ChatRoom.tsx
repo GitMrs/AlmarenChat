@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ChevronDown, Loader2, Sparkles, Trash2 } from 'lucide-react';
+import { ChevronDown, Flame, Loader2, Sparkles, Trash2 } from 'lucide-react';
+import TrendingTopicPicker from '@/components/trending/TrendingTopicPicker';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import Avatar from '@/components/shared/Avatar';
@@ -128,6 +129,47 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
   const [uploadError, setUploadError] = useState('');
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
   const [chatMode, setChatMode] = useState<'chat' | 'image'>('chat');
+  const [trendingPickerOpen, setTrendingPickerOpen] = useState(false);
+  const [quickTopics, setQuickTopics] = useState<{ id: string; source: string; sourceName: string; title: string; heat?: string }[]>([]);
+
+  const agentCategoryKey = useMemo(() => {
+    const rawCat = (conversationAgent?.category || agent?.category || '').toLowerCase();
+    const desc = (conversationAgent?.description || agent?.description || '').toLowerCase();
+    const combined = `${rawCat} ${desc}`;
+    if (combined.includes('游戏') || combined.includes('动漫') || combined.includes('二次元') || combined.includes('原神')) return 'anime';
+    if (combined.includes('编程') || combined.includes('代码') || combined.includes('开发') || combined.includes('前端') || combined.includes('后端') || combined.includes('技术') || combined.includes('工具')) return 'dev';
+    if (combined.includes('商业') || combined.includes('财经') || combined.includes('创投') || combined.includes('科技')) return 'tech';
+    if (combined.includes('书') || combined.includes('电影') || combined.includes('文化') || combined.includes('心理')) return 'culture';
+    return 'hot';
+  }, [conversationAgent?.category, conversationAgent?.description, agent?.category, agent?.description]);
+
+  useEffect(() => {
+    if (!agent && !conversationAgent) return;
+    fetch(`/api/trending?category=${agentCategoryKey}&limit=3`)
+      .then((r) => r.json())
+      .then((res) => {
+        if (res.success && Array.isArray(res.data)) {
+          const list: { id: string; source: string; sourceName: string; title: string; heat?: string }[] = [];
+          for (const src of res.data) {
+            if (Array.isArray(src.items)) {
+              for (const it of src.items) {
+                list.push({
+                  id: it.id,
+                  source: it.source || src.source,
+                  sourceName: it.sourceName || src.sourceName,
+                  title: it.title,
+                  heat: it.heat,
+                });
+                if (list.length >= 3) break;
+              }
+            }
+            if (list.length >= 3) break;
+          }
+          setQuickTopics(list);
+        }
+      })
+      .catch(() => {});
+  }, [agentCategoryKey, agent?.id, conversationAgent?.id]);
   const [browserModelConfig, setBrowserModelConfig] = useState<BrowserModelConfig>({ ...DEFAULT_BROWSER_MODEL_CONFIG });
   const [modelSource, setModelSource] = useState<BrowserModelSource>('ONLINE');
   const [hasMoreMessages, setHasMoreMessages] = useState(false);
@@ -1114,7 +1156,15 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
                   你可以这样问
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {suggestedPrompts.map((prompt) => (
+                  <button
+                      type="button"
+                      onClick={() => setTrendingPickerOpen(true)}
+                      className="flex items-center gap-1.5 rounded-full bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-300/60 px-4 py-2 text-sm font-bold text-amber-700 shadow-sm transition hover:-translate-y-0.5 hover:bg-amber-500/20 hover:text-amber-800"
+                    >
+                      <Flame size={14} className="fill-amber-500 text-amber-500" />
+                      🔥 聊聊今日热搜
+                    </button>
+                    {suggestedPrompts.map((prompt) => (
                     <button
                       key={prompt}
                       onClick={() => handleSend(prompt)}
@@ -1215,6 +1265,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
             webSearchEnabled={webSearchEnabled}
             onToggleWebSearch={() => setWebSearchEnabled((value) => !value)}
             mode={chatMode}
+            onOpenTrending={() => setTrendingPickerOpen(true)}
             onClearMessages={() => setConfirmClearOpen(true)}
             canClearMessages={messages.length > 0}
             imageGenerationAvailable={Boolean(userSettings?.imageGenerationAvailable) && modelSource !== 'OLLAMA'}
@@ -1245,6 +1296,13 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
         loading={archivingConversation}
         onCancel={() => setPendingArchiveConversation(null)}
         onConfirm={confirmArchiveConversation}
+      />
+      <TrendingTopicPicker
+        isOpen={trendingPickerOpen}
+        onClose={() => setTrendingPickerOpen(false)}
+        onSelectTopic={(prompt) => handleSend(prompt)}
+        agentName={conversationAgent?.name || agent?.name}
+        mode="chat"
       />
       <ConfirmDialog
         open={Boolean(pendingDeleteConversation)}

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Check, Cloud, Cpu, Globe2, Image as ImageIcon, ImagePlus, Loader2, Plus, Send, Square, Trash2, X } from 'lucide-react';
+import { Check, Cloud, Cpu, Flame, Globe2, Image as ImageIcon, ImagePlus, Loader2, Plus, Send, Square, Trash2, X } from 'lucide-react';
 import ComposerShell from '@/components/chat/ComposerShell';
 import { cn } from '@/lib/utils';
 import type { MessageAttachment } from '@/types';
@@ -35,6 +35,7 @@ type ChatComposerProps = {
   modelSource: BrowserModelSource;
   ollamaAvailable: boolean;
   onModelSourceChange: (source: BrowserModelSource) => void;
+  onOpenTrending?: () => void;
 };
 
 export default function ChatComposer({
@@ -65,6 +66,7 @@ export default function ChatComposer({
   modelSource,
   ollamaAvailable,
   onModelSourceChange,
+  onOpenTrending,
 }: ChatComposerProps) {
   const [toolsOpen, setToolsOpen] = useState(false);
   const toolsRef = useRef<HTMLDivElement>(null);
@@ -225,6 +227,20 @@ export default function ChatComposer({
                   <span className="min-w-0 flex-1">生成图片</span>
                   {mode === 'image' && <Check size={14} />}
                 </button>
+                {onOpenTrending && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setToolsOpen(false);
+                      onOpenTrending();
+                    }}
+                    disabled={isStreaming}
+                    className="flex min-h-10 w-full items-center gap-3 rounded-md px-3 py-2 text-left text-xs font-black text-amber-700 hover:bg-amber-50 hover:text-amber-800 transition disabled:text-slate-300"
+                  >
+                    <Flame size={16} className="text-amber-500 fill-amber-500" />
+                    <span className="min-w-0 flex-1">今日热搜灵感</span>
+                  </button>
+                )}
                 {canClearMessages && onClearMessages && (
                   <>
                     <div className="my-1 h-[1px] bg-black/[0.06]" />
