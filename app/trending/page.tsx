@@ -88,7 +88,7 @@ export default function TrendingPage() {
     }
 
     if (force) setRefreshing(true);
-    else setLoading(data.length === 0);
+    else setLoading(!loadedCategoriesRef.current.has(cat));
 
     try {
       const url =
@@ -116,6 +116,7 @@ export default function TrendingPage() {
   // 2. 精准刷新单个平台数据源
   const refreshSingleSource = async (sourceId: string) => {
     setRefreshingSources((prev) => ({ ...prev, [sourceId]: true }));
+    setRefreshing(true);
     try {
       const res = await fetch(`/api/trending?source=${sourceId}&limit=20&refresh=true`);
       const json = await res.json();
@@ -125,6 +126,7 @@ export default function TrendingPage() {
     } catch (err) {
       console.error(`Failed to refresh source ${sourceId}:`, err);
     } finally {
+      setRefreshing(false);
       setRefreshingSources((prev) => {
         const next = { ...prev };
         delete next[sourceId];
@@ -279,22 +281,29 @@ export default function TrendingPage() {
                 {categoryFiltered.length} 平台
               </span>
             </button>
-            {categoryFiltered.map((src) => (
-              <button
-                key={src.source}
-                onClick={() => setActiveSource(src.source)}
-                className={`flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition ${
-                  activeSource === src.source
-                    ? 'bg-amber-500 text-white shadow-sm'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300'
-                }`}
-              >
-                <span>{src.sourceName}</span>
-                <span className="rounded-full bg-black/10 px-1.5 py-0.2 text-[10px] dark:bg-white/10">
-                  {src.items.length}条
-                </span>
-              </button>
-            ))}
+            {categoryFiltered.map((src) => {
+              const isSourceRefreshing = Boolean(refreshingSources[src.source]);
+              return (
+                <button
+                  key={src.source}
+                  onClick={() => setActiveSource(src.source)}
+                  className={`flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition ${
+                    activeSource === src.source
+                      ? 'bg-amber-500 text-white shadow-sm'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300'
+                  }`}
+                >
+                  <span>{src.sourceName}</span>
+                  {isSourceRefreshing ? (
+                    <RefreshCw size={10} className="animate-spin text-white" />
+                  ) : (
+                    <span className="rounded-full bg-black/10 px-1.5 py-0.2 text-[10px] dark:bg-white/10">
+                      {src.items.length}条
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
 
           {/* Search box */}
@@ -337,9 +346,16 @@ export default function TrendingPage() {
                     <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-xs font-bold text-amber-600 dark:bg-amber-500/20 dark:text-amber-400">
                       TOP {filteredSources[0].items.length} 热榜
                     </span>
-                    <span className="hidden sm:inline-block text-xs text-slate-400">
-                      · {formatTimeAgo(filteredSources[0].updatedAt)}更新
-                    </span>
+                    {refreshing ? (
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/10 px-2.5 py-0.5 text-xs font-bold text-amber-600 dark:bg-amber-500/20 dark:text-amber-400 animate-pulse">
+                        <RefreshCw size={11} className="animate-spin" />
+                        正在连接官方接口同步最新...
+                      </span>
+                    ) : (
+                      <span className="hidden sm:inline-block text-xs text-slate-400">
+                        · {formatTimeAgo(filteredSources[0].updatedAt)}更新
+                      </span>
+                    )}
                   </div>
                 </div>
 
@@ -354,7 +370,11 @@ export default function TrendingPage() {
               </div>
 
               {/* Spread-out Hot Items Grid (3 columns on desktop) */}
-              <div className="grid grid-cols-1 gap-3.5 md:grid-cols-2 lg:grid-cols-3">
+              <div
+                className={`grid grid-cols-1 gap-3.5 md:grid-cols-2 lg:grid-cols-3 transition-opacity duration-200 ${
+                  refreshing ? 'opacity-50 pointer-events-none' : 'opacity-100'
+                }`}
+              >
                 {filteredSources[0].items.map((item, idx) => {
                   const rank = idx + 1;
                   const isTop3 = rank <= 3;

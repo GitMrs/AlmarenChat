@@ -149,7 +149,7 @@ export default function TrendingTopicPicker({
               title="强制刷新最新数据"
               className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition"
             >
-              <RefreshCw size={15} className={refreshing ? 'animate-spin' : ''} />
+              <RefreshCw size={15} className={refreshing ? 'animate-spin text-amber-500' : ''} />
             </button>
             <button
               onClick={onClose}
@@ -217,6 +217,12 @@ export default function TrendingTopicPicker({
 
         {/* Content list */}
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
+          {refreshing && (
+            <div className="flex items-center justify-center gap-2 rounded-xl bg-amber-500/10 py-2.5 text-xs font-bold text-amber-600 dark:bg-amber-500/20 dark:text-amber-400 animate-in fade-in">
+              <RefreshCw size={12} className="animate-spin text-amber-500" />
+              <span>正在获取最新实时热榜数据...</span>
+            </div>
+          )}
           {loading ? (
             <div className="flex h-48 flex-col items-center justify-center gap-3 text-slate-400">
               <RefreshCw size={24} className="animate-spin text-amber-500" />
