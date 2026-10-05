@@ -50,6 +50,7 @@ model User {
   assistantQQBinding AssistantQQBinding?
   assistantQQEvents AssistantQQEvent[]
   studioWorkspaces  StudioWorkspace[]
+  trendingFavorites TrendingFavorite[]
 }
 
 model Agent {
@@ -985,4 +986,25 @@ model StudioMessage {
 
   @@index([workspaceId, createdAt])
   @@index([userId, createdAt])
+}
+
+model TrendingFavorite {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  source      String
+  sourceName  String
+  itemId      String
+  title       String
+  url         String
+  heat        String?
+  desc        String?
+  category    String?
+  date        String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([userId, source, itemId])
+  @@index([userId, createdAt])
+  @@index([userId, source])
 }

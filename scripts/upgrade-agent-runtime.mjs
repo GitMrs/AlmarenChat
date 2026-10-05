@@ -1287,6 +1287,25 @@ try {
       CREATE UNIQUE INDEX IF NOT EXISTS "AgentRunEvent_runId_sequence_key" ON "AgentRunEvent"("runId", "sequence");
       CREATE INDEX IF NOT EXISTS "AgentRunEvent_runId_taskId_sequence_idx" ON "AgentRunEvent"("runId", "taskId", "sequence");
       CREATE UNIQUE INDEX IF NOT EXISTS "SpaceMessage_sourceKey_key" ON "SpaceMessage"("sourceKey");
+      CREATE TABLE IF NOT EXISTS "TrendingFavorite" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "userId" TEXT NOT NULL,
+        "source" TEXT NOT NULL,
+        "sourceName" TEXT NOT NULL,
+        "itemId" TEXT NOT NULL,
+        "title" TEXT NOT NULL,
+        "url" TEXT NOT NULL,
+        "heat" TEXT,
+        "desc" TEXT,
+        "category" TEXT,
+        "date" TEXT,
+        "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" DATETIME NOT NULL,
+        CONSTRAINT "TrendingFavorite_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS "TrendingFavorite_userId_createdAt_idx" ON "TrendingFavorite"("userId", "createdAt");
+      CREATE INDEX IF NOT EXISTS "TrendingFavorite_userId_source_idx" ON "TrendingFavorite"("userId", "source");
+      CREATE UNIQUE INDEX IF NOT EXISTS "TrendingFavorite_userId_source_itemId_key" ON "TrendingFavorite"("userId", "source", "itemId");
     `);
   })();
 

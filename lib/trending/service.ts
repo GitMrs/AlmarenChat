@@ -1,11 +1,39 @@
 import { fetch as undiciFetch, ProxyAgent } from 'undici';
 import { getSourceConfig, TRENDING_SOURCES } from './sources';
-import { parseBaidu, parseBilibili, parseDailyHot, parseDouHotlist, parse36Kr, parseZhihu } from './parsers';
-import { isSnapshotFresh, readSnapshot, saveSnapshot } from './storage';
+import { parseBaidu, parseBilibili, parseDailyHot, parseDouHotlist, parse36Kr, parseZhihu, parseRssFeed, parseBinanceArticles, parseOkxAnnouncements, parseOkxOrbitHtml, parseBlockBeatsHtml, parseForesightHtml } from './parsers';
+import { isSnapshotFresh, readSnapshot, saveSnapshot, getLocalISODate } from './storage';
 import type { NormalizedHotItem, TrendingSnapshot, TrendingSourceConfig } from './types';
 
 const FETCH_TIMEOUT_MS = 6000;
-const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+
+// 真实主流浏览器 User-Agent 指纹池（涵盖 Chrome、Edge、Safari、Firefox 多系统）
+const USER_AGENT_POOL = [
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36 Edg/128.0.0.0',
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15',
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:130.0) Gecko/20100101 Firefox/130.0',
+  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
+];
+
+export function getRandomUserAgent(): string {
+  const index = Math.floor(Math.random() * USER_AGENT_POOL.length);
+  return USER_AGENT_POOL[index];
+}
+
+export function getRealisticHeaders(extra?: Record<string, string>): Record<string, string> {
+  return {
+    'User-Agent': getRandomUserAgent(),
+    Accept: 'application/json, text/plain, */*',
+    'Accept-Language': 'zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7',
+    'Cache-Control': 'no-cache',
+    Pragma: 'no-cache',
+    'Sec-Fetch-Dest': 'empty',
+    'Sec-Fetch-Mode': 'cors',
+    'Sec-Fetch-Site': 'same-site',
+    ...extra,
+  };
+}
 
 // 检测本地代理（支持用户机上的 127.0.0.1:7890）
 let localProxyAgent: any = null;
@@ -26,10 +54,9 @@ async function fetchRemoteItems(config: TrendingSourceConfig): Promise<Normalize
     if (config.type === '36kr') {
       const res = await fetch(config.url, {
         method: 'POST',
-        headers: {
+        headers: getRealisticHeaders({
           'Content-Type': 'application/json;charset=UTF-8',
-          'User-Agent': USER_AGENT,
-        },
+        }),
         body: JSON.stringify({
           partner_id: 'web',
           timestamp: Date.now(),
@@ -46,10 +73,7 @@ async function fetchRemoteItems(config: TrendingSourceConfig): Promise<Normalize
       // 访问 Vercel 部署的 DailyHotApi 时，通过 undiciFetch + 代理绕过 GFW
       try {
         const res = await undiciFetch(config.url, {
-          headers: {
-            'User-Agent': USER_AGENT,
-            Accept: 'application/json, text/plain, */*',
-          },
+          headers: getRealisticHeaders(),
           dispatcher: localProxyAgent,
           signal: controller.signal,
         });
@@ -63,10 +87,7 @@ async function fetchRemoteItems(config: TrendingSourceConfig): Promise<Normalize
       
       // 降级尝试原生直连
       const fallbackRes = await fetch(config.url, {
-        headers: {
-          'User-Agent': USER_AGENT,
-          Accept: 'application/json, text/plain, */*',
-        },
+        headers: getRealisticHeaders(),
         signal: controller.signal,
       });
       if (!fallbackRes.ok) throw new Error(`HTTP ${fallbackRes.status}`);
@@ -74,11 +95,153 @@ async function fetchRemoteItems(config: TrendingSourceConfig): Promise<Normalize
       return parseDailyHot(data, config.id, config.name);
     }
 
+    if (config.type === 'binance') {
+      try {
+        const res = await undiciFetch(config.url, {
+          headers: getRealisticHeaders({ lang: 'zh-CN' }),
+          dispatcher: localProxyAgent,
+          signal: controller.signal,
+        });
+        if (res.ok) {
+          const json = await res.json();
+          return parseBinanceArticles(json);
+        }
+      } catch (err: any) {
+        console.warn(`[trending] Proxy fetch failed for ${config.id}:`, err?.message);
+      }
+      const fallbackRes = await fetch(config.url, {
+        headers: getRealisticHeaders({ lang: 'zh-CN' }),
+        signal: controller.signal,
+      });
+      if (!fallbackRes.ok) throw new Error(`HTTP ${fallbackRes.status}`);
+      const json = await fallbackRes.json();
+      return parseBinanceArticles(json);
+    }
+
+    if (config.type === 'okx') {
+      const isOrbit = config.url.includes('orbit');
+      try {
+        const res = await undiciFetch(config.url, {
+          headers: getRealisticHeaders({ 'Accept-Language': 'zh-CN,zh;q=0.9' }),
+          dispatcher: localProxyAgent,
+          signal: controller.signal,
+        });
+        if (res.ok) {
+          if (isOrbit) {
+            const html = await res.text();
+            const items = parseOkxOrbitHtml(html);
+            if (items.length > 0) return items;
+          } else {
+            const json = await res.json();
+            return parseOkxAnnouncements(json);
+          }
+        }
+      } catch (err: any) {
+        console.warn(`[trending] Proxy fetch failed for ${config.id}:`, err?.message);
+      }
+      const fallbackRes = await fetch(config.url, {
+        headers: getRealisticHeaders({ 'Accept-Language': 'zh-CN,zh;q=0.9' }),
+        signal: controller.signal,
+      });
+      if (!fallbackRes.ok) throw new Error(`HTTP ${fallbackRes.status}`);
+      if (isOrbit) {
+        const html = await fallbackRes.text();
+        return parseOkxOrbitHtml(html);
+      } else {
+        const json = await fallbackRes.json();
+        return parseOkxAnnouncements(json);
+      }
+    }
+
+    if (config.type === 'rss') {
+      try {
+        const res = await undiciFetch(config.url, {
+          headers: getRealisticHeaders(),
+          dispatcher: localProxyAgent,
+          signal: controller.signal,
+        });
+        if (res.ok) {
+          const xml = await res.text();
+          return parseRssFeed(xml, config.id, config.name);
+        }
+      } catch (err: any) {
+        console.warn(`[trending] Proxy RSS fetch failed for ${config.id}:`, err?.message);
+      }
+      const fallbackRes = await fetch(config.url, {
+        headers: getRealisticHeaders(),
+        signal: controller.signal,
+      });
+      if (!fallbackRes.ok) throw new Error(`HTTP ${fallbackRes.status}`);
+      const xml = await fallbackRes.text();
+      return parseRssFeed(xml, config.id, config.name);
+    }
+
+    if (config.type === 'blockbeats') {
+      const flashUrl = 'https://www.theblockbeats.info/newsflash';
+      const artUrl = 'https://www.theblockbeats.info/article';
+
+      const fetchPage = async (targetUrl: string) => {
+        try {
+          const res = await undiciFetch(targetUrl, {
+            headers: getRealisticHeaders(),
+            dispatcher: localProxyAgent,
+            signal: controller.signal,
+          });
+          if (res.ok) return await res.text();
+        } catch {}
+        try {
+          const res = await fetch(targetUrl, {
+            headers: getRealisticHeaders(),
+            signal: controller.signal,
+          });
+          if (res.ok) return await res.text();
+        } catch {}
+        return '';
+      };
+
+      const [flashHtml, artHtml] = await Promise.all([
+        fetchPage(flashUrl),
+        fetchPage(artUrl),
+      ]);
+
+      const items = parseBlockBeatsHtml(flashHtml, artHtml);
+      if (items.length > 0) return items;
+    }
+
+    if (config.type === 'foresight') {
+      const newsUrl = 'https://foresightnews.pro/news';
+      const artUrl = 'https://foresightnews.pro/article';
+
+      const fetchPage = async (targetUrl: string) => {
+        try {
+          const res = await undiciFetch(targetUrl, {
+            headers: getRealisticHeaders(),
+            dispatcher: localProxyAgent,
+            signal: controller.signal,
+          });
+          if (res.ok) return await res.text();
+        } catch {}
+        try {
+          const res = await fetch(targetUrl, {
+            headers: getRealisticHeaders(),
+            signal: controller.signal,
+          });
+          if (res.ok) return await res.text();
+        } catch {}
+        return '';
+      };
+
+      const [newsHtml, artHtml] = await Promise.all([
+        fetchPage(newsUrl),
+        fetchPage(artUrl),
+      ]);
+
+      const items = parseForesightHtml(newsHtml, artHtml);
+      if (items.length > 0) return items;
+    }
+
     const res = await fetch(config.url, {
-      headers: {
-        'User-Agent': USER_AGENT,
-        Accept: 'application/json, text/plain, */*',
-      },
+      headers: getRealisticHeaders(),
       signal: controller.signal,
     });
 
@@ -108,11 +271,35 @@ async function fetchRemoteItems(config: TrendingSourceConfig): Promise<Normalize
 
 export async function getTrendingSnapshot(
   sourceId: string,
-  options?: { forceRefresh?: boolean; ttlMs?: number }
+  options?: { forceRefresh?: boolean; ttlMs?: number; date?: string }
 ): Promise<TrendingSnapshot> {
   const config = getSourceConfig(sourceId);
   if (!config) {
     throw new Error(`Unsupported trending source: "${sourceId}". Supported: ${TRENDING_SOURCES.map((s) => s.id).join(', ')}`);
+  }
+
+  // 0. 历史时光机归档查询（只读且不发起远端爬取）
+  const isHistorical = options?.date && options.date !== 'today' && options.date !== getLocalISODate();
+  if (isHistorical) {
+    const historicalSnapshot = await readSnapshot(sourceId, { date: options.date });
+    if (historicalSnapshot && historicalSnapshot.items) {
+      return {
+        ...historicalSnapshot,
+        category: config.category,
+        categoryName: config.categoryName,
+        icon: config.icon,
+      };
+    }
+    return {
+      source: config.id,
+      sourceName: config.name,
+      category: config.category,
+      categoryName: config.categoryName,
+      icon: config.icon,
+      updatedAt: `${options.date}T23:59:59+08:00`,
+      total: 0,
+      items: [],
+    };
   }
 
   const cached = await readSnapshot(sourceId);

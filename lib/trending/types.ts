@@ -10,7 +10,7 @@ export interface NormalizedHotItem {
   extra?: Record<string, any>;
 }
 
-export type TrendingCategory = 'hot' | 'tech' | 'anime' | 'dev' | 'culture' | 'general';
+export type TrendingCategory = 'hot' | 'tech' | 'anime' | 'dev' | 'culture' | 'crypto' | 'general';
 
 export interface TrendingSourceConfig {
   id: string;
@@ -19,7 +19,7 @@ export interface TrendingSourceConfig {
   categoryName: string;
   icon: string;
   url: string;
-  type: 'zhihu' | '36kr' | 'bilibili' | 'baidu' | 'weibo' | 'toutiao' | 'dailyhot';
+  type: 'zhihu' | '36kr' | 'bilibili' | 'baidu' | 'weibo' | 'toutiao' | 'dailyhot' | 'rss' | 'binance' | 'okx' | 'blockbeats' | 'foresight';
   description: string;
   enabled?: boolean;
 }
