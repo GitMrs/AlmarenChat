@@ -742,7 +742,7 @@ export default function TrendingPage() {
                 {summaryOpen
                   ? '收起 AI 简报'
                   : selectedDate === 'today'
-                  ? '✨ AI 提炼全网早报'
+                  ? 'AI 提炼全网早报'
                   : '📜 AI 盘点该日脉络'}
               </span>
             </button>
