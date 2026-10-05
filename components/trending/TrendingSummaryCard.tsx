@@ -8,8 +8,6 @@ import {
   RefreshCw,
   Copy,
   Check,
-  Bot,
-  PanelsTopLeft,
   X,
   Zap,
   Clock,
@@ -29,8 +27,6 @@ export interface TrendingSummaryCardProps {
   isHistorical?: boolean;
   onRefresh?: () => void;
   onClose?: () => void;
-  onTalkToAgent?: (content: string) => void;
-  onDiscussInSpace?: (content: string) => void;
 }
 
 function buildPodcastScript(summary: string, dateLabel: string): string {
@@ -79,8 +75,6 @@ export default function TrendingSummaryCard({
   isHistorical = false,
   onRefresh,
   onClose,
-  onTalkToAgent,
-  onDiscussInSpace,
 }: TrendingSummaryCardProps) {
   const [copied, setCopied] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -295,30 +289,6 @@ export default function TrendingSummaryCard({
             )}
           </button>
 
-          {/* Talk to Agent */}
-          {onTalkToAgent && (
-            <button
-              onClick={() => onTalkToAgent(summary)}
-              disabled={loading || !summary}
-              className="flex h-8 w-8 items-center justify-center rounded-xl border border-indigo-200/80 bg-indigo-50/90 text-indigo-700 shadow-sm transition hover:bg-indigo-100 disabled:opacity-50 dark:border-indigo-800/40 dark:bg-indigo-950/60 dark:text-indigo-300 dark:hover:bg-indigo-900/50"
-              title="找 Agent 锐评全网热点"
-            >
-              <Bot size={14} className="text-indigo-600 dark:text-indigo-400" />
-            </button>
-          )}
-
-          {/* Share to Space */}
-          {onDiscussInSpace && (
-            <button
-              onClick={() => onDiscussInSpace(summary)}
-              disabled={loading || !summary}
-              className="flex h-8 w-8 items-center justify-center rounded-xl border border-orange-200/80 bg-orange-50/90 text-orange-700 shadow-sm transition hover:bg-orange-100 disabled:opacity-50 dark:border-orange-800/40 dark:bg-orange-950/60 dark:text-orange-300 dark:hover:bg-orange-900/50"
-              title="投喂空间引发多 Agent 研讨"
-            >
-              <PanelsTopLeft size={14} className="text-orange-600 dark:text-orange-400" />
-            </button>
-          )}
-
           {/* Re-generate (only for today or user forced) */}
           {onRefresh && !isHistorical && (
             <button
@@ -433,34 +403,15 @@ export default function TrendingSummaryCard({
         )}
       </div>
 
-      {/* Interactive Exploration Footer */}
+      {/* Footer */}
       {!loading && summary && (
-        <div className="relative z-10 mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-amber-200/40 pt-3 text-xs dark:border-amber-800/30">
+        <div className="relative z-10 mt-4 flex items-center justify-between border-t border-amber-200/40 pt-3 text-xs dark:border-amber-800/30">
           <div className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400">
             <Flame size={12} className="text-orange-500 fill-orange-500" />
-            <span>智能延伸探讨：</span>
-            <button
-              onClick={() =>
-                onTalkToAgent &&
-                onTalkToAgent(`根据这份《${dateLabel}全网热点速报》，请深入剖析一下今天网民情绪的最大转向是什么？有什么深层社会心理学原因？`)
-              }
-              className="text-amber-700 hover:underline dark:text-amber-400"
-            >
-              #公众情绪深层解析
-            </button>
-            <span className="text-slate-300 dark:text-slate-600">·</span>
-            <button
-              onClick={() =>
-                onTalkToAgent &&
-                onTalkToAgent(`参考这份《${dateLabel}全网热点情报》，如果你是一位自媒体内容总编，你会策划哪三个爆款选题？给出具体切入角度。`)
-              }
-              className="text-amber-700 hover:underline dark:text-amber-400"
-            >
-              #自媒体爆款选题指南
-            </button>
+            <span>全网舆情深度洞察</span>
           </div>
           <span className="text-[10px] text-slate-400">
-            Almaren AI 智能脱水调度引擎 · 保障 Token 安全与超低延迟
+            Almaren AI 智能脱水调度引擎 · 核心热点脉络梳理
           </span>
         </div>
       )}

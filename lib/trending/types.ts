@@ -7,6 +7,7 @@ export interface NormalizedHotItem {
   heat?: string;           // 热度描述 (如 "695万", "百万播放", "452万")
   desc?: string;           // 摘要或正文描述
   thumbnail?: string;      // 封面/缩略图
+  publishTime?: string;    // 来源/发布时间 (ISO 8601 字符串)
   extra?: Record<string, any>;
 }
 

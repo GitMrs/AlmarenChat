@@ -1,6 +1,33 @@
 import vm from 'node:vm';
 import type { NormalizedHotItem } from './types';
 
+/**
+ * 统一时间归一化助手：将各种来源的秒级/毫秒级时间戳、日期字符串统一转换为 ISO 字符串
+ */
+export function normalizePublishTime(raw?: any): string | undefined {
+  if (!raw) return undefined;
+  if (typeof raw === 'number') {
+    if (isNaN(raw) || raw <= 0) return undefined;
+    const ms = raw < 1e11 ? raw * 1000 : raw;
+    const d = new Date(ms);
+    return isNaN(d.getTime()) ? undefined : d.toISOString();
+  }
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    if (!trimmed) return undefined;
+    if (/^\d+$/.test(trimmed)) {
+      const num = parseInt(trimmed, 10);
+      if (isNaN(num) || num <= 0) return undefined;
+      const ms = num < 1e11 ? num * 1000 : num;
+      const d = new Date(ms);
+      return isNaN(d.getTime()) ? undefined : d.toISOString();
+    }
+    const d = new Date(trimmed);
+    return isNaN(d.getTime()) ? undefined : d.toISOString();
+  }
+  return undefined;
+}
+
 export function parseZhihu(data: any): NormalizedHotItem[] {
   if (!data?.data || !Array.isArray(data.data)) return [];
 
@@ -36,6 +63,7 @@ export function parseZhihu(data: any): NormalizedHotItem[] {
       heat: item.detail_text || '',
       desc: cleanDesc,
       thumbnail,
+      publishTime: normalizePublishTime(target.created),
       extra: {
         answerCount: target.answer_count,
         created: target.created,
@@ -63,6 +91,7 @@ export function parse36Kr(data: any): NormalizedHotItem[] {
       url,
       heat: '实时快讯',
       desc: content,
+      publishTime: normalizePublishTime(mat.publishTime || item.publishTime),
     };
   }).filter((item: NormalizedHotItem) => item.title.length > 0);
 }
@@ -83,6 +112,7 @@ export function parseDouHotlist(data: any, sourceId: string, sourceName: string)
       url,
       heat,
       desc: item.desc || '',
+      publishTime: normalizePublishTime(item.time || item.timestamp),
     };
   }).filter((item: NormalizedHotItem) => item.title.length > 0);
 }
@@ -94,6 +124,8 @@ export function parseDailyHot(data: any, sourceId: string, sourceName: string): 
   return list.map((item: any, index: number) => {
     const itemId = item.id ? String(item.id) : `${sourceId}-${index}`;
     const heat = item.hot ? String(item.hot) : '';
+    const pubTime = normalizePublishTime(item.timestamp || item.time || item.created_at || item.pubDate);
+
     return {
       id: `${sourceId}-${itemId}`,
       source: sourceId,
@@ -103,6 +135,11 @@ export function parseDailyHot(data: any, sourceId: string, sourceName: string): 
       heat,
       desc: (item.desc || '').trim(),
       thumbnail: item.pic || item.cover || '',
+      publishTime: pubTime,
+      extra: {
+        timestamp: item.timestamp,
+        author: item.author,
+      },
     };
   }).filter((item: NormalizedHotItem) => item.title.length > 0);
 }
@@ -126,6 +163,7 @@ export function parseBilibili(data: any): NormalizedHotItem[] {
       heat,
       desc: (item.desc || '').trim(),
       thumbnail: item.pic || '',
+      publishTime: normalizePublishTime(item.pubdate || item.ctime),
       extra: {
         owner: item.owner?.name,
         view: item.stat?.view,
@@ -204,6 +242,7 @@ export function parseRssFeed(xmlText: string, sourceId: string, sourceName: stri
         desc,
         heat: '最新要闻',
         thumbnail: mediaMatch?.[1] || '',
+        publishTime: normalizePublishTime(pubDateMatch?.[1]),
         extra: {
           pubDate: pubDateMatch?.[1] || '',
         },
@@ -238,6 +277,7 @@ export function parseBinanceArticles(data: any): NormalizedHotItem[] {
         heat: '官方要闻',
         desc: '币安官方最新上币、合约与产品重磅动态',
         thumbnail: item.imageLink || '',
+        publishTime: normalizePublishTime(item.releaseDate || item.date),
       };
     })
     .filter((item: NormalizedHotItem) => item.title.length > 0);
@@ -318,6 +358,7 @@ export function parseOkxAnnouncements(data: any): NormalizedHotItem[] {
         url,
         heat: '官方快讯',
         desc: '欧易OKX官方最新产品上线、活动福利与生态通知',
+        publishTime: normalizePublishTime(item.pTime),
         extra: {
           pTime: item.pTime,
         },
@@ -360,6 +401,7 @@ export function parseBlockBeatsHtml(flashHtml?: string, articleHtml?: string): N
           desc: cleanDesc || '律动实时快讯',
           heat: c.is_hot ? '🔥 热门快讯' : c.is_first ? '⚡ 首发快讯' : '快讯',
           thumbnail: c.img_url || c.c_img_url || undefined,
+          publishTime: normalizePublishTime(c.add_time ? c.add_time * 1000 : undefined),
           extra: {
             timestamp: (c.add_time || 0) * 1000,
           },
@@ -383,6 +425,7 @@ export function parseBlockBeatsHtml(flashHtml?: string, articleHtml?: string): N
         desc: (a.abstract || '').trim() || '律动深度行业专栏研报',
         heat: '📰 深度' + (tags.length ? ` · ${tags.slice(0, 2).join('/')}` : ''),
         thumbnail: a.img_url || a.c_img_url || undefined,
+        publishTime: normalizePublishTime(a.add_time ? a.add_time * 1000 : undefined),
         extra: {
           timestamp: (a.add_time || 0) * 1000,
         },
@@ -425,6 +468,7 @@ export function parseForesightHtml(newsHtml?: string, articleHtml?: string): Nor
           desc: cleanDesc || 'Foresight News 实时要闻追踪',
           heat,
           thumbnail: n.img || undefined,
+          publishTime: normalizePublishTime(n.published_at ? n.published_at * 1000 : undefined),
           extra: {
             timestamp: (n.published_at || 0) * 1000,
           },
@@ -448,6 +492,7 @@ export function parseForesightHtml(newsHtml?: string, articleHtml?: string): Nor
         desc: (a.brief || '').trim() || 'Foresight 独家深度研报',
         heat: '📰 研报' + (tagStr ? ` · ${tagStr}` : ''),
         thumbnail: a.img || undefined,
+        publishTime: normalizePublishTime(a.published_at ? a.published_at * 1000 : undefined),
         extra: {
           timestamp: Date.now() - 3600000,
         },
