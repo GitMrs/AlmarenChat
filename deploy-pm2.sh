@@ -153,7 +153,7 @@ if [ -d ".next/cache" ]; then
 fi
 
 echo "Building app in an isolated directory..."
-NEXT_DIST_DIR="$BUILD_DIR" yarn build
+NEXT_DIST_DIR="$BUILD_DIR" yarn build --turbo
 if [ ! -f "$BUILD_DIR/BUILD_ID" ]; then
   echo "Error: Next.js build completed without $BUILD_DIR/BUILD_ID"
   exit 1

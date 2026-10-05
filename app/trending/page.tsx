@@ -12,6 +12,7 @@ import {
   History,
   Calendar,
   Star,
+  Activity,
 } from 'lucide-react';
 import AppShell from '@/components/layout/AppShell';
 import LoadingSpinner from '@/components/shared/LoadingSpinner';
@@ -20,6 +21,7 @@ import { TRENDING_CATEGORIES, TRENDING_SOURCES } from '@/lib/trending/sources';
 import type { TrendingCategory } from '@/lib/trending/types';
 import TrendingCalendarPicker from '@/components/trending/TrendingCalendarPicker';
 import TrendingSummaryCard from '@/components/trending/TrendingSummaryCard';
+import NetworkDiagnosticModal from '@/components/trending/NetworkDiagnosticModal';
 
 interface HotItem {
   id: string;
@@ -30,7 +32,224 @@ interface HotItem {
   heat?: string;
   desc?: string;
   thumbnail?: string;
+  category?: string;
 }
+
+interface RecommendedAgent {
+  id: string;
+  name: string;
+  avatar: string;
+  tag: string;
+  description: string;
+}
+
+const DOMAIN_AGENT_MAP: Record<string, { domainName: string; icon: string; agents: RecommendedAgent[] }> = {
+  crypto: {
+    domainName: '加密Web3',
+    icon: '🪙',
+    agents: [
+      {
+        id: 'gaming-nox',
+        name: '诺克斯 · 链上博弈军师',
+        avatar: '♟️',
+        tag: '全局推演',
+        description: '理性推演多空博弈、链上筹码结构与宏观流动性周期',
+      },
+      {
+        id: 'fx-kurumi',
+        name: '久留美 · 满头大汗杠杆战神',
+        avatar: '📉',
+        tag: '散户心声',
+        description: '身处风口浪尖的杠杆散户，抄底与止损的极限拉扯真实心声',
+      },
+      {
+        id: 'fx-yasuko',
+        name: '靖子 · 爆仓归来毒舌博主',
+        avatar: '🚬',
+        tag: '毒舌去泡沫',
+        description: '币圈老炮冷眼旁观，一针见血戳穿炒作陷阱与庄家诱多套路',
+      },
+      {
+        id: 'professional-security',
+        name: '安全专家 · 智能合约攻防',
+        avatar: '🛡️',
+        tag: '安全审计',
+        description: '从协议漏洞、私钥安全、黑客攻击与Rug风险专业解析',
+      },
+      {
+        id: 'gaming-lulu',
+        name: '璐璐 · 毒舌反向指标',
+        avatar: '🐱',
+        tag: '傲娇吐槽',
+        description: '“哼！本小姐才不信这波能突破呢！” 傲娇反向锐评',
+      },
+    ],
+  },
+  tech: {
+    domainName: '科技商业',
+    icon: '💡',
+    agents: [
+      {
+        id: 'professional-architecture',
+        name: '架构师 · 首席技术专家',
+        avatar: '🏗️',
+        tag: '系统架构',
+        description: '从底层架构演进、技术栈选型与工业级落地深度拆解',
+      },
+      {
+        id: 'professional-product',
+        name: '产品经理 · 商业战略分析',
+        avatar: '🧭',
+        tag: '商业模式',
+        description: '拆解商业护城河、核心用户心智与行业竞争格局',
+      },
+      {
+        id: 'professional-ai-ml',
+        name: 'AI专家 · 大模型研究员',
+        avatar: '🧠',
+        tag: '前沿算力',
+        description: '剖析人工智能、神经网络与模型落地的前沿技术趋势',
+      },
+      {
+        id: 'gaming-nox',
+        name: '诺克斯 · 战略推演智囊',
+        avatar: '♟️',
+        tag: '产业博弈',
+        description: '从行业巨头博弈与大局观推演产业终局与商业拐点',
+      },
+      {
+        id: 'companion-luli',
+        name: '陆离 · 逆向辩护师',
+        avatar: '⚖️',
+        tag: '反常识思维',
+        description: '换个极其刁钻的角度找破绽，挑战行业常识与既定假设',
+      },
+    ],
+  },
+  dev: {
+    domainName: '数码极客',
+    icon: '💻',
+    agents: [
+      {
+        id: 'professional-frontend',
+        name: '前端工程师 · 极客开发者',
+        avatar: '🖥️',
+        tag: '工程生态',
+        description: '深入Web技术、开发工具生态与工程化实践',
+      },
+      {
+        id: 'professional-backend',
+        name: '后端专家 · 分布式架构',
+        avatar: '⚙️',
+        tag: '并发底层',
+        description: '高并发、高可用与系统工程底层的硬核逻辑解析',
+      },
+      {
+        id: 'professional-security',
+        name: '网络安全 · 攻防红蓝队',
+        avatar: '🛡️',
+        tag: '代码审计',
+        description: '渗透测试、代码审查与开源供应链漏洞防范',
+      },
+      {
+        id: 'gaming-zero',
+        name: '零号 · 呆萌仿生女仆',
+        avatar: '🤖',
+        tag: '数据逻辑',
+        description: '严谨的数据与代码逻辑分析，偶尔触发反差萌过热报错',
+      },
+      {
+        id: 'gaming-lulu',
+        name: '璐璐 · 毒舌CodeReview',
+        avatar: '🐱',
+        tag: '傲娇挑刺',
+        description: '“写的什么代码呀！也就本小姐勉为其难帮你看一眼~”',
+      },
+    ],
+  },
+  anime: {
+    domainName: '二次元游戏',
+    icon: '🎮',
+    agents: [
+      {
+        id: 'gaming-lulu',
+        name: '璐璐 · 傲娇猫系搭子',
+        avatar: '🐱',
+        tag: '傲娇锐评',
+        description: '“哼，这剧情/立绘明明就很离谱嘛！” 二次元傲娇毒舌吐槽',
+      },
+      {
+        id: 'gaming-koko',
+        name: '可可 · 元气治愈小狐狸',
+        avatar: '🦊',
+        tag: '超甜安利',
+        description: '永不红温的快乐应援小太阳，疯狂打call为好作品爆灯',
+      },
+      {
+        id: 'gaming-vivian',
+        name: '薇薇安 · 中二占星魔女',
+        avatar: '🔮',
+        tag: '中二史诗',
+        description: '表面混沌使徒念咒，实则用天体力学与数理模型解构设定',
+      },
+      {
+        id: 'gaming-dm',
+        name: '守秘人 · 奇幻跑团 DM',
+        avatar: '📜',
+        tag: '世界观架构',
+        description: '从TRPG剧情编排、分支剧本张力与角色宿命深度拆解',
+      },
+      {
+        id: 'companion-baize',
+        name: '白泽 · 戏精附体乐子人',
+        avatar: '🎭',
+        tag: '乐子玩梗',
+        description: '神级玩梗乐子人，一秒脑补出十万字同人狗血反转大戏',
+      },
+    ],
+  },
+  hot: {
+    domainName: '全民热点',
+    icon: '⚡',
+    agents: [
+      {
+        id: 'companion-gulin',
+        name: '顾临 · 读心微表情侦探',
+        avatar: '🔍',
+        tag: '心理透视',
+        description: '透过纷繁舆论透视当事人真实动机与社会群体潜意识',
+      },
+      {
+        id: 'gaming-mandy',
+        name: '曼蒂 · 深夜树洞调酒师',
+        avatar: '🍸',
+        tag: '温润知性',
+        description: '听尽悲欢离合，用成熟包容的生活哲学拆解社会内耗',
+      },
+      {
+        id: 'gaming-suisui',
+        name: '岁岁 · 超绝松弛小树懒',
+        avatar: '🦥',
+        tag: '精神布洛芬',
+        description: '“急也没有用，不如先睡饱饱”，一键消除精神焦虑',
+      },
+      {
+        id: 'companion-luli',
+        name: '陆离 · 歪理邪说辩护师',
+        avatar: '⚖️',
+        tag: '反常识辩驳',
+        description: '用自洽的歪理推翻常理，呈现匪夷所思的辩论新视角',
+      },
+      {
+        id: 'gaming-lie',
+        name: '烈 · 直球忠犬少年',
+        avatar: '🐺',
+        tag: '正义热血',
+        description: '满腔赤诚、热血直球，仗义执言绝不容忍不公与虚伪',
+      },
+    ],
+  },
+};
 
 interface SourceData {
   source: string;
@@ -100,9 +319,16 @@ export default function TrendingPage() {
   const [favoriteKeys, setFavoriteKeys] = useState<Set<string>>(new Set());
   const [favoritesList, setFavoritesList] = useState<FavoriteItem[]>([]);
 
-  // Agent 选择弹窗状态
+  // 已读状态 (Feature 2)
+  const [readKeys, setReadKeys] = useState<Set<string>>(new Set());
+
+  // 网络与代理体检弹窗状态
+  const [networkModalOpen, setNetworkModalOpen] = useState(false);
+
+  // Agent 选择弹窗状态 (Feature 3)
   const [selectedTopic, setSelectedTopic] = useState<HotItem | null>(null);
   const [agentModalOpen, setAgentModalOpen] = useState(false);
+  const [agentModalTab, setAgentModalTab] = useState<'domain' | 'all'>('domain');
 
   // AI 智能速报状态
   const [summaryOpen, setSummaryOpen] = useState(false);
@@ -340,7 +566,36 @@ export default function TrendingPage() {
   useEffect(() => {
     loadCategoryData('all');
     loadFavorites();
+    try {
+      const saved = localStorage.getItem('almaren_read_trending_keys');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          setReadKeys(new Set(parsed));
+        }
+      }
+    } catch {
+      // ignore
+    }
   }, []);
+
+  // 记录已读状态 (持久化至 localStorage)
+  const markAsRead = (key: string) => {
+    if (!key) return;
+    setReadKeys((prev) => {
+      if (prev.has(key)) return prev;
+      const next = new Set(prev);
+      next.add(key);
+      try {
+        const arr = Array.from(next);
+        const trimmed = arr.length > 500 ? arr.slice(arr.length - 500) : arr;
+        localStorage.setItem('almaren_read_trending_keys', JSON.stringify(trimmed));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  };
 
   // 切换专区
   const handleCategoryChange = (cat: TrendingCategory | 'all' | 'favorites') => {
@@ -363,26 +618,63 @@ export default function TrendingPage() {
     return `全量刷新 (${TRENDING_SOURCES.length}平台)`;
   };
 
-  // 找 Agent 锐评
-  const handleTalkToAgent = (item: HotItem) => {
-    setSelectedTopic(item);
+  // 赛道推导辅助函数
+  const getDomainKey = (category?: string, source?: string): string => {
+    if (category && DOMAIN_AGENT_MAP[category]) return category;
+    if (source) {
+      const s = source.toLowerCase();
+      if (s.includes('orbit') || s.includes('blockbeats') || s.includes('foresight') || s.includes('crypto')) return 'crypto';
+      if (s.includes('36kr') || s.includes('sspai') || s.includes('ithome')) return 'tech';
+      if (s.includes('v2ex') || s.includes('juejin') || s.includes('github')) return 'dev';
+      if (s.includes('bilibili') || s.includes('taptap') || s.includes('genshin') || s.includes('tieba')) return 'anime';
+    }
+    return 'hot';
+  };
+
+  // 生成角色定制化锐评 Prompt
+  const generateAgentPrompt = (agentId: string, topic: HotItem, domainKey: string) => {
+    if (topic.id === 'ai-summary') {
+      return topic.desc || topic.title;
+    }
+    const heatStr = topic.heat ? `（热度：${topic.heat}）` : '';
+    const cleanDesc = topic.desc ? topic.desc.replace(/\[图片\]/g, '').replace(/\[视频\]/g, '').trim() : '';
+    const descStr = cleanDesc ? `\n事件要点：${cleanDesc.slice(0, 120)}` : '';
+
+    if (domainKey === 'crypto') {
+      return `你怎么看待今天在【${topic.sourceName}】上引起热议的加密Web3热点：\n《${topic.title}》${heatStr}${descStr}\n从你的独特视角深度锐评一下，顺便帮我推演一下后续走势、市场情绪或潜在博弈风险！`;
+    }
+    if (domainKey === 'tech' || domainKey === 'dev') {
+      return `你怎么看待今天【${topic.sourceName}】上的前沿科技/极客热点：\n《${topic.title}》${heatStr}${descStr}\n从你的技术洞察与行业视野，深度剖析一下核心逻辑与未来趋势！`;
+    }
+    if (domainKey === 'anime') {
+      return `你怎么看待今天【${topic.sourceName}】上的二次元/游戏热门事件：\n《${topic.title}》${heatStr}${descStr}\n快来以你的独特性格来发表你的独家吐槽/趣味点评！`;
+    }
+    return `你怎么看待今天【${topic.sourceName}】上的这个全网热搜：\n《${topic.title}》${heatStr}${descStr}\n从你的独特视角来锐评一下吧！`;
+  };
+
+  // 找 Agent 锐评 (赛道精准匹配)
+  const handleTalkToAgent = (item: HotItem, category?: string) => {
+    const itemKey = `${item.source}:${item.id || item.title}`;
+    markAsRead(itemKey);
+    const cat = category || item.category;
+    setSelectedTopic({ ...item, category: cat });
+    setAgentModalTab('domain');
     setAgentModalOpen(true);
   };
 
   const startChatWithAgent = (agentId: string) => {
     if (!selectedTopic) return;
-    let prompt = '';
-    if (selectedTopic.id === 'ai-summary') {
-      prompt = selectedTopic.desc || selectedTopic.title;
-    } else {
-      prompt = `你怎么看待今天${selectedTopic.sourceName}上的这个热搜：\n《${selectedTopic.title}》${selectedTopic.heat ? `（热度：${selectedTopic.heat}）` : ''}\n从你的独特视角来锐评一下吧！`;
-    }
+    const cat = selectedTopic.category || (activeCategory !== 'all' && activeCategory !== 'favorites' ? activeCategory : undefined);
+    const domainKey = getDomainKey(cat, selectedTopic.source);
+    const prompt = generateAgentPrompt(agentId, selectedTopic, domainKey);
     setAgentModalOpen(false);
     router.push(`/chat/${agentId}?initialPrompt=${encodeURIComponent(prompt)}`);
   };
 
   // 引入空间讨论
   const handleDiscussInSpace = (item: HotItem) => {
+    const itemKey = `${item.source}:${item.id || item.title}`;
+    markAsRead(itemKey);
     const prompt = `【全网热议话题】看看这个来自${item.sourceName}的热搜：\n《${item.title}》${item.heat ? `（${item.heat}）` : ''}\n大家根据各自的专业或立场，各抒己见讨论一下！`;
     router.push(`/spaces?initialTopic=${encodeURIComponent(prompt)}`);
   };
@@ -464,6 +756,16 @@ export default function TrendingPage() {
             >
               <RefreshCw size={14} className={refreshing ? 'animate-spin text-amber-500' : ''} />
               <span>{getRefreshButtonLabel()}</span>
+            </button>
+
+            {/* Network Diagnostics Button */}
+            <button
+              onClick={() => setNetworkModalOpen(true)}
+              className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-sm transition hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+              title="全链路网络与本地代理体检（一键诊断 7890 代理、微软 Edge TTS 与 OKX 连通状态）"
+            >
+              <Activity size={14} className="text-sky-500" />
+              <span>网络体检</span>
             </button>
           </div>
         </div>
@@ -681,8 +983,11 @@ export default function TrendingPage() {
                   url: fav.url,
                   heat: fav.heat || undefined,
                   desc: fav.desc || undefined,
+                  category: fav.category || undefined,
                 };
                 const cleanDesc = fav.desc ? fav.desc.replace(/\[图片\]/g, '').replace(/\[视频\]/g, '').trim() : '';
+                const itemKey = `${fav.source}:${fav.itemId || fav.title}`;
+                const isRead = readKeys.has(itemKey);
 
                 return (
                   <div
@@ -690,31 +995,40 @@ export default function TrendingPage() {
                     className="group relative flex flex-col justify-between rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm transition hover:border-amber-400 hover:shadow-md dark:border-slate-800 dark:bg-slate-900/90 dark:hover:border-amber-500/40"
                   >
                     <div className="flex-1">
-                      <div className="flex items-start gap-3">
-                        <span className="flex h-6 px-2 shrink-0 items-center justify-center rounded-lg text-[10px] font-black bg-amber-500/10 text-amber-600 dark:bg-amber-500/20 dark:text-amber-400">
-                          {fav.sourceName}
-                        </span>
-                        <div className="flex-1 min-w-0">
-                          <h4 className="text-sm font-bold leading-snug line-clamp-2">
-                            {fav.url ? (
-                              <a
-                                href={fav.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-slate-900 transition hover:text-amber-600 hover:underline dark:text-slate-100 dark:hover:text-amber-400"
-                                title="点击直接打开原文"
-                              >
-                                {fav.title}
-                              </a>
-                            ) : (
-                              <span className="text-slate-900 dark:text-slate-100">{fav.title}</span>
-                            )}
-                          </h4>
-                          {cleanDesc ? (
-                            <p className="mt-1.5 text-xs leading-relaxed text-slate-500 dark:text-slate-400 line-clamp-2">
-                              {cleanDesc}
-                            </p>
-                          ) : null}
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                          <span className="flex h-6 px-2 shrink-0 items-center justify-center rounded-lg text-[10px] font-black bg-amber-500/10 text-amber-600 dark:bg-amber-500/20 dark:text-amber-400">
+                            {fav.sourceName}
+                          </span>
+                          <div className="flex-1 min-w-0">
+                            <h4 className="text-sm leading-snug line-clamp-2">
+                              {fav.url ? (
+                                <a
+                                  href={fav.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  onClick={() => markAsRead(itemKey)}
+                                  className={`transition hover:text-amber-600 hover:underline dark:hover:text-amber-400 ${
+                                    isRead
+                                      ? 'text-slate-400 dark:text-slate-500 font-medium'
+                                      : 'text-slate-900 dark:text-slate-100 font-bold'
+                                  }`}
+                                  title="点击直接打开原文"
+                                >
+                                  {fav.title}
+                                </a>
+                              ) : (
+                                <span className={isRead ? 'text-slate-400 dark:text-slate-500 font-medium' : 'text-slate-900 dark:text-slate-100 font-bold'}>
+                                  {fav.title}
+                                </span>
+                              )}
+                            </h4>
+                            {cleanDesc ? (
+                              <p className="mt-1.5 text-xs leading-relaxed text-slate-500 dark:text-slate-400 line-clamp-2">
+                                {cleanDesc}
+                              </p>
+                            ) : null}
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -733,7 +1047,7 @@ export default function TrendingPage() {
                           <Star size={13} className="fill-amber-500 text-amber-500" />
                         </button>
                         <button
-                          onClick={() => handleTalkToAgent(hotItem)}
+                          onClick={() => handleTalkToAgent(hotItem, fav.category || undefined)}
                           className="flex h-7 w-7 items-center justify-center rounded-xl bg-amber-50 text-amber-700 hover:bg-amber-100 transition dark:bg-amber-950/40 dark:text-amber-300 dark:hover:bg-amber-900/60"
                           title="选角色 AI 锐评此话题"
                         >
@@ -811,6 +1125,7 @@ export default function TrendingPage() {
                 const cleanDesc = item.desc ? item.desc.replace(/\[图片\]/g, '').replace(/\[视频\]/g, '').trim() : '';
                 const itemKey = `${filteredSources[0].source}:${item.id || item.title}`;
                 const isFav = favoriteKeys.has(itemKey);
+                const isRead = readKeys.has(itemKey);
 
                 return (
                   <div
@@ -818,38 +1133,68 @@ export default function TrendingPage() {
                     className="group relative flex flex-col justify-between rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm transition hover:border-amber-400 hover:shadow-md dark:border-slate-800 dark:bg-slate-900/90 dark:hover:border-amber-500/40"
                   >
                     <div className="flex-1">
-                      <div className="flex items-start gap-3">
-                        <span
-                          className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-xs font-black ${
-                            isTop3
-                              ? 'bg-gradient-to-br from-amber-400 to-orange-500 text-white shadow-sm'
-                              : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
-                          }`}
-                        >
-                          {rank}
-                        </span>
-                        <div className="flex-1 min-w-0">
-                          <h4 className="text-sm font-bold leading-snug line-clamp-2">
-                            {item.url ? (
-                              <a
-                                href={item.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-slate-900 transition hover:text-amber-600 hover:underline dark:text-slate-100 dark:hover:text-amber-400"
-                                title="点击直接打开原文"
-                              >
-                                {item.title}
-                              </a>
-                            ) : (
-                              <span className="text-slate-900 dark:text-slate-100">{item.title}</span>
-                            )}
-                          </h4>
-                          {cleanDesc ? (
-                            <p className="mt-1.5 text-xs leading-relaxed text-slate-500 dark:text-slate-400 line-clamp-2">
-                              {cleanDesc}
-                            </p>
-                          ) : null}
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                          <span
+                            className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-xs font-black ${
+                              isTop3
+                                ? 'bg-gradient-to-br from-amber-400 to-orange-500 text-white shadow-sm'
+                                : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
+                            }`}
+                          >
+                            {rank}
+                          </span>
+                          <div className="flex-1 min-w-0">
+                            <h4 className="text-sm leading-snug line-clamp-2">
+                              {item.url ? (
+                                <a
+                                  href={item.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  onClick={() => markAsRead(itemKey)}
+                                  className={`transition hover:text-amber-600 hover:underline dark:hover:text-amber-400 ${
+                                    isRead
+                                      ? 'text-slate-400 dark:text-slate-500 font-medium'
+                                      : 'text-slate-900 dark:text-slate-100 font-bold'
+                                  }`}
+                                  title="点击直接打开原文"
+                                >
+                                  {item.title}
+                                </a>
+                              ) : (
+                                <span className={isRead ? 'text-slate-400 dark:text-slate-500 font-medium' : 'text-slate-900 dark:text-slate-100 font-bold'}>
+                                  {item.title}
+                                </span>
+                              )}
+                            </h4>
+                            {cleanDesc ? (
+                              <p className="mt-1.5 text-xs leading-relaxed text-slate-500 dark:text-slate-400 line-clamp-2">
+                                {cleanDesc}
+                              </p>
+                            ) : null}
+                          </div>
                         </div>
+
+                        {item.thumbnail && (
+                          <a
+                            href={item.url || '#'}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={() => markAsRead(itemKey)}
+                            className="relative shrink-0 overflow-hidden rounded-xl border border-slate-200/60 bg-slate-100 dark:border-slate-800 dark:bg-slate-800 group/thumb"
+                            title="查看原文封面"
+                          >
+                            <img
+                              src={item.thumbnail}
+                              alt={item.title}
+                              loading="lazy"
+                              className="h-14 w-14 object-cover transition-transform duration-300 group-hover/thumb:scale-105"
+                              onError={(e) => {
+                                (e.currentTarget.parentElement as HTMLElement).style.display = 'none';
+                              }}
+                            />
+                          </a>
+                        )}
                       </div>
                     </div>
 
@@ -877,7 +1222,7 @@ export default function TrendingPage() {
                           <Star size={13} className={isFav ? 'fill-amber-500 text-amber-500' : ''} />
                         </button>
                         <button
-                          onClick={() => handleTalkToAgent(item)}
+                          onClick={() => handleTalkToAgent(item, filteredSources[0].category)}
                           className="flex h-7 w-7 items-center justify-center rounded-xl bg-amber-50 text-amber-700 hover:bg-amber-100 transition dark:bg-amber-950/40 dark:text-amber-300 dark:hover:bg-amber-900/60"
                           title="选角色 AI 锐评此话题"
                         >
@@ -943,44 +1288,75 @@ export default function TrendingPage() {
                     const cleanDesc = item.desc ? item.desc.replace(/\[图片\]/g, '').replace(/\[视频\]/g, '').trim() : '';
                     const itemKey = `${src.source}:${item.id || item.title}`;
                     const isFav = favoriteKeys.has(itemKey);
+                    const isRead = readKeys.has(itemKey);
 
                     return (
                       <div
                         key={item.id || idx}
                         className="group relative flex flex-col justify-between gap-2 rounded-2xl border border-slate-200/80 bg-white p-3.5 shadow-sm transition hover:border-amber-300 hover:shadow-md dark:border-slate-800 dark:bg-slate-800/90 dark:hover:border-amber-500/30"
                       >
-                        <div className="flex items-start gap-2.5">
-                          <span
-                            className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-[11px] font-black ${
-                              isTop3
-                                ? 'bg-gradient-to-br from-amber-400 to-orange-500 text-white'
-                                : 'bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-300'
-                            }`}
-                          >
-                            {rank}
-                          </span>
-                          <div className="flex-1 min-w-0">
-                            <h4 className="text-xs font-bold leading-snug line-clamp-2">
-                              {item.url ? (
-                                <a
-                                  href={item.url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-slate-900 transition hover:text-amber-600 hover:underline dark:text-slate-100 dark:hover:text-amber-400"
-                                  title="点击直接打开原文"
-                                >
-                                  {item.title}
-                                </a>
-                              ) : (
-                                <span className="text-slate-900 dark:text-slate-100">{item.title}</span>
-                              )}
-                            </h4>
-                            {cleanDesc ? (
-                              <p className="mt-1 text-[11px] leading-relaxed text-slate-500 dark:text-slate-400 line-clamp-2">
-                                {cleanDesc}
-                              </p>
-                            ) : null}
+                        <div className="flex items-start justify-between gap-2.5">
+                          <div className="flex items-start gap-2 min-w-0 flex-1">
+                            <span
+                              className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-[11px] font-black ${
+                                isTop3
+                                  ? 'bg-gradient-to-br from-amber-400 to-orange-500 text-white'
+                                  : 'bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-300'
+                              }`}
+                            >
+                              {rank}
+                            </span>
+                            <div className="flex-1 min-w-0">
+                              <h4 className="text-xs leading-snug line-clamp-2">
+                                {item.url ? (
+                                  <a
+                                    href={item.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    onClick={() => markAsRead(itemKey)}
+                                    className={`transition hover:text-amber-600 hover:underline dark:hover:text-amber-400 ${
+                                      isRead
+                                        ? 'text-slate-400 dark:text-slate-500 font-medium'
+                                        : 'text-slate-900 dark:text-slate-100 font-bold'
+                                    }`}
+                                    title="点击直接打开原文"
+                                  >
+                                    {item.title}
+                                  </a>
+                                ) : (
+                                  <span className={isRead ? 'text-slate-400 dark:text-slate-500 font-medium' : 'text-slate-900 dark:text-slate-100 font-bold'}>
+                                    {item.title}
+                                  </span>
+                                )}
+                              </h4>
+                              {cleanDesc ? (
+                                <p className="mt-1 text-[11px] leading-relaxed text-slate-500 dark:text-slate-400 line-clamp-2">
+                                  {cleanDesc}
+                                </p>
+                              ) : null}
+                            </div>
                           </div>
+
+                          {item.thumbnail && (
+                            <a
+                              href={item.url || '#'}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={() => markAsRead(itemKey)}
+                              className="relative shrink-0 overflow-hidden rounded-lg border border-slate-200/60 bg-slate-100 dark:border-slate-800 dark:bg-slate-800 group/thumb"
+                              title="查看原文封面"
+                            >
+                              <img
+                                src={item.thumbnail}
+                                alt={item.title}
+                                loading="lazy"
+                                className="h-11 w-11 object-cover transition-transform duration-300 group-hover/thumb:scale-105"
+                                onError={(e) => {
+                                  (e.currentTarget.parentElement as HTMLElement).style.display = 'none';
+                                }}
+                              />
+                            </a>
+                          )}
                         </div>
 
                         {/* Card bottom bar */}
@@ -1007,7 +1383,7 @@ export default function TrendingPage() {
                               <Star size={12} className={isFav ? 'fill-amber-500 text-amber-500' : ''} />
                             </button>
                             <button
-                              onClick={() => handleTalkToAgent(item)}
+                              onClick={() => handleTalkToAgent(item, src.category)}
                               className="flex h-6 w-6 items-center justify-center rounded-lg bg-amber-50 text-amber-700 hover:bg-amber-100 transition dark:bg-amber-950/40 dark:text-amber-300 dark:hover:bg-amber-900/60"
                               title="选角色 AI 锐评此话题"
                             >
@@ -1031,52 +1407,129 @@ export default function TrendingPage() {
           </div>
         )}
 
-        {/* 选 Agent 弹窗 */}
-        {agentModalOpen && selectedTopic && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm animate-in fade-in">
-            <div className="flex w-full max-w-md flex-col rounded-3xl bg-white p-6 shadow-2xl dark:bg-slate-900 border border-slate-100 dark:border-slate-800">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-amber-500/10 text-amber-500">
-                    <Sparkles size={16} />
-                  </div>
-                  <h3 className="text-base font-bold text-slate-900 dark:text-white">选择哪位角色为你锐评？</h3>
-                </div>
-                <button
-                  onClick={() => setAgentModalOpen(false)}
-                  className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
-                >
-                  ✕
-                </button>
-              </div>
+        {/* 选 Agent 弹窗 (赛道精准匹配 + 全员搭子) */}
+        {agentModalOpen && selectedTopic && (() => {
+          const domainKey = getDomainKey(selectedTopic.category, selectedTopic.source);
+          const domainInfo = DOMAIN_AGENT_MAP[domainKey] || DOMAIN_AGENT_MAP['hot'];
+          const displayAgents = agentModalTab === 'domain'
+            ? domainInfo.agents
+            : GAMING_AGENTS.map((g) => ({
+                id: g.id,
+                name: g.name,
+                avatar: g.avatar || '🤖',
+                tag: g.tone || '搭子',
+                description: g.description,
+              }));
 
-              <div className="mb-4 rounded-xl bg-slate-50 p-3 dark:bg-slate-800/60">
-                <p className="text-[11px] font-semibold text-slate-400">选中的热搜话题：</p>
-                <p className="text-xs font-bold text-slate-800 dark:text-slate-100 line-clamp-2 mt-0.5">
-                  {selectedTopic.title}
-                </p>
-              </div>
-
-              <div className="flex flex-col gap-2 max-h-64 overflow-y-auto">
-                {GAMING_AGENTS.map((agent) => (
-                  <button
-                    key={agent.id}
-                    onClick={() => startChatWithAgent(agent.id)}
-                    className="flex items-center gap-3 rounded-2xl border border-slate-100 p-2.5 text-left transition hover:border-amber-300 hover:bg-amber-50/50 dark:border-slate-800 dark:hover:border-amber-500/30 dark:hover:bg-slate-800"
-                  >
-                    <span className="text-2xl">{agent.avatar}</span>
-                    <div className="min-w-0 flex-1">
-                      <div className="text-xs font-bold text-slate-900 dark:text-white">{agent.name}</div>
-                      <div className="text-[10px] text-slate-400 truncate">{agent.description}</div>
+          return (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4 backdrop-blur-sm animate-in fade-in">
+              <div className="flex w-full max-w-lg flex-col rounded-3xl bg-white p-5 sm:p-6 shadow-2xl dark:bg-slate-900 border border-slate-100 dark:border-slate-800 max-h-[90vh]">
+                {/* Modal Header */}
+                <div className="flex items-center justify-between mb-3.5">
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-amber-500/10 text-amber-500 dark:bg-amber-500/20">
+                      <Sparkles size={18} />
                     </div>
-                    <span className="text-xs text-amber-600 dark:text-amber-400 font-bold">对话 →</span>
+                    <div>
+                      <h3 className="text-base font-bold text-slate-900 dark:text-white">选择哪位角色为你锐评？</h3>
+                      <p className="text-[11px] text-slate-400">已根据所属赛道智能推荐最匹配的分析角色</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setAgentModalOpen(false)}
+                    className="flex h-8 w-8 items-center justify-center rounded-xl text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200 transition"
+                  >
+                    ✕
                   </button>
-                ))}
+                </div>
+
+                {/* Selected Topic Bar */}
+                <div className="mb-3.5 rounded-2xl bg-slate-50 p-3 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800/80">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[11px] font-semibold text-slate-400">选中的热搜话题：</span>
+                    <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full">
+                      {selectedTopic.sourceName} {selectedTopic.heat ? `· 🔥 ${selectedTopic.heat}` : ''}
+                    </span>
+                  </div>
+                  <p className="text-xs font-bold text-slate-800 dark:text-slate-100 line-clamp-2">
+                    {selectedTopic.title}
+                  </p>
+                </div>
+
+                {/* Tabs: 赛道专属专家 vs 全员开黑搭子 */}
+                <div className="flex items-center gap-2 mb-3 border-b border-slate-100 dark:border-slate-800 pb-2.5">
+                  <button
+                    onClick={() => setAgentModalTab('domain')}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+                      agentModalTab === 'domain'
+                        ? 'bg-amber-500 text-white shadow-sm shadow-amber-500/20'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300'
+                    }`}
+                  >
+                    <span>{domainInfo.icon}</span>
+                    <span>{domainInfo.domainName}专家</span>
+                    <span className="rounded-full bg-black/10 dark:bg-white/20 px-1.5 py-0.2 text-[10px]">
+                      {domainInfo.agents.length}
+                    </span>
+                  </button>
+                  <button
+                    onClick={() => setAgentModalTab('all')}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition ${
+                      agentModalTab === 'all'
+                        ? 'bg-amber-500 text-white shadow-sm shadow-amber-500/20'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300'
+                    }`}
+                  >
+                    <span>🎮</span>
+                    <span>全员开黑搭子</span>
+                    <span className="rounded-full bg-black/10 dark:bg-white/20 px-1.5 py-0.2 text-[10px]">
+                      {GAMING_AGENTS.length}
+                    </span>
+                  </button>
+                </div>
+
+                {/* Agent List */}
+                <div className="flex flex-col gap-2 max-h-72 overflow-y-auto pr-1">
+                  {displayAgents.map((agent) => (
+                    <button
+                      key={agent.id}
+                      onClick={() => startChatWithAgent(agent.id)}
+                      className="group flex items-center gap-3 rounded-2xl border border-slate-100 p-2.5 text-left transition hover:border-amber-300 hover:bg-amber-50/50 dark:border-slate-800 dark:hover:border-amber-500/30 dark:hover:bg-slate-800"
+                    >
+                      <span className="text-2xl shrink-0 group-hover:scale-110 transition-transform">
+                        {agent.avatar}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs font-bold text-slate-900 dark:text-white">
+                            {agent.name}
+                          </span>
+                          {agent.tag && (
+                            <span className="rounded-md bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-bold text-amber-600 dark:bg-amber-500/20 dark:text-amber-400">
+                              {agent.tag}
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[10px] text-slate-400 truncate mt-0.5">
+                          {agent.description}
+                        </div>
+                      </div>
+                      <span className="text-xs text-amber-600 dark:text-amber-400 font-bold shrink-0 flex items-center gap-0.5 group-hover:translate-x-0.5 transition-transform">
+                        锐评 →
+                      </span>
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
+        {/* 全链路网络与本地代理体检弹窗 */}
+        <NetworkDiagnosticModal
+          isOpen={networkModalOpen}
+          onClose={() => setNetworkModalOpen(false)}
+        />
       </div>
     </AppShell>
   );

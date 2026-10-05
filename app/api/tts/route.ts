@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireAuth } from '@/app/api/_lib/auth';
+import { getUserIdFromRequest } from '@/app/api/_lib/auth';
 import { cleanMarkdownForTTS, getAvailableVoices, synthesizeSpeech } from '@/lib/tts';
 
 export const runtime = 'nodejs';
@@ -18,24 +18,35 @@ export async function GET(request: Request) {
       });
     }
 
-    // If text is provided, verify authentication and stream audio
-    requireAuth(request);
+    // Edge TTS is free and disk cached; allow guest users with fallback
+    getUserIdFromRequest(request);
 
-    const text = cleanMarkdownForTTS(rawText);
+    let text = cleanMarkdownForTTS(rawText);
     if (!text) {
       return NextResponse.json({ error: 'Text to synthesize cannot be empty' }, { status: 400 });
     }
 
-    if (text.length > 2000) {
-      return NextResponse.json({ error: 'Text exceeds maximum length of 2000 characters' }, { status: 400 });
+    if (text.length > 3500) {
+      text = text.slice(0, 3500);
     }
 
     const voice = url.searchParams.get('voice') || undefined;
     const rate = url.searchParams.get('rate') || undefined;
     const pitch = url.searchParams.get('pitch') || undefined;
-    const cacheNamespace = url.searchParams.get('cacheNamespace') === 'gomoku' ? 'gomoku' : undefined;
+    const rawNamespace = url.searchParams.get('cacheNamespace');
+    const cacheNamespace = typeof rawNamespace === 'string' && /^[a-z0-9_-]+$/i.test(rawNamespace)
+      ? rawNamespace as any
+      : undefined;
+    const timeoutParam = url.searchParams.get('timeoutMs') || url.searchParams.get('timeout');
+    const timeoutMs = timeoutParam ? parseInt(timeoutParam, 10) : undefined;
 
-    const audioBuffer = await synthesizeSpeech(text, { voice, rate, pitch, cacheNamespace });
+    const audioBuffer = await synthesizeSpeech(text, {
+      voice,
+      rate,
+      pitch,
+      timeoutMs: timeoutMs && timeoutMs > 0 ? timeoutMs : undefined,
+      cacheNamespace,
+    });
 
     return new Response(new Uint8Array(audioBuffer), {
       status: 200,
@@ -52,6 +63,17 @@ export async function GET(request: Request) {
     }
     if (error.code === 'EMPTY_TEXT' || error.message?.includes('cannot be empty')) {
       return NextResponse.json({ error: error.message || 'Text to synthesize cannot be empty' }, { status: 400 });
+    }
+    if (error.message?.includes('timed out') || error.message?.includes('stalled')) {
+      console.warn('[TTS GET Timeout]:', error.message);
+      return NextResponse.json({ error: error.message }, { status: 504 });
+    }
+    if (error.message?.includes('non-101') || error.message?.includes('ECONNRESET')) {
+      console.warn('[TTS GET Network Error]:', error.message);
+      return NextResponse.json(
+        { error: 'Edge TTS 语音服务连接受阻（网络中断或非101状态），请检查网络代理环境' },
+        { status: 502 }
+      );
     }
     console.error('[TTS GET Error]:', error);
     return NextResponse.json({ error: error.message || 'TTS synthesis failed' }, { status: 500 });
@@ -61,29 +83,36 @@ export async function GET(request: Request) {
 // POST /api/tts - Synthesize text to audio/mpeg
 export async function POST(request: Request) {
   try {
-    requireAuth(request);
+    // Edge TTS is free and disk cached; allow guest users with fallback
+    getUserIdFromRequest(request);
 
     const body = await request.json().catch(() => ({}));
-    const { text: rawText, voice, rate, pitch, cacheNamespace } = body;
+    const { text: rawText, voice, rate, pitch, cacheNamespace: rawNamespace, timeoutMs: rawTimeout } = body;
 
     if (!rawText || typeof rawText !== 'string' || !rawText.trim()) {
       return NextResponse.json({ error: 'Text is required and must not be empty' }, { status: 400 });
     }
 
-    const text = cleanMarkdownForTTS(rawText);
+    let text = cleanMarkdownForTTS(rawText);
     if (!text) {
       return NextResponse.json({ error: 'Text to synthesize cannot be empty' }, { status: 400 });
     }
 
-    if (text.length > 2000) {
-      return NextResponse.json({ error: 'Text exceeds maximum length of 2000 characters' }, { status: 400 });
+    if (text.length > 3500) {
+      text = text.slice(0, 3500);
     }
+
+    const cacheNamespace = typeof rawNamespace === 'string' && /^[a-z0-9_-]+$/i.test(rawNamespace)
+      ? rawNamespace as any
+      : undefined;
+    const timeoutMs = typeof rawTimeout === 'number' && rawTimeout > 0 ? rawTimeout : undefined;
 
     const audioBuffer = await synthesizeSpeech(text, {
       voice,
       rate,
       pitch,
-      cacheNamespace: cacheNamespace === 'gomoku' ? 'gomoku' : undefined,
+      timeoutMs,
+      cacheNamespace,
     });
 
     return new Response(new Uint8Array(audioBuffer), {
@@ -101,6 +130,17 @@ export async function POST(request: Request) {
     }
     if (error.code === 'EMPTY_TEXT' || error.message?.includes('cannot be empty')) {
       return NextResponse.json({ error: error.message || 'Text to synthesize cannot be empty' }, { status: 400 });
+    }
+    if (error.message?.includes('timed out') || error.message?.includes('stalled')) {
+      console.warn('[TTS POST Timeout]:', error.message);
+      return NextResponse.json({ error: error.message }, { status: 504 });
+    }
+    if (error.message?.includes('non-101') || error.message?.includes('ECONNRESET')) {
+      console.warn('[TTS POST Network Error]:', error.message);
+      return NextResponse.json(
+        { error: 'Edge TTS 语音服务连接受阻（网络中断或非101状态），请检查网络代理环境' },
+        { status: 502 }
+      );
     }
     console.error('[TTS POST Error]:', error);
     return NextResponse.json({ error: error.message || 'TTS synthesis failed' }, { status: 500 });

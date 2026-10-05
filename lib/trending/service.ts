@@ -1,4 +1,4 @@
-import { fetch as undiciFetch, ProxyAgent } from 'undici';
+import { smartFetch } from '@/lib/network/proxy';
 import { getSourceConfig, TRENDING_SOURCES } from './sources';
 import { parseBaidu, parseBilibili, parseDailyHot, parseDouHotlist, parse36Kr, parseZhihu, parseRssFeed, parseBinanceArticles, parseOkxAnnouncements, parseOkxOrbitHtml, parseBlockBeatsHtml, parseForesightHtml } from './parsers';
 import { isSnapshotFresh, readSnapshot, saveSnapshot, getLocalISODate } from './storage';
@@ -35,25 +35,14 @@ export function getRealisticHeaders(extra?: Record<string, string>): Record<stri
   };
 }
 
-// 检测本地代理（支持用户机上的 127.0.0.1:7890）
-let localProxyAgent: any = null;
-try {
-  const proxyUrl = process.env.HTTP_PROXY || process.env.HTTPS_PROXY || 'http://127.0.0.1:7890';
-  localProxyAgent = new ProxyAgent(proxyUrl);
-} catch {
-  localProxyAgent = undefined;
-}
-
 async function fetchRemoteItems(config: TrendingSourceConfig): Promise<NormalizedHotItem[]> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-
   try {
     let data: any;
 
     if (config.type === '36kr') {
-      const res = await fetch(config.url, {
+      const res = await smartFetch(config.url, {
         method: 'POST',
+        prefer: 'direct-first',
         headers: getRealisticHeaders({
           'Content-Type': 'application/json;charset=UTF-8',
         }),
@@ -62,117 +51,62 @@ async function fetchRemoteItems(config: TrendingSourceConfig): Promise<Normalize
           timestamp: Date.now(),
           param: { siteId: 1, platformId: 2, pageSize: 20, pageEvent: 0, pageCallback: '' },
         }),
-        signal: controller.signal,
+        timeoutMs: FETCH_TIMEOUT_MS,
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       data = await res.json();
       return parse36Kr(data);
-    } 
-    
+    }
+
     if (config.type === 'dailyhot') {
-      // 访问 Vercel 部署的 DailyHotApi 时，通过 undiciFetch + 代理绕过 GFW
-      try {
-        const res = await undiciFetch(config.url, {
-          headers: getRealisticHeaders(),
-          dispatcher: localProxyAgent,
-          signal: controller.signal,
-        });
-        if (res.ok) {
-          data = await res.json();
-          return parseDailyHot(data, config.id, config.name);
-        }
-      } catch (err: any) {
-        console.warn(`[trending] Proxy fetch failed for ${config.id}:`, err?.message);
-      }
-      
-      // 降级尝试原生直连
-      const fallbackRes = await fetch(config.url, {
+      // 默认本地直连优先，若受阻自动切换代理重试
+      const res = await smartFetch(config.url, {
+        prefer: 'direct-first',
         headers: getRealisticHeaders(),
-        signal: controller.signal,
+        timeoutMs: FETCH_TIMEOUT_MS,
       });
-      if (!fallbackRes.ok) throw new Error(`HTTP ${fallbackRes.status}`);
-      data = await fallbackRes.json();
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      data = await res.json();
       return parseDailyHot(data, config.id, config.name);
     }
 
     if (config.type === 'binance') {
-      try {
-        const res = await undiciFetch(config.url, {
-          headers: getRealisticHeaders({ lang: 'zh-CN' }),
-          dispatcher: localProxyAgent,
-          signal: controller.signal,
-        });
-        if (res.ok) {
-          const json = await res.json();
-          return parseBinanceArticles(json);
-        }
-      } catch (err: any) {
-        console.warn(`[trending] Proxy fetch failed for ${config.id}:`, err?.message);
-      }
-      const fallbackRes = await fetch(config.url, {
+      const res = await smartFetch(config.url, {
+        prefer: 'direct-first',
         headers: getRealisticHeaders({ lang: 'zh-CN' }),
-        signal: controller.signal,
+        timeoutMs: FETCH_TIMEOUT_MS,
       });
-      if (!fallbackRes.ok) throw new Error(`HTTP ${fallbackRes.status}`);
-      const json = await fallbackRes.json();
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
       return parseBinanceArticles(json);
     }
 
     if (config.type === 'okx') {
       const isOrbit = config.url.includes('orbit');
-      try {
-        const res = await undiciFetch(config.url, {
-          headers: getRealisticHeaders({ 'Accept-Language': 'zh-CN,zh;q=0.9' }),
-          dispatcher: localProxyAgent,
-          signal: controller.signal,
-        });
-        if (res.ok) {
-          if (isOrbit) {
-            const html = await res.text();
-            const items = parseOkxOrbitHtml(html);
-            if (items.length > 0) return items;
-          } else {
-            const json = await res.json();
-            return parseOkxAnnouncements(json);
-          }
-        }
-      } catch (err: any) {
-        console.warn(`[trending] Proxy fetch failed for ${config.id}:`, err?.message);
-      }
-      const fallbackRes = await fetch(config.url, {
+      const res = await smartFetch(config.url, {
+        prefer: 'direct-first',
         headers: getRealisticHeaders({ 'Accept-Language': 'zh-CN,zh;q=0.9' }),
-        signal: controller.signal,
+        timeoutMs: FETCH_TIMEOUT_MS,
       });
-      if (!fallbackRes.ok) throw new Error(`HTTP ${fallbackRes.status}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       if (isOrbit) {
-        const html = await fallbackRes.text();
-        return parseOkxOrbitHtml(html);
+        const html = await res.text();
+        const items = parseOkxOrbitHtml(html);
+        if (items.length > 0) return items;
       } else {
-        const json = await fallbackRes.json();
+        const json = await res.json();
         return parseOkxAnnouncements(json);
       }
     }
 
     if (config.type === 'rss') {
-      try {
-        const res = await undiciFetch(config.url, {
-          headers: getRealisticHeaders(),
-          dispatcher: localProxyAgent,
-          signal: controller.signal,
-        });
-        if (res.ok) {
-          const xml = await res.text();
-          return parseRssFeed(xml, config.id, config.name);
-        }
-      } catch (err: any) {
-        console.warn(`[trending] Proxy RSS fetch failed for ${config.id}:`, err?.message);
-      }
-      const fallbackRes = await fetch(config.url, {
+      const res = await smartFetch(config.url, {
+        prefer: 'direct-first',
         headers: getRealisticHeaders(),
-        signal: controller.signal,
+        timeoutMs: FETCH_TIMEOUT_MS,
       });
-      if (!fallbackRes.ok) throw new Error(`HTTP ${fallbackRes.status}`);
-      const xml = await fallbackRes.text();
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const xml = await res.text();
       return parseRssFeed(xml, config.id, config.name);
     }
 
@@ -182,17 +116,10 @@ async function fetchRemoteItems(config: TrendingSourceConfig): Promise<Normalize
 
       const fetchPage = async (targetUrl: string) => {
         try {
-          const res = await undiciFetch(targetUrl, {
+          const res = await smartFetch(targetUrl, {
+            prefer: 'direct-first',
             headers: getRealisticHeaders(),
-            dispatcher: localProxyAgent,
-            signal: controller.signal,
-          });
-          if (res.ok) return await res.text();
-        } catch {}
-        try {
-          const res = await fetch(targetUrl, {
-            headers: getRealisticHeaders(),
-            signal: controller.signal,
+            timeoutMs: FETCH_TIMEOUT_MS,
           });
           if (res.ok) return await res.text();
         } catch {}
@@ -214,17 +141,10 @@ async function fetchRemoteItems(config: TrendingSourceConfig): Promise<Normalize
 
       const fetchPage = async (targetUrl: string) => {
         try {
-          const res = await undiciFetch(targetUrl, {
+          const res = await smartFetch(targetUrl, {
+            prefer: 'direct-first',
             headers: getRealisticHeaders(),
-            dispatcher: localProxyAgent,
-            signal: controller.signal,
-          });
-          if (res.ok) return await res.text();
-        } catch {}
-        try {
-          const res = await fetch(targetUrl, {
-            headers: getRealisticHeaders(),
-            signal: controller.signal,
+            timeoutMs: FETCH_TIMEOUT_MS,
           });
           if (res.ok) return await res.text();
         } catch {}
@@ -240,9 +160,11 @@ async function fetchRemoteItems(config: TrendingSourceConfig): Promise<Normalize
       if (items.length > 0) return items;
     }
 
-    const res = await fetch(config.url, {
+    // 全网热搜默认均走本地网络直连优先，失败时无缝由代理重试接管
+    const res = await smartFetch(config.url, {
+      prefer: 'direct-first',
       headers: getRealisticHeaders(),
-      signal: controller.signal,
+      timeoutMs: FETCH_TIMEOUT_MS,
     });
 
     if (!res.ok) {
@@ -264,8 +186,8 @@ async function fetchRemoteItems(config: TrendingSourceConfig): Promise<Normalize
       default:
         return [];
     }
-  } finally {
-    clearTimeout(timer);
+  } catch (err: any) {
+    throw err;
   }
 }
 

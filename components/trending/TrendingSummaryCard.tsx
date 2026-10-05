@@ -15,6 +15,8 @@ import {
   Clock,
   ShieldCheck,
   Flame,
+  Headphones,
+  Volume2,
 } from 'lucide-react';
 
 export interface TrendingSummaryCardProps {
@@ -31,6 +33,42 @@ export interface TrendingSummaryCardProps {
   onDiscussInSpace?: (content: string) => void;
 }
 
+function buildPodcastScript(summary: string, dateLabel: string): string {
+  if (!summary) return '';
+  let text = summary;
+
+  // 1. Convert markdown section headers into natural radio anchor transitions
+  text = text.replace(/###?\s*[🌟✨💡]*\s*(?:全网|市场)?核心定调/g, '首先是核心定调：');
+  text = text.replace(/###?\s*[🔥🎯]*\s*(?:核心)?(?:舆论|热点)?主线/g, '接下来是今日核心热点主线：');
+  text = text.replace(/###?\s*[💡📊]*\s*(?:独家洞察与反思|交易员与从业者洞察|深度行业洞察|舆情情绪指数)/g, '最后来看深度洞察：');
+
+  // 2. Strip emojis and markdown formatting
+  text = text.replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, '');
+  text = text.replace(/[*#~`_]/g, '');
+
+  // 3. Spoken list numerals
+  text = text.replace(/(?:^|\n)\s*1[、.]\s*/g, '\n第一、');
+  text = text.replace(/(?:^|\n)\s*2[、.]\s*/g, '\n第二、');
+  text = text.replace(/(?:^|\n)\s*3[、.]\s*/g, '\n第三、');
+
+  // 4. Normalize spaces and punctuation
+  text = text.replace(/[ \t]+/g, ' ').replace(/\n{2,}/g, '。').replace(/\n/g, '，').trim();
+  text = text.replace(/，{2,}/g, '，').replace(/。{2,}/g, '。');
+
+  // 5. Ensure the spoken brief stays punchy and avoids lengthy table or runaway paragraphs
+  if (text.length > 1500) {
+    const slice = text.slice(0, 1400);
+    const lastPeriod = Math.max(slice.lastIndexOf('。'), slice.lastIndexOf('！'), slice.lastIndexOf('？'));
+    text = (lastPeriod > 800 ? slice.slice(0, lastPeriod + 1) : slice) + ' 以上是今日核心早报。';
+  }
+
+  const intro = dateLabel.includes('今日') || dateLabel.includes('实时')
+    ? '各位听众早上好，为您带来今日全网热点情报速递。'
+    : `各位听众好，为您回顾${dateLabel}全网热点脉络速递。`;
+
+  return `${intro} ${text}`.trim();
+}
+
 export default function TrendingSummaryCard({
   summary,
   loading,
@@ -45,6 +83,116 @@ export default function TrendingSummaryCard({
   onDiscussInSpace,
 }: TrendingSummaryCardProps) {
   const [copied, setCopied] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [isAudioLoading, setIsAudioLoading] = useState(false);
+  const [audioError, setAudioError] = useState<string | null>(null);
+  const audioRef = React.useRef<HTMLAudioElement | null>(null);
+  const audioUrlRef = React.useRef<string | null>(null);
+  const currentSummaryRef = React.useRef<string>('');
+
+  const stopAudio = () => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+    }
+    setIsPlaying(false);
+    setIsAudioLoading(false);
+  };
+
+  React.useEffect(() => {
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+      if (audioUrlRef.current) {
+        URL.revokeObjectURL(audioUrlRef.current);
+        audioUrlRef.current = null;
+      }
+    };
+  }, []);
+
+  React.useEffect(() => {
+    if (currentSummaryRef.current && currentSummaryRef.current !== summary) {
+      stopAudio();
+      if (audioUrlRef.current) {
+        URL.revokeObjectURL(audioUrlRef.current);
+        audioUrlRef.current = null;
+      }
+    }
+    currentSummaryRef.current = summary;
+  }, [summary]);
+
+  const handleTogglePodcast = async () => {
+    if (!summary || loading) return;
+
+    if (isPlaying && audioRef.current) {
+      audioRef.current.pause();
+      setIsPlaying(false);
+      return;
+    }
+
+    if (audioRef.current && audioUrlRef.current) {
+      try {
+        await audioRef.current.play();
+        setIsPlaying(true);
+      } catch (err) {
+        console.error('Audio resume error:', err);
+      }
+      return;
+    }
+
+    setIsAudioLoading(true);
+    setAudioError(null);
+    try {
+      const podcastText = buildPodcastScript(summary, dateLabel);
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      const res = await fetch('/api/tts', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          text: podcastText,
+          voice: 'zh-CN-YunxiNeural', // 专业沉稳新闻播音男声
+          rate: '+5%',
+          cacheNamespace: 'trending',
+          timeoutMs: 60000,
+        }),
+      });
+
+      if (!res.ok) {
+        const errorJson = await res.json().catch(() => ({}));
+        throw new Error(errorJson.error || `TTS synthesis failed with status ${res.status}`);
+      }
+
+      const blob = await res.blob();
+      const audioUrl = URL.createObjectURL(blob);
+      audioUrlRef.current = audioUrl;
+
+      const audio = new Audio(audioUrl);
+      audioRef.current = audio;
+
+      audio.onended = () => {
+        setIsPlaying(false);
+      };
+
+      audio.onerror = () => {
+        setIsPlaying(false);
+        setIsAudioLoading(false);
+      };
+
+      await audio.play();
+      setIsPlaying(true);
+    } catch (err: any) {
+      console.error('Failed to play podcast:', err);
+      setAudioError(err?.message?.includes('timed out') ? '语音合成超时，请重试' : '语音生成失败，请重试');
+      setTimeout(() => setAudioError(null), 4000);
+    } finally {
+      setIsAudioLoading(false);
+    }
+  };
 
   const handleCopy = async () => {
     if (!summary) return;
@@ -56,6 +204,11 @@ export default function TrendingSummaryCard({
     } catch (err) {
       console.error('Failed to copy summary:', err);
     }
+  };
+
+  const handleClose = () => {
+    stopAudio();
+    onClose?.();
   };
 
   const formattedTime = updatedAt
@@ -98,24 +251,47 @@ export default function TrendingSummaryCard({
         </div>
 
         {/* Action buttons */}
-        <div className="flex flex-wrap items-center gap-2">
+        {/* Action buttons (Icon only) */}
+        <div className="flex items-center gap-1.5 shrink-0">
+          {/* 🎧 播报早报 Button */}
+          <button
+            onClick={handleTogglePodcast}
+            disabled={loading || !summary}
+            className={`flex h-8 w-8 items-center justify-center rounded-xl shadow-sm transition disabled:opacity-50 ${
+              audioError
+                ? 'border border-rose-300 bg-rose-50 text-rose-600 dark:border-rose-800 dark:bg-rose-950/60 dark:text-rose-300'
+                : isPlaying
+                ? 'border border-amber-400 bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-amber-500/20 ring-2 ring-amber-400/40'
+                : isAudioLoading
+                ? 'border border-amber-300 bg-amber-100/90 text-amber-800 dark:border-amber-700/50 dark:bg-amber-950/60 dark:text-amber-200'
+                : 'border border-amber-200/80 bg-white/90 text-slate-700 hover:bg-amber-50 dark:border-amber-800/40 dark:bg-slate-800/90 dark:text-slate-200 dark:hover:bg-slate-700'
+            }`}
+            title={audioError || (isPlaying ? '暂停播报' : isAudioLoading ? '正在合成播音 (通常需 3-6 秒)...' : '听早报 (微软神经元新闻主播云希)')}
+          >
+            {isAudioLoading ? (
+              <RefreshCw size={14} className="animate-spin text-amber-600 dark:text-amber-400" />
+            ) : isPlaying ? (
+              <span className="flex items-center gap-0.5 h-3">
+                <span className="w-0.5 h-3 bg-white rounded-full animate-bounce [animation-delay:-0.3s]" />
+                <span className="w-0.5 h-2 bg-white rounded-full animate-bounce [animation-delay:-0.15s]" />
+                <span className="w-0.5 h-3.5 bg-white rounded-full animate-bounce" />
+              </span>
+            ) : (
+              <Headphones size={14} className="text-amber-600 dark:text-amber-400" />
+            )}
+          </button>
+
           {/* Copy Button */}
           <button
             onClick={handleCopy}
             disabled={loading || !summary}
-            className="flex items-center gap-1.5 rounded-xl border border-amber-200/80 bg-white/90 px-3 py-1.5 text-xs font-bold text-slate-700 shadow-sm transition hover:bg-amber-50 disabled:opacity-50 dark:border-amber-800/40 dark:bg-slate-800/90 dark:text-slate-200 dark:hover:bg-slate-700"
-            title="一键复制完整 AI 早报内容"
+            className="flex h-8 w-8 items-center justify-center rounded-xl border border-amber-200/80 bg-white/90 text-slate-700 shadow-sm transition hover:bg-amber-50 disabled:opacity-50 dark:border-amber-800/40 dark:bg-slate-800/90 dark:text-slate-200 dark:hover:bg-slate-700"
+            title={copied ? '已复制到剪贴板' : '复制简报全文'}
           >
             {copied ? (
-              <>
-                <Check size={13} className="text-emerald-500" />
-                <span className="text-emerald-600 dark:text-emerald-400">已复制简报</span>
-              </>
+              <Check size={14} className="text-emerald-500" />
             ) : (
-              <>
-                <Copy size={13} className="text-slate-500" />
-                <span>复制简报</span>
-              </>
+              <Copy size={14} className="text-slate-500 dark:text-slate-400" />
             )}
           </button>
 
@@ -124,11 +300,10 @@ export default function TrendingSummaryCard({
             <button
               onClick={() => onTalkToAgent(summary)}
               disabled={loading || !summary}
-              className="flex items-center gap-1.5 rounded-xl border border-indigo-200/80 bg-indigo-50/90 px-3 py-1.5 text-xs font-bold text-indigo-700 shadow-sm transition hover:bg-indigo-100 disabled:opacity-50 dark:border-indigo-800/40 dark:bg-indigo-950/60 dark:text-indigo-300 dark:hover:bg-indigo-900/50"
-              title="挑选 AI Agent 就本期热点进行专属深度解读与对话"
+              className="flex h-8 w-8 items-center justify-center rounded-xl border border-indigo-200/80 bg-indigo-50/90 text-indigo-700 shadow-sm transition hover:bg-indigo-100 disabled:opacity-50 dark:border-indigo-800/40 dark:bg-indigo-950/60 dark:text-indigo-300 dark:hover:bg-indigo-900/50"
+              title="找 Agent 锐评全网热点"
             >
-              <Bot size={13} className="text-indigo-600 dark:text-indigo-400" />
-              <span>找 Agent 畅聊</span>
+              <Bot size={14} className="text-indigo-600 dark:text-indigo-400" />
             </button>
           )}
 
@@ -137,11 +312,10 @@ export default function TrendingSummaryCard({
             <button
               onClick={() => onDiscussInSpace(summary)}
               disabled={loading || !summary}
-              className="flex items-center gap-1.5 rounded-xl border border-orange-200/80 bg-orange-50/90 px-3 py-1.5 text-xs font-bold text-orange-700 shadow-sm transition hover:bg-orange-100 disabled:opacity-50 dark:border-orange-800/40 dark:bg-orange-950/60 dark:text-orange-300 dark:hover:bg-orange-900/50"
-              title="将热点脉络投递至群聊空间让多 Agent 自主研讨"
+              className="flex h-8 w-8 items-center justify-center rounded-xl border border-orange-200/80 bg-orange-50/90 text-orange-700 shadow-sm transition hover:bg-orange-100 disabled:opacity-50 dark:border-orange-800/40 dark:bg-orange-950/60 dark:text-orange-300 dark:hover:bg-orange-900/50"
+              title="投喂空间引发多 Agent 研讨"
             >
-              <PanelsTopLeft size={13} className="text-orange-600 dark:text-orange-400" />
-              <span>投喂空间</span>
+              <PanelsTopLeft size={14} className="text-orange-600 dark:text-orange-400" />
             </button>
           )}
 
@@ -150,7 +324,7 @@ export default function TrendingSummaryCard({
             <button
               onClick={onRefresh}
               disabled={loading}
-              className="flex items-center gap-1 rounded-xl border border-slate-200/80 bg-white/80 p-1.5 text-xs font-bold text-slate-600 shadow-sm transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-800 dark:bg-slate-800 dark:text-slate-300"
+              className="flex h-8 w-8 items-center justify-center rounded-xl border border-slate-200/80 bg-white/80 text-slate-600 shadow-sm transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-800 dark:bg-slate-800 dark:text-slate-300"
               title="重新向大模型发起全网数据提炼"
             >
               <RefreshCw size={13} className={loading ? 'animate-spin text-amber-500' : ''} />
@@ -160,8 +334,8 @@ export default function TrendingSummaryCard({
           {/* Close button */}
           {onClose && (
             <button
-              onClick={onClose}
-              className="flex items-center justify-center rounded-xl p-1.5 text-slate-400 transition hover:bg-black/5 hover:text-slate-600 dark:hover:bg-white/5 dark:hover:text-slate-200"
+              onClick={handleClose}
+              className="flex h-8 w-8 items-center justify-center rounded-xl text-slate-400 transition hover:bg-black/5 hover:text-slate-600 dark:hover:bg-white/5 dark:hover:text-slate-200"
               title="收起 AI 汇总面板"
             >
               <X size={15} />
@@ -172,6 +346,38 @@ export default function TrendingSummaryCard({
 
       {/* Card Content Area */}
       <div className="relative z-10 pt-4">
+        {/* Active Audio Broadcast Bar */}
+        {(isPlaying || (audioRef.current && !isPlaying && !isAudioLoading)) && (
+          <div className="mb-3.5 flex items-center justify-between rounded-2xl bg-amber-500/10 px-3.5 py-2 border border-amber-500/20 text-xs text-amber-900 dark:text-amber-200">
+            <div className="flex items-center gap-2.5">
+              <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-amber-500/20 text-amber-600 dark:text-amber-300">
+                <Volume2 size={13} className={isPlaying ? 'animate-pulse' : ''} />
+              </span>
+              <div className="flex items-center gap-2">
+                <span className="font-bold">
+                  {isPlaying ? '🎙️ AI 主播正在语音播报今日早报' : '⏸️ 语音播报已暂停'}
+                </span>
+                <span className="text-[10px] text-amber-700/80 dark:text-amber-300/80 hidden sm:inline-block">
+                  · 微软 Edge 神经元原声主播（云希）
+                </span>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleTogglePodcast}
+                className="rounded-lg bg-amber-500/20 px-2.5 py-1 text-[11px] font-bold text-amber-800 hover:bg-amber-500/30 dark:text-amber-200 transition"
+              >
+                {isPlaying ? '暂停' : '继续播放'}
+              </button>
+              <button
+                onClick={stopAudio}
+                className="rounded-lg px-2 py-1 text-[11px] font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 transition"
+              >
+                结束
+              </button>
+            </div>
+          </div>
+        )}
         {loading ? (
           <div className="flex flex-col items-center justify-center py-10 text-center">
             <div className="relative mb-3 flex h-12 w-12 items-center justify-center">
