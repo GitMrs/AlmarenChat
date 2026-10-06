@@ -610,24 +610,6 @@ export default function TrendingPage() {
             isHistorical={selectedDate !== 'today'}
             onRefresh={() => fetchSummary(selectedDate, true)}
             onClose={() => setSummaryOpen(false)}
-            onTalkToAgent={(customPrompt) => {
-              const prompt = customPrompt.startsWith('根据这份') || customPrompt.startsWith('参考这份')
-                ? customPrompt
-                : `这是【${selectedDate === 'today' ? '今日实时' : selectedDate}】全网热点情报总结：\n\n${customPrompt}\n\n请针对以上热点脉络，发表你的深度独到见解！`;
-              setSelectedTopic({
-                id: 'ai-summary',
-                source: 'all',
-                sourceName: 'AI 全网热点脉络',
-                title: `${selectedDate === 'today' ? '今日' : selectedDate} 全网舆情总览`,
-                url: '',
-                desc: prompt,
-              });
-              setAgentModalOpen(true);
-            }}
-            onDiscussInSpace={(content) => {
-              const prompt = `【${selectedDate === 'today' ? '今日' : selectedDate} 全网热点情报速递】\n${content}\n\n大家怎么看今天全网的这几个舆论风向？欢迎各抒己见讨论！`;
-              router.push(`/spaces?initialTopic=${encodeURIComponent(prompt)}`);
-            }}
           />
         )}
 

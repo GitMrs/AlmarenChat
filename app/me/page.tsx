@@ -11,6 +11,7 @@ import {
   Edit3,
   ExternalLink,
   FileText,
+  Flame,
   Globe2,
   Heart,
   Link2Off,
@@ -54,6 +55,7 @@ function MeContent() {
   const [myAgents, setMyAgents] = useState<Agent[]>([]);
   const [favoriteAgents, setFavoriteAgents] = useState<any[]>([]);
   const [recentConversations, setRecentConversations] = useState<any[]>([]);
+  const [favoriteTopicsCount, setFavoriteTopicsCount] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [needsLogin, setNeedsLogin] = useState(false);
@@ -82,6 +84,14 @@ function MeContent() {
           agentsApi.mine().then((result) => setMyAgents(result.agents)),
           favoritesApi.list().then((result) => setFavoriteAgents(result.favorites)),
           conversationsApi.list({ limit: 5, includeLastMessage: false }).then((result) => setRecentConversations(result.conversations)),
+          fetch('/api/trending/favorites', { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } })
+            .then((r) => r.json())
+            .then((res) => {
+              if (res.success && Array.isArray(res.favorites)) {
+                setFavoriteTopicsCount(res.favorites.length);
+              }
+            })
+            .catch(() => {}),
         ])
       )
       .catch((err: any) => {
@@ -200,12 +210,25 @@ function MeContent() {
     <AppShell>
       <div className="space-y-8 py-8">
         <section className="rounded-[32px] border border-black/[0.06] bg-white/82 p-6 shadow-sm backdrop-blur sm:p-8">
+          <div className="mb-6 flex items-center justify-between gap-4">
+            <div className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-4 py-2 text-sm font-bold text-white">
+              <Sparkles size={16} />
+              个人中心
+            </div>
+
+            <a
+              href="/trending"
+              className="inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-amber-200/90 bg-amber-50/75 px-4 py-2 text-xs sm:text-sm font-bold text-amber-800 shadow-2xs transition hover:-translate-y-0.5 hover:bg-amber-100 hover:text-amber-950 hover:shadow-md"
+              title="浏览全网实时热点资讯与每日早报"
+            >
+              <Flame size={15} className="text-amber-500 fill-amber-500" />
+              <span>热点资讯</span>
+              <ArrowRight size={13} className="text-amber-500" />
+            </a>
+          </div>
+
           <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-            <div className="max-w-3xl">
-              <div className="mb-4 inline-flex items-center gap-2 rounded-full bg-slate-950 px-4 py-2 text-sm font-bold text-white">
-                <Sparkles size={16} />
-                个人中心
-              </div>
+            <div className="max-w-2xl">
               <h1 className="text-4xl font-black leading-tight text-slate-950 sm:text-5xl">
                 管理你的 Agent、内容共享和账号。
               </h1>
@@ -230,10 +253,10 @@ function MeContent() {
               {activeTab === 'assets' && (
                 <button
                   onClick={() => router.push('/create-agent')}
-                  className="inline-flex w-fit cursor-pointer items-center justify-center gap-2 rounded-full bg-slate-950 px-5 py-3 text-sm font-black text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg"
+                  className="inline-flex w-fit cursor-pointer items-center justify-center gap-2 rounded-full bg-slate-950 px-5 py-3 text-sm font-black text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg hover:bg-slate-800"
                 >
                   <Plus size={17} />
-                  创建新 Agent
+                  <span>创建 Agent</span>
                 </button>
               )}
             </div>
@@ -266,25 +289,88 @@ function MeContent() {
           })}
         </section>
 
-        {activeTab === 'assets' && <section className="grid gap-4 md:grid-cols-3">
-          {[
-            { label: '我的 Agent', value: myAgents.length, icon: Bot, note: '可编辑、测试、发布' },
-            { label: '收藏 Agent', value: favoriteAgents.length, icon: Heart, note: '下次快速开始' },
-            { label: '最近会话', value: recentConversations.length, icon: MessageSquare, note: '继续上次想法' },
-          ].map((item) => {
-            const Icon = item.icon;
-            return (
-              <div key={item.label} className="rounded-[28px] border border-black/[0.06] bg-white p-5 shadow-sm">
-                <div className="mb-5 flex h-11 w-11 items-center justify-center rounded-2xl bg-[#fbfaf7] text-slate-700">
-                  <Icon size={19} />
+        {activeTab === 'assets' && (
+          <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {[
+              {
+                label: '我的 Agent',
+                value: myAgents.length,
+                icon: Bot,
+                note: '可编辑、测试、发布',
+                onClick: () => {
+                  const el = document.getElementById('my-agents-section');
+                  if (el) el.scrollIntoView({ behavior: 'smooth' });
+                },
+              },
+              {
+                label: '收藏 Agent',
+                value: favoriteAgents.length,
+                icon: Heart,
+                note: '下次快速开始',
+                onClick: () => {
+                  const el = document.getElementById('favorite-agents-section');
+                  if (el) el.scrollIntoView({ behavior: 'smooth' });
+                },
+              },
+              {
+                label: '最近会话',
+                value: recentConversations.length,
+                icon: MessageSquare,
+                note: '继续上次想法',
+                onClick: () => router.push('/conversations'),
+              },
+              {
+                label: '收藏资讯',
+                value: favoriteTopicsCount,
+                icon: Flame,
+                note: '全网热点与早报',
+                iconColor: 'text-amber-500 fill-amber-500/20',
+                iconBg: 'bg-amber-50/80 text-amber-600',
+                onClick: () => router.push('/trending?category=favorites'),
+                badge: '热榜',
+              },
+            ].map((item) => {
+              const Icon = item.icon;
+              return (
+                <div
+                  key={item.label}
+                  onClick={item.onClick}
+                  className={cn(
+                    'group rounded-[28px] border border-black/[0.06] bg-white p-5 shadow-sm transition',
+                    item.onClick && 'cursor-pointer hover:-translate-y-0.5 hover:border-black/10 hover:shadow-md'
+                  )}
+                >
+                  <div className="mb-5 flex items-center justify-between">
+                    <div
+                      className={cn(
+                        'flex h-11 w-11 items-center justify-center rounded-2xl transition',
+                        item.iconBg || 'bg-[#fbfaf7] text-slate-700 group-hover:bg-slate-100'
+                      )}
+                    >
+                      <Icon size={19} className={item.iconColor} />
+                    </div>
+                    {item.badge && (
+                      <span className="rounded-full border border-amber-200/60 bg-amber-50 px-2 py-0.5 text-xs font-bold text-amber-700">
+                        {item.badge}
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-3xl font-black text-slate-950">{item.value}</div>
+                  <div className="mt-1 flex items-center justify-between text-sm font-bold text-slate-700">
+                    <span>{item.label}</span>
+                    {item.onClick && (
+                      <ArrowRight
+                        size={14}
+                        className="text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-slate-700"
+                      />
+                    )}
+                  </div>
+                  <p className="mt-2 text-sm text-slate-400">{item.note}</p>
                 </div>
-                <div className="text-3xl font-black text-slate-950">{item.value}</div>
-                <div className="mt-1 text-sm font-bold text-slate-700">{item.label}</div>
-                <p className="mt-2 text-sm text-slate-400">{item.note}</p>
-              </div>
-            );
-          })}
-        </section>}
+              );
+            })}
+          </section>
+        )}
 
         {error && (
           <div className="rounded-2xl bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-600">
@@ -381,7 +467,7 @@ function MeContent() {
         )}
 
         {!needsLogin && activeTab === 'assets' && <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
-          <div className="space-y-5">
+          <div id="my-agents-section" className="space-y-5">
             <div className="flex items-end justify-between gap-4">
               <div>
                 <p className="text-sm font-bold text-slate-400">My Agents</p>
@@ -518,7 +604,7 @@ function MeContent() {
               </div>
             </div>
 
-            <div className="rounded-[28px] border border-black/[0.06] bg-white p-6 shadow-sm">
+            <div id="favorite-agents-section" className="rounded-[28px] border border-black/[0.06] bg-white p-6 shadow-sm">
               <div className="mb-4 flex items-center justify-between">
                 <h3 className="text-lg font-black text-slate-950">我的收藏</h3>
                 <Heart size={18} className="text-rose-400" />
