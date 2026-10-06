@@ -95,10 +95,23 @@ export default function SearchableSelect({
     );
   }, [normalizedOptions, query]);
 
+  const [placement, setPlacement] = useState<'bottom' | 'top'>('bottom');
+
   const shouldDisplaySearch = showSearch !== undefined ? showSearch : normalizedOptions.length > 5;
 
   useEffect(() => {
     if (!open) return;
+
+    if (rootRef.current) {
+      const rect = rootRef.current.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const spaceAbove = rect.top;
+      if (spaceBelow < 280 && spaceAbove > spaceBelow) {
+        setPlacement('top');
+      } else {
+        setPlacement('bottom');
+      }
+    }
 
     const closeOnOutsideClick = (event: MouseEvent) => {
       if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
@@ -129,7 +142,7 @@ export default function SearchableSelect({
   const displayText = selectedOption?.label || value || placeholder;
 
   return (
-    <div ref={rootRef} className={cn('relative min-w-0', className)}>
+    <div ref={rootRef} className={cn('relative min-w-0', open && 'z-30', className)}>
       <button
         id={id}
         type="button"
@@ -163,7 +176,8 @@ export default function SearchableSelect({
       {open && (
         <div
           className={cn(
-            'absolute left-0 top-full z-50 mt-1.5 min-w-[220px] max-w-[340px] overflow-hidden rounded-2xl border border-black/[0.08] bg-white p-2 shadow-[0_18px_50px_rgba(15,23,42,0.16)]',
+            'absolute left-0 z-50 w-full min-w-[240px] overflow-hidden rounded-2xl border border-black/[0.08] bg-white p-2 shadow-[0_18px_50px_rgba(15,23,42,0.16)]',
+            placement === 'top' ? 'bottom-full mb-1.5' : 'top-full mt-1.5',
             dropdownClassName
           )}
         >
@@ -180,7 +194,7 @@ export default function SearchableSelect({
             </div>
           )}
 
-          <div role="listbox" className="max-h-60 space-y-1 overflow-y-auto overscroll-contain pr-1">
+          <div role="listbox" className="max-h-52 space-y-1 overflow-y-auto overscroll-contain pr-1 pb-1">
             {filteredOptions.map((option) => {
               const isSelected = option.value === value;
               return (

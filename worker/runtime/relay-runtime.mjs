@@ -491,7 +491,7 @@ export function createRelayRuntime({
           maxIterations: 3,
           maxToolCalls: 3,
           requestCompletion: (messages, tools, request) => completeMessage(
-            context.model,
+            currentAgent.model || context.model,
             messages,
             tools,
             { signal: controller.signal, agentId: currentAgent.id, iteration: request.iteration }

@@ -243,13 +243,28 @@ export function createDiscussionRuntime({
               ].filter(Boolean).join('\n\n'),
             },
           ],
-          tools,
-          requestCompletion: (messages, availableTools) => completeMessage(
-            context.model,
-            messages,
-            availableTools,
-            { signal: controller.signal }
-          ),
+          requestCompletion: async (messages, availableTools) => {
+            const speakerModel = currentAgent.model || context.model;
+            try {
+              return await completeMessage(
+                speakerModel,
+                messages,
+                availableTools,
+                { signal: controller.signal }
+              );
+            } catch (err) {
+              if (currentAgent.model && currentAgent.model !== context.model && !controller.signal.aborted) {
+                console.warn(`[discussion] 成员 ${currentAgent.name} 独立模型请求失败，回退到全局模型:`, err?.message);
+                return await completeMessage(
+                  context.model,
+                  messages,
+                  availableTools,
+                  { signal: controller.signal }
+                );
+              }
+              throw err;
+            }
+          },
           executeTool: async (name, args) => {
             if (name === 'request_web_research') {
               const query = String(args.query || '').trim().slice(0, 300);

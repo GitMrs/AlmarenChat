@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Activity, ArrowLeft, BookOpen, Flame, CalendarClock, Check, CheckCircle2, ChevronRight, Code2, Copy, Download, ExternalLink, FilePenLine, FileText, Gamepad2, Globe2, History, Image as ImageIcon, ListTodo, Loader2, MessagesSquare, Newspaper, PackagePlus, Paperclip, Play, Plus, RotateCcw, Save, Send, Settings2, ShieldCheck, SkipForward, Square, Trash2, UploadCloud, UsersRound, X } from 'lucide-react';
+import { Activity, ArrowLeft, BookOpen, Flame, CalendarClock, Check, CheckCircle2, ChevronRight, Code2, Copy, Cpu, Download, ExternalLink, FilePenLine, FileText, Gamepad2, Globe2, History, Image as ImageIcon, ListTodo, Loader2, MessagesSquare, Newspaper, PackagePlus, Paperclip, Play, Plus, RotateCcw, Save, Send, Settings2, ShieldCheck, SkipForward, Sliders, Square, Trash2, UploadCloud, UsersRound, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import AppShell from '@/components/layout/AppShell';
@@ -17,6 +17,7 @@ import TaskReviewDialog from '@/components/spaces/TaskReviewDialog';
 import SpaceFileEditorDialog from '@/components/spaces/SpaceFileEditorDialog';
 import SpaceImagePreviewDialog from '@/components/spaces/SpaceImagePreviewDialog';
 import SpaceDiscussionDialog from '@/components/spaces/SpaceDiscussionDialog';
+import SpaceMemberModelDialog from '@/components/spaces/SpaceMemberModelDialog';
 import SpaceGameCenter from '@/components/spaces/SpaceGameCenter';
 import SpaceDiscussionStatus from '@/components/spaces/SpaceDiscussionStatus';
 import SpaceRelayStatus from '@/components/spaces/SpaceRelayStatus';
@@ -589,6 +590,7 @@ export default function SpaceDetailPage() {
   const [approvedScriptDraft, setApprovedScriptDraft] = useState<string[]>([]);
   const [composerToolsOpen, setComposerToolsOpen] = useState(false);
   const [trendingPickerOpen, setTrendingPickerOpen] = useState(false);
+  const [configuringModelMember, setConfiguringModelMember] = useState<any | null>(null);
 
   const handleSelectTrendingTopic = (_prompt: string, item: any) => {
     setTrendingPickerOpen(false);
@@ -679,6 +681,10 @@ export default function SpaceDetailPage() {
   const memberAgents = useMemo(
     () => (space?.members || []).map((member: any) => agentById.get(member.agentId)).filter(Boolean) as Agent[],
     [agentById, space]
+  );
+  const memberByAgentId = useMemo(
+    () => new Map<string, any>((space?.members || []).map((member: any) => [member.agentId, member])),
+    [space?.members]
   );
   const availableAgents = useMemo(
     () => agents.filter((agent) => !(space?.members || []).some((member: any) => member.agentId === agent.id)),
@@ -807,40 +813,40 @@ export default function SpaceDetailPage() {
         return { label: '等待验收', color: 'bg-sky-400', text: 'text-sky-600', task: null };
       }
       if (agentId === currentRelayAgentId) {
-        return { label: '接力中', color: 'bg-emerald-500', text: 'text-emerald-600', task: null };
+        return { label: '接力', color: 'bg-emerald-500', text: 'text-emerald-600', task: null };
       }
-      return { label: '等待接力', color: 'bg-amber-400', text: 'text-amber-600', task: null };
+      return { label: '等待', color: 'bg-amber-400', text: 'text-amber-600', task: null };
     }
     if (activeDiscussion?.participantIds.includes(agentId)) {
       if (agentId === currentDiscussionAgentId && activeDiscussion.status === 'CANCEL_REQUESTED') {
-        return { label: '正在停止', color: 'bg-rose-400', text: 'text-rose-500', task: null };
+        return { label: '停止', color: 'bg-rose-400', text: 'text-rose-500', task: null };
       }
       if (agentId === currentDiscussionAgentId && activeDiscussion.status === 'WAITING_RESEARCH') {
-        return { label: '等待联网', color: 'bg-sky-400', text: 'text-sky-600', task: null };
+        return { label: '联网', color: 'bg-sky-400', text: 'text-sky-600', task: null };
       }
       if (agentId === currentDiscussionAgentId && activeDiscussion.status === 'RUNNING') {
-        return { label: '正在发言', color: 'bg-emerald-500', text: 'text-emerald-600', task: null };
+        return { label: '回答', color: 'bg-emerald-500', text: 'text-emerald-600', task: null };
       }
-      return { label: '等待讨论', color: 'bg-amber-400', text: 'text-amber-600', task: null };
+      return { label: '等待', color: 'bg-amber-400', text: 'text-amber-600', task: null };
     }
     if (isStreaming && streamingSpeakerId === agentId) {
-      return { label: isPiSpace ? 'Pi 执行中' : '回答中', color: 'bg-emerald-500', text: 'text-emerald-600', task: null };
+      return { label: isPiSpace ? 'Pi 执行' : '回答', color: 'bg-emerald-500', text: 'text-emerald-600', task: null };
     }
     if (replyQueueAgentIds.slice(replyQueueIndex + 1).includes(agentId)) {
-      return { label: '等待回答', color: 'bg-amber-400', text: 'text-amber-600', task: null };
+      return { label: '等待', color: 'bg-amber-400', text: 'text-amber-600', task: null };
     }
     return { label: '空闲', color: 'bg-slate-300', text: 'text-slate-400', task: null };
   };
   const coordinatorStatus = activeRun && (['PLANNING', 'SUMMARIZING'].includes(activeRun.status) || ['SUBMITTED', 'REVIEWING'].includes(activeTask?.status || ''))
-    ? { label: '协调中', color: 'bg-emerald-500', text: 'text-emerald-600' }
+    ? { label: '协调', color: 'bg-emerald-500', text: 'text-emerald-600' }
     : activeRelay
       ? relaySummarizing
-        ? { label: '验收中', color: 'bg-emerald-500', text: 'text-emerald-600' }
-        : { label: '观察中', color: 'bg-sky-400', text: 'text-sky-600' }
+        ? { label: '验收', color: 'bg-emerald-500', text: 'text-emerald-600' }
+        : { label: '观察', color: 'bg-sky-400', text: 'text-sky-600' }
     : activeDiscussion && activeDiscussion.currentRound > activeDiscussion.maxRounds
-      ? { label: '汇总中', color: 'bg-emerald-500', text: 'text-emerald-600' }
+      ? { label: '汇总', color: 'bg-emerald-500', text: 'text-emerald-600' }
       : isStreaming && streamingSpeakerId === coordinatorAgent.id
-        ? { label: '回答中', color: 'bg-emerald-500', text: 'text-emerald-600' }
+        ? { label: '回答', color: 'bg-emerald-500', text: 'text-emerald-600' }
         : { label: '在线', color: 'bg-slate-300', text: 'text-slate-400' };
   const latestResearchEvent = currentRun
     ? [...currentRun.events].reverse().find((event) => event.type.startsWith('WEB_SEARCH_')) || null
@@ -1424,6 +1430,25 @@ export default function SpaceDetailPage() {
   const removeMember = async (memberId: string) => {
     await spacesApi.removeMember(spaceId, memberId);
     await refreshSpace();
+  };
+
+  const handleSaveMemberModel = async (data: {
+    modelName: string | null;
+    apiBaseUrl: string | null;
+    apiKey: string | null;
+  }) => {
+    if (!configuringModelMember) return;
+    const result = await spacesApi.updateMember(spaceId, configuringModelMember.id, data);
+    setSpace((prev: any) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        members: (prev.members || []).map((m: any) =>
+          m.id === configuringModelMember.id ? { ...m, ...result.member } : m
+        ),
+      };
+    });
+    setConfiguringModelMember(null);
   };
 
   const uploadFile = async (file?: File) => {
@@ -2960,41 +2985,90 @@ export default function SpaceDetailPage() {
                   </button>
                 </div>
                 <div className="space-y-1">
-                  <div className="flex w-full items-center gap-3 rounded-lg px-2 py-2">
-                    <Avatar src={coordinatorAgent.avatar || '🧭'} alt={coordinatorAgent.name} size="sm" />
+                  <div className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2">
+                    <Avatar src={coordinatorAgent.avatar || '🧭'} alt={coordinatorAgent.name} size="sm" className="shrink-0" />
                     <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-black text-slate-800">{coordinatorAgent.name}</div>
-                      <div className="truncate text-xs font-semibold text-slate-400">默认协调者</div>
+                      <div className="flex items-center justify-between gap-1.5">
+                        <span className="truncate text-sm font-black text-slate-800">{coordinatorAgent.name}</span>
+                        <span className={`flex shrink-0 items-center gap-1.5 text-[11px] font-black ${coordinatorStatus.text}`}>
+                          <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${coordinatorStatus.color}`} />
+                          <span>{coordinatorStatus.label}</span>
+                        </span>
+                      </div>
+                      <div className="mt-0.5 flex items-center justify-between gap-1.5">
+                        <span className="truncate text-xs font-semibold text-slate-400">默认协调者</span>
+                        <span
+                          className="inline-flex shrink-0 items-center gap-1 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-400"
+                          title="协调者默认继承个人中心全局模型"
+                        >
+                          <Cpu size={10} className="shrink-0" />
+                          <span>全局默认</span>
+                        </span>
+                      </div>
                     </div>
-                    <span className={`flex shrink-0 items-center gap-1.5 text-[11px] font-black ${coordinatorStatus.text}`}>
-                      <span className={`h-2 w-2 rounded-full ${coordinatorStatus.color}`} />
-                      {coordinatorStatus.label}
-                    </span>
                   </div>
                   {memberAgents.slice(0, 5).map((agent) => {
                     const status = memberStatus(agent.id);
+                    const member = memberByAgentId.get(agent.id);
                     return (
-                      <div key={agent.id} className="flex w-full items-center gap-3 rounded-lg px-2 py-2">
-                        <Avatar src={agent.avatar || '🤖'} alt={agent.name} size="sm" />
+                      <div
+                        key={agent.id}
+                        onClick={() => {
+                          if (member) setConfiguringModelMember(member);
+                        }}
+                        className="group flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-2 py-2 transition-colors duration-150 hover:bg-[#fbfaf7]"
+                        title={member ? `点击配置 ${agent.name} 模型与参数` : agent.name}
+                      >
+                        <Avatar src={agent.avatar || '🤖'} alt={agent.name} size="sm" className="shrink-0" />
                         <div className="min-w-0 flex-1">
-                          <div className="truncate text-sm font-black text-slate-800">{agent.name}</div>
-                          <div className="truncate text-xs font-semibold text-slate-400">{agent.category || 'Agent'}</div>
+                          <div className="flex items-center justify-between gap-1.5">
+                            <span className="truncate text-sm font-black text-slate-800 transition-colors group-hover:text-indigo-600">
+                              {agent.name}
+                            </span>
+                            <div className="flex shrink-0 items-center gap-1">
+                              <span className={`flex shrink-0 items-center gap-1.5 text-[11px] font-black ${status.text}`}>
+                                <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${status.color}`} />
+                                <span>{status.label}</span>
+                              </span>
+                              {status.task?.status === 'RUNNING' && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setPendingCancelTask(status.task);
+                                  }}
+                                  aria-label={`停止${agent.name}当前步骤`}
+                                  title="停止当前步骤"
+                                  className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-rose-400 transition-colors hover:bg-rose-50 hover:text-rose-600"
+                                >
+                                  <Square size={10} />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                          <div className="mt-0.5 flex items-center justify-between gap-1.5">
+                            <span className="truncate text-xs font-semibold text-slate-400">
+                              {member?.roleName || agent.category || 'Agent'}
+                            </span>
+                            {member?.modelName ? (
+                              <span
+                                className="inline-flex max-w-[120px] shrink-0 items-center gap-1 rounded border border-indigo-200/60 bg-indigo-50 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700"
+                                title={`独立模型: ${member.modelName}${member.apiBaseUrl ? `\n端点: ${member.apiBaseUrl}` : ''}${member.apiKey ? '\n已配置专属Key' : ''}`}
+                              >
+                                <Cpu size={10} className="shrink-0" />
+                                <span className="truncate">{member.modelName}</span>
+                              </span>
+                            ) : (
+                              <span
+                                className="inline-flex shrink-0 items-center gap-1 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-400"
+                                title="继承个人中心全局模型"
+                              >
+                                <Cpu size={10} className="shrink-0" />
+                                <span>全局默认</span>
+                              </span>
+                            )}
+                          </div>
                         </div>
-                        <span className={`flex shrink-0 items-center gap-1.5 text-[11px] font-black ${status.text}`}>
-                          <span className={`h-2 w-2 rounded-full ${status.color}`} />
-                          {status.label}
-                        </span>
-                        {status.task?.status === 'RUNNING' && (
-                          <button
-                            type="button"
-                            onClick={() => setPendingCancelTask(status.task)}
-                            aria-label={`停止${agent.name}当前步骤`}
-                            title="停止当前步骤"
-                            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-rose-400 transition hover:bg-rose-50 hover:text-rose-600"
-                          >
-                            <Square size={12} />
-                          </button>
-                        )}
                       </div>
                     );
                   })}
@@ -4472,7 +4546,7 @@ export default function SpaceDetailPage() {
                 onClick={() => setSidePanel(null)}
                 className="absolute inset-0 z-10 bg-slate-950/10"
               />
-              <aside className="absolute inset-y-0 right-0 z-20 flex w-full flex-col border-l border-black/[0.06] bg-white shadow-[-16px_0_40px_-24px_rgba(15,23,42,0.35)] sm:w-[360px]">
+              <aside className="absolute inset-y-0 right-0 z-20 flex w-full flex-col border-l border-black/[0.06] bg-white shadow-[-16px_0_40px_-24px_rgba(15,23,42,0.35)] sm:w-[420px] lg:w-[480px] xl:w-[500px]">
                 <div className="flex h-[65px] shrink-0 items-center justify-between border-b border-black/[0.06] px-5">
                   <div className="flex items-center gap-2 text-sm font-black text-slate-800">
                     {sidePanel === 'members' ? <UsersRound size={17} /> : sidePanel === 'skills' ? <BookOpen size={17} /> : sidePanel === 'runs' ? <History size={17} /> : sidePanel === 'automation' ? <CalendarClock size={17} /> : sidePanel === 'notifications' ? <Globe2 size={17} /> : sidePanel === 'connector' ? <Globe2 size={17} /> : <Settings2 size={17} />}
@@ -4499,7 +4573,16 @@ export default function SpaceDetailPage() {
                               <div className="truncate text-sm font-black text-slate-800">{coordinatorAgent.name}</div>
                               <span className="shrink-0 rounded-full bg-slate-950 px-2 py-0.5 text-[10px] font-black text-white">默认</span>
                             </div>
-                            <div className="truncate text-xs font-semibold text-slate-400">空间协调者</div>
+                            <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
+                              <span className="truncate text-xs font-semibold text-slate-400">空间协调者</span>
+                              <span
+                                className="inline-flex items-center gap-1 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-400"
+                                title="协调者默认继承个人中心全局模型"
+                              >
+                                <Cpu size={10} />
+                                全局默认
+                              </span>
+                            </div>
                           </div>
                           <span className={`flex shrink-0 items-center gap-1.5 text-[11px] font-black ${coordinatorStatus.text}`}>
                             <span className={`h-2 w-2 rounded-full ${coordinatorStatus.color}`} />
@@ -4515,7 +4598,24 @@ export default function SpaceDetailPage() {
                               <Avatar src={agent?.avatar || '🤖'} alt={agent?.name || 'Agent'} size="sm" />
                               <div className="min-w-0 flex-1">
                                 <div className="truncate text-sm font-black text-slate-800">{agent?.name || member.agentId}</div>
-                                <div className="truncate text-xs font-semibold text-slate-400">{member.roleName || agent?.category || 'Agent'}</div>
+                                <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
+                                  <span className="truncate text-xs font-semibold text-slate-400">{member.roleName || agent?.category || 'Agent'}</span>
+                                  {member.modelName ? (
+                                    <span
+                                      className="inline-flex items-center gap-1 rounded bg-indigo-50 border border-indigo-200/60 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700"
+                                      title={`独立模型: ${member.modelName}${member.apiBaseUrl ? `\n端点: ${member.apiBaseUrl}` : ''}${member.apiKey ? '\n已配置专属Key' : ''}`}
+                                    >
+                                      <Cpu size={10} />
+                                      {member.modelName}
+                                      {member.apiBaseUrl && <span className="opacity-70 text-[9px]">(独立URL)</span>}
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-400">
+                                      <Cpu size={10} />
+                                      全局默认
+                                    </span>
+                                  )}
+                                </div>
                               </div>
                               <span className={`flex shrink-0 items-center gap-1.5 text-[11px] font-black ${status.text}`}>
                                 <span className={`h-2 w-2 rounded-full ${status.color}`} />
@@ -4534,8 +4634,17 @@ export default function SpaceDetailPage() {
                               )}
                               <button
                                 type="button"
+                                onClick={() => setConfiguringModelMember(member)}
+                                className="inline-flex h-7 cursor-pointer items-center gap-1 rounded-md px-2 text-xs font-bold text-slate-500 transition hover:bg-indigo-50 hover:text-indigo-600"
+                                title="为该成员单独配置模型、URL和Key"
+                              >
+                                <Sliders size={12} />
+                                <span>模型</span>
+                              </button>
+                              <button
+                                type="button"
                                 onClick={() => removeMember(member.id)}
-                                className="text-xs font-black text-slate-300 transition hover:text-rose-500"
+                                className="cursor-pointer text-xs font-black text-slate-300 transition hover:text-rose-500"
                               >
                                 移除
                               </button>
@@ -5715,6 +5824,13 @@ export default function SpaceDetailPage() {
         onDownload={() => {
           if (imagePreview) void downloadFile(imagePreview.file);
         }}
+      />
+      <SpaceMemberModelDialog
+        open={Boolean(configuringModelMember)}
+        member={configuringModelMember}
+        agent={configuringModelMember ? agentById.get(configuringModelMember.agentId) || null : null}
+        onClose={() => setConfiguringModelMember(null)}
+        onSave={handleSaveMemberModel}
       />
       <ConfirmDialog
         open={Boolean(pendingPiSkillApproval)}

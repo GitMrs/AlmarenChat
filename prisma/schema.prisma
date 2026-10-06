@@ -364,13 +364,16 @@ model SpaceActionRequest {
 }
 
 model SpaceMember {
-  id        String   @id @default(uuid())
-  spaceId   String
-  space     Space    @relation(fields: [spaceId], references: [id], onDelete: Cascade)
-  agentId   String
-  roleName  String?
-  sortOrder Int      @default(0)
-  createdAt DateTime @default(now())
+  id         String   @id @default(uuid())
+  spaceId    String
+  space      Space    @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  agentId    String
+  roleName   String?
+  modelName  String?
+  apiBaseUrl String?
+  apiKey     String?
+  sortOrder  Int      @default(0)
+  createdAt  DateTime @default(now())
 
   @@unique([spaceId, agentId])
   @@index([spaceId, sortOrder])

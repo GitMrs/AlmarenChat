@@ -448,6 +448,9 @@ export interface SpaceMember {
   spaceId: string;
   agentId: string;
   roleName?: string | null;
+  modelName?: string | null;
+  apiBaseUrl?: string | null;
+  apiKey?: string | null;
   sortOrder: number;
   createdAt: string;
   agent?: Agent | null;

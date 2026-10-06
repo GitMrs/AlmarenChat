@@ -120,7 +120,10 @@ if [ "${#missing_build_tools[@]}" -gt 0 ]; then
 fi
 
 echo "Installing dependencies..."
-ONNXRUNTIME_NODE_INSTALL=skip yarn install --frozen-lockfile
+if ! ONNXRUNTIME_NODE_INSTALL=skip yarn install --frozen-lockfile; then
+  echo "Warning: frozen-lockfile installation failed; retrying with standard yarn install..."
+  ONNXRUNTIME_NODE_INSTALL=skip yarn install
+fi
 
 echo "Verifying SQLite native bindings..."
 if ! yarn db:verify-native; then

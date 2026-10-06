@@ -85,13 +85,22 @@ export function useContextCompression({
     }
   }, []);
 
+  const prevSpaceIdRef = useRef<string | undefined>(undefined);
+
   useEffect(() => {
     if (!spaceId || !enabled) {
       setStats(null);
       setIsLoading(false);
+      prevSpaceIdRef.current = undefined;
       return;
     }
-    setStats(null);
+
+    // Only clear stats when switching to a different spaceId.
+    // Retain previous stats during refreshKey updates to prevent compact panel height collapse and sidebar layout shift.
+    if (prevSpaceIdRef.current !== spaceId) {
+      prevSpaceIdRef.current = spaceId;
+      setStats(null);
+    }
 
     fetchCompressionStats(spaceId, thresholdKB);
 

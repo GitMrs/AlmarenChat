@@ -24,7 +24,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
   try {
     const userId = requireAuth(request);
     const { spaceId } = await params;
-    const { agentId, roleName } = await request.json();
+    const { agentId, roleName, modelName, apiBaseUrl, apiKey } = await request.json();
 
     const space = await getSpaceForUser(spaceId, userId);
     if (!space) return NextResponse.json({ error: 'Space not found' }, { status: 404 });
@@ -33,15 +33,25 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
     if (!agent) return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
     const defaultRoleName = agent.category === '专业' ? agent.name : agent.category || null;
 
+    const trimmedModel = typeof modelName === 'string' ? modelName.trim() || null : null;
+    const trimmedBaseUrl = typeof apiBaseUrl === 'string' ? apiBaseUrl.trim() || null : null;
+    const trimmedKey = typeof apiKey === 'string' ? apiKey.trim() || null : null;
+
     const member = await prisma.spaceMember.upsert({
       where: { spaceId_agentId: { spaceId, agentId: agent.id } },
       update: {
         roleName: typeof roleName === 'string' ? roleName.trim() || defaultRoleName : defaultRoleName,
+        ...(trimmedModel !== null ? { modelName: trimmedModel } : {}),
+        ...(trimmedBaseUrl !== null ? { apiBaseUrl: trimmedBaseUrl } : {}),
+        ...(trimmedKey !== null ? { apiKey: trimmedKey } : {}),
       },
       create: {
         spaceId,
         agentId: agent.id,
         roleName: typeof roleName === 'string' ? roleName.trim() || defaultRoleName : defaultRoleName,
+        modelName: trimmedModel,
+        apiBaseUrl: trimmedBaseUrl,
+        apiKey: trimmedKey,
         sortOrder: space.members.length,
       },
     });

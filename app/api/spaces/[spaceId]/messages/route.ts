@@ -387,6 +387,11 @@ async function handlePiMessage(options: {
   }
 
   const settings = await userModelSettings(userId);
+  const targetMember = space.members.find((m: any) => m.agentId === targetAgent.id);
+  const effectiveApiBaseUrl = targetMember?.apiBaseUrl?.trim() || settings.apiBaseUrl;
+  const effectiveApiKey = targetMember?.apiKey?.trim() || settings.apiKey;
+  const effectiveModelName = targetMember?.modelName?.trim() || settings.modelName;
+
   const changedPaths = new Set<string>();
   const encoder = new TextEncoder();
   const readable = new ReadableStream({
@@ -411,9 +416,9 @@ async function handlePiMessage(options: {
             message: textMessage,
             interactionMode,
             multiReplyIndex,
-            apiBaseUrl: settings.apiBaseUrl || DEFAULT_BASE_URL,
-            apiKey: settings.apiKey || process.env.apiKey,
-            modelName: settings.modelName || DEFAULT_MODEL,
+            apiBaseUrl: effectiveApiBaseUrl || DEFAULT_BASE_URL,
+            apiKey: effectiveApiKey || process.env.apiKey,
+            modelName: effectiveModelName || DEFAULT_MODEL,
             modelContextWindow: settings.modelContextWindow,
             allowWebSearch,
             imageGenerationRequested,
@@ -927,8 +932,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
       openaiMessages.push({ role: 'user', content: textMessage });
     }
 
-    const client = createModelClient(settings.apiBaseUrl, settings.apiKey);
-    const model = resolveModelName(settings.modelName);
+    const targetMember = space.members.find((m: any) => m.agentId === targetAgent.id);
+    const effectiveApiBaseUrl = targetMember?.apiBaseUrl?.trim() || settings.apiBaseUrl;
+    const effectiveApiKey = targetMember?.apiKey?.trim() || settings.apiKey;
+    const effectiveModelName = targetMember?.modelName?.trim() || settings.modelName;
+
+    const client = createModelClient(effectiveApiBaseUrl, effectiveApiKey);
+    const model = resolveModelName(effectiveModelName);
 
     const encoder = new TextEncoder();
     const readable = new ReadableStream({

@@ -14,7 +14,6 @@ import {
   Moon,
   Palette,
   PlugZap,
-  RefreshCw,
   Search,
   Sun,
   ToggleLeft,
@@ -22,7 +21,7 @@ import {
   User,
 } from 'lucide-react';
 import LoginRequired from '@/components/auth/LoginRequired';
-import SearchableSelect from '@/components/shared/SearchableSelect';
+import ModelPicker from '@/components/shared/ModelPicker';
 import { auth, user as userApi } from '@/lib/api';
 import {
   DEFAULT_BROWSER_MODEL_CONFIG,
@@ -85,9 +84,6 @@ export default function SettingsPanel() {
   const [imageModelProtocol, setImageModelProtocol] = useState<'OPENAI_IMAGES' | 'OPENAI_CHAT'>('OPENAI_IMAGES');
   const [imageApiBaseUrl, setImageApiBaseUrl] = useState('');
   const [imageApiKey, setImageApiKey] = useState('');
-  const [availableImageModels, setAvailableImageModels] = useState<string[]>([]);
-  const [fetchingImageModels, setFetchingImageModels] = useState(false);
-  const [imageModelListResult, setImageModelListResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [contextMessageLimit, setContextMessageLimit] = useState(40);
   const [tavilyApiKey, setTavilyApiKey] = useState('');
   const [initialAccount, setInitialAccount] = useState<AccountSnapshot | null>(null);
@@ -105,11 +101,6 @@ export default function SettingsPanel() {
   const [browserModelSaved, setBrowserModelSaved] = useState(false);
   const [searchSaved, setSearchSaved] = useState(false);
   const [testing, setTesting] = useState(false);
-  const [fetchingModels, setFetchingModels] = useState(false);
-  const [availableModels, setAvailableModels] = useState<string[]>([]);
-  const [manualModelEntry, setManualModelEntry] = useState(false);
-  const [manualImageModelEntry, setManualImageModelEntry] = useState(false);
-  const [modelListResult, setModelListResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [testResult, setTestResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [error, setError] = useState('');
   const [browserModelError, setBrowserModelError] = useState('');
@@ -146,21 +137,14 @@ export default function SettingsPanel() {
   const currentSearch = useMemo(() => ({ tavilyApiKey: tavilyApiKey.trim() }), [tavilyApiKey]);
   const hasSearchChanges = initialSearch ? JSON.stringify(currentSearch) !== JSON.stringify(initialSearch) : false;
   const canTestModel = Boolean(apiBaseUrl.trim() && apiKey.trim() && modelName.trim());
-  const canFetchModels = Boolean(apiBaseUrl.trim() && apiKey.trim());
   const modelConfigIncomplete = customModelEnabled && !canTestModel;
   const effectiveImageBaseUrl = imageApiBaseUrl.trim() || apiBaseUrl.trim();
   const effectiveImageApiKey = imageApiKey.trim() || apiKey.trim();
-  const canFetchImageModels = Boolean(effectiveImageBaseUrl && effectiveImageApiKey);
-  const availableImageOptions = availableImageModels.length > 0 ? availableImageModels : availableModels;
   const imageModelConfigIncomplete = imageModelEnabled && !(effectiveImageBaseUrl && effectiveImageApiKey && imageModelName.trim());
   const tokenLimits = useMemo(
     () => modelTokenLimits(modelName, modelContextWindow),
     [modelContextWindow, modelName]
   );
-
-  const handleModelNameChange = (value: string) => {
-    setModelName(value);
-  };
 
   useEffect(() => {
     const storedBrowserModel = readBrowserModelConfigForScope('GLOBAL');
@@ -337,57 +321,6 @@ export default function SettingsPanel() {
       setTimeout(() => setBrowserModelSaved(false), 2000);
     } catch (err: any) {
       setBrowserModelError(err.message || '保存本地模型设置失败');
-    }
-  };
-
-  const handleFetchModels = async () => {
-    if (!canFetchModels || fetchingModels) return;
-    setFetchingModels(true);
-    setModelListResult(null);
-    try {
-      const result = await userApi.models({
-        apiBaseUrl: apiBaseUrl.trim(),
-        apiKey: apiKey.trim(),
-      });
-      setAvailableModels(result.models);
-      if (result.models.length > 0) {
-        setManualModelEntry(false);
-        setManualImageModelEntry(false);
-      }
-      setModelListResult({
-        type: 'success',
-        message: result.models.length > 0 ? `已获取 ${result.models.length} 个模型` : '服务返回的模型列表为空',
-      });
-    } catch (err: any) {
-      setAvailableModels([]);
-      setModelListResult({ type: 'error', message: err.message || '获取模型列表失败' });
-    } finally {
-      setFetchingModels(false);
-    }
-  };
-
-  const handleFetchImageModels = async () => {
-    if (!canFetchImageModels || fetchingImageModels) return;
-    setFetchingImageModels(true);
-    setImageModelListResult(null);
-    try {
-      const result = await userApi.models({
-        apiBaseUrl: effectiveImageBaseUrl,
-        apiKey: effectiveImageApiKey,
-      });
-      setAvailableImageModels(result.models);
-      if (result.models.length > 0) {
-        setManualImageModelEntry(false);
-      }
-      setImageModelListResult({
-        type: 'success',
-        message: result.models.length > 0 ? `已获取 ${result.models.length} 个模型` : '服务返回的模型列表为空',
-      });
-    } catch (err: any) {
-      setAvailableImageModels([]);
-      setImageModelListResult({ type: 'error', message: err.message || '获取模型列表失败' });
-    } finally {
-      setFetchingImageModels(false);
     }
   };
 
@@ -655,13 +588,7 @@ export default function SettingsPanel() {
                   <span className="mb-2 block text-sm font-bold text-slate-700">API Base URL</span>
                   <input
                     value={apiBaseUrl}
-                    onChange={(e) => {
-                      setApiBaseUrl(e.target.value);
-                      setAvailableModels([]);
-                      setManualModelEntry(false);
-                      setManualImageModelEntry(false);
-                      setModelListResult(null);
-                    }}
+                    onChange={(e) => setApiBaseUrl(e.target.value)}
                     placeholder="https://api.example.com/v1"
                     className="h-12 w-full rounded-2xl border border-black/[0.08] bg-[#fbfaf7] px-4 text-sm font-medium text-slate-800 outline-none focus:border-slate-300 focus:ring-4 focus:ring-slate-200/70"
                   />
@@ -670,13 +597,7 @@ export default function SettingsPanel() {
                   <span className="mb-2 block text-sm font-bold text-slate-700">API Key</span>
                   <input
                     value={apiKey}
-                    onChange={(e) => {
-                      setApiKey(e.target.value);
-                      setAvailableModels([]);
-                      setManualModelEntry(false);
-                      setManualImageModelEntry(false);
-                      setModelListResult(null);
-                    }}
+                    onChange={(e) => setApiKey(e.target.value)}
                     placeholder="sk-..."
                     type="password"
                     className="h-12 w-full rounded-2xl border border-black/[0.08] bg-[#fbfaf7] px-4 text-sm font-medium text-slate-800 outline-none focus:border-slate-300 focus:ring-4 focus:ring-slate-200/70"
@@ -684,74 +605,39 @@ export default function SettingsPanel() {
                 </label>
               </div>
 
-              <div>
-                <div className="mb-2 flex items-center justify-between gap-3">
-                  <label htmlFor="model-name" className="text-sm font-bold text-slate-700">模型名称</label>
-                  <button
-                    type="button"
-                    onClick={handleFetchModels}
-                    disabled={!canFetchModels || fetchingModels}
-                    className={cn(
-                      'inline-flex h-8 items-center justify-center gap-1.5 rounded-lg px-3 text-xs font-black transition',
-                      canFetchModels && !fetchingModels
-                        ? 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                        : 'bg-slate-50 text-slate-300'
-                    )}
-                  >
-                    <RefreshCw className={fetchingModels ? 'animate-spin' : ''} size={13} />
-                    获取
-                  </button>
-                </div>
-                {availableModels.length > 0 && !manualModelEntry ? (
-                  <SearchableSelect
-                    id="model-name"
-                    value={modelName}
-                    options={availableModels}
-                    placeholder="请选择模型"
-                    searchPlaceholder="搜索模型"
-                    emptyText="没有匹配的模型"
-                    actionText="手动填写其他模型"
-                    onChange={handleModelNameChange}
-                    onAction={() => setManualModelEntry(true)}
-                  />
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <input
-                      id="model-name"
-                      value={modelName}
-                      onChange={(event) => handleModelNameChange(event.target.value)}
-                      placeholder="例如 gpt-4o、deepseek-chat、claude-sonnet-4"
-                      className="h-12 min-w-0 flex-1 rounded-2xl border border-black/[0.08] bg-[#fbfaf7] px-4 text-sm font-medium text-slate-800 outline-none focus:border-slate-300 focus:ring-4 focus:ring-slate-200/70"
-                    />
-                    {availableModels.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => setManualModelEntry(false)}
-                        className="h-12 shrink-0 rounded-xl bg-slate-100 px-3 text-xs font-black text-slate-600 transition hover:bg-slate-200"
-                      >
-                        选择列表
-                      </button>
-                    )}
-                  </div>
-                )}
-                {modelListResult && (
-                  <p className={cn(
-                    'mt-2 text-xs font-semibold leading-5',
-                    modelListResult.type === 'success' ? 'text-emerald-600' : 'text-rose-600'
-                  )}>
-                    {modelListResult.message}
-                    {modelListResult.type === 'success' && availableModels.length > 0 ? '，请从下拉列表选择。' : ''}
-                  </p>
-                )}
-              </div>
+              <div className="grid gap-4 sm:grid-cols-2 items-start">
+                <ModelPicker
+                  id="model-name"
+                  value={modelName}
+                  onChange={setModelName}
+                  apiBaseUrl={apiBaseUrl}
+                  apiKey={apiKey}
+                  label="模型名称"
+                  placeholder="例如 deepseek-chat、deepseek-reasoner、gpt-4o"
+                  disabled={!customModelEnabled}
+                  quickPresets={[
+                    { label: 'DeepSeek-V3', value: 'deepseek-chat' },
+                    { label: 'DeepSeek-R1', value: 'deepseek-reasoner' },
+                    { label: 'GPT-4o', value: 'gpt-4o' },
+                    { label: 'Claude 3.5 Sonnet', value: 'claude-3-5-sonnet-20241022' },
+                  ]}
+                />
 
-              <div className="flex flex-col gap-3 border-y border-black/[0.06] py-4 sm:flex-row sm:items-center sm:justify-between">
-                <label className="block">
-                  <span className="mb-2 block text-sm font-bold text-slate-700">上下文窗口</span>
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between gap-3">
+                    <label htmlFor="context-window" className="text-sm font-bold text-slate-700">
+                      上下文窗口
+                    </label>
+                    <span className="text-xs text-slate-400">
+                      约 {tokenLimits.compactionTriggerTokens.toLocaleString('en-US')} Token 压缩
+                    </span>
+                  </div>
                   <select
+                    id="context-window"
                     value={modelContextWindow}
                     onChange={(event) => setModelContextWindow(Number(event.target.value))}
-                    className="h-11 min-w-48 rounded-xl border border-black/[0.08] bg-[#fbfaf7] px-3 text-sm font-bold text-slate-800 outline-none focus:border-slate-300"
+                    disabled={!customModelEnabled}
+                    className="h-12 w-full rounded-2xl border border-black/[0.08] bg-[#fbfaf7] px-4 text-sm font-medium text-slate-800 outline-none focus:border-slate-300 focus:ring-4 focus:ring-slate-200/70 disabled:bg-slate-100 disabled:text-slate-400"
                   >
                     {MODEL_CONTEXT_WINDOW_OPTIONS.map((value: number) => (
                       <option key={value} value={value}>
@@ -759,14 +645,9 @@ export default function SettingsPanel() {
                       </option>
                     ))}
                   </select>
-                </label>
-                <div className="text-sm sm:text-right">
-                  <div className="font-black text-slate-800">
-                    最长上下文约 {tokenLimits.compactionTriggerTokens.toLocaleString('en-US')} Token 后压缩
-                  </div>
-                  <div className="mt-1 text-xs font-semibold text-slate-400">
-                    各类对话和任务会按用途自动计算实际预算
-                  </div>
+                  <p className="text-[11px] text-slate-400 leading-normal">
+                    各对话将根据模型额度自动规划上下文预算，超限自动压缩历史。
+                  </p>
                 </div>
               </div>
 
@@ -800,12 +681,7 @@ export default function SettingsPanel() {
                     </label>
                     <input
                       value={imageApiBaseUrl}
-                      onChange={(e) => {
-                        setImageApiBaseUrl(e.target.value);
-                        setAvailableImageModels([]);
-                        setManualImageModelEntry(false);
-                        setImageModelListResult(null);
-                      }}
+                      onChange={(e) => setImageApiBaseUrl(e.target.value)}
                       placeholder={apiBaseUrl.trim() ? `留空则使用：${apiBaseUrl.trim()}` : '留空则复用上方对话模型 Base URL'}
                       disabled={!imageModelEnabled}
                       className="h-11 w-full rounded-xl border border-black/[0.08] bg-white px-3 text-sm font-medium text-slate-800 outline-none disabled:bg-slate-100 disabled:text-slate-400 focus:border-slate-300"
@@ -818,12 +694,7 @@ export default function SettingsPanel() {
                     <input
                       type="password"
                       value={imageApiKey}
-                      onChange={(e) => {
-                        setImageApiKey(e.target.value);
-                        setAvailableImageModels([]);
-                        setManualImageModelEntry(false);
-                        setImageModelListResult(null);
-                      }}
+                      onChange={(e) => setImageApiKey(e.target.value)}
                       placeholder={apiKey.trim() ? '留空则使用上方对话模型 API Key' : '留空则复用上方对话模型 API Key'}
                       disabled={!imageModelEnabled}
                       className="h-11 w-full rounded-xl border border-black/[0.08] bg-white px-3 text-sm font-medium text-slate-800 outline-none disabled:bg-slate-100 disabled:text-slate-400 focus:border-slate-300"
@@ -833,66 +704,22 @@ export default function SettingsPanel() {
 
                 <div className="mt-4 grid gap-4 sm:grid-cols-[minmax(0,1fr)_180px_160px]">
                   <div className="block min-w-0">
-                    <div className="mb-2 flex items-center justify-between gap-3">
-                      <span className="block text-xs font-bold text-slate-600">图片模型名称</span>
-                      <button
-                        type="button"
-                        onClick={handleFetchImageModels}
-                        disabled={!imageModelEnabled || !canFetchImageModels || fetchingImageModels}
-                        className={cn(
-                          'inline-flex h-7 items-center justify-center gap-1.5 rounded-lg px-2.5 text-xs font-black transition',
-                          imageModelEnabled && canFetchImageModels && !fetchingImageModels
-                            ? 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                            : 'bg-slate-50 text-slate-300'
-                        )}
-                      >
-                        <RefreshCw className={fetchingImageModels ? 'animate-spin' : ''} size={12} />
-                        获取
-                      </button>
-                    </div>
-                    {availableImageOptions.length > 0 && !manualImageModelEntry ? (
-                      <SearchableSelect
-                        value={imageModelName}
-                        options={availableImageOptions}
-                        placeholder="请选择图片模型"
-                        searchPlaceholder="搜索模型"
-                        emptyText="没有匹配的模型"
-                        actionText="手动填写其他模型"
-                        disabled={!imageModelEnabled}
-                        compact
-                        onChange={setImageModelName}
-                        onAction={() => setManualImageModelEntry(true)}
-                      />
-                    ) : (
-                      <div className="flex items-center gap-2">
-                        <input
-                          value={imageModelName}
-                          onChange={(event) => setImageModelName(event.target.value)}
-                          placeholder="例如 gpt-image-1"
-                          disabled={!imageModelEnabled}
-                          className="h-11 min-w-0 flex-1 rounded-xl border border-black/[0.08] bg-white px-3 text-sm font-medium text-slate-800 outline-none disabled:bg-slate-100 disabled:text-slate-400"
-                        />
-                        {availableImageOptions.length > 0 && (
-                          <button
-                            type="button"
-                            onClick={() => setManualImageModelEntry(false)}
-                            disabled={!imageModelEnabled}
-                            className="h-11 shrink-0 rounded-lg bg-slate-100 px-3 text-xs font-black text-slate-600 transition hover:bg-slate-200 disabled:text-slate-300"
-                          >
-                            选择列表
-                          </button>
-                        )}
-                      </div>
-                    )}
-                    {imageModelListResult && (
-                      <p className={cn(
-                        'mt-2 text-xs font-semibold leading-5',
-                        imageModelListResult.type === 'success' ? 'text-emerald-600' : 'text-rose-600'
-                      )}>
-                        {imageModelListResult.message}
-                        {imageModelListResult.type === 'success' && availableImageOptions.length > 0 ? '，请从下拉列表选择。' : ''}
-                      </p>
-                    )}
+                    <ModelPicker
+                      id="image-model-name"
+                      value={imageModelName}
+                      onChange={setImageModelName}
+                      apiBaseUrl={effectiveImageBaseUrl}
+                      apiKey={effectiveImageApiKey}
+                      label="图片模型名称"
+                      placeholder="例如 dall-e-3、flux-schnell、sdxl"
+                      disabled={!imageModelEnabled}
+                      compact
+                      quickPresets={[
+                        { label: 'DALL-E 3', value: 'dall-e-3' },
+                        { label: 'DALL-E 2', value: 'dall-e-2' },
+                        { label: 'Flux Schnell', value: 'flux-schnell' },
+                      ]}
+                    />
                   </div>
                   <label className="block">
                     <span className="mb-2 block text-xs font-bold text-slate-600">接口协议</span>

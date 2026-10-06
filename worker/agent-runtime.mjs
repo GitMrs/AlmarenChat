@@ -340,7 +340,7 @@ function loadRunContext(run) {
   if (!user) throw new Error('任务所属用户不存在');
 
   const memberships = db.prepare(
-    'SELECT "agentId", "roleName" FROM "SpaceMember" WHERE "spaceId" = ? ORDER BY "sortOrder" ASC'
+    'SELECT "agentId", "roleName", "modelName", "apiBaseUrl", "apiKey" FROM "SpaceMember" WHERE "spaceId" = ? ORDER BY "sortOrder" ASC'
   ).all(run.spaceId);
   const customIds = memberships.map((member) => member.agentId).filter((id) => !builtInAgents.has(id));
   const customAgents = new Map();
@@ -352,29 +352,48 @@ function loadRunContext(run) {
     for (const agent of rows) customAgents.set(agent.id, agent);
   }
 
+  const useCustomModel = Boolean(user.customModelEnabled && user.apiBaseUrl && user.apiKey && user.modelName);
+  const apiKey = useCustomModel ? user.apiKey : process.env.apiKey;
+  if (!fakeMode && !apiKey) throw new Error('未配置可用的模型 API Key');
+  const defaultModel = {
+    apiKey: apiKey || 'fake-key',
+    baseURL: useCustomModel ? user.apiBaseUrl : 'https://api-inference.modelscope.cn/v1',
+    name: useCustomModel ? user.modelName : 'deepseek-ai/DeepSeek-V4-Flash',
+    contextWindow: user.modelContextWindow,
+  };
+
+  const memberByAgentId = new Map(memberships.map((m) => [m.agentId, m]));
   const agentMemoryQuery = run.input || run.topic || run.goal || '';
   const agents = memberships
     .map((member) => builtInAgents.get(member.agentId) || customAgents.get(member.agentId))
     .filter(Boolean)
-    .map((agent) => ({
-      ...agent,
-      memoryContext: agent.agentType === 'EMPLOYEE'
-        ? loadAgentMemoryContextSync(db, {
-            userId: run.userId,
-            agentId: agent.id,
-            query: agentMemoryQuery,
-          })
-        : '',
-    }));
+    .map((agent) => {
+      const member = memberByAgentId.get(agent.id);
+      const hasMemberModel = Boolean(member?.modelName?.trim() || member?.apiBaseUrl?.trim() || member?.apiKey?.trim());
+      const agentModel = hasMemberModel ? {
+        apiKey: member?.apiKey?.trim() || defaultModel.apiKey,
+        baseURL: member?.apiBaseUrl?.trim() || defaultModel.baseURL,
+        name: member?.modelName?.trim() || defaultModel.name,
+        contextWindow: defaultModel.contextWindow,
+      } : null;
+      return {
+        ...agent,
+        model: agentModel,
+        memoryContext: agent.agentType === 'EMPLOYEE'
+          ? loadAgentMemoryContextSync(db, {
+              userId: run.userId,
+              agentId: agent.id,
+              query: agentMemoryQuery,
+            })
+          : '',
+      };
+    });
   if (agents.length === 0) throw new Error('空间中没有可执行任务的 Agent');
   const usesCoordinatorAdvisor = Boolean(db.prepare(
     `SELECT 1 FROM "AgentTask" WHERE "runId" = ? AND "agentId" = ? AND "mode" = 'advisor' LIMIT 1`
   ).get(run.id, SPACE_COORDINATOR_ID));
   if (usesCoordinatorAdvisor) agents.unshift(SPACE_COORDINATOR);
 
-  const useCustomModel = Boolean(user.customModelEnabled && user.apiBaseUrl && user.apiKey && user.modelName);
-  const apiKey = useCustomModel ? user.apiKey : process.env.apiKey;
-  if (!fakeMode && !apiKey) throw new Error('未配置可用的模型 API Key');
   const memory = loadOrCreateSpaceMemory(run.spaceId);
   const coordinatorState = readCoordinatorState(db, run.id);
   const authorization = coordinatorState?.authorization || null;
@@ -399,12 +418,7 @@ function loadRunContext(run) {
   return {
     space,
     agents,
-    model: {
-      apiKey: apiKey || 'fake-key',
-      baseURL: useCustomModel ? user.apiBaseUrl : 'https://api-inference.modelscope.cn/v1',
-      name: useCustomModel ? user.modelName : 'deepseek-ai/DeepSeek-V4-Flash',
-      contextWindow: user.modelContextWindow,
-    },
+    model: defaultModel,
     imageModel: (() => {
       const imageBaseUrl = user.imageApiBaseUrl?.trim() || user.apiBaseUrl?.trim();
       const imageApiKey = user.imageApiKey?.trim() || user.apiKey?.trim();

@@ -237,7 +237,7 @@ export default function AgentDetailsPanel({
   );
   const conversationDrawer = conversationDrawerOpen && (
         <div className="fixed inset-0 z-[60] bg-slate-950/25" onClick={() => setConversationDrawerOpen(false)}>
-          <div className="absolute inset-y-0 left-0 flex w-[min(360px,90vw)] flex-col bg-white p-5 shadow-2xl" onClick={(event) => event.stopPropagation()}>
+          <div className="absolute inset-y-0 left-0 flex w-[min(400px,90vw)] flex-col bg-white p-5 shadow-2xl" onClick={(event) => event.stopPropagation()}>
             <div className="flex items-center justify-between border-b border-black/[0.06] pb-4">
               <div>
                 <h2 className="text-lg font-black text-slate-950">切换聊天</h2>
@@ -275,7 +275,7 @@ export default function AgentDetailsPanel({
   );
   const memoryDrawer = memoryDrawerOpen && (
     <div className="fixed inset-0 z-[60] bg-slate-950/25" onClick={() => setMemoryDrawerOpen(false)}>
-      <div className="absolute inset-y-0 right-0 flex w-[min(420px,92vw)] flex-col bg-white p-5 shadow-2xl" onClick={(event) => event.stopPropagation()}>
+      <div className="absolute inset-y-0 right-0 flex w-[min(480px,92vw)] flex-col bg-white p-5 shadow-2xl" onClick={(event) => event.stopPropagation()}>
         <div className="flex items-center justify-between border-b border-black/[0.06] pb-4">
           <div className="flex items-center gap-2.5">
             <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-amber-500 text-white shadow-2xs">

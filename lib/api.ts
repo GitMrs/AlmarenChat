@@ -438,9 +438,18 @@ export const spaces = {
       body: JSON.stringify(data),
     }),
   members: (id: string) => request<{ members: any[] }>(`/spaces/${id}/members`),
-  addMember: (id: string, data: { agentId: string; roleName?: string }) =>
+  addMember: (id: string, data: { agentId: string; roleName?: string; modelName?: string; apiBaseUrl?: string; apiKey?: string }) =>
     request<{ member: any }>(`/spaces/${id}/members`, {
       method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  updateMember: (
+    spaceId: string,
+    memberId: string,
+    data: { roleName?: string | null; modelName?: string | null; apiBaseUrl?: string | null; apiKey?: string | null }
+  ) =>
+    request<{ member: any }>(`/spaces/${spaceId}/members/${memberId}`, {
+      method: 'PATCH',
       body: JSON.stringify(data),
     }),
   removeMember: (spaceId: string, memberId: string) =>

@@ -99,6 +99,14 @@ const MANUAL_MIGRATION_REPAIRS = [
     migration: '20260908220000_add_space_execution_engine',
     columns: [{ table: 'Space', names: ['executionEngine'] }],
   },
+  {
+    migration: '20260929120000_add_agent_conversation_modes',
+    columns: [{ table: 'Conversation', names: ['agentMode'] }],
+  },
+  {
+    migration: '20261006120000_add_space_member_model_credentials',
+    columns: [{ table: 'SpaceMember', names: ['modelName', 'apiBaseUrl', 'apiKey'] }],
+  },
 ];
 const MIGRATIONS_DIRECTORY = path.resolve(process.cwd(), 'prisma', 'migrations');
 
@@ -143,7 +151,7 @@ function discoverSchemaOnlyMigrationRepairs() {
 const KNOWN_MIGRATION_REPAIRS = [
   ...MANUAL_MIGRATION_REPAIRS,
   ...discoverSchemaOnlyMigrationRepairs().filter((item) => !MANUAL_MIGRATION_REPAIRS.some((known) => known.migration === item.migration)),
-];
+].sort((a, b) => a.migration.localeCompare(b.migration));
 const REQUIRED_BASELINE_TABLES = [
   'User', 'Agent', 'Space', 'AgentRun', 'SpaceAutomation', 'SpaceWebhook', 'SpaceMcpServer', 'StudioWorkspace',
 ];
@@ -241,7 +249,11 @@ export function inspectKnownMigrationRepair(targetDb) {
       && !row.rolled_back_at
       && inspectMigrationSchema(targetDb, spec).missing.length > 0
     ))
-    || migrationCandidates.find(({ spec, row }) => !row && spec.migration !== '20260913010000_add_assistant_mcp_servers');
+    || migrationCandidates.find(({ spec, row }) => (
+      !row
+      && spec.migration !== '20260913010000_add_assistant_mcp_servers'
+      && inspectMigrationSchema(targetDb, spec).missing.length === 0
+    ));
   if (!migration) return { action: 'none', reason: 'known-migrations-already-applied' };
 
   const { spec } = migration;
@@ -282,16 +294,18 @@ function repairKnownMigrationConflict() {
   const databasePath = resolveDatabasePath();
   if (!existsSync(databasePath)) return { action: 'none', reason: 'database-does-not-exist' };
   const projectRoot = process.cwd();
-  const executable = process.platform === 'win32'
+  const binExecutable = process.platform === 'win32'
     ? path.join(projectRoot, 'node_modules', '.bin', 'prisma.cmd')
     : path.join(projectRoot, 'node_modules', '.bin', 'prisma');
-  const spawnOptions = {
+  const jsExecutable = path.join(projectRoot, 'node_modules', 'prisma', 'build', 'index.js');
+  const useJsExecutable = !existsSync(binExecutable) && existsSync(jsExecutable);
+  const executable = useJsExecutable ? process.execPath : binExecutable;
+  const runPrisma = (args) => spawnSync(executable, useJsExecutable ? [jsExecutable, ...args] : args, {
     cwd: projectRoot,
     env: process.env,
     stdio: 'inherit',
-    // Windows .cmd shims require a shell when launched through spawnSync.
-    shell: process.platform === 'win32',
-  };
+    shell: !useJsExecutable && process.platform === 'win32',
+  });
   let resolvedMigration = null;
   while (true) {
     const targetDb = new Database(databasePath, { readonly: true, fileMustExist: true });
@@ -306,9 +320,7 @@ function repairKnownMigrationConflict() {
     }
     if (inspection.action !== 'resolve') {
       if (inspection.action === 'rollback') {
-        const result = spawnSync(executable, ['migrate', 'resolve', '--rolled-back', inspection.migration], {
-          ...spawnOptions,
-        });
+        const result = runPrisma(['migrate', 'resolve', '--rolled-back', inspection.migration]);
         if (result.status !== 0) throw new Error(`无法回滚失败的 Prisma 迁移 ${inspection.migration}`);
         resolvedMigration = inspection.migration;
         continue;
@@ -317,9 +329,7 @@ function repairKnownMigrationConflict() {
         ? { action: 'resolved', migration: resolvedMigration }
         : inspection;
     }
-    const result = spawnSync(executable, ['migrate', 'resolve', '--applied', inspection.migration], {
-      ...spawnOptions,
-    });
+    const result = runPrisma(['migrate', 'resolve', '--applied', inspection.migration]);
     if (result.status !== 0) throw new Error(`无法修复 Prisma 迁移 ${inspection.migration}`);
     resolvedMigration = inspection.migration;
   }
@@ -772,6 +782,9 @@ try {
         "spaceId" TEXT NOT NULL,
         "agentId" TEXT NOT NULL,
         "roleName" TEXT,
+        "modelName" TEXT,
+        "apiBaseUrl" TEXT,
+        "apiKey" TEXT,
         "sortOrder" INTEGER NOT NULL DEFAULT 0,
         "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         CONSTRAINT "SpaceMember_spaceId_fkey" FOREIGN KEY ("spaceId") REFERENCES "Space" ("id") ON DELETE CASCADE ON UPDATE CASCADE
@@ -1035,6 +1048,9 @@ try {
       CREATE INDEX IF NOT EXISTS "SpaceDiscussion_status_createdAt_idx" ON "SpaceDiscussion"("status", "createdAt");
       UPDATE "Space" SET "hostAgentId" = 'space-coordinator' WHERE "hostAgentId" IS NULL;
     `);
+    if (!hasColumn('SpaceMember', 'modelName')) db.exec('ALTER TABLE "SpaceMember" ADD COLUMN "modelName" TEXT');
+    if (!hasColumn('SpaceMember', 'apiBaseUrl')) db.exec('ALTER TABLE "SpaceMember" ADD COLUMN "apiBaseUrl" TEXT');
+    if (!hasColumn('SpaceMember', 'apiKey')) db.exec('ALTER TABLE "SpaceMember" ADD COLUMN "apiKey" TEXT');
     if (!hasColumn('SpaceFile', 'runId')) db.exec('ALTER TABLE "SpaceFile" ADD COLUMN "runId" TEXT');
     if (!hasColumn('SpaceFile', 'taskId')) db.exec('ALTER TABLE "SpaceFile" ADD COLUMN "taskId" TEXT');
     if (!hasColumn('SpaceFile', 'status')) db.exec(`ALTER TABLE "SpaceFile" ADD COLUMN "status" TEXT NOT NULL DEFAULT 'READY'`);
