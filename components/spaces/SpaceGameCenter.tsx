@@ -19,6 +19,12 @@ export interface SpaceGameCenterProps {
   onShareToSpace?: (content: string) => void;
   onBackToChat?: () => void;
   initialGame?: 'gomoku' | 'undercover' | 'trpg' | 'live' | null;
+  initialGomokuMode?: 'pve' | 'eve';
+  initialGomokuBlackId?: string;
+  initialGomokuWhiteId?: string;
+  initialGomokuOpponentId?: string;
+  initialGomokuAutoPlay?: boolean;
+  initialGomokuAutoVoice?: boolean;
   spaceId: string;
 }
 
@@ -27,17 +33,34 @@ export default function SpaceGameCenter({
   onShareToSpace,
   onBackToChat,
   initialGame = null,
+  initialGomokuMode,
+  initialGomokuBlackId,
+  initialGomokuWhiteId,
+  initialGomokuOpponentId,
+  initialGomokuAutoPlay,
+  initialGomokuAutoVoice,
   spaceId,
 }: SpaceGameCenterProps) {
   const [isGomokuModalOpen, setIsGomokuModalOpen] = useState(Boolean(initialGame === 'gomoku'));
   const [isUndercoverModalOpen, setIsUndercoverModalOpen] = useState(Boolean(initialGame === 'undercover'));
   const [isTrpgModalOpen, setIsTrpgModalOpen] = useState(Boolean(initialGame === 'trpg'));
   const [isLiveModalOpen, setIsLiveModalOpen] = useState(Boolean(initialGame === 'live'));
-  const [gomokuMode, setGomokuMode] = useState<'pve' | 'eve'>('pve');
+  const [gomokuMode, setGomokuMode] = useState<'pve' | 'eve'>(initialGomokuMode || 'pve');
+  const [gomokuBlackId, setGomokuBlackId] = useState<string | undefined>(initialGomokuBlackId);
+  const [gomokuWhiteId, setGomokuWhiteId] = useState<string | undefined>(initialGomokuWhiteId);
+  const [gomokuOpponentId, setGomokuOpponentId] = useState<string | undefined>(initialGomokuOpponentId);
+  const [gomokuAutoPlay, setGomokuAutoPlay] = useState<boolean>(Boolean(initialGomokuAutoPlay));
+  const [gomokuAutoVoice, setGomokuAutoVoice] = useState<boolean | undefined>(initialGomokuAutoVoice);
 
   useEffect(() => {
     if (initialGame === 'gomoku') {
-      setGomokuMode('pve');
+      const mode = initialGomokuMode || 'pve';
+      setGomokuMode(mode);
+      if (initialGomokuBlackId) setGomokuBlackId(initialGomokuBlackId);
+      if (initialGomokuWhiteId) setGomokuWhiteId(initialGomokuWhiteId);
+      if (initialGomokuOpponentId) setGomokuOpponentId(initialGomokuOpponentId);
+      setGomokuAutoPlay(Boolean(initialGomokuAutoPlay));
+      setGomokuAutoVoice(initialGomokuAutoVoice);
       setIsGomokuModalOpen(true);
     } else if (initialGame === 'undercover') {
       setIsUndercoverModalOpen(true);
@@ -46,7 +69,7 @@ export default function SpaceGameCenter({
     } else if (initialGame === 'live') {
       setIsLiveModalOpen(true);
     }
-  }, [initialGame]);
+  }, [initialGame, initialGomokuMode, initialGomokuBlackId, initialGomokuWhiteId, initialGomokuOpponentId, initialGomokuAutoPlay, initialGomokuAutoVoice]);
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto bg-[#fbfaf7]">
@@ -355,9 +378,19 @@ export default function SpaceGameCenter({
       {/* 五子棋对弈与观战专属弹框 */}
       <InteractiveGomokuModal
         isOpen={isGomokuModalOpen}
-        onClose={() => setIsGomokuModalOpen(false)}
+        onClose={() => {
+          setIsGomokuModalOpen(false);
+          if (initialGame) {
+            onBackToChat?.();
+          }
+        }}
         spaceAgents={spaceAgents}
         initialMode={gomokuMode}
+        initialBlackId={gomokuBlackId}
+        initialWhiteId={gomokuWhiteId}
+        initialOpponentId={gomokuOpponentId}
+        initialAutoPlay={gomokuAutoPlay}
+        initialAutoVoice={gomokuAutoVoice}
         onShareToSpace={(text) => {
           setIsGomokuModalOpen(false);
           onShareToSpace?.(text);

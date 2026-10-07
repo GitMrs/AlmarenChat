@@ -212,24 +212,15 @@ export async function POST(request: Request) {
       }
     }
     if (knowledgeEnabled && agentId && textMessage.trim()) {
-      const hits = await getKnowledgeHits(agentId, textMessage);
-      if (hits.length > 0) {
-        const checkChunks = hits.map((hit) => hit.content.slice(0, 250)).join('\n---\n');
-        const check = await client.chat.completions.create({
-          model,
-          messages: [
-            {
-              role: 'system',
-              content: '严格判断：这些片段能切实回答用户问题吗？不确定就答“不能”。只回“能”或“不能”。',
-            },
-            { role: 'user', content: `问题: ${textMessage}\n\n片段:\n${checkChunks}` },
-          ],
-          stream: false,
-        });
-        const verdict = check.choices[0]?.message?.content || '';
-        if (verdict.includes('能') && !verdict.includes('不能')) {
-          finalContext = [finalContext, formatKnowledgeContext(hits)].filter(Boolean).join('\n\n');
+      try {
+        const hits = await getKnowledgeHits(agentId, textMessage);
+        // 过滤出具备足够语义相关度的优质切片（余弦相似度 >= 0.35）
+        const relevantHits = hits.filter((hit) => hit.score >= 0.35);
+        if (relevantHits.length > 0) {
+          finalContext = [finalContext, formatKnowledgeContext(relevantHits, { scopeLabel: '角色专属知识库' })].filter(Boolean).join('\n\n');
         }
+      } catch (err: any) {
+        console.warn('[chat/knowledge] Knowledge hit retrieval failed:', err?.message);
       }
     }
     if (webSearchEnabled) {

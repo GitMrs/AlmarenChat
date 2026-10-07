@@ -5,40 +5,40 @@ import { requireAuth } from '@/app/api/_lib/auth';
 export const runtime = 'nodejs';
 
 const ALLOWED_EXTENSIONS = ['.md', '.txt'];
-const MAX_FILE_SIZE = 1024 * 1024;
+const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2MB for space knowledge files
 
 function isAllowedFile(file: File) {
   const name = file.name.toLowerCase();
   return ALLOWED_EXTENSIONS.some((extension) => name.endsWith(extension));
 }
 
-export async function GET(request: Request, { params }: { params: Promise<{ agentId: string }> }) {
+export async function GET(request: Request, { params }: { params: Promise<{ spaceId: string }> }) {
   try {
     const userId = requireAuth(request);
-    const { agentId } = await params;
+    const { spaceId } = await params;
     const searchParams = new URL(request.url).searchParams;
     const documentId = searchParams.get('documentId');
     const query = searchParams.get('q')?.trim();
 
-    const agent = await prisma.agent.findUnique({ where: { id: agentId }, select: { creatorId: true } });
-    if (!agent) return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
-    if (agent.creatorId !== userId) return NextResponse.json({ error: 'Not authorized' }, { status: 403 });
+    const space = await prisma.space.findUnique({ where: { id: spaceId }, select: { userId: true } });
+    if (!space) return NextResponse.json({ error: '空间不存在' }, { status: 404 });
+    if (space.userId !== userId) return NextResponse.json({ error: '无权访问该空间' }, { status: 403 });
 
     if (query) {
       const { getKnowledgeHits } = await import('@/lib/knowledge');
-      const hits = await getKnowledgeHits(agentId, query);
+      const hits = await getKnowledgeHits({ spaceId }, query);
       return NextResponse.json({ hits });
     }
 
     if (documentId) {
       const document = await prisma.knowledgeDocument.findFirst({
-        where: { id: documentId, agentId },
+        where: { id: documentId, spaceId },
         select: { id: true, fileName: true },
       });
-      if (!document) return NextResponse.json({ error: 'Knowledge document not found' }, { status: 404 });
+      if (!document) return NextResponse.json({ error: '文档未找到' }, { status: 404 });
 
       const chunks = await prisma.knowledgeChunk.findMany({
-        where: { documentId, agentId },
+        where: { documentId, spaceId },
         orderBy: { chunkIndex: 'asc' },
         select: {
           id: true,
@@ -53,7 +53,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ agen
     }
 
     const documents = await prisma.knowledgeDocument.findMany({
-      where: { agentId },
+      where: { spaceId },
       orderBy: { createdAt: 'desc' },
       include: { _count: { select: { chunks: true } } },
     });
@@ -65,24 +65,24 @@ export async function GET(request: Request, { params }: { params: Promise<{ agen
   }
 }
 
-export async function POST(request: Request, { params }: { params: Promise<{ agentId: string }> }) {
+export async function POST(request: Request, { params }: { params: Promise<{ spaceId: string }> }) {
   try {
     const userId = requireAuth(request);
-    const { agentId } = await params;
+    const { spaceId } = await params;
 
-    const agent = await prisma.agent.findUnique({ where: { id: agentId }, select: { creatorId: true } });
-    if (!agent) return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
-    if (agent.creatorId !== userId) return NextResponse.json({ error: 'Not authorized' }, { status: 403 });
+    const space = await prisma.space.findUnique({ where: { id: spaceId }, select: { userId: true } });
+    if (!space) return NextResponse.json({ error: '空间不存在' }, { status: 404 });
+    if (space.userId !== userId) return NextResponse.json({ error: '无权操作该空间' }, { status: 403 });
 
     const formData = await request.formData();
     const file = formData.get('file');
     if (!(file instanceof File)) return NextResponse.json({ error: '请选择要上传的文档。' }, { status: 400 });
-    if (!isAllowedFile(file)) return NextResponse.json({ error: '第一版只支持 .txt 和 .md 文件。' }, { status: 400 });
-    if (file.size > MAX_FILE_SIZE) return NextResponse.json({ error: '文档不能超过 1MB。' }, { status: 400 });
+    if (!isAllowedFile(file)) return NextResponse.json({ error: '空间知识库支持 .txt 和 .md 格式。' }, { status: 400 });
+    if (file.size > MAX_FILE_SIZE) return NextResponse.json({ error: '文档大小不能超过 2MB。' }, { status: 400 });
 
     const content = await file.text();
     const { indexKnowledgeDocument } = await import('@/lib/knowledge');
-    const result = await indexKnowledgeDocument(agentId, file, content);
+    const result = await indexKnowledgeDocument({ spaceId }, file, content);
 
     return NextResponse.json({
       document: result.document,
@@ -94,26 +94,24 @@ export async function POST(request: Request, { params }: { params: Promise<{ age
   }
 }
 
-export async function DELETE(request: Request, { params }: { params: Promise<{ agentId: string }> }) {
+export async function DELETE(request: Request, { params }: { params: Promise<{ spaceId: string }> }) {
   try {
     const userId = requireAuth(request);
-    const { agentId } = await params;
+    const { spaceId } = await params;
     const documentId = new URL(request.url).searchParams.get('documentId');
+    if (!documentId) return NextResponse.json({ error: '缺少 documentId' }, { status: 400 });
 
-    if (!documentId) return NextResponse.json({ error: 'Missing documentId' }, { status: 400 });
-
-    const agent = await prisma.agent.findUnique({ where: { id: agentId }, select: { creatorId: true } });
-    if (!agent) return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
-    if (agent.creatorId !== userId) return NextResponse.json({ error: 'Not authorized' }, { status: 403 });
+    const space = await prisma.space.findUnique({ where: { id: spaceId }, select: { userId: true } });
+    if (!space) return NextResponse.json({ error: '空间不存在' }, { status: 404 });
+    if (space.userId !== userId) return NextResponse.json({ error: '无权操作该空间' }, { status: 403 });
 
     const document = await prisma.knowledgeDocument.findFirst({
-      where: { id: documentId, agentId },
+      where: { id: documentId, spaceId },
       select: { id: true },
     });
-    if (!document) return NextResponse.json({ error: 'Knowledge document not found' }, { status: 404 });
+    if (!document) return NextResponse.json({ error: '文档未找到' }, { status: 404 });
 
     await prisma.knowledgeDocument.delete({ where: { id: document.id } });
-
     return NextResponse.json({ success: true });
   } catch (e: any) {
     if (e.message === 'Unauthorized') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

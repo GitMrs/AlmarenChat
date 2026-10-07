@@ -111,6 +111,17 @@ const MANUAL_MIGRATION_REPAIRS = [
     migration: '20261006220000_add_space_discussion_settings',
     columns: [{ table: 'Space', names: ['discussionSettings'] }],
   },
+  {
+    migration: '20261007160000_add_space_knowledge_and_heading_title',
+    columns: [
+      { table: 'KnowledgeDocument', names: ['spaceId'] },
+      { table: 'KnowledgeChunk', names: ['spaceId', 'title'] },
+    ],
+    indexes: [
+      'KnowledgeDocument_spaceId_idx',
+      'KnowledgeChunk_spaceId_idx',
+    ],
+  },
 ];
 const MIGRATIONS_DIRECTORY = path.resolve(process.cwd(), 'prisma', 'migrations');
 
@@ -1056,6 +1067,52 @@ try {
     if (!hasColumn('SpaceMember', 'modelName')) db.exec('ALTER TABLE "SpaceMember" ADD COLUMN "modelName" TEXT');
     if (!hasColumn('SpaceMember', 'apiBaseUrl')) db.exec('ALTER TABLE "SpaceMember" ADD COLUMN "apiBaseUrl" TEXT');
     if (!hasColumn('SpaceMember', 'apiKey')) db.exec('ALTER TABLE "SpaceMember" ADD COLUMN "apiKey" TEXT');
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS "KnowledgeDocument" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "agentId" TEXT,
+        "spaceId" TEXT,
+        "fileName" TEXT NOT NULL,
+        "mimeType" TEXT,
+        "size" INTEGER,
+        "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "KnowledgeDocument_agentId_fkey" FOREIGN KEY ("agentId") REFERENCES "Agent" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+        CONSTRAINT "KnowledgeDocument_spaceId_fkey" FOREIGN KEY ("spaceId") REFERENCES "Space" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS "KnowledgeDocument_agentId_idx" ON "KnowledgeDocument"("agentId");
+      CREATE INDEX IF NOT EXISTS "KnowledgeDocument_spaceId_idx" ON "KnowledgeDocument"("spaceId");
+
+      CREATE TABLE IF NOT EXISTS "KnowledgeChunk" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "documentId" TEXT NOT NULL,
+        "agentId" TEXT,
+        "spaceId" TEXT,
+        "chunkIndex" INTEGER NOT NULL,
+        "title" TEXT,
+        "content" TEXT NOT NULL,
+        "embedding" JSONB NOT NULL,
+        "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "KnowledgeChunk_documentId_fkey" FOREIGN KEY ("documentId") REFERENCES "KnowledgeDocument" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS "KnowledgeChunk_agentId_idx" ON "KnowledgeChunk"("agentId");
+      CREATE INDEX IF NOT EXISTS "KnowledgeChunk_spaceId_idx" ON "KnowledgeChunk"("spaceId");
+      CREATE INDEX IF NOT EXISTS "KnowledgeChunk_documentId_idx" ON "KnowledgeChunk"("documentId");
+    `);
+    if (hasTable('KnowledgeDocument')) {
+      if (!hasColumn('KnowledgeDocument', 'spaceId')) {
+        db.exec('ALTER TABLE "KnowledgeDocument" ADD COLUMN "spaceId" TEXT');
+      }
+      db.exec('CREATE INDEX IF NOT EXISTS "KnowledgeDocument_spaceId_idx" ON "KnowledgeDocument"("spaceId")');
+    }
+    if (hasTable('KnowledgeChunk')) {
+      if (!hasColumn('KnowledgeChunk', 'spaceId')) {
+        db.exec('ALTER TABLE "KnowledgeChunk" ADD COLUMN "spaceId" TEXT');
+      }
+      if (!hasColumn('KnowledgeChunk', 'title')) {
+        db.exec('ALTER TABLE "KnowledgeChunk" ADD COLUMN "title" TEXT');
+      }
+      db.exec('CREATE INDEX IF NOT EXISTS "KnowledgeChunk_spaceId_idx" ON "KnowledgeChunk"("spaceId")');
+    }
     if (!hasColumn('SpaceFile', 'runId')) db.exec('ALTER TABLE "SpaceFile" ADD COLUMN "runId" TEXT');
     if (!hasColumn('SpaceFile', 'taskId')) db.exec('ALTER TABLE "SpaceFile" ADD COLUMN "taskId" TEXT');
     if (!hasColumn('SpaceFile', 'status')) db.exec(`ALTER TABLE "SpaceFile" ADD COLUMN "status" TEXT NOT NULL DEFAULT 'READY'`);

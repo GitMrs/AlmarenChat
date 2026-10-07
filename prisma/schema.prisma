@@ -145,6 +145,7 @@ model Space {
   discussions SpaceDiscussion[]
   relays      SpaceRelay[]
   memory      SpaceMemory?
+  knowledgeDocuments KnowledgeDocument[]
 
   @@index([userId, updatedAt])
 }
@@ -455,8 +456,10 @@ model SpaceFile {
 
 model KnowledgeDocument {
   id        String   @id @default(uuid())
-  agentId   String
-  agent     Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  agentId   String?
+  agent     Agent?   @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  spaceId   String?
+  space     Space?   @relation(fields: [spaceId], references: [id], onDelete: Cascade)
   fileName  String
   mimeType  String?
   size      Int?
@@ -465,19 +468,23 @@ model KnowledgeDocument {
   chunks KnowledgeChunk[]
 
   @@index([agentId])
+  @@index([spaceId])
 }
 
 model KnowledgeChunk {
   id         String            @id @default(uuid())
   documentId String
   document   KnowledgeDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  agentId    String
+  agentId    String?
+  spaceId    String?
   chunkIndex Int
+  title      String?
   content    String
   embedding  Json
   createdAt  DateTime @default(now())
 
   @@index([agentId])
+  @@index([spaceId])
   @@index([documentId])
 }
 

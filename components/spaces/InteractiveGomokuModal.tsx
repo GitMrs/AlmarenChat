@@ -5,6 +5,7 @@ import { Bot, Gamepad2, Lightbulb, Loader2, Play, Pause, RotateCcw, Share2, Skip
 import Avatar from '@/components/shared/Avatar';
 import GomokuBoard from '@/components/spaces/GomokuBoard';
 import {
+  CHARACTER_LINES,
   checkWin,
   findBestMove,
   getAdvisorHint,
@@ -24,7 +25,11 @@ export interface InteractiveGomokuModalProps {
   initialMode?: 'pve' | 'eve';
   initialBlackId?: string;
   initialWhiteId?: string;
+  initialOpponentId?: string;
   initialView?: 'center' | 'gomoku';
+  initialAutoPlay?: boolean;
+  initialAutoVoice?: boolean;
+  initialSoundEnabled?: boolean;
 }
 
 const DEFAULT_OPPONENTS: Array<{ id: string; name: string; avatar: string; voice: string; rate?: string; role: string }> = [
@@ -58,6 +63,10 @@ export default function InteractiveGomokuModal({
   initialMode = 'pve',
   initialBlackId = 'gaming-lulu',
   initialWhiteId = 'gaming-nox',
+  initialOpponentId,
+  initialAutoPlay = false,
+  initialAutoVoice = false,
+  initialSoundEnabled,
 }: InteractiveGomokuModalProps) {
   // 对弈模式：'pve' (人机切磋) | 'eve' (AI巅峰内战/观战)
   const [gameMode, setGameMode] = useState<'pve' | 'eve'>(initialMode);
@@ -65,12 +74,12 @@ export default function InteractiveGomokuModal({
   // 棋盘数据 (15x15 = 225)
   const [board, setBoard] = useState<number[]>(() => Array(225).fill(0));
   const [moveHistory, setMoveHistory] = useState<Array<{ row: number; col: number; player: number }>>([]);
-  const [selectedOpponentId, setSelectedOpponentId] = useState<string>('gaming-lulu');
+  const [selectedOpponentId, setSelectedOpponentId] = useState<string>(initialOpponentId || 'gaming-lulu');
 
   // 成员内战 (EVE) 配置
   const [eveBlackId, setEveBlackId] = useState<string>(initialBlackId);
   const [eveWhiteId, setEveWhiteId] = useState<string>(initialWhiteId);
-  const [isAutoPlaying, setIsAutoPlaying] = useState<boolean>(false);
+  const [isAutoPlaying, setIsAutoPlaying] = useState<boolean>(Boolean(initialAutoPlay));
 
   const [isAiThinking, setIsAiThinking] = useState(false);
   const [lastMove, setLastMove] = useState<{ row: number; col: number } | null>(null);
@@ -81,7 +90,41 @@ export default function InteractiveGomokuModal({
   // 谁在发言
   const [activeSpeakerId, setActiveSpeakerId] = useState<string>('gaming-lulu');
   const [speechText, setSpeechText] = useState<string>('哼，快进房间！今天本小姐就大发慈悲，陪你下一盘五子棋~ 你执黑先行！');
-  const [autoVoice, setAutoVoice] = useState(false);
+
+  // 统一声音总开关（同时控制落子敲击音效与角色台词配音）
+  const [soundEnabled, setSoundEnabled] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      const storedSound = localStorage.getItem('gomoku_sound_enabled');
+      if (storedSound !== null) return storedSound === 'true';
+      const storedVoice = localStorage.getItem('gomoku_voice_enabled');
+      if (storedVoice !== null) return storedVoice === 'true';
+    }
+    return initialSoundEnabled ?? initialAutoVoice ?? true;
+  });
+  const autoVoice = soundEnabled;
+
+  const toggleSound = () => {
+    const next = !soundEnabled;
+    setSoundEnabled(next);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('gomoku_sound_enabled', String(next));
+      localStorage.setItem('gomoku_voice_enabled', String(next));
+    }
+    if (!next) {
+      stopTTS();
+      if (gameMode === 'eve' && isAutoPlaying && !eveTimerRef.current) {
+        scheduleNextEveTurn(800);
+      }
+    } else {
+      playStoneSound(true);
+    }
+  };
+
+  const playMoveSound = (isBlack: boolean) => {
+    if (soundEnabled) {
+      playStoneSound(isBlack);
+    }
+  };
 
   const { play: playGomokuTTS, stop: stopTTS, isPlaying: isSpeaking, isBusy, isLoading } = useTTS();
   const hintTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -128,11 +171,37 @@ export default function InteractiveGomokuModal({
 
   // 查找 Agent 配置
   const getAgent = (id: string) => {
-    return (
+    const raw =
       spaceAgents.find((a) => a.id === id) ||
       DEFAULT_OPPONENTS.find((o) => o.id === id) ||
-      DEFAULT_OPPONENTS[0]
-    );
+      spaceAgents.find((a) => a.name && (id.includes(a.name) || a.name.includes(id))) ||
+      DEFAULT_OPPONENTS.find((o) => o.name && (id.includes(o.name) || o.name.includes(id))) ||
+      DEFAULT_OPPONENTS[0];
+    if (!raw.voice) {
+      const matchedDefault = DEFAULT_OPPONENTS.find(
+        (o) => o.id === raw.id || (raw.name && (o.name.includes(raw.name) || raw.name.includes(o.name)))
+      );
+      if (matchedDefault?.voice) {
+        return { ...raw, voice: matchedDefault.voice, role: (raw as any).role || matchedDefault.role };
+      }
+    }
+    return raw;
+  };
+
+  const resolveCharacterId = (agentId: string) => {
+    if (agentId in CHARACTER_LINES) return agentId;
+    const agent = getAgent(agentId);
+    const name = agent.name || '';
+    const id = agent.id || '';
+    if (name.includes('可可') || id.includes('koko')) return 'gaming-koko';
+    if (name.includes('璐璐') || id.includes('lulu')) return 'gaming-lulu';
+    if (name.includes('诺克斯') || id.includes('nox')) return 'gaming-nox';
+    if (name.includes('薇薇安') || id.includes('vivian')) return 'gaming-vivian';
+    if (name.includes('岁岁') || id.includes('suisui')) return 'gaming-suisui';
+    if (name.includes('烈') || id.includes('lie')) return 'gaming-lie';
+    if (name.includes('曼蒂') || id.includes('mandy')) return 'gaming-mandy';
+    if (name.includes('零号') || id.includes('zero')) return 'gaming-zero';
+    return 'gaming-lulu';
   };
 
   const opponent = getAgent(selectedOpponentId);
@@ -147,7 +216,9 @@ export default function InteractiveGomokuModal({
     mode = gameMode,
     nextOpponentId = selectedOpponentId,
     nextBlack = eveBlackId,
-    nextWhite = eveWhiteId
+    nextWhite = eveWhiteId,
+    startAuto = false,
+    useVoice = autoVoice
   ) => {
     stopTTS();
     clearEveTimer();
@@ -165,19 +236,17 @@ export default function InteractiveGomokuModal({
     lastSpokenMoveRef.current = 0;
 
     if (mode === 'pve') {
+      const targetAgent = getAgent(nextOpponentId);
+      const targetCharId = resolveCharacterId(nextOpponentId);
       const greeting =
-        nextOpponentId === 'gaming-nox'
+        targetCharId === 'gaming-nox'
           ? '五子棋核心在于前 10 手的辐射控制与眼位抢占。黑方先行，请落子。'
-          : nextOpponentId === 'gaming-koko'
+          : targetCharId === 'gaming-koko'
           ? '好耶！五子棋大战启动！小狐狸可可执白，队长你先请冲冲冲！✨'
           : '哼，本小姐这次绝对要让你见识一下什么叫真正的高手！快下快下~';
 
       setSpeechText(greeting);
       setActiveSpeakerId(nextOpponentId);
-      if (autoVoice) {
-        const targetAgent = getAgent(nextOpponentId);
-        playGomokuTTS(greeting, { voice: targetAgent.voice, cacheNamespace: 'gomoku' });
-      }
     } else {
       const bAgent = getAgent(nextBlack);
       const wAgent = getAgent(nextWhite);
@@ -185,14 +254,31 @@ export default function InteractiveGomokuModal({
       const greeting = `这局我执黑先走，${wName}，可别一开局就被我拿下哦！`;
       setSpeechText(greeting);
       setActiveSpeakerId(nextBlack);
-      setIsAutoPlaying(false);
-      isAutoPlayingRef.current = false;
+      setIsAutoPlaying(startAuto);
+      isAutoPlayingRef.current = startAuto;
 
-      if (autoVoice) {
+      if (startAuto && useVoice) {
+        let speechFinished = false;
         playGomokuTTS(greeting, {
           voice: bAgent.voice,
           cacheNamespace: 'gomoku',
+          onEnded: () => {
+            speechFinished = true;
+            scheduleNextEveTurn(800);
+          },
+          onError: () => {
+            if (!speechFinished) {
+              scheduleNextEveTurn(1200);
+            }
+          },
         });
+        setTimeout(() => {
+          if (!speechFinished && isAutoPlayingRef.current && !eveTimerRef.current && winnerRef.current === null) {
+            scheduleNextEveTurn(1000);
+          }
+        }, 6000);
+      } else if (startAuto) {
+        scheduleNextEveTurn(1200);
       }
     }
   };
@@ -203,17 +289,40 @@ export default function InteractiveGomokuModal({
       const mode = initialMode || 'pve';
       const bId = initialBlackId || 'gaming-lulu';
       const wId = initialWhiteId || 'gaming-nox';
+      const oppId = initialOpponentId || selectedOpponentId || 'gaming-lulu';
+      let snd = true;
+      if (typeof window !== 'undefined') {
+        const storedSound = localStorage.getItem('gomoku_sound_enabled');
+        if (storedSound !== null) {
+          snd = storedSound === 'true';
+        } else {
+          const storedVoice = localStorage.getItem('gomoku_voice_enabled');
+          if (storedVoice !== null) {
+            snd = storedVoice === 'true';
+          } else if (initialSoundEnabled !== undefined) {
+            snd = initialSoundEnabled;
+          } else if (initialAutoVoice !== undefined) {
+            snd = initialAutoVoice;
+          }
+        }
+      } else if (initialSoundEnabled !== undefined) {
+        snd = initialSoundEnabled;
+      } else if (initialAutoVoice !== undefined) {
+        snd = initialAutoVoice;
+      }
+      setSoundEnabled(snd);
       setGameMode(mode);
       gameModeRef.current = mode;
       setEveBlackId(bId);
       setEveWhiteId(wId);
-      handleReset(mode, selectedOpponentId, bId, wId);
+      if (initialOpponentId) setSelectedOpponentId(oppId);
+      handleReset(mode, oppId, bId, wId, Boolean(initialAutoPlay), snd);
     } else {
       stopTTS();
       clearEveTimer();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, initialMode, initialBlackId, initialWhiteId]);
+  }, [isOpen, initialMode, initialBlackId, initialWhiteId, initialOpponentId, initialAutoPlay, initialAutoVoice, initialSoundEnabled]);
 
   // 组件卸载时清理定时器
   useEffect(() => {
@@ -245,7 +354,7 @@ export default function InteractiveGomokuModal({
     if (board[idx] !== 0) return;
 
     setHintCell(null);
-    playStoneSound(true);
+    playMoveSound(true);
 
     const nextBoard = [...board];
     nextBoard[idx] = 1;
@@ -290,7 +399,7 @@ export default function InteractiveGomokuModal({
     const aiResult = findBestMove(currentBoard, 2, 1);
     const aiIdx = (aiResult.row - 1) * 15 + (aiResult.col - 1);
 
-    playStoneSound(false);
+    playMoveSound(false);
 
     const nextBoard = [...currentBoard];
     nextBoard[aiIdx] = 2;
@@ -309,7 +418,7 @@ export default function InteractiveGomokuModal({
       setWinner('ai');
       winnerRef.current = 'ai';
       setWinningLine(aiWinCheck.line || null);
-      const aiWinSpeech = getCharacterLine(opponent.id, 'ai_won', { moveCount: nextHistory.length });
+      const aiWinSpeech = getCharacterLine(resolveCharacterId(opponent.id), 'ai_won', { moveCount: nextHistory.length });
       setSpeechText(aiWinSpeech);
       setActiveSpeakerId(opponent.id);
       lastSpokenMoveRef.current = nextHistory.length;
@@ -317,7 +426,7 @@ export default function InteractiveGomokuModal({
       return;
     }
 
-    const comment = getCharacterLine(opponent.id, aiResult.situation, {
+    const comment = getCharacterLine(resolveCharacterId(opponent.id), aiResult.situation, {
       moveCount: nextHistory.length,
       opponentId: 'user',
     });
@@ -352,7 +461,7 @@ export default function InteractiveGomokuModal({
     const moveResult = findBestMove(currentBoard, currentTurn, otherTurn);
     const idx = (moveResult.row - 1) * 15 + (moveResult.col - 1);
 
-    playStoneSound(currentTurn === 1);
+    playMoveSound(currentTurn === 1);
 
     const nextBoard = [...currentBoard];
     nextBoard[idx] = currentTurn;
@@ -394,9 +503,11 @@ export default function InteractiveGomokuModal({
 
     // 伴随吐槽台词（带阶段感与专属羁绊互怼）
     const otherAgentId = currentTurn === 1 ? eveWhiteId : eveBlackId;
-    const line = getCharacterLine(currentAgentId, moveResult.situation, {
+    const currentCharId = resolveCharacterId(currentAgentId);
+    const otherCharId = resolveCharacterId(otherAgentId);
+    const line = getCharacterLine(currentCharId, moveResult.situation, {
       moveCount: nextHistory.length,
-      opponentId: otherAgentId,
+      opponentId: otherCharId,
     });
     setSpeechText(line);
     setActiveSpeakerId(currentAgentId);
@@ -513,7 +624,7 @@ export default function InteractiveGomokuModal({
     setWinningLine(null);
     setHintCell(null);
 
-    const undoComment = getUndoLine(opponent.id);
+    const undoComment = getUndoLine(resolveCharacterId(opponent.id));
     setSpeechText(undoComment);
     setActiveSpeakerId(opponent.id);
     if (autoVoice) playGomokuTTS(undoComment, { voice: opponent.voice, cacheNamespace: 'gomoku' });
@@ -609,29 +720,19 @@ export default function InteractiveGomokuModal({
                   </button>
                 </div>
 
+                {/* 声音总开关（落子音效 + 角色配音） */}
                 <button
                   type="button"
-                  onClick={() => {
-                    const next = !autoVoice;
-                    setAutoVoice(next);
-                    if (!next) {
-                      stopTTS();
-                      if (gameMode === 'eve' && isAutoPlaying && !eveTimerRef.current) {
-                        scheduleNextEveTurn(800);
-                      }
-                    } else if (speechText && currentSpeaker?.voice) {
-                      playGomokuTTS(speechText, { voice: currentSpeaker.voice, cacheNamespace: 'gomoku' });
-                    }
-                  }}
-                  title={autoVoice ? '点击关闭语音' : '点击开启语音'}
-                  className={`flex h-8 sm:h-9 items-center gap-1.5 rounded-lg px-2 sm:px-2.5 text-xs font-bold transition ${
-                    autoVoice
+                  onClick={toggleSound}
+                  title={soundEnabled ? '点击关闭所有声音（静音）' : '点击开启声音（落子音效与角色配音）'}
+                  className={`flex h-8 sm:h-9 items-center gap-1.5 rounded-lg px-2 sm:px-2.5 text-xs font-bold transition cursor-pointer ${
+                    soundEnabled
                       ? 'bg-amber-50 text-amber-700 hover:bg-amber-100 ring-1 ring-amber-300/50'
                       : 'bg-slate-100 text-slate-400 hover:bg-slate-200'
                   }`}
                 >
-                  {autoVoice ? <Volume2 size={15} /> : <VolumeX size={15} />}
-                  <span className="hidden md:inline">{autoVoice ? '语音开启' : '语音关闭'}</span>
+                  {soundEnabled ? <Volume2 size={15} /> : <VolumeX size={15} />}
+                  <span className="hidden md:inline">{soundEnabled ? '声音开启' : '声音静音'}</span>
                 </button>
 
                 <button

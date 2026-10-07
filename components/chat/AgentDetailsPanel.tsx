@@ -1,12 +1,13 @@
 'use client';
 
-import { ArrowLeft, ChevronDown, ChevronUp, MessageSquarePlus, SlidersHorizontal, Sparkles, X } from 'lucide-react';
+import { ArrowLeft, ChevronDown, ChevronUp, Database, MessageSquarePlus, SlidersHorizontal, Sparkles, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import Avatar from '@/components/shared/Avatar';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import TextInputDialog from '@/components/shared/TextInputDialog';
+import KnowledgeManager from '@/components/agent/KnowledgeManager';
 import { assistant as assistantApi, agents as agentsApi } from '@/lib/api';
 import type { DisplayAgent } from '@/components/chat/ChatMessageItem';
 import type { AssistantMemoryItem } from '@/types';
@@ -119,11 +120,18 @@ export default function AgentDetailsPanel({
   const [agentExperiences, setAgentExperiences] = useState<AgentExperience[]>([]);
   const [memoryLoading, setMemoryLoading] = useState(false);
   const [newMemory, setNewMemory] = useState('');
+  const [knowledgeModalOpen, setKnowledgeModalOpen] = useState(false);
+  const [knowledgeDocCount, setKnowledgeDocCount] = useState<number | null>(null);
 
   useEffect(() => {
-    if (!isLoggedIn || !displayAgent?.id) return;
-    assistantApi.get(displayAgent.id).then((res) => {
-      setAgentMemories((res.memories || []).filter((m) => m.agentId === displayAgent.id));
+    if (!displayAgent?.id) return;
+    if (isLoggedIn) {
+      assistantApi.get(displayAgent.id).then((res) => {
+        setAgentMemories((res.memories || []).filter((m) => m.agentId === displayAgent.id));
+      }).catch(() => {});
+    }
+    agentsApi.knowledge(displayAgent.id).then((res) => {
+      setKnowledgeDocCount(res.documents?.length || 0);
     }).catch(() => {});
   }, [displayAgent?.id, isLoggedIn]);
 
@@ -235,8 +243,35 @@ export default function AgentDetailsPanel({
       </span>
     </button>
   );
+
+  const knowledgeWidget = (
+    <button
+      type="button"
+      onClick={() => setKnowledgeModalOpen(true)}
+      className="mt-2.5 flex w-full items-center justify-between rounded-2xl border border-sky-200/80 bg-gradient-to-r from-sky-50/70 to-blue-50/40 p-2.5 text-left transition hover:border-sky-300 hover:shadow-xs group cursor-pointer"
+      title="查看与管理这个 Agent 掌握的专属知识库"
+    >
+      <div className="flex min-w-0 items-center gap-2.5">
+        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-sky-600 text-white shadow-xs">
+          <Database size={14} />
+        </div>
+        <div className="min-w-0">
+          <div className="text-xs font-black text-slate-900 group-hover:text-sky-950">
+            Agent 专属知识库
+          </div>
+          <div className="text-[11px] font-semibold text-slate-500 truncate">
+            {knowledgeDocCount !== null ? (knowledgeDocCount > 0 ? `已挂载 ${knowledgeDocCount} 篇文档` : '未挂载文档，点击上传') : '文档与章节向量'}
+          </div>
+        </div>
+      </div>
+      <span className="flex shrink-0 items-center rounded-full bg-white px-2 py-0.5 text-[11px] font-black text-sky-700 border border-sky-200/60 shadow-2xs">
+        {knowledgeDocCount ?? 0}
+      </span>
+    </button>
+  );
+
   const conversationDrawer = conversationDrawerOpen && (
-        <div className="fixed inset-0 z-[60] bg-slate-950/25" onClick={() => setConversationDrawerOpen(false)}>
+    <div className="fixed inset-0 z-[60] bg-slate-950/25" onClick={() => setConversationDrawerOpen(false)}>
           <div className="absolute inset-y-0 left-0 flex w-[min(400px,90vw)] flex-col bg-white p-5 shadow-2xl" onClick={(event) => event.stopPropagation()}>
             <div className="flex items-center justify-between border-b border-black/[0.06] pb-4">
               <div>
@@ -365,6 +400,7 @@ export default function AgentDetailsPanel({
           <div className="mb-5 border-b border-black/[0.06] pb-5">
             {conversationSwitcher}
             {memoryWidget}
+            {knowledgeWidget}
           </div>
           {isLoggedIn && (
             <ContextLimitControl
@@ -449,12 +485,31 @@ export default function AgentDetailsPanel({
               <div className="border-b border-black/[0.06] pb-4">
                 {conversationSwitcher}
                 {memoryWidget}
+                {knowledgeWidget}
               </div>
               <p className="rounded-2xl bg-[#fbfaf7] p-4 text-sm leading-6 text-slate-600">
                 {displayAgent.description || '这个 Agent 会根据你的问题给出清晰、具体、可执行的帮助。'}
               </p>
               <AgentDetailBody displayAgent={displayAgent} />
             </div>
+          </div>
+        </div>
+      )}
+      {knowledgeModalOpen && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-xs">
+          <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-3xl bg-white shadow-2xl">
+            <KnowledgeManager
+              agentId={displayAgent.id}
+              agentName={displayAgent.name}
+              onClose={() => {
+                setKnowledgeModalOpen(false);
+                if (displayAgent.id) {
+                  agentsApi.knowledge(displayAgent.id).then((res) => {
+                    setKnowledgeDocCount(res.documents?.length || 0);
+                  }).catch(() => {});
+                }
+              }}
+            />
           </div>
         </div>
       )}

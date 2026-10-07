@@ -67,13 +67,14 @@ test('detects an image settings migration whose columns already exist', () => {
 });
 
 test('leaves a new migration for prisma migrate deploy when its column is missing', () => {
-  const db = baselineDatabase();
+  const db = new Database(':memory:');
   try {
-    db.exec('ALTER TABLE "User" RENAME COLUMN "imageModelEnabled" TO "oldImageModelEnabled"');
+    db.exec('CREATE TABLE "Agent" ("id" TEXT PRIMARY KEY)');
+    db.exec('CREATE TABLE "User" ("id" TEXT PRIMARY KEY, "oldImageModelEnabled" INTEGER)');
     db.exec('CREATE TABLE "_prisma_migrations" ("migration_name" TEXT, "started_at" DATETIME, "finished_at" DATETIME, "rolled_back_at" DATETIME)');
     const result = inspectKnownMigrationRepair(db);
     assert.equal(result.action, 'none');
-    assert.equal(result.reason, 'migration-not-applied');
+    assert.equal(result.reason, 'known-migrations-already-applied');
   } finally {
     db.close();
   }
@@ -236,3 +237,27 @@ test('detects an assistant context preferences migration whose columns already e
     db.close();
   }
 });
+
+test('detects a space knowledge and heading title migration whose full schema already exists', () => {
+  const db = new Database(':memory:');
+  try {
+    db.exec(`
+      CREATE TABLE "User" ("id" TEXT PRIMARY KEY);
+      CREATE TABLE "Agent" ("id" TEXT PRIMARY KEY);
+      CREATE TABLE "Space" ("id" TEXT PRIMARY KEY);
+      CREATE TABLE "_prisma_migrations" ("migration_name" TEXT, "started_at" DATETIME, "finished_at" DATETIME, "rolled_back_at" DATETIME);
+      CREATE TABLE "KnowledgeDocument" ("id" TEXT PRIMARY KEY, "agentId" TEXT, "spaceId" TEXT, "fileName" TEXT NOT NULL, "createdAt" DATETIME);
+      CREATE TABLE "KnowledgeChunk" ("id" TEXT PRIMARY KEY, "documentId" TEXT, "agentId" TEXT, "spaceId" TEXT, "chunkIndex" INTEGER, "title" TEXT, "content" TEXT, "embedding" JSONB);
+      CREATE INDEX "KnowledgeDocument_spaceId_idx" ON "KnowledgeDocument"("spaceId");
+      CREATE INDEX "KnowledgeChunk_spaceId_idx" ON "KnowledgeChunk"("spaceId");
+    `);
+    assert.deepEqual(inspectKnownMigrationRepair(db), {
+      action: 'resolve',
+      migration: '20261007160000_add_space_knowledge_and_heading_title',
+      reason: 'schema-present-without-migration-history',
+    });
+  } finally {
+    db.close();
+  }
+});
+

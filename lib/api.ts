@@ -532,6 +532,14 @@ export const spaces = {
     }),
   deleteMessage: (spaceId: string, messageId: string) =>
     request<{ success: boolean }>(`/spaces/${spaceId}/messages/${messageId}`, { method: 'DELETE' }),
+  postDirectNote: (spaceId: string, data: { message: string; directContent: string; speakerId?: string }) =>
+    request<{ ok: boolean; userMessage?: any; message: any }>(`/spaces/${spaceId}/messages`, {
+      method: 'POST',
+      body: JSON.stringify({
+        interactionMode: 'direct_note',
+        ...data,
+      }),
+    }),
   files: (id: string) => request<{ files: any[] }>(`/spaces/${id}/files`),
   downloadFile: async (spaceId: string, fileId: string) => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
@@ -645,6 +653,30 @@ export const spaces = {
     request<{ success: true }>(`/spaces/${spaceId}/mcp/${serverId}`, { method: 'PATCH', body: JSON.stringify({ enabled }) }),
   removeMcpServer: (spaceId: string, serverId: string) =>
     request<{ success: true }>(`/spaces/${spaceId}/mcp/${serverId}`, { method: 'DELETE' }),
+  knowledge: (spaceId: string) => request<{ documents: any[] }>(`/spaces/${spaceId}/knowledge`),
+  knowledgeChunks: (spaceId: string, documentId: string) =>
+    request<{ document: any; chunks: any[] }>(`/spaces/${spaceId}/knowledge?documentId=${encodeURIComponent(documentId)}`),
+  searchKnowledge: (spaceId: string, query: string) =>
+    request<{ hits: any[] }>(`/spaces/${spaceId}/knowledge?q=${encodeURIComponent(query)}`),
+  deleteKnowledge: (spaceId: string, documentId: string) =>
+    request<{ success: boolean }>(`/spaces/${spaceId}/knowledge?documentId=${encodeURIComponent(documentId)}`, {
+      method: 'DELETE',
+    }),
+  uploadKnowledge: async (spaceId: string, file: File) => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await fetch(`${API_BASE}/spaces/${spaceId}/knowledge`, {
+      method: 'POST',
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: formData,
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || '上传空间知识库失败');
+    return data;
+  },
   configureWechatConnector: (spaceId: string, data: { appId: string; appSecret?: string }) =>
     request<{ connector: SpaceConnector }>(`/spaces/${spaceId}/connectors/wechat`, {
       method: 'PUT',

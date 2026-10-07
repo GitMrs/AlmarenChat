@@ -551,7 +551,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
     const {
       message, targetAgentId, history, skipPersistUserMessage, interactionMode, coordinationScope,
       multiReplyIndex, webSearchEnabled, imageGenerationRequested, skillId, workId, persistMessages,
-      isolatedContext, contextAgentIds, isHandoffTurn,
+      isolatedContext, contextAgentIds, isHandoffTurn, directContent, speakerId,
     } = await request.json();
     const textMessage = typeof message === 'string' ? message.trim() : '';
     const shouldPersistMessages = persistMessages !== false;
@@ -562,6 +562,35 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
 
     const space = await getSpaceForUser(spaceId, userId);
     if (!space) return NextResponse.json({ error: 'Space not found' }, { status: 404 });
+
+    if (interactionMode === 'direct_note') {
+      let userMsg = null;
+      if (shouldPersistMessages && !skipPersistUserMessage) {
+        userMsg = await prisma.spaceMessage.create({
+          data: {
+            spaceId,
+            role: 'user',
+            content: textMessage,
+          },
+        });
+        await persistSpaceMemory(spaceId, [{
+          type: 'user_message',
+          actor: '用户',
+          summary: textMessage,
+          at: userMsg.createdAt.toISOString(),
+          refId: userMsg.id,
+        }]);
+      }
+      const noteMsg = await prisma.spaceMessage.create({
+        data: {
+          spaceId,
+          role: 'assistant',
+          speakerAgentId: speakerId || SPACE_COORDINATOR.id,
+          content: typeof directContent === 'string' && directContent.trim() ? directContent.trim() : textMessage,
+        },
+      });
+      return NextResponse.json({ ok: true, userMessage: userMsg, message: noteMsg });
+    }
     if (explicitImageRequest) {
       const imageSettings = await prisma.user.findUnique({
         where: { id: userId },
@@ -851,13 +880,29 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
           spaceTrendingContext = formatTrendingForPrompt(snapshot, { limit: 10 });
         }
       } catch (err: any) {
-        console.warn('[spaces/trending] Auto trending injection failed:', err?.message);
+      }
+    }
+
+    let spaceKnowledgeContext = '';
+    if (textMessage.trim()) {
+      try {
+        const { getKnowledgeHits, formatKnowledgeContext } = await import('@/lib/knowledge');
+        const hits = await getKnowledgeHits(
+          { spaceId, agentId: targetAgent.id !== SPACE_COORDINATOR.id ? targetAgent.id : undefined },
+          textMessage
+        );
+        if (hits.length > 0) {
+          spaceKnowledgeContext = formatKnowledgeContext(hits, { scopeLabel: '空间公共与角色知识库' });
+        }
+      } catch (err: any) {
+        console.warn('[spaces/knowledge] Knowledge hits retrieval failed:', err?.message);
       }
     }
 
     const systemPrompt = [
       currentTimeContext(),
       spaceTrendingContext,
+      spaceKnowledgeContext,
       targetAgent.systemPrompt || targetAgent.description || `你是 ${targetAgent.name}。`,
       agentMemory,
       formatMembersContext(allAgents, targetAgent, { autoBotChat: isAutoRelayEnabled }),
