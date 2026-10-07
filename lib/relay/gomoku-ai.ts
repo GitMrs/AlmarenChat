@@ -575,6 +575,144 @@ export function findBestMove(
   return { row: bestMove.row, col: bestMove.col, situation: bestSituation };
 }
 
+export interface GomokuCandidateMove {
+  row: number;
+  col: number;
+  score: number;
+  situation: GomokuSituation;
+  tacticalReason: string;
+}
+
+/**
+ * 扫描并返回全局综合战术价值最高的前 N 个候选落子点（供大模型思考与决策系统参考）
+ */
+export function findCandidateMoves(
+  board: number[],
+  aiPlayer = 2,
+  humanPlayer = 1,
+  topN = 4
+): GomokuCandidateMove[] {
+  const centerIndex = 7 * BOARD_SIZE + 7;
+  if (board[centerIndex] === 0 && board.filter(Boolean).length <= 1) {
+    const openingCandidates: GomokuCandidateMove[] = [
+      {
+        row: 8,
+        col: 8,
+        score: 1000,
+        situation: 'normal',
+        tacticalReason: '抢占天元棋盘核心枢纽（辐射四向视野）',
+      },
+      {
+        row: 8,
+        col: 9,
+        score: 800,
+        situation: 'normal',
+        tacticalReason: '天元侧翼延展布局（星位辅助）',
+      },
+      {
+        row: 7,
+        col: 8,
+        score: 800,
+        situation: 'normal',
+        tacticalReason: '中腹垂直拓展点（争夺制空权）',
+      },
+    ];
+    return openingCandidates.slice(0, topN);
+  }
+
+  const directions = [
+    [0, 1],
+    [1, 0],
+    [1, 1],
+    [1, -1],
+  ];
+
+  const candidates: Array<{
+    row: number;
+    col: number;
+    totalScore: number;
+    attackScore: number;
+    defenseScore: number;
+    situation: GomokuSituation;
+    tacticalReason: string;
+  }> = [];
+
+  for (let r = 1; r <= BOARD_SIZE; r++) {
+    for (let c = 1; c <= BOARD_SIZE; c++) {
+      const idx = (r - 1) * BOARD_SIZE + (c - 1);
+      if (board[idx] !== 0) continue;
+
+      const centerDist = Math.abs(r - 8) + Math.abs(c - 8);
+      const positionBonus = Math.max(0, 15 - centerDist);
+
+      let attackScore = 0;
+      let defenseScore = 0;
+      let makesFour = false;
+      let blocksThree = false;
+
+      for (const [dr, dc] of directions) {
+        const aiShape = evaluateDirection(board, r, c, dr, dc, aiPlayer);
+        attackScore += scoreShape(aiShape.count, aiShape.openEnds);
+        if (aiShape.count >= 4) makesFour = true;
+
+        const humanShape = evaluateDirection(board, r, c, dr, dc, humanPlayer);
+        defenseScore += scoreShape(humanShape.count, humanShape.openEnds);
+        if (humanShape.count === 3 && humanShape.openEnds === 2) blocksThree = true;
+      }
+
+      if (attackScore === 0 && defenseScore === 0 && centerDist > 8) continue;
+
+      const totalScore = attackScore * 1.15 + defenseScore + positionBonus;
+
+      let situation: GomokuSituation = 'normal';
+      let tacticalReason = '中盘战略占位与视野延展';
+
+      if (attackScore >= 100000) {
+        situation = 'ai_won';
+        tacticalReason = '绝杀！连成五子直接获胜！';
+      } else if (defenseScore >= 100000 || defenseScore >= 15000) {
+        situation = 'ai_blocked_three';
+        tacticalReason = '生死防守！紧急封堵对方绝杀连线';
+      } else if (makesFour || attackScore >= 15000) {
+        situation = 'ai_formed_four';
+        tacticalReason = '强力进攻！形成活四/冲四绝杀杀局';
+      } else if (blocksThree || defenseScore >= 2500) {
+        situation = 'ai_blocked_three';
+        tacticalReason = '关键防守！卡位破坏对手活三攻势';
+      } else if (attackScore >= 2500) {
+        situation = 'normal';
+        tacticalReason = '主动造势！构建我方活三双向进攻';
+      } else if (attackScore >= 300) {
+        situation = 'normal';
+        tacticalReason = '兵力连通！构建我方活二战略纵深';
+      } else if (defenseScore >= 300) {
+        situation = 'player_blocked';
+        tacticalReason = '提前预防！压制对手阵型展开';
+      }
+
+      candidates.push({
+        row: r,
+        col: c,
+        totalScore,
+        attackScore,
+        defenseScore,
+        situation,
+        tacticalReason,
+      });
+    }
+  }
+
+  candidates.sort((a, b) => b.totalScore - a.totalScore);
+
+  return candidates.slice(0, topN).map((item) => ({
+    row: item.row,
+    col: item.col,
+    score: item.totalScore,
+    situation: item.situation,
+    tacticalReason: item.tacticalReason,
+  }));
+}
+
 /**
  * 军师支招：为人类玩家推荐最佳落子（多重战术深度分析）
  */

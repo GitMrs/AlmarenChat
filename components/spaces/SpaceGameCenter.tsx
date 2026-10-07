@@ -391,6 +391,7 @@ export default function SpaceGameCenter({
         initialOpponentId={gomokuOpponentId}
         initialAutoPlay={gomokuAutoPlay}
         initialAutoVoice={gomokuAutoVoice}
+        spaceId={spaceId}
         onShareToSpace={(text) => {
           setIsGomokuModalOpen(false);
           onShareToSpace?.(text);

@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Bot, Gamepad2, Lightbulb, Loader2, Play, Pause, RotateCcw, Share2, SkipForward, Sparkles, User, Users, Volume2, VolumeX, X } from 'lucide-react';
+import { Bot, BrainCircuit, Crown, Gamepad2, Lightbulb, Loader2, Play, Pause, RotateCcw, Share2, SkipForward, Sparkles, User, Users, Volume2, VolumeX, X, Zap } from 'lucide-react';
 import Avatar from '@/components/shared/Avatar';
 import GomokuBoard from '@/components/spaces/GomokuBoard';
 import {
@@ -13,9 +13,12 @@ import {
   getKokoCheer,
   getUndoLine,
   playStoneSound,
+  type GomokuSituation,
 } from '@/lib/relay/gomoku-ai';
 import { useTTS } from '@/hooks/useTTS';
 import type { Agent } from '@/types';
+
+export type GomokuEngineMode = 'js' | 'perceive' | 'full';
 
 export interface InteractiveGomokuModalProps {
   isOpen: boolean;
@@ -30,6 +33,7 @@ export interface InteractiveGomokuModalProps {
   initialAutoPlay?: boolean;
   initialAutoVoice?: boolean;
   initialSoundEnabled?: boolean;
+  spaceId?: string;
 }
 
 const DEFAULT_OPPONENTS: Array<{ id: string; name: string; avatar: string; voice: string; rate?: string; role: string }> = [
@@ -67,6 +71,7 @@ export default function InteractiveGomokuModal({
   initialAutoPlay = false,
   initialAutoVoice = false,
   initialSoundEnabled,
+  spaceId,
 }: InteractiveGomokuModalProps) {
   // 对弈模式：'pve' (人机切磋) | 'eve' (AI巅峰内战/观战)
   const [gameMode, setGameMode] = useState<'pve' | 'eve'>(initialMode);
@@ -91,6 +96,26 @@ export default function InteractiveGomokuModal({
   const [activeSpeakerId, setActiveSpeakerId] = useState<string>('gaming-lulu');
   const [speechText, setSpeechText] = useState<string>('哼，快进房间！今天本小姐就大发慈悲，陪你下一盘五子棋~ 你执黑先行！');
 
+  // 引擎模式：
+  // 'js'（⚡ 极速代码：纯本地启发式算法秒算，0 Token）
+  // 'perceive'（🧠 JS 感知：JS 算法生成高威胁战术候选，大模型决策并即兴台词）
+  // 'full'（👑 全权掌管：100% 大模型自主解析15×15棋盘坐标并独立决断）
+  const [engineMode, setEngineMode] = useState<GomokuEngineMode>(() => {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('gomoku_engine_mode');
+      if (stored === 'full' || stored === 'perceive' || stored === 'js') return stored as GomokuEngineMode;
+      if (stored === 'ai') return 'perceive';
+    }
+    return 'js';
+  });
+
+  const selectEngineMode = (mode: GomokuEngineMode) => {
+    setEngineMode(mode);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('gomoku_engine_mode', mode);
+    }
+  };
+
   // 统一声音总开关（同时控制落子敲击音效与角色台词配音）
   const [soundEnabled, setSoundEnabled] = useState<boolean>(() => {
     if (typeof window !== 'undefined') {
@@ -102,6 +127,76 @@ export default function InteractiveGomokuModal({
     return initialSoundEnabled ?? initialAutoVoice ?? true;
   });
   const autoVoice = soundEnabled;
+
+  // 调用后端大语言模型生成战术落子与即兴台词
+  const fetchAiGomokuMove = async (
+    targetAgentId: string,
+    targetOpponentId: string,
+    turn: 1 | 2,
+    currentBoard: number[],
+    currentHistory: Array<{ row: number; col: number; player: number; agentName?: string }>
+  ): Promise<{ row: number; col: number; speech: string }> => {
+    if (!spaceId) {
+      const otherTurn = turn === 1 ? 2 : 1;
+      const fallback = findBestMove(currentBoard, turn, otherTurn);
+      const fallbackSpeech = getCharacterLine(resolveCharacterId(targetAgentId), fallback.situation, {
+        moveCount: currentHistory.length + 1,
+        opponentId: resolveCharacterId(targetOpponentId),
+      });
+      return { row: fallback.row, col: fallback.col, speech: fallbackSpeech };
+    }
+
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8500);
+
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      const res = await fetch(`/api/spaces/${spaceId}/gomoku/ai-turn`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          board: currentBoard,
+          currentTurn: turn,
+          agentId: targetAgentId,
+          opponentId: targetOpponentId,
+          moveHistory: currentHistory,
+          engineMode: engineMode === 'full' ? 'full' : 'perceive',
+        }),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.row && data.col) {
+          return {
+            row: data.row,
+            col: data.col,
+            speech: data.speech || '',
+          };
+        }
+      } else {
+        const errText = await res.text().catch(() => '');
+        console.warn(`[Gomoku] AI turn API responded with ${res.status}:`, errText);
+      }
+    } catch (err) {
+      console.warn('[Gomoku] AI engine fetch failed/timed out, falling back to local JS:', err);
+    }
+
+    const otherTurn = turn === 1 ? 2 : 1;
+    const fallback = findBestMove(currentBoard, turn, otherTurn);
+    const fallbackSpeech = getCharacterLine(resolveCharacterId(targetAgentId), fallback.situation, {
+      moveCount: currentHistory.length + 1,
+      opponentId: resolveCharacterId(targetOpponentId),
+    });
+    return { row: fallback.row, col: fallback.col, speech: fallbackSpeech };
+  };
 
   const toggleSound = () => {
     const next = !soundEnabled;
@@ -389,36 +484,64 @@ export default function InteractiveGomokuModal({
 
     // 触发 AI 白子思考落子
     setIsAiThinking(true);
-    setTimeout(() => {
-      triggerPveAiMove(nextBoard, nextHistory);
-    }, 450);
+    if (engineMode !== 'js' && spaceId) {
+      const thinkingText =
+        engineMode === 'full'
+          ? `【${opponent.name}】正在全盘推演，全权掌管决策中...`
+          : `【${opponent.name}】正在JS战术感知中，组织即兴台词...`;
+      setSpeechText(thinkingText);
+      setActiveSpeakerId(opponent.id);
+      fetchAiGomokuMove(opponent.id, 'user', 2, nextBoard, nextHistory).then((aiMove) => {
+        applyPveAiMove(nextBoard, nextHistory, aiMove);
+      });
+    } else {
+      setTimeout(() => {
+        triggerPveAiMove(nextBoard, nextHistory);
+      }, 450);
+    }
   };
 
   // PVE: AI 落子 (白子: 2)
   const triggerPveAiMove = (currentBoard: number[], currentHistory: Array<{ row: number; col: number; player: number }>) => {
     const aiResult = findBestMove(currentBoard, 2, 1);
-    const aiIdx = (aiResult.row - 1) * 15 + (aiResult.col - 1);
+    const comment = getCharacterLine(resolveCharacterId(opponent.id), aiResult.situation, {
+      moveCount: currentHistory.length + 1,
+      opponentId: 'user',
+    });
+    applyPveAiMove(currentBoard, currentHistory, {
+      row: aiResult.row,
+      col: aiResult.col,
+      speech: comment,
+      situation: aiResult.situation,
+    });
+  };
 
+  const applyPveAiMove = (
+    currentBoard: number[],
+    currentHistory: Array<{ row: number; col: number; player: number }>,
+    move: { row: number; col: number; speech: string; situation?: GomokuSituation }
+  ) => {
+    const aiIdx = (move.row - 1) * 15 + (move.col - 1);
     playMoveSound(false);
 
     const nextBoard = [...currentBoard];
     nextBoard[aiIdx] = 2;
-    const nextHistory = [...currentHistory, { row: aiResult.row, col: aiResult.col, player: 2 }];
+    const nextHistory = [...currentHistory, { row: move.row, col: move.col, player: 2 }];
 
     boardRef.current = nextBoard;
     moveHistoryRef.current = nextHistory;
     setBoard(nextBoard);
-    setLastMove({ row: aiResult.row, col: aiResult.col });
+    setLastMove({ row: move.row, col: move.col });
     setMoveHistory(nextHistory);
     setIsAiThinking(false);
 
     // 检查 AI 获胜
-    const aiWinCheck = checkWin(nextBoard, aiResult.row, aiResult.col, 2);
+    const aiWinCheck = checkWin(nextBoard, move.row, move.col, 2);
     if (aiWinCheck.won) {
       setWinner('ai');
       winnerRef.current = 'ai';
       setWinningLine(aiWinCheck.line || null);
-      const aiWinSpeech = getCharacterLine(resolveCharacterId(opponent.id), 'ai_won', { moveCount: nextHistory.length });
+      const aiWinSpeech = move.speech || getCharacterLine(resolveCharacterId(opponent.id), 'ai_won', { moveCount: nextHistory.length });
       setSpeechText(aiWinSpeech);
       setActiveSpeakerId(opponent.id);
       lastSpokenMoveRef.current = nextHistory.length;
@@ -426,22 +549,25 @@ export default function InteractiveGomokuModal({
       return;
     }
 
-    const comment = getCharacterLine(resolveCharacterId(opponent.id), aiResult.situation, {
-      moveCount: nextHistory.length,
-      opponentId: 'user',
-    });
-    setSpeechText(comment);
+    if (nextHistory.length >= 225) {
+      setWinner('draw');
+      winnerRef.current = 'draw';
+      setSpeechText('棋盘下满啦，这把算和棋！');
+      return;
+    }
+
+    setSpeechText(move.speech);
     setActiveSpeakerId(opponent.id);
 
     if (autoVoice) {
-      const isDramatic = ['ai_formed_four', 'ai_blocked_three'].includes(aiResult.situation);
+      const isDramatic = move.situation && ['ai_formed_four', 'ai_blocked_three'].includes(move.situation);
       const movesCount = nextHistory.length;
       const movesSinceLastSpeech = movesCount - lastSpokenMoveRef.current;
-      const shouldSpeakRoutine = movesSinceLastSpeech >= 4 && Math.random() < 0.35 && !isBusy;
+      const shouldSpeak = engineMode !== 'js' || isDramatic || (movesSinceLastSpeech >= 4 && Math.random() < 0.35 && !isBusy);
 
-      if (isDramatic || shouldSpeakRoutine) {
+      if (shouldSpeak) {
         lastSpokenMoveRef.current = movesCount;
-      playGomokuTTS(comment, { voice: opponent.voice, cacheNamespace: 'gomoku' });
+        playGomokuTTS(move.speech, { voice: opponent.voice, cacheNamespace: 'gomoku' });
       }
     }
   };
@@ -454,27 +580,64 @@ export default function InteractiveGomokuModal({
     const currentBoard = boardRef.current;
     const currentTurn = currentHistory.length % 2 === 0 ? 1 : 2; // 1: 黑, 2: 白
     const currentAgentId = currentTurn === 1 ? eveBlackId : eveWhiteId;
+    const otherAgentId = currentTurn === 1 ? eveWhiteId : eveBlackId;
     const currentAgent = getAgent(currentAgentId);
-    const shortCurrentName = getShortName(currentAgent.name);
-    const otherTurn = currentTurn === 1 ? 2 : 1;
 
-    const moveResult = findBestMove(currentBoard, currentTurn, otherTurn);
-    const idx = (moveResult.row - 1) * 15 + (moveResult.col - 1);
+    if (engineMode !== 'js' && spaceId) {
+      setIsAiThinking(true);
+      const thinkingText =
+        engineMode === 'full'
+          ? `【${getShortName(currentAgent.name)}】正在大模型全权掌管思考...`
+          : `【${getShortName(currentAgent.name)}】正在大模型(JS感知)战术决断...`;
+      setSpeechText(thinkingText);
+      setActiveSpeakerId(currentAgentId);
+      fetchAiGomokuMove(currentAgentId, otherAgentId, currentTurn, currentBoard, currentHistory).then((aiMove) => {
+        setIsAiThinking(false);
+        applyEveMove(currentBoard, currentHistory, currentTurn, currentAgentId, otherAgentId, aiMove);
+      });
+    } else {
+      const moveResult = findBestMove(currentBoard, currentTurn, currentTurn === 1 ? 2 : 1);
+      const currentCharId = resolveCharacterId(currentAgentId);
+      const otherCharId = resolveCharacterId(otherAgentId);
+      const line = getCharacterLine(currentCharId, moveResult.situation, {
+        moveCount: currentHistory.length + 1,
+        opponentId: otherCharId,
+      });
+      applyEveMove(currentBoard, currentHistory, currentTurn, currentAgentId, otherAgentId, {
+        row: moveResult.row,
+        col: moveResult.col,
+        speech: line,
+        situation: moveResult.situation,
+      });
+    }
+  };
+
+  const applyEveMove = (
+    currentBoard: number[],
+    currentHistory: Array<{ row: number; col: number; player: number }>,
+    currentTurn: 1 | 2,
+    currentAgentId: string,
+    otherAgentId: string,
+    move: { row: number; col: number; speech: string; situation?: GomokuSituation }
+  ) => {
+    if (winnerRef.current !== null) return;
+    const currentAgent = getAgent(currentAgentId);
+    const idx = (move.row - 1) * 15 + (move.col - 1);
 
     playMoveSound(currentTurn === 1);
 
     const nextBoard = [...currentBoard];
     nextBoard[idx] = currentTurn;
-    const nextHistory = [...currentHistory, { row: moveResult.row, col: moveResult.col, player: currentTurn }];
+    const nextHistory = [...currentHistory, { row: move.row, col: move.col, player: currentTurn }];
 
     boardRef.current = nextBoard;
     moveHistoryRef.current = nextHistory;
     setBoard(nextBoard);
-    setLastMove({ row: moveResult.row, col: moveResult.col });
+    setLastMove({ row: move.row, col: move.col });
     setMoveHistory(nextHistory);
 
     // 检查获胜
-    const winCheck = checkWin(nextBoard, moveResult.row, moveResult.col, currentTurn);
+    const winCheck = checkWin(nextBoard, move.row, move.col, currentTurn);
     if (winCheck.won) {
       setWinner(currentTurn === 1 ? 'player' : 'ai'); // player: 黑方赢, ai: 白方赢
       winnerRef.current = currentTurn === 1 ? 'player' : 'ai';
@@ -483,7 +646,7 @@ export default function InteractiveGomokuModal({
       isAutoPlayingRef.current = false;
       clearEveTimer();
 
-      const winLine = '五子连珠！这一局是我拿下了！🎉';
+      const winLine = move.speech || '五子连珠！这一局是我拿下了！🎉';
       setSpeechText(winLine);
       setActiveSpeakerId(currentAgentId);
       lastSpokenMoveRef.current = nextHistory.length;
@@ -501,22 +664,14 @@ export default function InteractiveGomokuModal({
       return;
     }
 
-    // 伴随吐槽台词（带阶段感与专属羁绊互怼）
-    const otherAgentId = currentTurn === 1 ? eveWhiteId : eveBlackId;
-    const currentCharId = resolveCharacterId(currentAgentId);
-    const otherCharId = resolveCharacterId(otherAgentId);
-    const line = getCharacterLine(currentCharId, moveResult.situation, {
-      moveCount: nextHistory.length,
-      opponentId: otherCharId,
-    });
-    setSpeechText(line);
+    setSpeechText(move.speech);
     setActiveSpeakerId(currentAgentId);
 
-    const isDramatic = ['ai_formed_four', 'ai_blocked_three'].includes(moveResult.situation);
+    const isDramatic = move.situation && ['ai_formed_four', 'ai_blocked_three'].includes(move.situation);
     const movesCount = nextHistory.length;
     const movesSinceLastSpeech = movesCount - lastSpokenMoveRef.current;
     const shouldSpeakRoutine = movesSinceLastSpeech >= 4 && Math.random() < 0.45;
-    const willSpeak = autoVoice && (isDramatic || shouldSpeakRoutine);
+    const willSpeak = autoVoice && (engineMode !== 'js' || isDramatic || shouldSpeakRoutine);
 
     if (willSpeak) {
       lastSpokenMoveRef.current = movesCount;
@@ -529,14 +684,13 @@ export default function InteractiveGomokuModal({
         }
       }, 7000);
 
-      playGomokuTTS(line, {
+      playGomokuTTS(move.speech, {
         voice: currentAgent.voice,
         cacheNamespace: 'gomoku',
         onEnded: () => {
           if (!timerFired) {
             timerFired = true;
             clearTimeout(safetyTimer);
-            // 语音播报完整结束后，停顿 800ms 轮到下一个角色思考落子，决不打断台词
             scheduleNextEveTurn(800);
           }
         },
@@ -549,7 +703,6 @@ export default function InteractiveGomokuModal({
         },
       });
     } else {
-      // 本步静音落子：平稳思考 1400ms 后轮到下一步
       scheduleNextEveTurn(1400);
     }
   };
@@ -750,11 +903,11 @@ export default function InteractiveGomokuModal({
               </div>
             </header>
 
-            {/* 顶部选手配置选择栏 */}
-            <div className="flex items-center justify-between border-b border-black/[0.06] bg-slate-50/80 px-3.5 py-1.5 sm:px-6 sm:py-2 overflow-x-auto no-scrollbar">
+            {/* 顶部选手配置与思考模式选择栏 */}
+            <div className="flex items-center justify-between gap-3 border-b border-black/[0.06] bg-slate-50/80 px-3.5 py-1.5 sm:px-6 sm:py-2 overflow-x-auto no-scrollbar">
               {gameMode === 'pve' ? (
                 <div className="flex items-center gap-2 min-w-0 overflow-x-auto no-scrollbar">
-                  <span className="text-[11px] sm:text-xs font-black text-slate-400 shrink-0">选择对手：</span>
+                  <span className="text-[11px] sm:text-xs font-black text-slate-400 shrink-0">陪练选手：</span>
                   <div className="flex items-center gap-1.5 shrink-0">
                     {DEFAULT_OPPONENTS.map((item) => (
                       <button
@@ -806,6 +959,52 @@ export default function InteractiveGomokuModal({
                   </div>
                 </div>
               )}
+
+              {/* 思考模式切换器 (极速代码 / JS 感知 / 全权掌管) */}
+              <div className="flex items-center gap-1.5 shrink-0 ml-auto pl-3 border-l border-slate-200">
+                <span className="text-[11px] sm:text-xs font-black text-slate-400 shrink-0 hidden md:inline">思考模式：</span>
+                <div className="flex items-center rounded-lg bg-slate-200/70 p-0.5 text-xs font-black">
+                  <button
+                    type="button"
+                    onClick={() => selectEngineMode('js')}
+                    className={`flex items-center gap-1 rounded-md px-2 py-1 text-[11px] sm:text-xs font-black transition cursor-pointer ${
+                      engineMode === 'js'
+                        ? 'bg-white text-slate-950 shadow-xs'
+                        : 'text-slate-500 hover:text-slate-800'
+                    }`}
+                    title="⚡ 极速代码：纯本地极速启发式算法秒算，毫秒级响应，0 Token消耗"
+                  >
+                    <Zap size={12} className={engineMode === 'js' ? 'text-amber-500' : ''} />
+                    <span>极速代码</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => selectEngineMode('perceive')}
+                    className={`flex items-center gap-1 rounded-md px-2 py-1 text-[11px] sm:text-xs font-black transition cursor-pointer ${
+                      engineMode === 'perceive'
+                        ? 'bg-gradient-to-r from-indigo-500 to-purple-600 text-white shadow-xs'
+                        : 'text-slate-500 hover:text-slate-800'
+                    }`}
+                    title="🧠 JS 感知：JS 算法生成高威胁战术候选，交由大模型战术决断并即兴输出骚话"
+                  >
+                    <BrainCircuit size={12} />
+                    <span>JS 感知</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => selectEngineMode('full')}
+                    className={`flex items-center gap-1 rounded-md px-2 py-1 text-[11px] sm:text-xs font-black transition cursor-pointer ${
+                      engineMode === 'full'
+                        ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-xs'
+                        : 'text-slate-500 hover:text-slate-800'
+                    }`}
+                    title="👑 全权掌管：100% 由大模型自主解析整个 15×15 棋盘并独立决断"
+                  >
+                    <Crown size={12} />
+                    <span>全权掌管</span>
+                  </button>
+                </div>
+              </div>
             </div>
 
         {/* 核心对战区域 (棋盘 + 实时陪玩台词) */}
@@ -833,9 +1032,29 @@ export default function InteractiveGomokuModal({
               </div>
               <div className="flex items-center justify-center gap-1.5 whitespace-nowrap text-center">
                 {isAiThinking ? (
-                  <span className="flex items-center gap-1 text-amber-600">
-                    <span className="inline-block h-2 w-2 animate-ping rounded-full bg-amber-500" />
-                    思考中...
+                  <span
+                    className={`flex items-center gap-1 font-black ${
+                      engineMode === 'full'
+                        ? 'text-purple-600'
+                        : engineMode === 'perceive'
+                        ? 'text-indigo-600'
+                        : 'text-amber-600'
+                    }`}
+                  >
+                    {engineMode === 'full' ? (
+                      <Crown size={13} className="animate-pulse text-purple-500" />
+                    ) : engineMode === 'perceive' ? (
+                      <BrainCircuit size={13} className="animate-pulse text-indigo-500" />
+                    ) : (
+                      <span className="inline-block h-2 w-2 animate-ping rounded-full bg-amber-500" />
+                    )}
+                    <span>
+                      {engineMode === 'full'
+                        ? '全权掌管思考中...'
+                        : engineMode === 'perceive'
+                        ? 'JS感知推演中...'
+                        : '极速算法秒算中...'}
+                    </span>
                   </span>
                 ) : winner ? (
                   <span className="font-black text-emerald-600">对局结束</span>
