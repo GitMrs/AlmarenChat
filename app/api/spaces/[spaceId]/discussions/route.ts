@@ -63,6 +63,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
 
     const result = await prisma.$transaction(async (tx) => {
       await tx.spaceMessage.create({ data: { spaceId, role: 'user', content: topic } });
+      const configuredLimit = (space.discussionSettings as any)?.botChainLimit;
+      const resolvedMaxRounds = typeof body.maxRounds === 'number' && body.maxRounds >= 1 && body.maxRounds <= 6
+        ? body.maxRounds
+        : (typeof configuredLimit === 'number' && configuredLimit >= 1 && configuredLimit <= 6 ? configuredLimit : 2);
+
       const discussion = await tx.spaceDiscussion.create({
         data: {
           spaceId,
@@ -71,6 +76,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
           participantIds,
           transcript: [],
           allowWeb: Boolean(body.allowWeb),
+          maxRounds: resolvedMaxRounds,
         },
       });
       await tx.space.update({ where: { id: spaceId }, data: { updatedAt: new Date() } });

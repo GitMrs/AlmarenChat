@@ -124,7 +124,10 @@ export function resolveMentionTargets(content: string, agents: ResolvedSpaceAgen
   for (const { agent, alias } of candidates) {
     if (seen.has(agent.id)) continue;
     const escaped = alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const pattern = new RegExp(`@${escaped}(?=$|\\s|[，。！？、,.;；:：])`, 'i');
+    const isAscii = /^[a-zA-Z0-9_-]+$/.test(alias);
+    const pattern = isAscii
+      ? new RegExp(`@${escaped}(?=$|[^a-zA-Z0-9_])`, 'i')
+      : new RegExp(`@${escaped}`, 'i');
     const match = pattern.exec(content);
     if (match) {
       seen.add(agent.id);
@@ -137,7 +140,11 @@ export function resolveMentionTargets(content: string, agents: ResolvedSpaceAgen
     .map(({ agent }) => agent);
 }
 
-export function formatMembersContext(agents: ResolvedSpaceAgent[], targetAgent: ResolvedSpaceAgent) {
+export function formatMembersContext(
+  agents: ResolvedSpaceAgent[],
+  targetAgent: ResolvedSpaceAgent,
+  options?: { autoBotChat?: boolean }
+) {
   const workers = agents.filter((agent) => agent.id !== SPACE_COORDINATOR_ID);
   const otherMembers = workers.filter((agent) => agent.id !== targetAgent.id);
   const membersList = workers
@@ -158,15 +165,20 @@ export function formatMembersContext(agents: ResolvedSpaceAgent[], targetAgent: 
       : `「${agent.name}」`;
   });
 
+  const allowAutoRelay = options?.autoBotChat !== false;
   const mentionGuidance = otherMembers.length > 0
     ? `2. 【伙伴称呼与 @ 协作规范】：
    - 当前在场的其他伙伴有：${otherMemberNames.join('、')}。
-   - 【日常闲聊场景】：提及、接梗、玩笑或回应在场伙伴时，直接称呼其名字或昵称（如“可可”、“璐璐”），【严禁在正文中使用 @ 符号】，保持人声口语自然，避免机械符号破坏阅读与语音朗读体验。全员轮流发言或闲聊讨论时，已由系统有序流转，切勿使用 @。
-   - 【工作协作与专业补充场景】：当你在分析、工作或探讨方案时，如果觉得当前问题超出了自己的专业领域，或需要特定专长的伙伴进一步补充、验证、提供专业支持，且希望系统自动呼叫对方接话时，才在正文中明确使用「@伙伴名」（例如：“关于这部分的战术风险，请 @诺克斯 补充评估”）。
-   - 【极其重要】：你只能 @ 上述【实际在场】的伙伴！如果群里没有某人，绝对不要 @ 任何不在当前群名单中的角色（禁止虚空喊话）。不要 @ 你自己。`
+   - 【自然互动与接力呼叫】：${allowAutoRelay
+      ? `当前空间已开启成员自动接力。请严格区分【提及/引用名字】与【传麦唤醒对方接话】：
+       * 仅仅提及或引用伙伴（例如：“正如可可之前提到的那样……”、“诺克斯的分析很透彻”）：直接写姓名，【绝对不要带 @】，避免系统误将其判定为转麦指令而强制唤醒对方；
+       * 明确需要特定伙伴接力回答/发表见解（例如：“关于这部分细节，请 @诺克斯 补充评估” 或 “@可可 你怎么看？”）：在发言末尾自然地使用「@伙伴名」，系统检测到你的 @ 会自动唤醒该伙伴接力发言；
+       * 若当前话题你已完整回答，无需其他人补充接话，请正常收尾，不要使用 @。`
+      : '当前空间未开启成员自动接力。若提及在场伙伴请直接称呼姓名（如“可可”、“璐璐”），不要使用 @ 符号。'}
+   - 【极其重要】：你只能 @ 上述【实际在场】的伙伴！切勿 @ 任何不在当前群名单中的角色（禁止虚空喊话），不要 @ 你自己。`
     : `2. 【单聊/无其他在场成员】：
    - 当前空间中除你之外没有其他伙伴在场，这是你与用户的单独对话。
-   - 请直接与用户交流，【严禁 @ 任何角色】（群里没有其他人，不要自言自语 @ 任何人）。`;
+   - 请直接与用户交流，不要 @ 任何角色。`;
 
   return `你正在一个名为“空间”的多 Agent 会话中发言。
 当前轮到你以「${targetAgent.name}」的身份发言。

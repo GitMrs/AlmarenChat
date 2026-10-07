@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowDown, ArrowUp, Check, Globe2, Loader2, MessagesSquare, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, Check, Globe2, Loader2, MessagesSquare, SlidersHorizontal, X } from 'lucide-react';
 import Avatar from '@/components/shared/Avatar';
 import type { Agent } from '@/types';
 
@@ -14,6 +14,7 @@ export default function SpaceDiscussionDialog({
   onTopicChange,
   onSelectedIdsChange,
   onAllowWebChange,
+  onOpenSettings,
   onClose,
   onStart,
 }: {
@@ -26,6 +27,7 @@ export default function SpaceDiscussionDialog({
   onTopicChange: (value: string) => void;
   onSelectedIdsChange: (ids: string[]) => void;
   onAllowWebChange: (value: boolean) => void;
+  onOpenSettings?: () => void;
   onClose: () => void;
   onStart: () => void;
 }) {
@@ -57,9 +59,22 @@ export default function SpaceDiscussionDialog({
             <MessagesSquare size={17} />
             发起讨论
           </div>
-          <button type="button" onClick={onClose} title="关闭" className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-900">
-            <X size={18} />
-          </button>
+          <div className="flex items-center gap-1.5">
+            {onOpenSettings && (
+              <button
+                type="button"
+                onClick={onOpenSettings}
+                title="调整讨论与互动规则"
+                className="flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-black text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition"
+              >
+                <SlidersHorizontal size={13} />
+                规则设置
+              </button>
+            )}
+            <button type="button" onClick={onClose} title="关闭" className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-900">
+              <X size={18} />
+            </button>
+          </div>
         </header>
 
         <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-5">

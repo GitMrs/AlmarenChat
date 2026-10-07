@@ -3,6 +3,7 @@ import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { SPACE_COORDINATOR_ID, getSpaceForUser } from '@/app/api/_lib/spaces';
 import { ACTIVE_AGENT_RUN_STATUSES } from '@/app/api/_lib/agent-runs';
+import { DEFAULT_SPACE_DISCUSSION_SETTINGS, type SpaceDiscussionSettings } from '@/types';
 
 export async function GET(request: Request, { params }: { params: Promise<{ spaceId: string }> }) {
   try {
@@ -18,9 +19,25 @@ export async function GET(request: Request, { params }: { params: Promise<{ spac
     if (!space) return NextResponse.json({ error: 'Space not found' }, { status: 404 });
     const hasImageBaseUrl = Boolean(imageSettings?.imageApiBaseUrl?.trim() || imageSettings?.apiBaseUrl?.trim());
     const hasImageApiKey = Boolean(imageSettings?.imageApiKey?.trim() || imageSettings?.apiKey?.trim());
+    const rawSettings = space.discussionSettings as Partial<SpaceDiscussionSettings> | null;
+    const discussionSettings: SpaceDiscussionSettings = {
+      botChainLimit: typeof rawSettings?.botChainLimit === 'number' && rawSettings.botChainLimit >= 1 && rawSettings.botChainLimit <= 6
+        ? rawSettings.botChainLimit
+        : DEFAULT_SPACE_DISCUSSION_SETTINGS.botChainLimit,
+      autoBotChat: typeof rawSettings?.autoBotChat === 'boolean'
+        ? rawSettings.autoBotChat
+        : DEFAULT_SPACE_DISCUSSION_SETTINGS.autoBotChat,
+      idleTalk: typeof rawSettings?.idleTalk === 'boolean'
+        ? rawSettings.idleTalk
+        : DEFAULT_SPACE_DISCUSSION_SETTINGS.idleTalk,
+      botAtMentionTriggersReply: typeof rawSettings?.botAtMentionTriggersReply === 'boolean'
+        ? rawSettings.botAtMentionTriggersReply
+        : DEFAULT_SPACE_DISCUSSION_SETTINGS.botAtMentionTriggersReply,
+    };
     return NextResponse.json({
       space: {
         ...space,
+        discussionSettings,
         imageGenerationAvailable: Boolean(
           imageSettings?.imageModelEnabled && imageSettings.imageModelName && hasImageBaseUrl && hasImageApiKey
         ),
@@ -37,7 +54,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ sp
     const userId = requireAuth(request);
     const { spaceId } = await params;
     const body = await request.json();
-    const { name, description, instructions, executionEngine, executionMode, hostAgentId, activeWorkId } = body;
+    const { name, description, instructions, executionEngine, executionMode, hostAgentId, activeWorkId, discussionSettings } = body;
 
     const space = await prisma.space.findFirst({ where: { id: spaceId, userId } });
     if (!space) return NextResponse.json({ error: 'Space not found' }, { status: 404 });
@@ -45,7 +62,16 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ sp
       return NextResponse.json({ error: '空间运行时创建后不可更改' }, { status: 400 });
     }
 
-    const data: { name?: string; description?: string | null; instructions?: string | null; executionEngine?: string; executionMode?: string; hostAgentId?: string | null; activeWorkId?: string | null } = {};
+    const data: {
+      name?: string;
+      description?: string | null;
+      instructions?: string | null;
+      executionEngine?: string;
+      executionMode?: string;
+      hostAgentId?: string | null;
+      activeWorkId?: string | null;
+      discussionSettings?: any;
+    } = {};
     if (name !== undefined) {
       const title = typeof name === 'string' ? name.trim() : '';
       if (!title) return NextResponse.json({ error: '空间名称不能为空' }, { status: 400 });
@@ -96,6 +122,32 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ sp
         return NextResponse.json({ error: '任务执行期间不能切换当前成果' }, { status: 409 });
       }
       data.activeWorkId = nextWorkId;
+    }
+    if (discussionSettings !== undefined) {
+      if (discussionSettings === null) {
+        data.discussionSettings = null;
+      } else if (typeof discussionSettings === 'object') {
+        const rawSettings = discussionSettings as Partial<SpaceDiscussionSettings>;
+        const botChainLimit = typeof rawSettings.botChainLimit === 'number'
+          ? Math.max(1, Math.min(6, Math.floor(rawSettings.botChainLimit)))
+          : DEFAULT_SPACE_DISCUSSION_SETTINGS.botChainLimit;
+        const autoBotChat = typeof rawSettings.autoBotChat === 'boolean'
+          ? rawSettings.autoBotChat
+          : DEFAULT_SPACE_DISCUSSION_SETTINGS.autoBotChat;
+        const idleTalk = typeof rawSettings.idleTalk === 'boolean'
+          ? rawSettings.idleTalk
+          : DEFAULT_SPACE_DISCUSSION_SETTINGS.idleTalk;
+        const botAtMentionTriggersReply = typeof rawSettings.botAtMentionTriggersReply === 'boolean'
+          ? rawSettings.botAtMentionTriggersReply
+          : DEFAULT_SPACE_DISCUSSION_SETTINGS.botAtMentionTriggersReply;
+
+        data.discussionSettings = {
+          botChainLimit,
+          autoBotChat,
+          idleTalk,
+          botAtMentionTriggersReply,
+        };
+      }
     }
 
     const updated = await prisma.space.update({ where: { id: spaceId }, data });

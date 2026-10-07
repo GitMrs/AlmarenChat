@@ -195,13 +195,15 @@ export function createDiscussionRuntime({
       }, 500);
 
       try {
-        if (discussion.currentRound > discussion.maxRounds
-          || agentEntriesCount(transcript) >= groupChatTurnLimit({ participantCount: participants.length, maxRounds: discussion.maxRounds })) {
+        const currentTurns = agentEntriesCount(transcript);
+        const totalTurnLimit = groupChatTurnLimit({ participantCount: participants.length, maxRounds: discussion.maxRounds });
+        if (discussion.currentRound > discussion.maxRounds || currentTurns >= totalTurnLimit) {
           if (isDiscussionPaused(discussion.id)) return;
           await summarizeDiscussion(discussion, context, transcript, controller.signal);
           return;
         }
 
+        const isFinalDiscussionTurn = currentTurns >= totalTurnLimit - 1;
         currentAgent = chooseNextGroupChatSpeaker({ participants, transcript });
         if (!currentAgent) throw new Error('无法确定当前讨论成员');
         let researchContext = discussion.researchContext || '';
@@ -211,6 +213,9 @@ export function createDiscussionRuntime({
         const roundInstruction = discussion.currentRound === 1
           ? '这是第一轮。请从你的专业角度提出独立判断、关键依据、风险和建议。'
           : '这是第二轮交叉回应。请回应前面成员的关键观点，指出同意、分歧和需要修正之处，不要重复第一轮内容。';
+        const handoffInstruction = isFinalDiscussionTurn
+          ? '【向用户还麦与决策引导】这是本轮多人讨论向用户汇报的收尾发言。请在陈述观点的同时，主动向用户总结核心分歧或关键结论，并向用户提出具体问题或方案选项，邀请用户决策还麦！'
+          : '';
         const tools = [
           ...workspaceToolSchemas.filter((tool) => DISCUSSION_READ_TOOLS.has(tool.function.name)),
           DISCUSSION_RESEARCH_TOOL,
@@ -224,6 +229,7 @@ export function createDiscussionRuntime({
                 currentAgent.systemPrompt || currentAgent.description || `你是 ${currentAgent.name}。`,
                 currentAgent.memoryContext || '',
                 `你正在以“${currentAgent.name}”的身份参加空间多人讨论。${roundInstruction}`,
+                handoffInstruction,
                 '这是轻量多人闲聊，不是长篇评审。请控制在 300～600 字，直接回应前面观点；不要生成大表格、长篇背景复述或重复已经说过的内容。',
                 '当前只允许讨论、分析、读取必要的空间资料和申请受控联网搜索。',
                 '不得创建任务方案，不得调用或描述 propose_task，不得写文件、运行命令、操作浏览器或声称已经执行工作。',
@@ -310,6 +316,7 @@ export function createDiscussionRuntime({
           type: 'discussion_turn',
           discussionId: discussion.id,
           round: discussion.currentRound,
+          handoff: isFinalDiscussionTurn,
         }, [...transcript, entry], participants);
       } finally {
         clearInterval(cancellationTimer);

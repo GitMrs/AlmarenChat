@@ -49,6 +49,7 @@ import { createResearchRuntime } from './runtime/research-runtime.mjs';
 import { createWorkspaceArtifactRuntime } from './runtime/workspace-artifact-runtime.mjs';
 import { createDiscussionRuntime } from './runtime/discussion-runtime.mjs';
 import { createRelayRuntime } from './runtime/relay-runtime.mjs';
+import { createIdleTalkRuntime } from './runtime/idle-talk-runtime.mjs';
 import { createWorkspaceRecoveryRuntime } from './runtime/workspace-recovery-runtime.mjs';
 import { createTaskLifecycleRuntime } from './runtime/task-lifecycle-runtime.mjs';
 import { advanceWorkAfterRun, completeAutomationExecution } from './runtime/work-lifecycle-store.mjs';
@@ -202,6 +203,13 @@ const { processDiscussion } = createDiscussionRuntime({
 const { processRelay } = createRelayRuntime({
   db,
   projectRoot,
+  completeMessage,
+  loadRunContext,
+  now,
+});
+
+const { checkAndTriggerIdleTalk } = createIdleTalkRuntime({
+  db,
   completeMessage,
   loadRunContext,
   now,
@@ -1747,6 +1755,7 @@ async function main() {
       recoverAutomationDeliveries(db, leaseCutoffIso(Date.now(), leaseTimeoutMs));
     },
     triggerAutomation: () => triggerNextDueAutomation(db, now()),
+    checkIdleTalk: () => checkAndTriggerIdleTalk(),
     claimAutomationDelivery: () => claimNextAutomationDelivery(db, now()),
     processAutomationDelivery,
     claimCompletion: () => claimNextCompletion(db, workerId),

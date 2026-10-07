@@ -551,7 +551,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
     const {
       message, targetAgentId, history, skipPersistUserMessage, interactionMode, coordinationScope,
       multiReplyIndex, webSearchEnabled, imageGenerationRequested, skillId, workId, persistMessages,
-      isolatedContext, contextAgentIds,
+      isolatedContext, contextAgentIds, isHandoffTurn,
     } = await request.json();
     const textMessage = typeof message === 'string' ? message.trim() : '';
     const shouldPersistMessages = persistMessages !== false;
@@ -577,6 +577,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
       ? await prisma.spaceWork.findFirst({ where: { id: workId, spaceId } })
       : null;
     if (workId && !selectedWork) return NextResponse.json({ error: '指定成果不存在' }, { status: 404 });
+
+    const rawDiscussionSettings = (space as any).discussionSettings;
+    const discussionSettings = typeof rawDiscussionSettings === 'string'
+      ? (() => { try { return JSON.parse(rawDiscussionSettings); } catch { return null; } })()
+      : (typeof rawDiscussionSettings === 'object' && rawDiscussionSettings !== null ? rawDiscussionSettings : null);
+    const autoBotChat = discussionSettings?.autoBotChat ?? true;
+    const botAtMentionTriggersReply = discussionSettings?.botAtMentionTriggersReply ?? true;
+    const isAutoRelayEnabled = autoBotChat && botAtMentionTriggersReply;
 
     const memberAgents = await resolveManyAgents(space.members.map((member) => member.agentId), userId);
     const contextIds = Array.isArray(contextAgentIds) ? new Set(contextAgentIds.filter((id): id is string => typeof id === 'string')) : null;
@@ -823,7 +831,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
     const chatGuidance = normalizedInteractionMode === 'chat'
       ? [
           '当前是空间闲聊，不是任务执行轮次。请先像空间里的真实成员一样回应当前话题：理解上下文，接住用户的情绪或观点，必要时表达自己的判断、补充、反驳或提出一个自然的问题。不要因为用户讨论了一个想法，就立刻拆成任务、要求验收或把自己说成已经开始执行。',
-          '闲聊与日常交流中提及其他在场伙伴时，直接称呼名字或昵称（如“可可”、“璐璐”），【严禁在正文中使用 @ 符号】，保持口语自然与朗读流畅；只有在工作探讨中认为需要特定专长伙伴接力或补充专业意见时，才使用 @ 对方呼叫其接话。',
+          isAutoRelayEnabled
+            ? '当前空间已开启成员自动接力。请严格区分【提及/引用伙伴】与【传麦呼叫对方接话】：若仅在句子中陈述、引用或提到伙伴（如“正如可可所说”、“诺克斯提到的问题”），直接写姓名，【切勿带 @】，避免系统误将其作为交接指令而唤醒对方；只有当你陈述完观点、确实希望特定伙伴继续接话或补充见解时，才在文末使用「@伙伴名」（例如：“关于这块的技术细节，@可可 你怎么看？”），系统检测到你的 @ 会自动唤醒对方接力发言。若无需他人接话则不要使用 @。严禁 @ 你自己或不在场的角色。'
+            : '当前空间未开启成员自动接力。若提及其他在场伙伴直接称呼名字，不要在正文中使用 @ 符号。',
           '闲聊时可以结合空间说明、最近对话、已有任务状态和只读资料，让回应具有连续性；引用任务或文件时只说已确认的事实，不要把后台状态猜成结果。',
           '只有用户明确要求写入、修改、执行、生成可交付文件，或明确要求持续推进多步骤工作时，才调用 propose_task。用户只是问“你怎么看”“聊聊这个”“帮我分析一下”时，直接在当前对话回答。',
           targetAgent.id === SPACE_COORDINATOR.id
@@ -850,7 +860,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
       spaceTrendingContext,
       targetAgent.systemPrompt || targetAgent.description || `你是 ${targetAgent.name}。`,
       agentMemory,
-      formatMembersContext(allAgents, targetAgent),
+      formatMembersContext(allAgents, targetAgent, { autoBotChat: isAutoRelayEnabled }),
       useIsolatedContext ? '当前是一个独立直播上下文。只允许璐璐和可可参与，不得提及、@或邀请空间中的其他成员；不要引用直播之外的历史对话、任务或游戏。' : '',
       !useIsolatedContext && space.description ? `当前空间说明：${space.description}` : '',
       !useIsolatedContext && space.instructions ? `当前空间规则：\n${space.instructions}` : '',
@@ -885,7 +895,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
       [
         '你是空间助手。普通问答、讨论方案和少量只读查看直接回答；需要项目事实时可使用只读文件工具核实。',
         isMultiReply
-          ? '当前是多人分别回答，不是任务执行。只代表自己给出观点，不得创建任务方案，不得写文件、联网或声称已经开始执行。交流或提及其他在场成员时直接称呼姓名或昵称，严禁在正文中使用 @ 符号。'
+          ? (isAutoRelayEnabled
+              ? '当前是多成员接力回应，不是任务执行。只代表自己给出观点，不得创建任务方案，不得写文件、联网或声称已经开始执行。请严格区分【引用名字】（直接写名字，切勿带@）与【传麦接话】（若需要特定伙伴继续推进或发表意见，可在文末使用「@伙伴名」；若本轮结束或最后一轮请向用户总结还麦，不要再@其他人）。'
+              : '当前是多人分别回答，不是任务执行。只代表自己给出观点，不得创建任务方案，不得写文件、联网或声称已经开始执行。交流或提及其他在场成员时直接称呼姓名或昵称，不要在正文中使用 @ 符号。')
           : '你没有写入、终端和浏览器权限。普通问答、简单分析、本地只读查看或一到两次联网事实查询应直接完成；需要形成带明确数量、格式或验收要求的专业交付，或者需要修改文件、编写代码并落盘、制作网页或文档、运行命令、操作浏览器、多个步骤持续执行时，调用 propose_task 生成目标授权方案。',
         !isMultiReply ? '任务方案必须覆盖完整目标、范围、主要里程碑、预期产物和总体验收要求，但不要提前选择成员或生成固定执行链。用户确认的是目标与能力边界；运行时 Coordinator 会读取空间中的实时成员、工作状态和每轮成果，动态决定下一件任务交给谁。按可独立验收的产物描述里程碑，不要按页面结构、样式、功能点或检查阶段机械拆分。不要声称任务已经开始。' : '',
         relayTool ? '用户明确要求多个成员按顺序参与同一件事时，调用 start_relay；这包含让大家依次参与、每个人分别回应、轮流处理、接力推进、相互审阅或持续改进同一份文字成果。只有明确的逐员参与或顺序推进要求才启动，泛泛征询意见不自动启动。用户说“大家”“所有成员”或“全员”时，participantIds 必须包含全部可用普通成员；用户只要求几位成员时才选择子集。需要文件、联网、命令、浏览器或专业交付时仍调用 propose_task。接力开始后会按接力规则推进并在最后验收。' : '',
@@ -955,12 +967,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
             messages: openaiMessages,
             tools: availableTools,
             requestCompletion: async (conversation: any[], tools: any[]) => {
+              const hasTools = Array.isArray(tools) && tools.length > 0;
               const completionStream = await client.chat.completions.create({
                 model,
                 messages: conversation as any,
                 stream: true,
-                tools: tools as any,
-                tool_choice: 'auto',
+                ...(hasTools ? { tools: tools as any, tool_choice: 'auto' } : {}),
               });
               return collectChatCompletionStream(completionStream, {
                 onContentDelta: (text: string) => controller.enqueue(encoder.encode(text)),
@@ -1199,7 +1211,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
                   }]
                 : discussionDraft && discussionId
                   ? [{ type: 'discussion_started', discussionId, topic: discussionDraft.topic, participantIds: discussionDraft.participantIds }]
-                : null;
+                : isHandoffTurn === true
+                  ? [{ type: 'relay_handoff', label: '本轮互聊收尾 · 等待用户决策' }]
+                  : null;
             const assistantMessage = await tx.spaceMessage.create({
               data: {
                 spaceId,

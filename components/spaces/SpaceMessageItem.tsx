@@ -379,6 +379,46 @@ function TaskProposal({
   );
 }
 
+function extractHandoffOptions(content: string): string[] {
+  if (!content) return [];
+  const lines = content.split('\n');
+  const options: string[] = [];
+  const optionRegex = /^(?:(?:\d+|[A-Za-z])[.、)）]|(?:[①②③④⑤⑥⑦⑧⑨⑩])|(?:- \[[ xX]\])|(?:[-*•]\s*(?:方案|选项|建议|方向|路径|策略|方法)))[ \t]*(.+)$/;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const match = optionRegex.exec(trimmed);
+    if (match && match[1]) {
+      let cleaned = match[1]
+        .replace(/^\*\*|\*\*$/g, '')
+        .replace(/^`|`$/g, '')
+        .replace(/^[：:]\s*/, '')
+        .trim();
+      if (cleaned.length > 35 && (cleaned.includes('：') || cleaned.includes(':'))) {
+        cleaned = cleaned.split(/[：:]/)[0].trim();
+      }
+      if (cleaned.length >= 2 && cleaned.length <= 40 && !options.includes(cleaned)) {
+        options.push(cleaned);
+      }
+    }
+    if (options.length >= 4) break;
+  }
+
+  if (options.length === 0) {
+    const bullets = lines
+      .map((l) => l.trim())
+      .filter((l) => /^[-*•]\s+/.test(l))
+      .map((l) => l.replace(/^[-*•]\s+/, '').replace(/^\*\*|\*\*$/g, '').trim())
+      .filter((l) => l.length >= 3 && l.length <= 35);
+    if (bullets.length >= 2 && bullets.length <= 4) {
+      return bullets;
+    }
+  }
+
+  return options;
+}
+
 const SpaceMessageItem = memo(function SpaceMessageItem({
   message,
   speaker,
@@ -410,6 +450,7 @@ const SpaceMessageItem = memo(function SpaceMessageItem({
   speaking = false,
   speakingLoading = false,
   onSpeak,
+  onSelectHandoffOption,
 }: {
   message: SpaceMessage;
   speaker?: Agent | null;
@@ -441,6 +482,7 @@ const SpaceMessageItem = memo(function SpaceMessageItem({
   onApproveTaskResult?: (task: AgentTask) => void;
   onReviseTaskResult?: (task: AgentTask) => void;
   onSkipTaskResult?: (task: AgentTask) => void;
+  onSelectHandoffOption?: (optionText: string) => void;
 }) {
   const isUser = message.role === 'user';
   const proposal = message.attachments?.find((attachment): attachment is SpaceTaskProposal => attachment.type === 'task_proposal');
@@ -448,6 +490,16 @@ const SpaceMessageItem = memo(function SpaceMessageItem({
   const piExecution = message.attachments?.find((attachment): attachment is SpacePiExecutionAttachment => attachment.type === 'pi_execution');
   const relayStarted = message.attachments?.find((attachment): attachment is SpaceRelayStartedAttachment => attachment.type === 'relay_started');
   const skillInvocation = message.attachments?.find((attachment) => attachment.type === 'skill_invocation');
+  const isHandoff = Boolean(
+    message.attachments?.some((attachment) =>
+      attachment.type === 'relay_handoff' ||
+      (attachment.type === 'discussion_turn' && (attachment as any).handoff)
+    )
+  );
+  const isIdleTalk = Boolean(
+    message.attachments?.some((attachment) => attachment.type === 'idle_talk')
+  );
+  const handoffOptions = isHandoff ? extractHandoffOptions(message.content) : [];
   return (
     <MessageBubbleFrame
       role={message.role}
@@ -473,6 +525,12 @@ const SpaceMessageItem = memo(function SpaceMessageItem({
         />
       }
     >
+      {isIdleTalk && (
+        <div className="mb-2.5 inline-flex items-center gap-1.5 rounded-md border border-amber-200/70 bg-amber-50/80 px-2 py-0.5 text-[11px] font-bold text-amber-800">
+          <span className="text-xs">☕</span>
+          <span>空间茶水间 · 空闲主动问候</span>
+        </div>
+      )}
       {skillInvocation?.type === 'skill_invocation' && (
         <div className="mb-2 inline-flex max-w-full items-center gap-1.5 rounded-md bg-emerald-50 px-2 py-1 text-[11px] font-black text-emerald-700">
           <BookOpen size={12} className="shrink-0" />
@@ -485,6 +543,52 @@ const SpaceMessageItem = memo(function SpaceMessageItem({
         attachments={message.attachments}
         shouldAutoCollapse={message.id !== latestAssistantMessageId}
       />
+      {isHandoff && (
+        <div className="mt-3.5 rounded-xl border border-sky-200/90 bg-gradient-to-br from-sky-50/90 via-indigo-50/40 to-white p-3.5 text-slate-800 shadow-2xs">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-sky-500 text-white text-[11px] font-black shadow-xs">
+                🎯
+              </span>
+              <span className="text-xs font-black tracking-wide text-sky-900">
+                讨论收尾 · 等待您的决策还麦
+              </span>
+            </div>
+            {onSelectHandoffOption && (
+              <button
+                type="button"
+                onClick={() => onSelectHandoffOption('我认同目前的分析，下一步建议是：')}
+                className="text-[11px] font-bold text-sky-600 transition hover:text-sky-800 hover:underline"
+              >
+                快速回复 →
+              </button>
+            )}
+          </div>
+
+          <div className="mt-2 text-xs font-medium leading-relaxed text-slate-600">
+            成员们已就此轮议题完成探讨与建议，请点击下方选项快速接麦，或在输入框提交最终决策：
+          </div>
+
+          <div className="mt-2.5 flex flex-wrap gap-1.5">
+            {(handoffOptions.length > 0
+              ? handoffOptions
+              : ['赞同该方案，直接推进', '需要进一步补充细节', '我有不同想法']
+            ).map((opt, idx) => (
+              <button
+                key={idx}
+                type="button"
+                onClick={() => onSelectHandoffOption?.(opt)}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-sky-200/80 bg-white/95 px-2.5 py-1 text-xs font-bold text-sky-800 shadow-2xs transition hover:bg-sky-50 hover:border-sky-300 active:scale-95"
+              >
+                <span className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-sky-100 text-[10px] font-bold text-sky-600">
+                  {idx + 1}
+                </span>
+                <span className="max-w-[240px] truncate">{opt}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       {relayStarted && (
         <div className="mt-4 border-t border-black/[0.08] pt-4">
           <div className="flex items-center gap-2 text-xs font-black text-slate-400"><Repeat2 size={14} />接力安排</div>
@@ -543,7 +647,8 @@ const SpaceMessageItem = memo(function SpaceMessageItem({
     prev.dispatchAction === next.dispatchAction &&
     prev.reviewAction === next.reviewAction &&
     prev.dispatchError === next.dispatchError &&
-    prev.reviewError === next.reviewError
+    prev.reviewError === next.reviewError &&
+    prev.onSelectHandoffOption === next.onSelectHandoffOption
   );
 });
 

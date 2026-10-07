@@ -107,6 +107,10 @@ const MANUAL_MIGRATION_REPAIRS = [
     migration: '20261006120000_add_space_member_model_credentials',
     columns: [{ table: 'SpaceMember', names: ['modelName', 'apiBaseUrl', 'apiKey'] }],
   },
+  {
+    migration: '20261006220000_add_space_discussion_settings',
+    columns: [{ table: 'Space', names: ['discussionSettings'] }],
+  },
 ];
 const MIGRATIONS_DIRECTORY = path.resolve(process.cwd(), 'prisma', 'migrations');
 
@@ -751,6 +755,7 @@ try {
     if (!hasColumn('Space', 'templateId')) db.exec('ALTER TABLE "Space" ADD COLUMN "templateId" TEXT');
     if (!hasColumn('Space', 'templateVersion')) db.exec('ALTER TABLE "Space" ADD COLUMN "templateVersion" INTEGER');
     if (!hasColumn('Space', 'templateSnapshot')) db.exec('ALTER TABLE "Space" ADD COLUMN "templateSnapshot" JSONB');
+    if (!hasColumn('Space', 'discussionSettings')) db.exec('ALTER TABLE "Space" ADD COLUMN "discussionSettings" JSONB');
 
     db.exec(`
       CREATE TABLE IF NOT EXISTS "SpaceWork" (

@@ -16,6 +16,7 @@ export async function runWorkerIteration({
   processDiscussion,
   claimRelay,
   processRelay,
+  checkIdleTalk,
   heartbeatIntervalMs,
   delay,
   setIntervalFn = setInterval,
@@ -23,6 +24,7 @@ export async function runWorkerIteration({
 }) {
   recover();
   await triggerAutomation?.();
+  await checkIdleTalk?.();
 
   const automationDelivery = claimAutomationDelivery?.();
   if (automationDelivery) {

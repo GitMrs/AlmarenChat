@@ -1,4 +1,4 @@
-import type { AgentGrowthProfile, AgentRun, AssistantContextStats, AssistantConversationSummary, AssistantExperience, AssistantExperienceMessage, AssistantMemoryItem, AssistantQQBinding, AssistantReminder, AssistantReminderCandidate, Message, MessageAttachment, PersonalAssistantBootstrap, PersonalAssistantProfile, SpaceActionRequest, SpaceAutomation, SpaceConnector, SpaceDiscussion, SpaceFileShare, SpaceOperationOutcome, SpaceOperationsSummary, SpaceRelay, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal, SpaceWork, SpaceWorkVersion, SpaceMcpServer, SpaceWebhook, AssistantMcpServer, McpProbeResult } from '@/types';
+import type { AgentGrowthProfile, AgentRun, AssistantContextStats, AssistantConversationSummary, AssistantExperience, AssistantExperienceMessage, AssistantMemoryItem, AssistantQQBinding, AssistantReminder, AssistantReminderCandidate, Message, MessageAttachment, PersonalAssistantBootstrap, PersonalAssistantProfile, SpaceActionRequest, SpaceAutomation, SpaceConnector, SpaceDiscussion, SpaceDiscussionSettings, SpaceFileShare, SpaceOperationOutcome, SpaceOperationsSummary, SpaceRelay, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal, SpaceWork, SpaceWorkVersion, SpaceMcpServer, SpaceWebhook, AssistantMcpServer, McpProbeResult } from '@/types';
 
 const API_BASE = '/api';
 
@@ -416,7 +416,7 @@ export const spaces = {
       body: JSON.stringify(data),
     }),
   get: (id: string) => request<{ space: any }>(`/spaces/${id}`),
-  update: (id: string, data: { name?: string; description?: string | null; instructions?: string | null; executionEngine?: 'native' | 'pi'; executionMode?: 'AUTO' | 'REVIEW_DISPATCH'; hostAgentId?: string | null; activeWorkId?: string | null }) =>
+  update: (id: string, data: { name?: string; description?: string | null; instructions?: string | null; executionEngine?: 'native' | 'pi'; executionMode?: 'AUTO' | 'REVIEW_DISPATCH'; hostAgentId?: string | null; activeWorkId?: string | null; discussionSettings?: SpaceDiscussionSettings | null }) =>
     request<{ space: any }>(`/spaces/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
@@ -503,7 +503,7 @@ export const spaces = {
     request<{ success: boolean }>(`/spaces/${id}/skills?skillId=${encodeURIComponent(skillId)}`, { method: 'DELETE' }),
   discussions: (id: string) =>
     request<{ discussions: SpaceDiscussion[] }>(`/spaces/${id}/discussions`),
-  createDiscussion: (id: string, data: { topic: string; participantIds: string[]; allowWeb: boolean }) =>
+  createDiscussion: (id: string, data: { topic: string; participantIds: string[]; allowWeb: boolean; maxRounds?: number }) =>
     request<{ discussion: SpaceDiscussion }>(`/spaces/${id}/discussions`, {
       method: 'POST',
       body: JSON.stringify(data),
@@ -920,6 +920,7 @@ export async function streamSpaceMessage(data: {
   contextAgentIds?: string[];
   skillId?: string;
   workId?: string;
+  isHandoffTurn?: boolean;
   signal?: AbortSignal;
 }): Promise<{ stream: ReadableStream<Uint8Array>; speakerAgentId?: string; speakerAgentName?: string; workspaceFilesChanged: number; streamFormat?: 'pi-ndjson' }> {
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
@@ -945,6 +946,7 @@ export async function streamSpaceMessage(data: {
       contextAgentIds: data.contextAgentIds,
       skillId: data.skillId,
       workId: data.workId,
+      isHandoffTurn: data.isHandoffTurn,
     }),
     signal: data.signal,
   });

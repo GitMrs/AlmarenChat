@@ -214,6 +214,20 @@ export interface Message {
   createdAt: string;
 }
 
+export interface SpaceDiscussionSettings {
+  botChainLimit: number; // 1-6, default 3
+  autoBotChat: boolean;  // default true
+  idleTalk: boolean;     // default false
+  botAtMentionTriggersReply: boolean; // default true
+}
+
+export const DEFAULT_SPACE_DISCUSSION_SETTINGS: SpaceDiscussionSettings = {
+  botChainLimit: 3,
+  autoBotChat: true,
+  idleTalk: false,
+  botAtMentionTriggersReply: true,
+};
+
 export interface Space {
   id: string;
   userId: string;
@@ -247,6 +261,7 @@ export interface Space {
     configuredAgentIds: string[];
     starterPrompts: string[];
   } | null;
+  discussionSettings?: SpaceDiscussionSettings | null;
   hostAgent?: Agent | null;
   createdAt: string;
   updatedAt: string;
@@ -613,6 +628,19 @@ export interface SpaceDiscussionAttachment {
   discussionId: string;
   round?: number;
   failed?: boolean;
+  handoff?: boolean;
+}
+
+export interface SpaceRelayHandoffAttachment {
+  type: 'relay_handoff';
+  label?: string;
+  suggestedActions?: string[];
+}
+
+export interface SpaceIdleTalkAttachment {
+  type: 'idle_talk';
+  triggeredAt: string;
+  topic?: string;
 }
 
 export interface SpaceRunResultAttachment {
@@ -796,7 +824,7 @@ export interface SpaceRelayReviewAttachment {
   decision: 'CONTINUE';
 }
 
-export type SpaceMessageAttachment = MessageAttachment | SpaceTaskProposal | SpaceDiscussionAttachment | SpaceRunResultAttachment | SpaceSkillInvocationAttachment | SpacePiExecutionAttachment | SpacePiMemoryEpisodeAttachment | SpaceRelayAttachment | SpaceRelayStartedAttachment | SpaceRelayTurnAttachment | SpaceRelayReviewAttachment;
+export type SpaceMessageAttachment = MessageAttachment | SpaceTaskProposal | SpaceDiscussionAttachment | SpaceRunResultAttachment | SpaceSkillInvocationAttachment | SpacePiExecutionAttachment | SpacePiMemoryEpisodeAttachment | SpaceRelayAttachment | SpaceRelayStartedAttachment | SpaceRelayTurnAttachment | SpaceRelayReviewAttachment | SpaceRelayHandoffAttachment | SpaceIdleTalkAttachment;
 
 export interface AgentRun {
   id: string;
