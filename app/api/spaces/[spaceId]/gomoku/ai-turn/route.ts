@@ -141,21 +141,34 @@ ${candidateDescriptions}
     }
 
     try {
-      const response = await client.chat.completions.create({
-        model,
-        messages: [
-          {
-            role: 'system',
-            content: promptContent,
-          },
-          {
-            role: 'user',
-            content: '请立即输出你的落子决定与即兴台词。',
-          },
-        ],
-        temperature: 0.75,
-        max_tokens: 150,
-      });
+      let response: any = null;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          response = await client.chat.completions.create({
+            model,
+            messages: [
+              {
+                role: 'system',
+                content: promptContent,
+              },
+              {
+                role: 'user',
+                content: '请立即输出你的落子决定与即兴台词。',
+              },
+            ],
+            temperature: 0.75,
+            max_tokens: 150,
+          });
+          break;
+        } catch (callErr: any) {
+          if (attempt === 0) {
+            console.warn('[Gomoku AI Move] First attempt failed (likely proxy/network jitter), retrying...', callErr?.message || callErr);
+            await new Promise((resolve) => setTimeout(resolve, 500));
+            continue;
+          }
+          throw callErr;
+        }
+      }
 
       const rawContent = response.choices?.[0]?.message?.content?.trim() || '';
       let parsed: any = null;

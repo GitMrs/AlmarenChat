@@ -36,6 +36,15 @@ let cachedProxyAgent: ProxyAgent | null = null;
 let lastDetectTime = 0;
 const PROXY_DETECT_TTL_MS = 60 * 1000; // 缓存探测结果 1 分钟
 
+export const DEFAULT_NO_PROXY =
+  'localhost,127.0.0.1,::1,*.modelscope.cn,modelscope.cn,*.aliyun.com,*.aliyuncs.com,*.qq.com,*.bilibili.com,*.baidu.com,*.zhihu.com,*.cn';
+
+export function ensureNoProxyEnv(): void {
+  if (!process.env.NO_PROXY && !process.env.no_proxy) {
+    process.env.NO_PROXY = DEFAULT_NO_PROXY;
+  }
+}
+
 /**
  * 快速探测指定本地端口是否处于监听状态
  */
@@ -113,6 +122,7 @@ export async function getDetectedProxyInfo(forceRefresh = false): Promise<ProxyI
       const url = `http://127.0.0.1:${port}`;
       process.env.HTTPS_PROXY = url;
       process.env.HTTP_PROXY = url;
+      ensureNoProxyEnv();
 
       cachedProxyInfo = {
         available: true,
@@ -163,6 +173,7 @@ export async function ensureGlobalProxyDispatcher(): Promise<void> {
     if (info.available && info.proxyUrl) {
       process.env.HTTPS_PROXY = info.proxyUrl;
       process.env.HTTP_PROXY = info.proxyUrl;
+      ensureNoProxyEnv();
       setGlobalDispatcher(new EnvHttpProxyAgent());
       globalDispatcherSet = true;
     }
@@ -237,8 +248,13 @@ export async function smartFetch(url: string, options: SmartFetchOptions = {}): 
   }
 
   // 3. 直连优先策略 (Direct-First) - 全局默认
-  // 当配置了可用代理时，本地直连尝试设置紧凑超时 (3000ms)，避免因 GFW 丢包导致长时间假死
-  const directTimeout = proxyAgent ? Math.min(timeoutMs, 3200) : timeoutMs;
+  let isDomestic = false;
+  try {
+    const hostname = new URL(url).hostname;
+    isDomestic = /(?:modelscope\.cn|aliyun(?:cs)?\.com|qq\.com|baidu\.com|bilibili\.com|zhihu\.com|127\.0\.0\.1|localhost)$/i.test(hostname);
+  } catch {}
+  // 国内域名直连时不设过短超时；国外域名直连超时时间适当收紧（3200ms）以便快速切换代理
+  const directTimeout = proxyAgent && !isDomestic ? Math.min(timeoutMs, 3200) : timeoutMs;
   try {
     const res = await executeFetch(false, directTimeout);
     if (res.ok) return res;
