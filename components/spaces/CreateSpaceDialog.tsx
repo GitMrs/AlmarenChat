@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, BookOpen, Check, ChevronRight, ClipboardList, FileText, Gamepad2, GraduationCap, LayoutGrid, Lightbulb, Loader2, Mic, PanelsTopLeft, Puzzle, Search, Sparkles, Trash2, UsersRound, Video, X } from 'lucide-react';
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, BookOpen, Check, ChevronRight, ClipboardList, FileText, Gamepad2, GraduationCap, LayoutGrid, Lightbulb, Loader2, Mic, PanelsTopLeft, Puzzle, Search, Sparkles, Trash2, TrendingUp, UsersRound, Video, X } from 'lucide-react';
 import Avatar from '@/components/shared/Avatar';
 import { getSpaceTemplate, SPACE_TEMPLATES, spaceTemplateInstructions } from '@/lib/space-templates.mjs';
 import type { Agent } from '@/types';
@@ -30,6 +30,7 @@ const TEMPLATE_ICONS = {
   puzzle: Puzzle,
   mic: Mic,
   gamepad: Gamepad2,
+  trending: TrendingUp,
 };
 
 export default function CreateSpaceDialog({

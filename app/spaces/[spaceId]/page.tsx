@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Activity, ArrowLeft, BookOpen, Flame, CalendarClock, Check, CheckCircle2, ChevronRight, Code2, Copy, Cpu, Database, Download, ExternalLink, FilePenLine, FileText, Gamepad2, Globe2, History, Image as ImageIcon, ListTodo, Loader2, MessagesSquare, Newspaper, PackagePlus, Paperclip, Play, Plus, RotateCcw, Save, Send, Settings2, ShieldCheck, SkipForward, Sliders, SlidersHorizontal, Square, Trash2, UploadCloud, UsersRound, X } from 'lucide-react';
+import { Activity, ArrowLeft, BookOpen, Flame, CalendarClock, Check, CheckCircle2, ChevronRight, Code2, Copy, Cpu, Database, Download, ExternalLink, FilePenLine, FileText, Gamepad2, Globe2, History, Image as ImageIcon, ListTodo, Loader2, MessagesSquare, Newspaper, PackagePlus, Paperclip, Play, Plus, RotateCcw, Save, Send, Settings2, ShieldCheck, SkipForward, Sliders, SlidersHorizontal, Square, Trash2, TrendingUp, UploadCloud, UsersRound, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import AppShell from '@/components/layout/AppShell';
@@ -21,6 +21,7 @@ import SpaceMemberModelDialog from '@/components/spaces/SpaceMemberModelDialog';
 import SpaceDiscussionSettingsDialog from '@/components/spaces/SpaceDiscussionSettingsDialog';
 import KnowledgeManager from '@/components/agent/KnowledgeManager';
 import SpaceGameCenter from '@/components/spaces/SpaceGameCenter';
+import SpaceCryptoCenter from '@/components/spaces/SpaceCryptoCenter';
 import SpaceDiscussionStatus from '@/components/spaces/SpaceDiscussionStatus';
 import SpaceRelayStatus from '@/components/spaces/SpaceRelayStatus';
 import SpaceOperationsCenter, { type SpaceOperationsTab } from '@/components/spaces/SpaceOperationsCenter';
@@ -575,7 +576,7 @@ export default function SpaceDetailPage() {
   const [relays, setRelays] = useState<SpaceRelay[]>([]);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [mode, setMode] = useState<'chat' | 'task'>('chat');
-  const [workspaceView, setWorkspaceView] = useState<'chat' | 'files' | 'operations' | 'games'>('chat');
+  const [workspaceView, setWorkspaceView] = useState<'chat' | 'files' | 'operations' | 'games' | 'crypto'>('chat');
   const [gameCenterInitialGame, setGameCenterInitialGame] = useState<'gomoku' | 'undercover' | 'trpg' | 'live' | null>(null);
   const [gameCenterInitialGomokuMode, setGameCenterInitialGomokuMode] = useState<'pve' | 'eve'>('pve');
   const [gameCenterInitialBlackId, setGameCenterInitialBlackId] = useState<string | undefined>(undefined);
@@ -3384,6 +3385,25 @@ export default function SpaceDetailPage() {
                   <span className="hidden md:inline">游戏中心</span>
                 </button>
               )}
+              {space?.templateId === 'crypto-contract-trading' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSidePanel(null);
+                    setWorkspaceView('crypto');
+                  }}
+                  aria-label="作战中心"
+                  title="实盘作战中心"
+                  className={`inline-flex h-10 items-center gap-1.5 rounded-lg px-2.5 text-sm font-black transition cursor-pointer ${
+                    workspaceView === 'crypto'
+                      ? 'bg-emerald-600 text-white shadow-sm'
+                      : 'bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/20'
+                  }`}
+                >
+                  <TrendingUp size={17} className={workspaceView === 'crypto' ? 'text-white' : 'text-emerald-600'} />
+                  <span className="hidden md:inline">作战中心</span>
+                </button>
+              )}
               {!isPiSpace && <button
                 type="button"
                 onClick={() => setSidePanel('runs')}
@@ -3427,6 +3447,7 @@ export default function SpaceDetailPage() {
               <nav className="flex h-14 shrink-0 items-stretch gap-1 border-b border-black/[0.06] bg-white px-3 sm:px-5" aria-label="空间工作视图">
                 {[
                   { id: 'chat' as const, label: '对话', icon: MessagesSquare },
+                  ...(space.templateId === 'crypto-contract-trading' ? [{ id: 'crypto' as const, label: '作战中心', icon: TrendingUp }] : []),
                   ...(space.templateId === 'gaming-room' ? [{ id: 'games' as const, label: '游戏中心', icon: Gamepad2 }] : []),
                   { id: 'files' as const, label: '成果', icon: FileText, count: files.length },
                   { id: 'operations' as const, label: '运营', icon: Activity, count: actionRequests.filter((action) => action.status === 'PENDING').length },
@@ -3443,6 +3464,9 @@ export default function SpaceDetailPage() {
                           setSidePanel(null);
                           setGameCenterInitialGame(null);
                           setWorkspaceView('games');
+                        } else if (item.id === 'crypto') {
+                          setSidePanel(null);
+                          setWorkspaceView('crypto');
                         } else {
                           setSidePanel(null);
                           setWorkspaceView(item.id);
@@ -3634,6 +3658,16 @@ export default function SpaceDetailPage() {
                 initialGomokuOpponentId={gameCenterInitialOpponentId}
                 initialGomokuAutoPlay={gameCenterInitialAutoPlay}
                 initialGomokuAutoVoice={gameCenterInitialAutoVoice}
+                onBackToChat={() => setWorkspaceView('chat')}
+                onShareToSpace={(text) => {
+                  setWorkspaceView('chat');
+                  void sendMessage(text);
+                }}
+              />
+            ) : !isPiSpace && space?.templateId === 'crypto-contract-trading' && workspaceView === 'crypto' ? (
+              <SpaceCryptoCenter
+                spaceId={spaceId}
+                spaceAgents={memberAgents}
                 onBackToChat={() => setWorkspaceView('chat')}
                 onShareToSpace={(text) => {
                   setWorkspaceView('chat');

@@ -8,5 +8,12 @@ export async function register() {
     } catch (err: any) {
       console.warn('[instrumentation] Failed to start trending scheduler:', err?.message || err);
     }
+
+    try {
+      const { startCryptoSentinelScheduler } = await import('./lib/crypto/sentinel-service');
+      startCryptoSentinelScheduler();
+    } catch (err: any) {
+      console.warn('[instrumentation] Failed to start crypto sentinel scheduler:', err?.message || err);
+    }
   }
 }
