@@ -28,6 +28,20 @@ export interface PlanInspectionResult {
   }>;
 }
 
+export type CryptoPlanAction = 'WATCH' | 'MAINTAIN' | 'UPDATE' | 'INVALIDATE' | 'ENTER_SIMULATION';
+
+export interface CryptoPlanDecision {
+  type: 'crypto_plan_decision_v1';
+  version: 1;
+  mode: 'CREATE' | 'REVIEW';
+  targetPlanId?: string;
+  action: CryptoPlanAction;
+  summary: string;
+  analyzedAt: string;
+  referencePrice?: number;
+  proposedPlan?: PlanItem;
+}
+
 /**
  * 从文本或 markdown (如 trade-plan.md, 聊天消息) 中解析结构化挂单方案
  */
@@ -35,8 +49,8 @@ export function parseTradePlansFromText(text: string): PlanItem[] {
   if (!text || typeof text !== 'string') return [];
   const plans: PlanItem[] = [];
 
-  // 匹配方案块（支持方案 A、方案 B、做多计划、做空计划、30秒开单战术卡、微调执行标准等）
-  const planBlockRegex = /(?:###?\s*[^\n]*?(?:方案\s*[A-Za-z0-9一二三四]?|[多空]单(?:战术卡|方案|计划)|战术卡|开单计划|挂单方案|执行标准)[^\n]*)[\s\S]*?(?=(?:###?\s*[^\n]*?(?:方案\s*[A-Za-z0-9一二三四]?|[多空]单(?:战术卡|方案|计划)|战术卡|开单计划|挂单方案|执行标准)|$))/gi;
+  // 匹配方案块（兼容固定交易计划卡与历史战术卡格式）
+  const planBlockRegex = /(?:(?:#{1,6}\s*)?[^\n]*?(?:交易计划卡|方案\s*[A-Za-z0-9一二三四]?|[多空]单(?:战术卡|方案|计划)|战术卡|开单计划|挂单方案|执行标准)[^\n]*)[\s\S]*?(?=(?:(?:#{1,6}\s*)?[^\n]*?(?:交易计划卡|方案\s*[A-Za-z0-9一二三四]?|[多空]单(?:战术卡|方案|计划)|战术卡|开单计划|挂单方案|执行标准)|$))/gi;
   const matches = [...text.matchAll(planBlockRegex)];
 
   for (const match of matches) {
@@ -51,10 +65,10 @@ export function parseTradePlansFromText(text: string): PlanItem[] {
     const parseNum = (val?: string) => (val ? parseFloat(val.replace(/,/g, '')) : 0);
 
     // 宽松匹配入场区间（支持 $、**、空格、表格符号等）
-    const entryMatch = block.match(/(?:进场|入场|挂单|Entry)[^0-9\r\n]*?([0-9,]+(?:\.[0-9]+)?)\s*[-~至到]\s*[^0-9\r\n]*?([0-9,]+(?:\.[0-9]+)?)/i);
+    const entryMatch = block.match(/(?:进场|入场|挂单|Entry)[^0-9\r\n]*?([0-9,]+(?:\.[0-9]+)?)\s*[-~～至到]\s*[^0-9\r\n]*?([0-9,]+(?:\.[0-9]+)?)/i);
     const slMatch = block.match(/(?:止损(?:\s*\([^)]*\))?|SL(?:\s*\([^)]*\))?)[^0-9\r\n]*?([0-9,]+(?:\.[0-9]+)?)/i);
-    const tp1Match = block.match(/(?:第一目标(?:\s*\([^)]*\))?|TP1(?:\s*\([^)]*\))?|目标1(?:\s*\([^)]*\))?|减仓保本点)[^0-9\r\n]*?([0-9,]+(?:\.[0-9]+)?)/i);
-    const tp2Match = block.match(/(?:第二目标(?:\s*\([^)]*\))?|TP2(?:\s*\([^)]*\))?|目标2(?:\s*\([^)]*\))?|清仓)[^0-9\r\n]*?([0-9,]+(?:\.[0-9]+)?)/i);
+    const tp1Match = block.match(/(?:第一(?:止盈)?目标|第一止盈|TP1|目标1|减仓保本点)(?:\s*\([^)]*\))?[^0-9\r\n]*?([0-9,]+(?:\.[0-9]+)?)/i);
+    const tp2Match = block.match(/(?:第二(?:止盈)?目标|第二止盈|TP2|目标2|清仓)(?:\s*\([^)]*\))?[^0-9\r\n]*?([0-9,]+(?:\.[0-9]+)?)/i);
     const invalidMatch = block.match(/(?:(?:结构)?失效(?:线|位)?(?:\s*\([^)]*\))?|作废|Invalidation)[^0-9\r\n]*?([0-9,]+(?:\.[0-9]+)?)/i);
     const rrMatch = block.match(/(?:盈亏比|RR)[^0-9\r\n]*([0-9]+(?:\.[0-9]+)?\s*:\s*[0-9]+(?:\.[0-9]+)?)/i);
 
@@ -95,6 +109,101 @@ export function parseTradePlansFromText(text: string): PlanItem[] {
   }
 
   return plans;
+}
+
+export function extractCryptoTargetPlanId(text: string): string | undefined {
+  const match = text.match(/(?:观察计划|计划)\s*ID\s*[：:]\s*([a-zA-Z0-9_-]{1,100})/i);
+  return match?.[1];
+}
+
+function validPlanShape(plan: PlanItem): boolean {
+  const values = [
+    plan.entryMin,
+    plan.entryMax,
+    plan.stopLoss,
+    plan.takeProfit1,
+    plan.invalidationPrice,
+  ];
+  if (values.some((value) => !Number.isFinite(value) || value <= 0)) return false;
+  if (plan.entryMin > plan.entryMax) return false;
+
+  if (plan.direction === 'LONG') {
+    return plan.stopLoss < plan.entryMin
+      && plan.invalidationPrice < plan.entryMin
+      && plan.takeProfit1 > plan.entryMax;
+  }
+
+  return plan.stopLoss > plan.entryMax
+    && plan.invalidationPrice > plan.entryMax
+    && plan.takeProfit1 < plan.entryMin;
+}
+
+function inferCryptoPlanAction(text: string, hasTargetPlan: boolean, hasPlan: boolean): CryptoPlanAction | null {
+  const actionLine = text.match(/(?:当前动作|最终动作|最终结论|执行结论)[^\r\n]*/i)?.[0] || '';
+  const source = actionLine || text;
+
+  if (/(?:结构|计划|方案).{0,12}(?:失效|作废)|(?:取消|撤销|放弃).{0,8}(?:观察|计划|方案|挂单)/i.test(source)) {
+    return 'INVALIDATE';
+  }
+
+  const forbidsEntry = /(?:严禁|禁止|不要|不可|暂不|不宜).{0,10}(?:开仓|进场|入场|追)/i.test(source);
+  if (!forbidsEntry && /(?:立即|马上|当前|现价).{0,8}(?:模拟建仓|建立模拟仓位|开仓|进场|入场)/i.test(source)) {
+    return 'ENTER_SIMULATION';
+  }
+
+  if (/(?:更新|调整|修改|微调).{0,10}(?:计划|方案|点位|入场|止损|止盈)|(?:计划|方案|点位).{0,10}(?:更新|调整|修改|微调)/i.test(source)) {
+    return 'UPDATE';
+  }
+
+  if (/(?:继续|维持|保持).{0,8}(?:观察|等待|原计划|原方案)|无需调整|保持不变/i.test(source)) {
+    return hasTargetPlan ? 'MAINTAIN' : 'WATCH';
+  }
+
+  if (hasTargetPlan && hasPlan) return 'UPDATE';
+  if (!hasTargetPlan && hasPlan) return 'WATCH';
+  return null;
+}
+
+/**
+ * 将单条最终风控回复转换为程序可消费的交易决策。
+ * 历史消息扫描仍可继续使用 parseTradePlansFromText，但不应再用于创建正式观察计划。
+ */
+export function parseCryptoPlanDecision(
+  text: string,
+  options: { targetPlanId?: string; analyzedAt?: string } = {}
+): CryptoPlanDecision | null {
+  if (!text || typeof text !== 'string') return null;
+
+  const parsedPlan = parseTradePlansFromText(text).find(validPlanShape);
+  const proposedPlan = parsedPlan
+    ? {
+        ...parsedPlan,
+        takeProfit2: parsedPlan.takeProfit2 || parsedPlan.takeProfit1,
+      }
+    : undefined;
+  const targetPlanId = options.targetPlanId || extractCryptoTargetPlanId(text);
+  const action = inferCryptoPlanAction(text, Boolean(targetPlanId), Boolean(proposedPlan));
+  if (!action) return null;
+  if ((action === 'WATCH' || action === 'UPDATE') && !proposedPlan) return null;
+
+  const actionLine = text.match(/(?:当前动作|最终动作|最终结论|执行结论)[^\r\n]*/i)?.[0];
+  const referenceMatch = text.match(/(?:当前价格|当前现价|现价|参考价格)[^0-9\r\n]*([0-9,]+(?:\.[0-9]+)?)/i);
+  const referencePrice = referenceMatch ? Number(referenceMatch[1].replace(/,/g, '')) : undefined;
+
+  return {
+    type: 'crypto_plan_decision_v1',
+    version: 1,
+    mode: targetPlanId ? 'REVIEW' : 'CREATE',
+    ...(targetPlanId ? { targetPlanId } : {}),
+    action,
+    summary: (actionLine || text.split(/\r?\n/).find((line) => line.trim()) || action)
+      .replace(/^#+\s*/, '')
+      .trim()
+      .slice(0, 300),
+    analyzedAt: options.analyzedAt || new Date().toISOString(),
+    ...(referencePrice && referencePrice > 0 ? { referencePrice } : {}),
+    ...(proposedPlan ? { proposedPlan } : {}),
+  };
 }
 
 /**

@@ -643,6 +643,32 @@ export interface SpaceIdleTalkAttachment {
   topic?: string;
 }
 
+export interface SpaceCryptoPlanDecisionAttachment {
+  type: 'crypto_plan_decision_v1';
+  version: 1;
+  mode: 'CREATE' | 'REVIEW';
+  targetPlanId?: string;
+  action: 'WATCH' | 'MAINTAIN' | 'UPDATE' | 'INVALIDATE' | 'ENTER_SIMULATION';
+  summary: string;
+  analyzedAt: string;
+  referencePrice?: number;
+  proposedPlan?: {
+    id: string;
+    symbol: string;
+    name: string;
+    direction: 'LONG' | 'SHORT';
+    status: 'PENDING' | 'TRIGGERED' | 'BREAKEVEN' | 'COMPLETED' | 'EXPIRED';
+    entryMin: number;
+    entryMax: number;
+    stopLoss: number;
+    takeProfit1: number;
+    takeProfit2: number;
+    invalidationPrice: number;
+    rrRatio?: string;
+    note?: string;
+  };
+}
+
 export interface SpaceRunResultAttachment {
   type: 'run_result';
   runId: string;
@@ -824,7 +850,7 @@ export interface SpaceRelayReviewAttachment {
   decision: 'CONTINUE';
 }
 
-export type SpaceMessageAttachment = MessageAttachment | SpaceTaskProposal | SpaceDiscussionAttachment | SpaceRunResultAttachment | SpaceSkillInvocationAttachment | SpacePiExecutionAttachment | SpacePiMemoryEpisodeAttachment | SpaceRelayAttachment | SpaceRelayStartedAttachment | SpaceRelayTurnAttachment | SpaceRelayReviewAttachment | SpaceRelayHandoffAttachment | SpaceIdleTalkAttachment;
+export type SpaceMessageAttachment = MessageAttachment | SpaceTaskProposal | SpaceDiscussionAttachment | SpaceRunResultAttachment | SpaceSkillInvocationAttachment | SpacePiExecutionAttachment | SpacePiMemoryEpisodeAttachment | SpaceRelayAttachment | SpaceRelayStartedAttachment | SpaceRelayTurnAttachment | SpaceRelayReviewAttachment | SpaceRelayHandoffAttachment | SpaceIdleTalkAttachment | SpaceCryptoPlanDecisionAttachment;
 
 export interface AgentRun {
   id: string;

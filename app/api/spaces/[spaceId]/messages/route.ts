@@ -37,6 +37,7 @@ import { currentTimeContext } from '@/lib/current-time-context.mjs';
 import { buildUserMemoryContext, loadUserMemoryItems } from '@/lib/personal-assistant/user-memory';
 import { createRuntimePermissionBroker } from '@/lib/runtime-permission-broker.mjs';
 import { detectTrendingIntent, formatTrendingForPrompt, getTrendingSnapshot } from '@/lib/trending';
+import { prepareSpaceMessageRuntime } from '@/lib/space-message-runtime';
 
 const MESSAGE_PAGE_SIZE = 40;
 const READ_ONLY_WORKSPACE_TOOLS = new Set(['list_files', 'read_file', 'check_files']);
@@ -899,45 +900,18 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
       }
     }
 
-    let spaceCryptoContext = '';
-    const isCryptoSpace = space.templateId === 'crypto-contract-trading';
-    const isCryptoQuery = isCryptoSpace || /(?:BTC|ETH|SOL|SUI|DOGE|PEPE|XRP|BNB|APT|AVAX|LINK|NEAR|ADA|TRX|DOT|ARB|OP|WIF|TON|AAVE|UNI|合约|开单|做多|做空|多单|空单|持仓|费率|OI|抄底|止损|大饼|以太)/i.test(textMessage);
-    if (isCryptoQuery && textMessage.trim()) {
-      try {
-        const { extractCryptoSymbolFromText, getCryptoMarketData, formatCryptoContextForPrompt } = await import('@/lib/crypto/okx-service');
-        const symbol = extractCryptoSymbolFromText(textMessage) || (isCryptoSpace ? 'BTC' : null);
-        if (symbol) {
-          const snapshot = await getCryptoMarketData(symbol);
-          if (snapshot) {
-            spaceCryptoContext = formatCryptoContextForPrompt(snapshot);
-
-            // 策略生命周期与失效检查：解析历史战术卡并对照最新价格巡检
-            try {
-              const { parseTradePlansFromText, inspectPlansLifecycle, formatPlanInspectionForPrompt } = await import('@/lib/crypto/trade-lifecycle');
-              const recentHistoryText = (persistedMessages || []).slice(-10).map((m: any) => m.content || '').join('\n');
-              const activePlans = parseTradePlansFromText(recentHistoryText);
-              if (activePlans.length > 0) {
-                const inspection = inspectPlansLifecycle(activePlans, snapshot.price);
-                const inspectionPrompt = formatPlanInspectionForPrompt(inspection, snapshot.price);
-                if (inspectionPrompt) {
-                  spaceCryptoContext += `\n\n${inspectionPrompt}`;
-                }
-              }
-            } catch (err: any) {
-              console.warn('[spaces/crypto] Trade lifecycle inspection failed:', err?.message);
-            }
-          }
-        }
-      } catch (err: any) {
-        console.warn('[spaces/crypto] Crypto market data fetch failed:', err?.message);
-      }
-    }
+    const spaceMessageRuntime = await prepareSpaceMessageRuntime({
+      templateId: space.templateId,
+      spaceId,
+      textMessage,
+      persistedMessages,
+    });
 
     const systemPrompt = [
       currentTimeContext(),
       spaceTrendingContext,
       spaceKnowledgeContext,
-      spaceCryptoContext,
+      spaceMessageRuntime.promptContext,
       targetAgent.systemPrompt || targetAgent.description || `你是 ${targetAgent.name}。`,
       agentMemory,
       formatMembersContext(allAgents, targetAgent, { autoBotChat: isAutoRelayEnabled }),
@@ -945,17 +919,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
       !useIsolatedContext && space.description ? `当前空间说明：${space.description}` : '',
       !useIsolatedContext && space.instructions ? `当前空间规则：\n${space.instructions}` : '',
       selectedWork ? `当前正在继续处理：${selectedWork.title}。只读取和修改该成果目录中的文件。` : '当前处于新成果模式，不继承已有成果目录中的文件。',
-      space.templateId === 'wechat-article'
-        ? '公众号空间的 shared/content-strategy.md 是空间级账号策略：所有成果均可读取，更新时仍须通过已确认的后台任务；article.md、publish-info.md 和 assets/cover.<实际扩展名> 只属于当前成果。'
-        : '',
-      space.templateId === 'crypto-contract-trading'
-        ? [
-            '本空间为加密合约实战作战室。当分析行情与开单时，严格依托所注入的实时 OKX 盘面数据进行技术和筹码推演，严禁脱离实盘数据胡编价格；严格遵守轻重双轨制，日常看盘快问快答短平快，开单把关必须核验盈亏比 ≥ 1:2 与 2% 风控线。',
-            targetAgent.id === SPACE_COORDINATOR.id
-              ? '【协调者特别纪律】：协调者仅做隐形场控与简要调度，【绝对禁止代替凌风提前发布完整的开单方案与挂单点位】！开单点位方案必须由凌风主导提出，筹码由幽影解读，仓位与盈亏比由雷震把关，盘面异动由鹰眼鸣警。'
-              : '【专业角色特别纪律】：任何具体的开单建议尾部必须附带清晰的【30秒开单战术卡】（包含当前动作、挂单区间、失效止损、分批止盈、预期盈亏比）；雷震核验仓位时若用户未说明本金规模，主动引导用户对齐实际账户净值计算精确仓位；若有策略生命周期失效预警，优先提醒用户撤销挂单。',
-          ].join('\n')
-        : '',
+      spaceMessageRuntime.agentPolicy({
+        agentId: targetAgent.id,
+        isCoordinator: targetAgent.id === SPACE_COORDINATOR.id,
+      }),
       projectMemory,
       teamLearning,
       runEvidence,
@@ -1286,7 +1253,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
             if (assistantContent) {
               assistantContent = assistantContent.replace(/^\[[^\]\n]{1,50}\]\s*/, '');
             }
-            const attachments = taskProposal
+            const baseAttachments = taskProposal
               ? [taskProposal]
               : relayDraft && relayId
                 ? [{
@@ -1299,16 +1266,26 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
                   }]
                 : discussionDraft && discussionId
                   ? [{ type: 'discussion_started', discussionId, topic: discussionDraft.topic, participantIds: discussionDraft.participantIds }]
-                : isHandoffTurn === true
-                  ? [{ type: 'relay_handoff', label: '本轮互聊收尾 · 等待用户决策' }]
-                  : null;
+                  : isHandoffTurn === true
+                    ? [{ type: 'relay_handoff', label: '本轮互聊收尾 · 等待用户决策' }]
+                    : [];
+            const runtimeAttachments = spaceMessageRuntime.assistantAttachments({
+              agentId: targetAgent.id,
+              assistantContent,
+              textMessage,
+              rawHistory,
+            });
+            const attachments = [
+              ...baseAttachments,
+              ...runtimeAttachments,
+            ];
             const assistantMessage = await tx.spaceMessage.create({
               data: {
                 spaceId,
                 role: 'assistant',
                 speakerAgentId: targetAgent.id,
                 content: assistantContent,
-                ...(attachments ? { attachments: attachments as Prisma.InputJsonValue } : {}),
+                ...(attachments.length > 0 ? { attachments: attachments as Prisma.InputJsonValue } : {}),
               },
               select: { id: true, createdAt: true },
             });

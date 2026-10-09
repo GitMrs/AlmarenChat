@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { getSpaceForUser } from '@/app/api/_lib/spaces';
 import {
@@ -6,6 +7,7 @@ import {
   saveSentinelState,
   checkSentinelForSpace,
 } from '@/lib/crypto/sentinel-service';
+import type { SpaceCryptoPlanDecisionAttachment } from '@/types';
 
 export const runtime = 'nodejs';
 
@@ -38,7 +40,7 @@ export async function POST(request: Request) {
   try {
     const userId = requireAuth(request);
     const body = await request.json();
-    const { spaceId, ambushPlans, activePositions, serverSentinelEnabled, autoSyncChatPlans, deletedSignatures, action } = body;
+    const { spaceId, ambushPlans, activePositions, serverSentinelEnabled, autoSyncChatPlans, deletedSignatures, action, messageId } = body;
 
     if (!spaceId) {
       return NextResponse.json({ error: 'spaceId is required' }, { status: 400 });
@@ -47,6 +49,48 @@ export async function POST(request: Request) {
     const space = await getSpaceForUser(spaceId, userId);
     if (!space) {
       return NextResponse.json({ error: 'Space not found' }, { status: 404 });
+    }
+
+    if (action === 'apply-decision') {
+      if (space.templateId !== 'crypto-contract-trading') {
+        return NextResponse.json({ error: '该空间不支持交易计划' }, { status: 400 });
+      }
+      const message = await prisma.spaceMessage.findFirst({
+        where: { id: String(messageId || ''), spaceId },
+        select: { id: true, attachments: true },
+      });
+      const attachments = Array.isArray(message?.attachments) ? message.attachments : [];
+      const decision = attachments.find((item: any) => item?.type === 'crypto_plan_decision_v1') as unknown as SpaceCryptoPlanDecisionAttachment | undefined;
+      if (!message || decision?.mode !== 'CREATE' || decision.action !== 'WATCH' || !decision.proposedPlan) {
+        return NextResponse.json({ error: '该消息不包含可加入观察的交易策略' }, { status: 400 });
+      }
+
+      const current = await getSentinelState(spaceId);
+      const existing = current.ambushPlans.find((plan) => plan.sourceMessageId === message.id);
+      if (existing) return NextResponse.json({ success: true, data: current, plan: existing });
+
+      const source = decision.proposedPlan;
+      const plan = {
+        id: decision.targetPlanId || `plan-${message.id}`,
+        symbol: source.symbol,
+        name: source.name,
+        direction: source.direction,
+        entryMin: source.entryMin,
+        entryMax: source.entryMax,
+        stopLoss: source.stopLoss,
+        takeProfit1: source.takeProfit1,
+        takeProfit2: source.takeProfit2,
+        invalidationPrice: source.invalidationPrice,
+        createdAt: decision.analyzedAt,
+        expiresInHours: 8,
+        watchEnabled: false,
+        notifyQQ: false,
+        sourceMessageId: message.id,
+      };
+      const saved = await saveSentinelState(spaceId, userId, {
+        ambushPlans: [...current.ambushPlans, plan],
+      });
+      return NextResponse.json({ success: true, data: saved, plan });
     }
 
     // 动作一：仅触发一次服务端实时巡检

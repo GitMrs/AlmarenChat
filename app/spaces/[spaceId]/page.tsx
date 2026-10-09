@@ -42,7 +42,7 @@ import { isEditableSpaceFile, isPreviewableSpaceImage } from '@/lib/space-files'
 import { spaceAssetRoleLabel } from '@/lib/space-asset-policy.mjs';
 import { createClientId } from '@/lib/client-id';
 
-import type { Agent, AgentRun, AgentRunEvent, AgentTask, SpaceActionRequest, SpaceAutomation, SpaceConnector, SpaceDiscussion, SpaceDiscussionSettings, SpaceFile, SpaceLearning, SpaceLearningItem, SpaceMessage, SpaceMcpServer, SpaceOperationOutcome, SpaceOperationsSummary, SpacePiCoordinationRequest, SpacePiExecutionActivity, SpacePiExecutionNote, SpacePiSkillApproval, SpaceRelay, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal, SpaceWebhook, SpaceWork, SpaceWorkVersion } from '@/types';
+import type { Agent, AgentRun, AgentRunEvent, AgentTask, SpaceActionRequest, SpaceAutomation, SpaceConnector, SpaceCryptoPlanDecisionAttachment, SpaceDiscussion, SpaceDiscussionSettings, SpaceFile, SpaceLearning, SpaceLearningItem, SpaceMessage, SpaceMcpServer, SpaceOperationOutcome, SpaceOperationsSummary, SpacePiCoordinationRequest, SpacePiExecutionActivity, SpacePiExecutionNote, SpacePiSkillApproval, SpaceRelay, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal, SpaceWebhook, SpaceWork, SpaceWorkVersion } from '@/types';
 import { DEFAULT_SPACE_DISCUSSION_SETTINGS } from '@/types';
 
 const FALLBACK_COLOR = '#4f46e5';
@@ -641,6 +641,16 @@ export default function SpaceDetailPage() {
   const [clearingSpace, setClearingSpace] = useState(false);
   const [runActionLoading, setRunActionLoading] = useState(false);
   const [proposalActionMessageId, setProposalActionMessageId] = useState<string | null>(null);
+  const cryptoDecisionStatusKey = `crypto-cockpit-${spaceId}-chat-decision-statuses-v1`;
+  const [cryptoDecisionStatuses, setCryptoDecisionStatuses] = useState<Record<string, 'accepted' | 'rejected'>>(() => {
+    if (typeof window === 'undefined') return {};
+    try {
+      return JSON.parse(localStorage.getItem(cryptoDecisionStatusKey) || '{}');
+    } catch {
+      return {};
+    }
+  });
+  const [cryptoDecisionBusyId, setCryptoDecisionBusyId] = useState<string | null>(null);
   const [editingProposal, setEditingProposal] = useState<{ message: SpaceMessage; proposal: SpaceTaskProposal } | null>(null);
   const [proposalEditError, setProposalEditError] = useState('');
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
@@ -769,6 +779,9 @@ export default function SpaceDetailPage() {
     return grouped;
   }, [currentRun]);
   const latestAssistantMessageId = [...messages].reverse().find((message) => message.role === 'assistant')?.id;
+  const latestCryptoDecisionMessageId = [...messages].reverse().find((message) =>
+    message.attachments?.some((attachment) => attachment.type === 'crypto_plan_decision_v1')
+  )?.id;
   const isRunActive = Boolean(activeRun);
   const completedTaskCount = currentRun?.tasks.filter((task) => task.status === 'COMPLETED').length || 0;
   const activeTask = currentRun?.tasks.find((task) => ['PROPOSED', 'RUNNING', 'SUBMITTED', 'REVIEWING', 'WAITING', 'WAITING_USER', 'WAITING_APPROVAL', 'CANCEL_REQUESTED'].includes(task.status)) || null;
@@ -2730,6 +2743,46 @@ export default function SpaceDetailPage() {
     window.setTimeout(() => setCopiedMessageId(null), 1800);
   };
 
+  const recordCryptoDecisionStatus = (messageId: string, status: 'accepted' | 'rejected') => {
+    setCryptoDecisionStatuses((current) => {
+      const next = { ...current, [messageId]: status };
+      localStorage.setItem(cryptoDecisionStatusKey, JSON.stringify(next));
+      return next;
+    });
+    const handledKey = `crypto-cockpit-${spaceId}-handled-decisions-v2`;
+    try {
+      const handled = JSON.parse(localStorage.getItem(handledKey) || '[]');
+      const nextHandled = Array.from(new Set([...(Array.isArray(handled) ? handled : []), messageId])).slice(-100);
+      localStorage.setItem(handledKey, JSON.stringify(nextHandled));
+    } catch {
+      localStorage.setItem(handledKey, JSON.stringify([messageId]));
+    }
+  };
+
+  const approveCryptoDecision = async (message: SpaceMessage, _decision: SpaceCryptoPlanDecisionAttachment) => {
+    if (cryptoDecisionBusyId) return;
+    setCryptoDecisionBusyId(message.id);
+    setError('');
+    try {
+      const response = await fetch('/api/crypto/sentinel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ spaceId, action: 'apply-decision', messageId: message.id }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || '加入观察计划失败');
+      recordCryptoDecisionStatus(message.id, 'accepted');
+    } catch (error: any) {
+      setError(error?.message || '加入观察计划失败');
+    } finally {
+      setCryptoDecisionBusyId(null);
+    }
+  };
+
+  const rejectCryptoDecision = (messageId: string) => {
+    recordCryptoDecisionStatus(messageId, 'rejected');
+  };
+
   const regenerateMessage = async () => {
     if (!latestAssistantMessageId || isStreaming) return;
     const assistantIndex = messages.findIndex((message) => message.id === latestAssistantMessageId);
@@ -3668,6 +3721,7 @@ export default function SpaceDetailPage() {
               <SpaceCryptoCenter
                 spaceId={spaceId}
                 spaceAgents={memberAgents}
+                messages={messages}
                 onBackToChat={() => setWorkspaceView('chat')}
                 onShareToSpace={(text) => {
                   setWorkspaceView('chat');
@@ -4356,6 +4410,11 @@ export default function SpaceDetailPage() {
                         textareaRef.current?.focus();
                       });
                     }}
+                    cryptoDecisionStatus={cryptoDecisionStatuses[message.id]}
+                    cryptoDecisionBusy={cryptoDecisionBusyId === message.id}
+                    showCryptoDecision={space?.templateId === 'crypto-contract-trading' && message.id === latestCryptoDecisionMessageId}
+                    onApproveCryptoDecision={(decision) => void approveCryptoDecision(message, decision)}
+                    onRejectCryptoDecision={() => rejectCryptoDecision(message.id)}
                   />
                 ))}
                 {isStreaming && (streamingContent || (isPiSpace && (streamingPiActivity || streamingPiStatus || streamingPiNotes.length > 0))) && (

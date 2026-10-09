@@ -5,7 +5,7 @@ import { Activity, BookOpen, Check, CheckCircle2, ChevronRight, Clock3, Code2, F
 import MessageActions from '@/components/chat/MessageActions';
 import MessageBubbleFrame from '@/components/chat/MessageBubbleFrame';
 import MessageContent from '@/components/chat/MessageContent';
-import type { Agent, AgentRun, AgentTask, SpaceMessage, SpacePiExecutionAttachment, SpaceRelayStartedAttachment, SpaceRunResultAttachment, SpaceTaskProposal } from '@/types';
+import type { Agent, AgentRun, AgentTask, SpaceCryptoPlanDecisionAttachment, SpaceMessage, SpacePiExecutionAttachment, SpaceRelayStartedAttachment, SpaceRunResultAttachment, SpaceTaskProposal } from '@/types';
 
 const RUN_STATUS_LABELS: Record<string, string> = {
   QUEUED: '等待执行',
@@ -80,6 +80,60 @@ function PiExecutionTrace({ execution }: { execution: SpacePiExecutionAttachment
         </div>
       )}
     </details>
+  );
+}
+
+function CryptoDecisionCard({
+  decision,
+  status,
+  busy,
+  onApprove,
+  onReject,
+}: {
+  decision: SpaceCryptoPlanDecisionAttachment;
+  status?: 'accepted' | 'rejected';
+  busy?: boolean;
+  onApprove?: () => void;
+  onReject?: () => void;
+}) {
+  const plan = decision.proposedPlan;
+  if (!plan || decision.mode !== 'CREATE' || decision.action !== 'WATCH') return null;
+  return (
+    <div className="mt-4 border-t border-black/[0.08] pt-4">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <div className="text-xs font-black text-indigo-700">交易策略待确认</div>
+          <div className="mt-1 text-sm font-black text-slate-950">
+            {plan.symbol} · {plan.direction === 'LONG' ? '做多' : '做空'}
+          </div>
+        </div>
+        <span className="rounded-md bg-indigo-50 px-2 py-1 text-[11px] font-black text-indigo-700">
+          盈亏比 {plan.rrRatio || '1:2'}
+        </span>
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-2 text-xs font-semibold text-slate-600 sm:grid-cols-4">
+        <div>入场 <span className="font-mono font-black text-slate-900">{plan.entryMin} - {plan.entryMax}</span></div>
+        <div>止损 <span className="font-mono font-black text-rose-600">{plan.stopLoss}</span></div>
+        <div>TP1 <span className="font-mono font-black text-emerald-600">{plan.takeProfit1}</span></div>
+        <div>TP2 <span className="font-mono font-black text-emerald-600">{plan.takeProfit2}</span></div>
+      </div>
+      {status ? (
+        <div className={`mt-3 text-xs font-black ${status === 'accepted' ? 'text-emerald-600' : 'text-slate-400'}`}>
+          {status === 'accepted' ? '已加入观察计划' : '已选择不加入'}
+        </div>
+      ) : (
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button type="button" onClick={onApprove} disabled={busy} className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-indigo-600 px-3 text-xs font-black text-white hover:bg-indigo-700 disabled:opacity-50">
+            {busy ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+            加入观察
+          </button>
+          <button type="button" onClick={onReject} disabled={busy} className="inline-flex h-8 items-center gap-1 rounded-lg border border-black/[0.08] bg-white px-3 text-xs font-black text-slate-500 hover:bg-slate-50 disabled:opacity-50">
+            <X size={13} />
+            不加入
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -451,6 +505,11 @@ const SpaceMessageItem = memo(function SpaceMessageItem({
   speakingLoading = false,
   onSpeak,
   onSelectHandoffOption,
+  cryptoDecisionStatus,
+  cryptoDecisionBusy = false,
+  showCryptoDecision = false,
+  onApproveCryptoDecision,
+  onRejectCryptoDecision,
 }: {
   message: SpaceMessage;
   speaker?: Agent | null;
@@ -483,6 +542,11 @@ const SpaceMessageItem = memo(function SpaceMessageItem({
   onReviseTaskResult?: (task: AgentTask) => void;
   onSkipTaskResult?: (task: AgentTask) => void;
   onSelectHandoffOption?: (optionText: string) => void;
+  cryptoDecisionStatus?: 'accepted' | 'rejected';
+  cryptoDecisionBusy?: boolean;
+  showCryptoDecision?: boolean;
+  onApproveCryptoDecision?: (decision: SpaceCryptoPlanDecisionAttachment) => void;
+  onRejectCryptoDecision?: () => void;
 }) {
   const isUser = message.role === 'user';
   const proposal = message.attachments?.find((attachment): attachment is SpaceTaskProposal => attachment.type === 'task_proposal');
@@ -490,6 +554,7 @@ const SpaceMessageItem = memo(function SpaceMessageItem({
   const piExecution = message.attachments?.find((attachment): attachment is SpacePiExecutionAttachment => attachment.type === 'pi_execution');
   const relayStarted = message.attachments?.find((attachment): attachment is SpaceRelayStartedAttachment => attachment.type === 'relay_started');
   const skillInvocation = message.attachments?.find((attachment) => attachment.type === 'skill_invocation');
+  const cryptoDecision = message.attachments?.find((attachment): attachment is SpaceCryptoPlanDecisionAttachment => attachment.type === 'crypto_plan_decision_v1');
   const isHandoff = Boolean(
     message.attachments?.some((attachment) =>
       attachment.type === 'relay_handoff' ||
@@ -543,6 +608,15 @@ const SpaceMessageItem = memo(function SpaceMessageItem({
         attachments={message.attachments}
         shouldAutoCollapse={message.id !== latestAssistantMessageId}
       />
+      {cryptoDecision && showCryptoDecision && (
+        <CryptoDecisionCard
+          decision={cryptoDecision}
+          status={cryptoDecisionStatus}
+          busy={cryptoDecisionBusy}
+          onApprove={() => onApproveCryptoDecision?.(cryptoDecision)}
+          onReject={onRejectCryptoDecision}
+        />
+      )}
       {isHandoff && (
         <div className="mt-3.5 rounded-xl border border-sky-200/90 bg-gradient-to-br from-sky-50/90 via-indigo-50/40 to-white p-3.5 text-slate-800 shadow-2xs">
           <div className="flex items-center justify-between gap-2">
@@ -648,6 +722,9 @@ const SpaceMessageItem = memo(function SpaceMessageItem({
     prev.reviewAction === next.reviewAction &&
     prev.dispatchError === next.dispatchError &&
     prev.reviewError === next.reviewError &&
+    prev.cryptoDecisionStatus === next.cryptoDecisionStatus &&
+    prev.cryptoDecisionBusy === next.cryptoDecisionBusy &&
+    prev.showCryptoDecision === next.showCryptoDecision &&
     prev.onSelectHandoffOption === next.onSelectHandoffOption
   );
 });

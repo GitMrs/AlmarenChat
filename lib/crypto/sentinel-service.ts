@@ -17,6 +17,7 @@ export interface AmbushPlanItem {
   expiresInHours: number;
   watchEnabled?: boolean;
   notifyQQ?: boolean;
+  sourceMessageId?: string;
 }
 
 export interface ActivePositionItem {
@@ -77,7 +78,7 @@ export async function getSentinelState(spaceId: string): Promise<SentinelState> 
   if (!space) {
     return {
       spaceId,
-      serverSentinelEnabled: true,
+      serverSentinelEnabled: false,
       ambushPlans: [],
       activePositions: [],
       reviews: [],
@@ -101,7 +102,7 @@ export async function getSentinelState(spaceId: string): Promise<SentinelState> 
   return {
     spaceId: space.id,
     userId: space.userId,
-    serverSentinelEnabled: sentinel.serverSentinelEnabled !== false,
+    serverSentinelEnabled: sentinel.serverSentinelEnabled === true,
     autoSyncChatPlans: sentinel.autoSyncChatPlans === true,
     deletedSignatures: Array.isArray(sentinel.deletedSignatures) ? (sentinel.deletedSignatures as string[]) : [],
     ambushPlans,
@@ -155,7 +156,7 @@ export async function saveSentinelState(
     : (Array.isArray(existingSentinel.reviews) ? existingSentinel.reviews : []);
   const serverSentinelEnabled = state.serverSentinelEnabled !== undefined
     ? state.serverSentinelEnabled
-    : (existingSentinel.serverSentinelEnabled !== false);
+    : (existingSentinel.serverSentinelEnabled === true);
   const autoSyncChatPlans = state.autoSyncChatPlans !== undefined
     ? state.autoSyncChatPlans
     : (existingSentinel.autoSyncChatPlans === true);
@@ -488,7 +489,7 @@ export function startCryptoSentinelScheduler() {
           ? (snap.sentinelState as Record<string, unknown>)
           : {};
 
-        if (sentinel.serverSentinelEnabled !== false) {
+        if (sentinel.serverSentinelEnabled === true) {
           const plans = Array.isArray(sentinel.ambushPlans) ? sentinel.ambushPlans : [];
           const positions = Array.isArray(sentinel.activePositions) ? sentinel.activePositions : [];
           if (plans.length > 0 || positions.length > 0) {
