@@ -768,6 +768,32 @@ export const spaces = {
     request<{ success: boolean }>(`/spaces/${id}/compression-stats`, { method: 'DELETE' }),
 };
 
+export const cryptoSentinel = {
+  get: (spaceId: string) =>
+    request<{ success: boolean; data: any }>(`/crypto/sentinel?spaceId=${encodeURIComponent(spaceId)}`),
+  save: (data: {
+    spaceId: string;
+    ambushPlans: any[];
+    activePositions: any[];
+    serverSentinelEnabled: boolean;
+    autoSyncChatPlans: boolean;
+    deletedSignatures: string[];
+  }) => request<{ success: boolean; data: any }>('/crypto/sentinel', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  }),
+  check: (spaceId: string) =>
+    request<{ success: boolean; checkResult?: { lastCheckedAt?: string; alerts?: any[] } }>('/crypto/sentinel', {
+      method: 'POST',
+      body: JSON.stringify({ spaceId, action: 'check' }),
+    }),
+  applyDecision: (spaceId: string, messageId: string) =>
+    request<{ success: boolean; data: any; plan: any }>('/crypto/sentinel', {
+      method: 'POST',
+      body: JSON.stringify({ spaceId, action: 'apply-decision', messageId }),
+    }),
+};
+
 export const spaceShares = {
   list: () => request<{ shares: SpaceFileShare[] }>('/shares'),
 };

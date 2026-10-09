@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import type { Agent, SpaceMessage } from '@/types';
 import type { CryptoPlanDecision } from '@/lib/crypto/trade-lifecycle';
+import { assistant as assistantApi, cryptoSentinel as cryptoSentinelApi, spaces as spacesApi } from '@/lib/api';
 
 export interface SpaceCryptoCenterProps {
   spaceId: string;
@@ -262,26 +263,23 @@ export default function SpaceCryptoCenter({
   const checkForCryptoDecisions = async (isManualClick = false) => {
     setSyncingPlans(true);
     try {
-      const res = await fetch(`/api/spaces/${spaceId}/messages?limit=30`);
-      if (res.ok) {
-        const data = await res.json();
-        const responseMessages = Array.isArray(data.messages) ? data.messages : [];
-        const latestDecision = latestDecisionFromMessages(responseMessages);
-        const latest = latestDecision
-          && !isNewObservationDecision(latestDecision)
-          && (isManualClick || !handledDecisionIdsRef.current.includes(latestDecision.sourceMessageId))
-          ? latestDecision
-          : undefined;
+      const data = await spacesApi.messages(spaceId, { limit: 30 });
+      const responseMessages = Array.isArray(data.messages) ? data.messages : [];
+      const latestDecision = latestDecisionFromMessages(responseMessages);
+      const latest = latestDecision
+        && !isNewObservationDecision(latestDecision)
+        && (isManualClick || !handledDecisionIdsRef.current.includes(latestDecision.sourceMessageId))
+        ? latestDecision
+        : undefined;
 
-        setPendingDecision(latest || null);
-        if (isManualClick) {
-          setSyncNotification(isNewObservationDecision(latestDecision)
-            ? '新观察计划请在聊天消息中确认。'
-            : latest
-              ? '已找到一条待确认的计划变更。'
-              : '近期没有尚未处理的计划变更。');
-          setTimeout(() => setSyncNotification(null), 3500);
-        }
+      setPendingDecision(latest || null);
+      if (isManualClick) {
+        setSyncNotification(isNewObservationDecision(latestDecision)
+          ? '新观察计划请在聊天消息中确认。'
+          : latest
+            ? '已找到一条待确认的计划变更。'
+            : '近期没有尚未处理的计划变更。');
+        setTimeout(() => setSyncNotification(null), 3500);
       }
     } catch (e) {
       console.warn('[SpaceCryptoCenter] check crypto decisions failed', e);
@@ -440,8 +438,7 @@ export default function SpaceCryptoCenter({
 
   // 从服务端读取持久化状态
   useEffect(() => {
-    fetch(`/api/crypto/sentinel?spaceId=${spaceId}`)
-      .then((r) => (r.ok ? r.json() : null))
+    cryptoSentinelApi.get(spaceId)
       .then((res) => {
         if (res?.success && res.data) {
           const d = res.data;
@@ -471,17 +468,13 @@ export default function SpaceCryptoCenter({
   useEffect(() => {
     if (!serverStateHydrated) return;
     const timer = setTimeout(() => {
-      fetch('/api/crypto/sentinel', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          spaceId,
-          ambushPlans,
-          activePositions,
-          serverSentinelEnabled,
-          autoSyncChatPlans,
-          deletedSignatures,
-        }),
+      cryptoSentinelApi.save({
+        spaceId,
+        ambushPlans,
+        activePositions,
+        serverSentinelEnabled,
+        autoSyncChatPlans,
+        deletedSignatures,
       }).catch((e) => console.warn('[SpaceCryptoCenter] sync to server failed:', e));
     }, 1500);
     return () => clearTimeout(timer);
@@ -517,22 +510,15 @@ export default function SpaceCryptoCenter({
   const triggerServerCheck = async () => {
     setCheckingServer(true);
     try {
-      const res = await fetch('/api/crypto/sentinel', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ spaceId, action: 'check' }),
-      });
-      if (res.ok) {
-        const json = await res.json();
-        setServerCheckedAt(json.checkResult?.lastCheckedAt || new Date().toISOString());
-        const count = json.checkResult?.alerts?.length || 0;
-        setSyncNotification(
-          count > 0
-            ? `☁️ 云端巡检完成：检测到 ${count} 条告警，已写入日志并推送手机 QQ！`
-            : '☁️ 云端巡检完成：当前盘面平稳，伏击与护航各单正常运行，未触碰失效/止损线。'
-        );
-        setTimeout(() => setSyncNotification(null), 5000);
-      }
+      const result = await cryptoSentinelApi.check(spaceId);
+      setServerCheckedAt(result.checkResult?.lastCheckedAt || new Date().toISOString());
+      const count = result.checkResult?.alerts?.length || 0;
+      setSyncNotification(
+        count > 0
+          ? `☁️ 云端巡检完成：检测到 ${count} 条告警，已写入日志并推送手机 QQ！`
+          : '☁️ 云端巡检完成：当前盘面平稳，伏击与护航各单正常运行，未触碰失效/止损线。'
+      );
+      setTimeout(() => setSyncNotification(null), 5000);
     } catch {
       setSyncNotification('云端巡检连接失败，请检查网络');
       setTimeout(() => setSyncNotification(null), 4000);
@@ -596,8 +582,7 @@ export default function SpaceCryptoCenter({
 
   // 检查 QQ 绑定状态
   useEffect(() => {
-    fetch('/api/assistant/qq')
-      .then((r) => r.json())
+    assistantApi.getQQBinding()
       .then((data) => {
         setQqConnected(Boolean(data?.binding?.configured && data?.binding?.enabled));
       })

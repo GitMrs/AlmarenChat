@@ -27,7 +27,7 @@ import SpaceRelayStatus from '@/components/spaces/SpaceRelayStatus';
 import SpaceOperationsCenter, { type SpaceOperationsTab } from '@/components/spaces/SpaceOperationsCenter';
 import TrendingTopicPicker from '@/components/trending/TrendingTopicPicker';
 import { CompressionStatusPanel } from '@/components/spaces/CompressionStatusPanel';
-import { agentRuns as agentRunsApi, agents as agentsApi, spaces as spacesApi, streamSpaceMessage } from '@/lib/api';
+import { agentRuns as agentRunsApi, agents as agentsApi, cryptoSentinel as cryptoSentinelApi, spaces as spacesApi, streamSpaceMessage } from '@/lib/api';
 import { getBuiltInAgents } from '@/lib/agents-data';
 import { useTTS } from '@/hooks/useTTS';
 import { latestRunInRetryChain } from '@/lib/agent-run-retry-chain.mjs';
@@ -2764,13 +2764,7 @@ export default function SpaceDetailPage() {
     setCryptoDecisionBusyId(message.id);
     setError('');
     try {
-      const response = await fetch('/api/crypto/sentinel', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ spaceId, action: 'apply-decision', messageId: message.id }),
-      });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || '加入观察计划失败');
+      await cryptoSentinelApi.applyDecision(spaceId, message.id);
       recordCryptoDecisionStatus(message.id, 'accepted');
     } catch (error: any) {
       setError(error?.message || '加入观察计划失败');
