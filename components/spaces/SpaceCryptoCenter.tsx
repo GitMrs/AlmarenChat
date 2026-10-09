@@ -25,7 +25,7 @@ import {
   Percent,
 } from 'lucide-react';
 import type { Agent, SpaceMessage } from '@/types';
-import type { CryptoPlanDecision } from '@/lib/crypto/trade-lifecycle';
+import { calculatePlanRiskReward, type CryptoPlanDecision } from '@/lib/crypto/trade-lifecycle';
 import { assistant as assistantApi, cryptoSentinel as cryptoSentinelApi, spaces as spacesApi } from '@/lib/api';
 
 export interface SpaceCryptoCenterProps {
@@ -216,7 +216,7 @@ export default function SpaceCryptoCenter({
   const [simulationDraft, setSimulationDraft] = useState<SimulationDraft | null>(null);
 
   // 历史复盘折叠展开开关
-  const [historyExpanded, setHistoryExpanded] = useState<boolean>(true);
+  const [historyExpanded, setHistoryExpanded] = useState<boolean>(false);
 
   const [autoSyncChatPlans] = useState(false);
   const [pendingDecision, setPendingDecision] = useState<PendingCryptoDecision | null>(null);
@@ -723,7 +723,7 @@ export default function SpaceCryptoCenter({
                   )}
                 </div>
                 <p className="text-[11px] font-semibold text-slate-400 mt-0.5">
-                  左侧观察计划 · 右侧模拟仓位 · 下方模拟复盘
+                  上方当前持仓 · 下方观察计划 · 最下方模拟复盘
                 </p>
               </div>
             </div>
@@ -865,10 +865,10 @@ export default function SpaceCryptoCenter({
           </div>
         )}
 
-        {/* ==================== 主战场：左右双轨并排 ==================== */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
-          {/* ----------------- 左侧：观察计划 ----------------- */}
-          <div className="rounded-2xl border-2 border-emerald-500/20 bg-white p-4 sm:p-5 shadow-sm space-y-4">
+        {/* ==================== 主战场：持仓与观察分区 ==================== */}
+        <div className="flex flex-col gap-5">
+          {/* ----------------- 下方：观察计划 ----------------- */}
+          <div className="order-2 rounded-2xl border-2 border-emerald-500/20 bg-white p-4 sm:p-5 shadow-sm space-y-4">
             <div className="flex flex-wrap items-center justify-between border-b border-black/[0.06] pb-3 gap-2">
               <div className="flex items-center gap-2">
                 <span className="flex h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse" />
@@ -879,9 +879,21 @@ export default function SpaceCryptoCenter({
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
+                  onClick={() => {
+                    onShareToSpace?.(`请基于当前 ${symbol}-USDT 永续合约的最新实时行情，制定一份盈亏比不低于 1:2 的交易方案。请由凌风分析多周期结构与入场点位，幽影核验 OI、资金费率和筹码陷阱，最后由雷震给出唯一的风控结论和交易计划卡。`);
+                    onBackToChat?.();
+                  }}
+                  disabled={!onShareToSpace}
+                  className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-slate-950 px-3 text-xs font-black text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
+                >
+                  <Crosshair size={13} />
+                  制定 {symbol} 方案
+                </button>
+                <button
+                  type="button"
                   onClick={() => void checkForCryptoDecisions(true)}
                   disabled={syncingPlans}
-                  className="inline-flex items-center gap-1 rounded-lg bg-indigo-50 border border-indigo-200 px-2 py-0.5 text-[11px] font-black text-indigo-800 hover:bg-indigo-100 cursor-pointer disabled:opacity-50"
+                  className="inline-flex h-8 items-center gap-1 rounded-lg bg-indigo-50 border border-indigo-200 px-3 text-[11px] font-black text-indigo-800 hover:bg-indigo-100 cursor-pointer disabled:opacity-50"
                   title="读取雷震最新给出的正式交易决策"
                 >
                   <RefreshCw size={11} className={syncingPlans ? 'animate-spin' : ''} />
@@ -940,6 +952,7 @@ export default function SpaceCryptoCenter({
 
                 {pendingDecision.proposedPlan && (() => {
                   const p = pendingDecision.proposedPlan;
+                  const riskReward = calculatePlanRiskReward(p);
                   const currentPlan = pendingDecision.targetPlanId
                     ? ambushPlans.find((plan) => plan.id === pendingDecision.targetPlanId)
                     : null;
@@ -960,9 +973,11 @@ export default function SpaceCryptoCenter({
                             {p.name}
                           </span>
                         </div>
-                        <span className="text-[10px] font-black text-indigo-600 font-mono">
-                          盈亏比 {p.rrRatio || '1:2'}
-                        </span>
+                        {riskReward && (
+                          <span className="text-[10px] font-black text-indigo-600 font-mono">
+                            TP2 中位 1:{riskReward.midpointEntry.tp2Ratio.toFixed(2)}
+                          </span>
+                        )}
                       </div>
                       <div className="flex flex-wrap items-center gap-x-3 text-[11px] text-slate-600 font-semibold">
                         <span>
@@ -975,6 +990,17 @@ export default function SpaceCryptoCenter({
                           目标: <span className="font-mono font-bold text-emerald-600">${p.takeProfit1.toLocaleString()}</span>
                         </span>
                       </div>
+                      {riskReward && (
+                        <div className="mt-1 flex flex-wrap gap-x-3 border-t border-indigo-100 pt-2 text-[10px] font-semibold text-slate-500">
+                          <span>止损距离 {riskReward.riskPercentRange[0].toFixed(2)}% - {riskReward.riskPercentRange[1].toFixed(2)}%</span>
+                          <span>TP1 1:{riskReward.tp1RatioRange[0].toFixed(2)} - 1:{riskReward.tp1RatioRange[1].toFixed(2)}</span>
+                          <span>TP2 1:{riskReward.tp2RatioRange[0].toFixed(2)} - 1:{riskReward.tp2RatioRange[1].toFixed(2)}</span>
+                          <span className="text-slate-400">Agent 标注 {p.rrRatio || '未提供'}</span>
+                          {riskReward.tp2RatioRange[0] < 2 && (
+                            <span className="font-black text-amber-700">部分入场价未达 1:2</span>
+                          )}
+                        </div>
+                      )}
                       {pendingDecision.action === 'UPDATE' && currentPlan && (
                         <div className="mt-1 grid grid-cols-3 gap-1.5 border-t border-indigo-100 pt-2 text-[10px] font-semibold">
                           <div className="rounded bg-slate-50 px-2 py-1 text-slate-600">
@@ -1341,22 +1367,13 @@ export default function SpaceCryptoCenter({
             ) : (
               <div className="py-8 text-center text-xs text-slate-400 font-semibold space-y-2">
                 <p>当前无埋伏中的伏击方案</p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    onShareToSpace?.('帮我看看当前 BTC 和 ETH 的盘面结构，分别制定一个盈亏比大于 1:2 的右侧挂单计划！');
-                    onBackToChat?.();
-                  }}
-                  className="rounded-lg bg-slate-900 px-3 py-1.5 text-white font-black text-xs cursor-pointer"
-                >
-                  呼叫特战队制定方案
-                </button>
+                <p className="text-[11px] text-slate-400">请从上方选择看盘币种，再呼叫特战队制定方案</p>
               </div>
             )}
           </div>
 
-          {/* ----------------- 右侧：模拟仓位 ----------------- */}
-          <div className="rounded-2xl border-2 border-blue-500/20 bg-white p-4 sm:p-5 shadow-sm space-y-4">
+          {/* ----------------- 上方：当前持仓 ----------------- */}
+          <div className="order-1 rounded-2xl border-2 border-blue-500/20 bg-white p-4 sm:p-5 shadow-sm space-y-4">
             <div className="flex items-center justify-between border-b border-black/[0.06] pb-3">
               <div className="flex items-center gap-2">
                 <span
@@ -1615,7 +1632,7 @@ export default function SpaceCryptoCenter({
             ) : (
               <div className="py-8 text-center text-xs text-slate-400 font-semibold space-y-2">
                 <p>当前模拟仓位为空</p>
-                <p className="text-[11px] text-slate-400">从左侧观察计划建立，或点击右上角手动新建</p>
+                <p className="text-[11px] text-slate-400">从下方观察计划建立，或点击右上角手动新建</p>
               </div>
             )}
           </div>

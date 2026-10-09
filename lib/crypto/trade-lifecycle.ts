@@ -16,6 +16,24 @@ export interface PlanItem {
   note?: string;
 }
 
+export interface PlanRiskRewardPoint {
+  entryPrice: number;
+  riskAmount: number;
+  riskPercent: number;
+  tp1Ratio: number;
+  tp2Ratio: number;
+}
+
+export interface PlanRiskRewardAnalysis {
+  lowerEntry: PlanRiskRewardPoint;
+  midpointEntry: PlanRiskRewardPoint;
+  upperEntry: PlanRiskRewardPoint;
+  riskPercentRange: [number, number];
+  tp1RatioRange: [number, number];
+  tp2RatioRange: [number, number];
+  claimedRatio?: number;
+}
+
 export interface PlanInspectionResult {
   hasActivePlans: boolean;
   alerts: string[];
@@ -40,6 +58,51 @@ export interface CryptoPlanDecision {
   analyzedAt: string;
   referencePrice?: number;
   proposedPlan?: PlanItem;
+}
+
+export function calculatePlanRiskReward(
+  plan: Pick<PlanItem, 'direction' | 'entryMin' | 'entryMax' | 'stopLoss' | 'takeProfit1' | 'takeProfit2' | 'rrRatio'>
+): PlanRiskRewardAnalysis | null {
+  const pointAt = (entryPrice: number): PlanRiskRewardPoint | null => {
+    const riskAmount = plan.direction === 'LONG'
+      ? entryPrice - plan.stopLoss
+      : plan.stopLoss - entryPrice;
+    const tp1Reward = plan.direction === 'LONG'
+      ? plan.takeProfit1 - entryPrice
+      : entryPrice - plan.takeProfit1;
+    const tp2Reward = plan.direction === 'LONG'
+      ? plan.takeProfit2 - entryPrice
+      : entryPrice - plan.takeProfit2;
+    if (entryPrice <= 0 || riskAmount <= 0 || tp1Reward <= 0 || tp2Reward <= 0) return null;
+    return {
+      entryPrice,
+      riskAmount,
+      riskPercent: (riskAmount / entryPrice) * 100,
+      tp1Ratio: tp1Reward / riskAmount,
+      tp2Ratio: tp2Reward / riskAmount,
+    };
+  };
+
+  const lowerEntry = pointAt(plan.entryMin);
+  const midpointEntry = pointAt((plan.entryMin + plan.entryMax) / 2);
+  const upperEntry = pointAt(plan.entryMax);
+  if (!lowerEntry || !midpointEntry || !upperEntry) return null;
+
+  const range = (values: number[]): [number, number] => [Math.min(...values), Math.max(...values)];
+  const claimedMatch = plan.rrRatio?.match(/([0-9]+(?:\.[0-9]+)?)\s*:\s*([0-9]+(?:\.[0-9]+)?)/);
+  const claimedBase = Number(claimedMatch?.[1]);
+  const claimedReward = Number(claimedMatch?.[2]);
+  const claimedRatio = claimedBase > 0 && claimedReward > 0 ? claimedReward / claimedBase : undefined;
+
+  return {
+    lowerEntry,
+    midpointEntry,
+    upperEntry,
+    riskPercentRange: range([lowerEntry.riskPercent, midpointEntry.riskPercent, upperEntry.riskPercent]),
+    tp1RatioRange: range([lowerEntry.tp1Ratio, midpointEntry.tp1Ratio, upperEntry.tp1Ratio]),
+    tp2RatioRange: range([lowerEntry.tp2Ratio, midpointEntry.tp2Ratio, upperEntry.tp2Ratio]),
+    ...(claimedRatio ? { claimedRatio } : {}),
+  };
 }
 
 /**
@@ -103,7 +166,7 @@ export function parseTradePlansFromText(text: string): PlanItem[] {
         takeProfit1,
         takeProfit2,
         invalidationPrice,
-        rrRatio: rrMatch?.[1] || '1:2',
+        ...(rrMatch?.[1] ? { rrRatio: rrMatch[1] } : {}),
       });
     }
   }
