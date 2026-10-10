@@ -1,6 +1,8 @@
 import prisma from '@/app/api/_lib/db';
 import { getCryptoMarketData } from './okx-service';
 import { randomUUID } from 'node:crypto';
+import { createScheduler } from '../runtime/scheduler.mjs';
+import { isPlanExpired } from './trade-lifecycle';
 
 export interface AmbushPlanItem {
   id: string;
@@ -42,6 +44,8 @@ export interface SentinelState {
   serverSentinelEnabled: boolean;
   autoSyncChatPlans?: boolean;
   deletedSignatures?: string[];
+  decisionStatuses?: Record<string, 'accepted' | 'rejected'>;
+  handledDecisionIds?: string[];
   ambushPlans: AmbushPlanItem[];
   activePositions: ActivePositionItem[];
   reviews?: any[];
@@ -96,15 +100,21 @@ export async function getSentinelState(spaceId: string): Promise<SentinelState> 
   let ambushPlans = Array.isArray(sentinel.ambushPlans) ? (sentinel.ambushPlans as AmbushPlanItem[]) : [];
   let activePositions = Array.isArray(sentinel.activePositions) ? (sentinel.activePositions as ActivePositionItem[]) : [];
   const reviews = Array.isArray(sentinel.reviews) ? sentinel.reviews : [];
-
-
+  const decisionStatuses = (sentinel.decisionStatuses && typeof sentinel.decisionStatuses === 'object')
+    ? (sentinel.decisionStatuses as Record<string, 'accepted' | 'rejected'>)
+    : {};
+  const handledDecisionIds = Array.isArray(sentinel.handledDecisionIds)
+    ? (sentinel.handledDecisionIds as string[])
+    : [];
 
   return {
     spaceId: space.id,
     userId: space.userId,
-    serverSentinelEnabled: sentinel.serverSentinelEnabled === true,
+    serverSentinelEnabled: sentinel.serverSentinelEnabled !== false,
     autoSyncChatPlans: sentinel.autoSyncChatPlans === true,
     deletedSignatures: Array.isArray(sentinel.deletedSignatures) ? (sentinel.deletedSignatures as string[]) : [],
+    decisionStatuses,
+    handledDecisionIds,
     ambushPlans,
     activePositions,
     reviews,
@@ -126,6 +136,8 @@ export async function saveSentinelState(
     serverSentinelEnabled?: boolean;
     autoSyncChatPlans?: boolean;
     deletedSignatures?: string[];
+    decisionStatuses?: Record<string, 'accepted' | 'rejected'>;
+    handledDecisionIds?: string[];
   }
 ): Promise<SentinelState> {
   const space = await prisma.space.findUnique({
@@ -156,13 +168,19 @@ export async function saveSentinelState(
     : (Array.isArray(existingSentinel.reviews) ? existingSentinel.reviews : []);
   const serverSentinelEnabled = state.serverSentinelEnabled !== undefined
     ? state.serverSentinelEnabled
-    : (existingSentinel.serverSentinelEnabled === true);
+    : (existingSentinel.serverSentinelEnabled !== false);
   const autoSyncChatPlans = state.autoSyncChatPlans !== undefined
     ? state.autoSyncChatPlans
     : (existingSentinel.autoSyncChatPlans === true);
   const deletedSignatures = state.deletedSignatures !== undefined
     ? state.deletedSignatures
     : (Array.isArray(existingSentinel.deletedSignatures) ? (existingSentinel.deletedSignatures as string[]) : []);
+  const decisionStatuses = state.decisionStatuses !== undefined
+    ? state.decisionStatuses
+    : ((existingSentinel.decisionStatuses as Record<string, 'accepted' | 'rejected'>) || {});
+  const handledDecisionIds = state.handledDecisionIds !== undefined
+    ? state.handledDecisionIds
+    : ((existingSentinel.handledDecisionIds as string[]) || []);
   const now = new Date().toISOString();
 
   const newSentinelState = {
@@ -173,6 +191,8 @@ export async function saveSentinelState(
     serverSentinelEnabled,
     autoSyncChatPlans,
     deletedSignatures,
+    decisionStatuses,
+    handledDecisionIds,
     updatedAt: now,
   };
 
@@ -214,7 +234,8 @@ export interface CheckAlert {
  */
 export async function checkSentinelForSpace(
   spaceId: string,
-  triggerSource: 'CRON' | 'MANUAL' | 'API' = 'API'
+  triggerSource: 'CRON' | 'MANUAL' | 'API' = 'API',
+  sharedMarketMap?: Record<string, any>
 ): Promise<{
   alerts: CheckAlert[];
   checkedSymbols: string[];
@@ -233,12 +254,14 @@ export async function checkSentinelForSpace(
     ])
   );
 
-  const marketMap: Record<string, any> = {};
+  const marketMap: Record<string, any> = sharedMarketMap ? { ...sharedMarketMap } : {};
   for (const sym of allSymbols) {
-    try {
-      const snap = await getCryptoMarketData(sym);
-      if (snap) marketMap[sym] = snap;
-    } catch {}
+    if (!marketMap[sym]) {
+      try {
+        const snap = await getCryptoMarketData(sym);
+        if (snap) marketMap[sym] = snap;
+      } catch {}
+    }
   }
 
   const alerts: CheckAlert[] = [];
@@ -246,6 +269,7 @@ export async function checkSentinelForSpace(
   // 1. 检查伏击哨（未开单 · 埋伏阶段）
   for (const plan of state.ambushPlans) {
     if (plan.watchEnabled === false) continue; // 单笔单独暂停
+    if (isPlanExpired(plan)) continue; // 关键防僵尸：超过生命周期的观察计划自动淘汰
     const snap = marketMap[plan.symbol];
     if (!snap || snap.price <= 0) continue;
     const price = snap.price;
@@ -414,19 +438,31 @@ export async function checkSentinelForSpace(
           },
         });
         if (qqBinding) {
-          for (const alert of alerts) {
-            if (alert.notifyQQ) {
-              const reminderId = `rem-sentinel-${Date.now()}-${randomUUID().slice(0, 6)}`;
-              await prisma.assistantReminder.create({
-                data: {
-                  id: reminderId,
-                  userId: state.userId,
-                  content: `🦅【加密合约作战室·紧急盘面告警】\n${alert.title}\n${alert.content}`,
-                  dueTime: new Date(),
-                  status: 'PENDING',
-                },
-              });
-            }
+          const qqAlerts = alerts.filter((a) => a.notifyQQ !== false);
+          if (qqAlerts.length === 1) {
+            const a = qqAlerts[0];
+            const reminderId = `rem-sentinel-${Date.now()}-${randomUUID().slice(0, 6)}`;
+            await prisma.assistantReminder.create({
+              data: {
+                id: reminderId,
+                userId: state.userId,
+                content: `🦅【加密合约作战室·紧急盘面告警】\n${a.title}\n${a.content}`,
+                dueTime: new Date(),
+                status: 'PENDING',
+              },
+            });
+          } else if (qqAlerts.length > 1) {
+            const digestItems = qqAlerts.map((a, i) => `${i + 1}. ${a.title}\n${a.content}`).join('\n\n');
+            const reminderId = `rem-sentinel-${Date.now()}-${randomUUID().slice(0, 6)}`;
+            await prisma.assistantReminder.create({
+              data: {
+                id: reminderId,
+                userId: state.userId,
+                content: `🦅【加密合约作战室·盘面异动汇总 (${qqAlerts.length}笔)】\n\n${digestItems}\n\n请前往空间查看详细建议与盘面。`,
+                dueTime: new Date(),
+                status: 'PENDING',
+              },
+            });
           }
         }
       } catch (e: any) {
@@ -468,18 +504,23 @@ export function startCryptoSentinelScheduler() {
   if (schedulerState.started) return;
   schedulerState.started = true;
   console.log('[crypto-sentinel-scheduler] Started 7×24H crypto sentinel background scheduler (interval: 30s)');
-
-  schedulerState.intervalId = setInterval(async () => {
+  const scheduler = createScheduler({
+    name: 'crypto-sentinel-scheduler',
+    pollMs: 30 * 1000,
+    logger: console,
+  });
+  scheduler.register('check-spaces', async () => {
     if (schedulerState.isChecking) return;
     schedulerState.isChecking = true;
     try {
-      // 通过 Prisma 查询所有 crypto-contract-trading 模板的活跃空间
       const cryptoSpaces = await prisma.space.findMany({
-        where: {
-          templateId: 'crypto-contract-trading',
-        },
-        select: { id: true, templateSnapshot: true },
+        where: { templateId: 'crypto-contract-trading' },
+        select: { id: true, userId: true, templateSnapshot: true },
       });
+
+      // 1. 扫描所有空间，收集有效且未过期的活跃标的，彻底杜绝僵尸单
+      const activeSpaces: Array<{ id: string; userId: string; plans: AmbushPlanItem[]; positions: ActivePositionItem[] }> = [];
+      const globalActiveSymbols = new Set<string>(['BTC']);
 
       for (const sp of cryptoSpaces) {
         const snap = sp.templateSnapshot && typeof sp.templateSnapshot === 'object'
@@ -488,19 +529,49 @@ export function startCryptoSentinelScheduler() {
         const sentinel = (snap.sentinelState && typeof snap.sentinelState === 'object')
           ? (snap.sentinelState as Record<string, unknown>)
           : {};
+        // 只要未显式关闭，默认自动开启静默守护
+        if (sentinel.serverSentinelEnabled === false) continue;
 
-        if (sentinel.serverSentinelEnabled === true) {
-          const plans = Array.isArray(sentinel.ambushPlans) ? sentinel.ambushPlans : [];
-          const positions = Array.isArray(sentinel.activePositions) ? sentinel.activePositions : [];
-          if (plans.length > 0 || positions.length > 0) {
-            await checkSentinelForSpace(sp.id, 'CRON');
-          }
+        const rawPlans = Array.isArray(sentinel.ambushPlans) ? (sentinel.ambushPlans as AmbushPlanItem[]) : [];
+        const activePositions = Array.isArray(sentinel.activePositions) ? (sentinel.activePositions as ActivePositionItem[]) : [];
+
+        // 过滤掉超过 TTL 的僵尸计划和手动暂停的计划
+        const activePlans = rawPlans.filter((p) => p.watchEnabled !== false && !isPlanExpired(p));
+        const activeEscorts = activePositions.filter((p) => p.watchEnabled !== false);
+
+        if (activePlans.length > 0 || activeEscorts.length > 0) {
+          activeSpaces.push({ id: sp.id, userId: sp.userId, plans: activePlans, positions: activeEscorts });
+          for (const p of activePlans) globalActiveSymbols.add(p.symbol);
+          for (const pos of activeEscorts) globalActiveSymbols.add(pos.symbol);
         }
       }
-    } catch (e: any) {
-      console.warn('[crypto-sentinel-scheduler] cron check error:', e?.message);
+
+      if (activeSpaces.length === 0) return;
+
+      // 2. 【全局共享行情池】：对所有空间去重后的标的集中拉取一次，无论多少用户对 OKX 仅打一次请求
+      const sharedMarketMap: Record<string, any> = {};
+      await Promise.all(
+        Array.from(globalActiveSymbols).map(async (sym) => {
+          try {
+            const snap = await getCryptoMarketData(sym);
+            if (snap) sharedMarketMap[sym] = snap;
+          } catch (err: any) {
+            console.warn(`[crypto-sentinel-scheduler] shared fetch failed for ${sym}:`, err?.message);
+          }
+        })
+      );
+
+      // 3. 逐个空间在内存中比对守护逻辑
+      for (const sp of activeSpaces) {
+        try {
+          await checkSentinelForSpace(sp.id, 'CRON', sharedMarketMap);
+        } catch (err: any) {
+          console.warn(`[crypto-sentinel-scheduler] check space ${sp.id} failed:`, err?.message);
+        }
+      }
     } finally {
       schedulerState.isChecking = false;
     }
-  }, 30 * 1000);
+  });
+  scheduler.start();
 }

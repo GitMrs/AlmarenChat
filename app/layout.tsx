@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import PersonalAssistantProvider from '@/components/assistant/PersonalAssistantProvider';
+import GlobalToastContainer from '@/components/shared/GlobalToastContainer';
 
 export const metadata: Metadata = {
   title: 'AlmarenChat - 发现你的 AI 搭档',
@@ -14,7 +15,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="zh-CN" suppressHydrationWarning>
-      <body className="antialiased"><PersonalAssistantProvider>{children}</PersonalAssistantProvider></body>
+      <body className="antialiased">
+        <PersonalAssistantProvider>{children}</PersonalAssistantProvider>
+        <GlobalToastContainer />
+      </body>
     </html>
   );
 }

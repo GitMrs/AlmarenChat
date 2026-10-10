@@ -25,8 +25,17 @@ import {
   Percent,
 } from 'lucide-react';
 import type { Agent, SpaceMessage } from '@/types';
-import { calculatePlanRiskReward, type CryptoPlanDecision } from '@/lib/crypto/trade-lifecycle';
+import { calculatePlanRiskReward, isPlanExpired, type CryptoPlanDecision } from '@/lib/crypto/trade-lifecycle';
 import { assistant as assistantApi, cryptoSentinel as cryptoSentinelApi, spaces as spacesApi } from '@/lib/api';
+import { toast } from '@/lib/toast';
+
+function getCleanPlanTitle(plan: { symbol: string; name?: string; direction?: string }): string {
+  const dir = plan.direction === 'SHORT' ? '做空' : '做多';
+  if (!plan.name || plan.name.includes('交易计划卡') || plan.name.trim() === plan.symbol) {
+    return `${plan.symbol} ${dir}`;
+  }
+  return plan.name.includes(plan.symbol) ? plan.name : `${plan.symbol} ${plan.name}`;
+}
 
 export interface SpaceCryptoCenterProps {
   spaceId: string;
@@ -114,7 +123,6 @@ export default function SpaceCryptoCenter({
   onBackToChat,
   onShareToSpace,
 }: SpaceCryptoCenterProps) {
-  const monitoringUiEnabled = false;
   const [symbol, setSymbol] = useState<string>('BTC');
   const [marketData, setMarketData] = useState<any>(null);
   const [marketLoading, setMarketLoading] = useState<boolean>(false);
@@ -176,12 +184,12 @@ export default function SpaceCryptoCenter({
     return [];
   });
 
-  // 7×24H 服务端云端盯盘状态（优先从本地即时恢复，随后自动与服务端数据库对齐）
+  // 服务端云端守护状态（默认静默开启，始终运行）
   const [serverSentinelEnabled, setServerSentinelEnabled] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return false;
+    if (typeof window === 'undefined') return true;
     const saved = localStorage.getItem(`${storageKey}-server-sentinel`);
-    if (saved !== null) return saved === 'true';
-    return false;
+    if (saved !== null) return saved !== 'false';
+    return true;
   });
   const [serverStateHydrated, setServerStateHydrated] = useState(false);
   const [serverCheckedAt, setServerCheckedAt] = useState<string | null>(null);
@@ -189,7 +197,6 @@ export default function SpaceCryptoCenter({
 
   // 提示通知与同步状态
   const [syncingPlans, setSyncingPlans] = useState<boolean>(false);
-  const [syncNotification, setSyncNotification] = useState<string | null>(null);
 
   // 伏击单行内编辑点位
   const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
@@ -266,26 +273,35 @@ export default function SpaceCryptoCenter({
       const data = await spacesApi.messages(spaceId, { limit: 30 });
       const responseMessages = Array.isArray(data.messages) ? data.messages : [];
       const latestDecision = latestDecisionFromMessages(responseMessages);
+      const isAlreadyInWatchList = Boolean(latestDecision?.proposedPlan && (
+        ambushPlans.some(
+          (p) => p.sourceMessageId === latestDecision.sourceMessageId ||
+            (p.symbol === latestDecision.proposedPlan.symbol && p.direction === latestDecision.proposedPlan.direction && p.entryMin === latestDecision.proposedPlan.entryMin && p.entryMax === latestDecision.proposedPlan.entryMax)
+        ) || activePositions.some(
+          (pos) => pos.sourcePlanId === latestDecision.targetPlanId || (pos.symbol === latestDecision.proposedPlan.symbol && pos.direction === latestDecision.proposedPlan.direction)
+        )
+      ));
       const latest = latestDecision
         && !isNewObservationDecision(latestDecision)
+        && !isAlreadyInWatchList
         && (isManualClick || !handledDecisionIdsRef.current.includes(latestDecision.sourceMessageId))
         ? latestDecision
         : undefined;
 
       setPendingDecision(latest || null);
       if (isManualClick) {
-        setSyncNotification(isNewObservationDecision(latestDecision)
-          ? '新观察计划请在聊天消息中确认。'
-          : latest
-            ? '已找到一条待确认的计划变更。'
-            : '近期没有尚未处理的计划变更。');
-        setTimeout(() => setSyncNotification(null), 3500);
+        toast.info(
+          isNewObservationDecision(latestDecision)
+            ? '新观察计划请在聊天消息中确认。'
+            : latest
+              ? '已找到一条待确认的计划变更。'
+              : '近期没有尚未处理的计划变更。'
+        );
       }
     } catch (e) {
       console.warn('[SpaceCryptoCenter] check crypto decisions failed', e);
       if (isManualClick) {
-        setSyncNotification('读取交易决策失败，请检查网络连接');
-        setTimeout(() => setSyncNotification(null), 3000);
+        toast.error('读取交易决策失败，请检查网络连接');
       }
     } finally {
       setSyncingPlans(false);
@@ -307,9 +323,9 @@ export default function SpaceCryptoCenter({
       takeProfit2: plan.takeProfit2,
       invalidationPrice: plan.invalidationPrice,
       createdAt: new Date().toISOString(),
-      expiresInHours: 8,
-      watchEnabled: false,
-      notifyQQ: false,
+      expiresInHours: 24,
+      watchEnabled: true,
+      notifyQQ: true,
       sourceMessageId: decision.sourceMessageId,
       lastReviewedAt: decision.analyzedAt,
       lastReviewSummary: decision.summary,
@@ -340,8 +356,7 @@ export default function SpaceCryptoCenter({
     if (decision.mode === 'REVIEW' && !targetPlan) {
       markDecisionHandled(decision.sourceMessageId);
       setPendingDecision(null);
-      setSyncNotification('对应的观察计划已经不存在，本次复查结果未应用。');
-      setTimeout(() => setSyncNotification(null), 3500);
+      toast.warning('对应的观察计划已经不存在，本次复查结果未应用');
       return;
     }
 
@@ -379,16 +394,14 @@ export default function SpaceCryptoCenter({
 
     markDecisionHandled(decision.sourceMessageId);
     setPendingDecision(null);
-    setSyncNotification('已应用本次特战队决策。');
-    setTimeout(() => setSyncNotification(null), 3000);
+    toast.success('已应用本次推演决策并加入观察');
   };
 
   const dismissPendingDecision = () => {
     if (!pendingDecision) return;
     markDecisionHandled(pendingDecision.sourceMessageId);
     setPendingDecision(null);
-    setSyncNotification('已忽略本次特战队决策，当前数据保持不变。');
-    setTimeout(() => setSyncNotification(null), 3000);
+    toast.info('已忽略本次推演决策，当前数据保持不变');
   };
 
   // 用户手动撤销/删除伏击单（彻底真删除，并记录签名黑名单，防止旧群聊消息强行复活）
@@ -405,15 +418,13 @@ export default function SpaceCryptoCenter({
       });
     }
     setAmbushPlans((prev) => prev.filter((p) => p.id !== planId));
-    setSyncNotification('已成功撤销该埋伏方案');
-    setTimeout(() => setSyncNotification(null), 3000);
+    toast.info('已成功撤销该伏击计划');
   };
 
   // 用户移除持仓单
   const handleRemovePosition = (posId: string) => {
     setActivePositions((prev) => prev.filter((p) => p.id !== posId));
-    setSyncNotification('已移除该持仓单');
-    setTimeout(() => setSyncNotification(null), 3000);
+    toast.info('已移除该持仓单');
   };
 
   // 读取加密空间中的结构化最终决策（初始挂载 + 15 秒轻轮询）
@@ -429,12 +440,24 @@ export default function SpaceCryptoCenter({
   useEffect(() => {
     if (!serverStateHydrated) return;
     const latest = latestDecisionFromMessages(messages);
-    if (latest && !isNewObservationDecision(latest) && !handledDecisionIdsRef.current.includes(latest.sourceMessageId)) {
-      setPendingDecision(latest);
-    } else if (isNewObservationDecision(latest)) {
+    if (!latest || isNewObservationDecision(latest)) {
       setPendingDecision(null);
+      return;
     }
-  }, [messages, serverStateHydrated]);
+    const isAlreadyInWatchList = Boolean(latest.proposedPlan && (
+      ambushPlans.some(
+        (p) => p.sourceMessageId === latest.sourceMessageId ||
+          (p.symbol === latest.proposedPlan.symbol && p.direction === latest.proposedPlan.direction && p.entryMin === latest.proposedPlan.entryMin && p.entryMax === latest.proposedPlan.entryMax)
+      ) || activePositions.some(
+        (pos) => pos.sourcePlanId === latest.targetPlanId || (pos.symbol === latest.proposedPlan.symbol && pos.direction === latest.proposedPlan.direction)
+      )
+    ));
+    if (isAlreadyInWatchList || handledDecisionIdsRef.current.includes(latest.sourceMessageId)) {
+      setPendingDecision(null);
+      return;
+    }
+    setPendingDecision(latest);
+  }, [messages, serverStateHydrated, ambushPlans, activePositions]);
 
   // 从服务端读取持久化状态
   useEffect(() => {
@@ -451,6 +474,9 @@ export default function SpaceCryptoCenter({
           }
           if (Array.isArray(d.deletedSignatures)) {
             setDeletedSignatures(d.deletedSignatures);
+          }
+          if (Array.isArray(d.handledDecisionIds)) {
+            setHandledDecisionIds((prev) => Array.from(new Set([...prev, ...d.handledDecisionIds])));
           }
           if (typeof d.serverSentinelEnabled === 'boolean') {
             setServerSentinelEnabled(d.serverSentinelEnabled);
@@ -475,10 +501,11 @@ export default function SpaceCryptoCenter({
         serverSentinelEnabled,
         autoSyncChatPlans,
         deletedSignatures,
+        handledDecisionIds,
       }).catch((e) => console.warn('[SpaceCryptoCenter] sync to server failed:', e));
     }, 1500);
     return () => clearTimeout(timer);
-  }, [spaceId, ambushPlans, activePositions, serverSentinelEnabled, autoSyncChatPlans, deletedSignatures, serverStateHydrated]);
+  }, [spaceId, ambushPlans, activePositions, serverSentinelEnabled, autoSyncChatPlans, deletedSignatures, handledDecisionIds, serverStateHydrated]);
 
   // 本地轻持久化
   useEffect(() => {
@@ -513,15 +540,13 @@ export default function SpaceCryptoCenter({
       const result = await cryptoSentinelApi.check(spaceId);
       setServerCheckedAt(result.checkResult?.lastCheckedAt || new Date().toISOString());
       const count = result.checkResult?.alerts?.length || 0;
-      setSyncNotification(
-        count > 0
-          ? `☁️ 云端巡检完成：检测到 ${count} 条告警，已写入日志并推送手机 QQ！`
-          : '☁️ 云端巡检完成：当前盘面平稳，伏击与护航各单正常运行，未触碰失效/止损线。'
-      );
-      setTimeout(() => setSyncNotification(null), 5000);
+      if (count > 0) {
+        toast.warning(`云端巡检完成：检测到 ${count} 条变动`);
+      } else {
+        toast.info('云端巡检完成：当前盘面平稳，各单正常运行');
+      }
     } catch {
-      setSyncNotification('云端巡检连接失败，请检查网络');
-      setTimeout(() => setSyncNotification(null), 4000);
+      toast.error('云端巡检连接失败，请检查网络');
     } finally {
       setCheckingServer(false);
     }
@@ -571,13 +596,23 @@ export default function SpaceCryptoCenter({
   };
 
   useEffect(() => {
-    void fetchMarket(symbol);
-    void pollAllActiveSymbols();
-    const interval = setInterval(() => {
-      void fetchMarket(symbol);
-      void pollAllActiveSymbols();
-    }, 6000); // 6秒轻轮询多币种
-    return () => clearInterval(interval);
+    let cancelled = false;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+    const refreshAfterCompletion = async () => {
+      await Promise.all([fetchMarket(symbol), pollAllActiveSymbols()]);
+      if (!cancelled) {
+        timeoutId = setTimeout(() => {
+          void refreshAfterCompletion();
+        }, 6000);
+      }
+    };
+
+    void refreshAfterCompletion();
+    return () => {
+      cancelled = true;
+      if (timeoutId) clearTimeout(timeoutId);
+    };
   }, [symbol, ambushPlans, activePositions]);
 
   // 检查 QQ 绑定状态
@@ -642,8 +677,7 @@ export default function SpaceCryptoCenter({
       onShareToSpace?.(shareMsg);
     }
 
-    setSyncNotification(`🎉 【${pos.symbol}】持仓已平仓了结，成功归档至下方战绩复盘！`);
-    setTimeout(() => setSyncNotification(null), 4000);
+    toast.success(`【${pos.symbol}】持仓已平仓了结，成功归档至下方战绩复盘！`);
     setSettlingPosition(null);
   };
 
@@ -657,8 +691,7 @@ export default function SpaceCryptoCenter({
       || simulationDraft.stopLoss <= 0
       || simulationDraft.takeProfit1 <= 0
     ) {
-      setSyncNotification('请填写有效的模拟成交参数。');
-      setTimeout(() => setSyncNotification(null), 3000);
+      toast.warning('请填写有效的模拟成交参数');
       return;
     }
 
@@ -666,8 +699,7 @@ export default function SpaceCryptoCenter({
       ? simulationDraft.stopLoss >= simulationDraft.entryPrice || simulationDraft.takeProfit1 <= simulationDraft.entryPrice
       : simulationDraft.stopLoss <= simulationDraft.entryPrice || simulationDraft.takeProfit1 >= simulationDraft.entryPrice;
     if (invalidRisk) {
-      setSyncNotification('止损和止盈方向与模拟仓位方向不一致。');
-      setTimeout(() => setSyncNotification(null), 3000);
+      toast.warning('止损和止盈方向与模拟仓位方向不一致');
       return;
     }
 
@@ -683,8 +715,8 @@ export default function SpaceCryptoCenter({
       leverage: simulationDraft.leverage,
       positionSizeUsd: simulationDraft.positionSizeUsd,
       openedAt: new Date().toISOString(),
-      watchEnabled: false,
-      notifyQQ: false,
+      watchEnabled: true,
+      notifyQQ: true,
       sourcePlanId: sourcePlan.id,
     };
 
@@ -695,9 +727,17 @@ export default function SpaceCryptoCenter({
       setPendingDecision(null);
     }
     setSimulationDraft(null);
-    setSyncNotification(`已建立 ${sourcePlan.symbol} 模拟仓位。`);
-    setTimeout(() => setSyncNotification(null), 3500);
+    toast.success(`已建立 ${sourcePlan.symbol} 模拟仓位`);
   };
+
+  // 计算当前实际在监的有效目标数 (未过期的观察计划 + 活跃持仓)
+  const activeWatchedPlansCount = ambushPlans.filter(
+    (p) => p.watchEnabled !== false && !isPlanExpired(p)
+  ).length;
+  const activeWatchedPositionsCount = activePositions.filter(
+    (p) => p.watchEnabled !== false
+  ).length;
+  const totalWatchedCount = activeWatchedPlansCount + activeWatchedPositionsCount;
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto bg-[#f8f9fa]">
@@ -710,12 +750,31 @@ export default function SpaceCryptoCenter({
                 ⚡
               </div>
               <div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <h2 className="text-base sm:text-lg font-black text-slate-950">加密合约推演作战室</h2>
-                  {monitoringUiEnabled && qqConnected !== null && (
+                  {totalWatchedCount > 0 ? (
                     <span
-                      className={`rounded-full px-2 py-0.5 text-[10px] font-black ${
-                        qqConnected ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500'
+                      className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[10px] font-black text-emerald-700 border border-emerald-200/60"
+                      title={`后台 7×24H 正在盯防 ${totalWatchedCount} 项标的点位`}
+                    >
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                      云端静默守护 ({totalWatchedCount}项在监)
+                    </span>
+                  ) : (
+                    <span
+                      className="inline-flex items-center gap-1 rounded-full bg-slate-50 px-2.5 py-0.5 text-[10px] font-black text-slate-500 border border-slate-200/60"
+                      title="云端巡检引擎已就绪，当前暂无监控目标，一旦采纳新计划将自动激活守护"
+                    >
+                      <span className="h-1.5 w-1.5 rounded-full bg-slate-400" />
+                      云端守护就绪 (待命中)
+                    </span>
+                  )}
+                  {qqConnected !== null && (
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[10px] font-black border ${
+                        qqConnected
+                          ? 'bg-blue-50 text-blue-700 border-blue-200/60'
+                          : 'bg-slate-50 text-slate-400 border-slate-200/60'
                       }`}
                     >
                       {qqConnected ? '📱 QQ 通知就绪' : '📱 QQ 未连接'}
@@ -728,65 +787,8 @@ export default function SpaceCryptoCenter({
               </div>
             </div>
 
-            {/* 云端总控开关与操作按钮 */}
+            {/* 操作按钮 */}
             <div className="flex flex-wrap items-center gap-2.5">
-              {monitoringUiEnabled && <>
-                <div className="flex items-center gap-2 rounded-xl border border-black/[0.08] bg-slate-50 px-3 py-1.5">
-                <div className="flex flex-col text-right">
-                  <div className="flex items-center gap-1.5 justify-end">
-                    <span
-                      className={`h-2 w-2 rounded-full ${
-                        serverSentinelEnabled ? 'bg-emerald-500 animate-ping' : 'bg-slate-300'
-                      }`}
-                    />
-                    <span className="text-xs font-black text-slate-900">
-                      7×24H 云端离线盯盘
-                    </span>
-                  </div>
-                  <span className="text-[10px] text-slate-400 font-semibold">
-                    {serverSentinelEnabled ? '守护中 · 触及推 QQ' : '已暂停后台巡检'}
-                  </span>
-                </div>
-
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={serverSentinelEnabled}
-                  onClick={() => {
-                    const next = !serverSentinelEnabled;
-                    setServerSentinelEnabled(next);
-                    setSyncNotification(
-                      next
-                        ? '🟢 已成功开启服务端 7×24H 离线盯盘！即使关闭浏览器，触及点位也将持续推送手机 QQ。'
-                        : '⏸️ 已暂停服务端离线盯盘，后台停止自动巡检。'
-                    );
-                    setTimeout(() => setSyncNotification(null), 4000);
-                  }}
-                  className={`relative inline-flex h-5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${
-                    serverSentinelEnabled ? 'bg-emerald-600' : 'bg-slate-300'
-                  }`}
-                  title={serverSentinelEnabled ? '点击暂停云端离线巡检' : '点击开启云端离线巡检'}
-                >
-                  <span
-                    className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                      serverSentinelEnabled ? 'translate-x-5' : 'translate-x-0'
-                    }`}
-                  />
-                </button>
-                </div>
-
-                <button
-                type="button"
-                onClick={triggerServerCheck}
-                disabled={checkingServer || !serverSentinelEnabled}
-                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-emerald-600/30 bg-emerald-50 px-2.5 text-xs font-black text-emerald-800 transition hover:bg-emerald-100 cursor-pointer disabled:opacity-40"
-                title="立即要求后端执行一次全盘实盘条件巡检"
-              >
-                <RefreshCw size={12} className={checkingServer ? 'animate-spin' : ''} />
-                巡检一次
-                </button>
-              </>}
-
               {onBackToChat && (
                 <button
                   type="button"
@@ -828,6 +830,10 @@ export default function SpaceCryptoCenter({
                   1H: {(marketData.priceDelta1hPercent ?? 0) >= 0 ? '+' : ''}
                   {(typeof marketData.priceDelta1hPercent === 'number' ? marketData.priceDelta1hPercent : 0).toFixed(2)}%
                 </span>
+                <span className={(marketData.priceDelta4hPercent ?? 0) >= 0 ? 'text-emerald-600' : 'text-rose-600'}>
+                  4H: {(marketData.priceDelta4hPercent ?? 0) >= 0 ? '+' : ''}
+                  {(typeof marketData.priceDelta4hPercent === 'number' ? marketData.priceDelta4hPercent : 0).toFixed(2)}%
+                </span>
                 <span className="text-slate-500 hidden sm:inline">
                   费率: {((typeof marketData.fundingRate === 'number' ? marketData.fundingRate : 0) * 100).toFixed(4)}%
                 </span>
@@ -847,23 +853,6 @@ export default function SpaceCryptoCenter({
             )}
           </div>
         </div>
-
-        {/* 顶部同步浮窗通知 */}
-        {syncNotification && (
-          <div className="rounded-xl bg-indigo-50 border border-indigo-200 p-2.5 text-xs font-black text-indigo-950 flex items-center justify-between">
-            <span className="flex items-center gap-2">
-              <Sparkles size={14} className="text-indigo-600 shrink-0" />
-              {syncNotification}
-            </span>
-            <button
-              type="button"
-              onClick={() => setSyncNotification(null)}
-              className="text-indigo-400 hover:text-indigo-700 cursor-pointer"
-            >
-              <X size={13} />
-            </button>
-          </div>
-        )}
 
         {/* ==================== 主战场：持仓与观察分区 ==================== */}
         <div className="flex flex-col gap-5">
@@ -1067,7 +1056,8 @@ export default function SpaceCryptoCenter({
                   }
 
                   const isEditing = editingPlanId === plan.id;
-                  const isActivelyWatched = serverSentinelEnabled && plan.watchEnabled !== false;
+                  const isExpired = isPlanExpired(plan);
+                  const isActivelyWatched = !isExpired && plan.watchEnabled !== false;
 
                   return (
                     <div
@@ -1122,85 +1112,113 @@ export default function SpaceCryptoCenter({
                         </div>
                       </div>
 
-                      {monitoringUiEnabled && <div
+                      <div
                         className={`flex items-center justify-between rounded-lg border px-3 py-1.5 text-xs transition ${
-                          !serverSentinelEnabled
-                            ? 'bg-slate-100 border-slate-200 text-slate-400'
-                            : plan.watchEnabled !== false
+                          isExpired
+                            ? 'bg-slate-100 border-slate-200 text-slate-500'
+                            : isActivelyWatched
                             ? 'bg-emerald-500/10 border-emerald-500/20 text-slate-900'
-                            : 'bg-emerald-50/50 border-emerald-200/50 text-slate-900'
+                            : 'bg-slate-50 border-slate-200 text-slate-600'
                         }`}
                       >
                         <div className="flex items-center gap-1.5">
                           <span
                             className={`h-2 w-2 rounded-full ${
-                              !serverSentinelEnabled
+                              isExpired
                                 ? 'bg-slate-300'
-                                : plan.watchEnabled !== false
-                                ? 'bg-emerald-500 animate-ping'
+                                : isActivelyWatched
+                                ? 'bg-emerald-500'
                                 : 'bg-slate-300'
                             }`}
                           />
                           <span className="font-black text-xs">
-                            {!serverSentinelEnabled
-                              ? '⏸️ 云端总控已关闭 (暂停盯防)'
-                              : plan.watchEnabled !== false
-                              ? '伏击盯防中'
-                              : '盯防已暂停'}
+                            {isExpired
+                              ? '⏰ 观察已过期 (超24H淘汰)'
+                              : isActivelyWatched
+                              ? '伏击守护中'
+                              : '守护已暂停'}
                           </span>
                         </div>
 
                         <div className="flex items-center gap-2.5">
-                          <label
-                            className={`flex items-center gap-1 text-[11px] font-bold cursor-pointer transition ${
-                              plan.notifyQQ !== false && isActivelyWatched ? 'text-blue-700' : 'text-slate-400'
-                            }`}
-                            title="触碰入场区间或击穿失效线时，是否推手机 QQ"
-                          >
-                            <input
-                              type="checkbox"
-                              checked={plan.notifyQQ !== false}
-                              onChange={(e) => {
-                                const checked = e.target.checked;
+                          {isExpired ? (
+                            <button
+                              type="button"
+                              onClick={() => {
                                 setAmbushPlans((prev) =>
-                                  prev.map((p) => (p.id === plan.id ? { ...p, notifyQQ: checked } : p))
+                                  prev.map((p) =>
+                                    p.id === plan.id
+                                      ? {
+                                          ...p,
+                                          createdAt: new Date().toISOString(),
+                                          expiresInHours: 24,
+                                          watchEnabled: true,
+                                        }
+                                      : p
+                                  )
                                 );
+                                toast.success(`已续期 ${getCleanPlanTitle(plan)} 24小时云端守护`);
                               }}
-                              className="rounded cursor-pointer"
-                            />
-                            <span>📱 QQ通知</span>
-                          </label>
+                              className="rounded bg-indigo-50 border border-indigo-200 px-2 py-0.5 text-[11px] font-black text-indigo-700 hover:bg-indigo-100 cursor-pointer"
+                            >
+                              续期 24H
+                            </button>
+                          ) : (
+                            <>
+                              <label
+                                className={`flex items-center gap-1 text-[11px] font-bold cursor-pointer transition ${
+                                  plan.notifyQQ !== false && isActivelyWatched
+                                    ? 'text-blue-700'
+                                    : 'text-slate-400'
+                                }`}
+                                title="触碰入场区间或击穿失效线时，是否推手机 QQ"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={plan.notifyQQ !== false}
+                                  onChange={(e) => {
+                                    const checked = e.target.checked;
+                                    setAmbushPlans((prev) =>
+                                      prev.map((p) => (p.id === plan.id ? { ...p, notifyQQ: checked } : p))
+                                    );
+                                  }}
+                                  className="rounded cursor-pointer"
+                                />
+                                <span>📱 QQ通知</span>
+                              </label>
 
-                          {/* 该单独立盯防开关 */}
-                          <button
-                            type="button"
-                            role="switch"
-                            aria-checked={plan.watchEnabled !== false}
-                            onClick={() => {
-                              const next = plan.watchEnabled === false ? true : false;
-                              setAmbushPlans((prev) =>
-                                prev.map((p) => (p.id === plan.id ? { ...p, watchEnabled: next } : p))
-                              );
-                              setSyncNotification(
-                                next
-                                  ? `🟢 已开启【#${idx + 1} ${plan.symbol} ${plan.name}】离线盯防！`
-                                  : `⏸️ 已暂停【#${idx + 1} ${plan.symbol} ${plan.name}】盯防。`
-                              );
-                              setTimeout(() => setSyncNotification(null), 4000);
-                            }}
-                            className={`relative inline-flex h-4 w-8 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${
-                              plan.watchEnabled !== false ? 'bg-emerald-600' : 'bg-slate-300'
-                            }`}
-                            title={plan.watchEnabled !== false ? '点击暂停此单盯防' : '点击开启此单盯防'}
-                          >
-                            <span
-                              className={`pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                                plan.watchEnabled !== false ? 'translate-x-4' : 'translate-x-0'
-                              }`}
-                            />
-                          </button>
+                              {/* 该单独立盯防开关 */}
+                              <button
+                                type="button"
+                                role="switch"
+                                aria-checked={plan.watchEnabled !== false}
+                                onClick={() => {
+                                  const next = plan.watchEnabled === false ? true : false;
+                                  setAmbushPlans((prev) =>
+                                    prev.map((p) => (p.id === plan.id ? { ...p, watchEnabled: next } : p))
+                                  );
+                                  const title = getCleanPlanTitle(plan);
+                                  if (next) {
+                                    toast.success(`已开启 ${title} 云端守护`);
+                                  } else {
+                                    toast.info(`已暂停 ${title} 守护`);
+                                  }
+                                }}
+                                className={`relative inline-flex h-4 w-8 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${
+                                  plan.watchEnabled !== false ? 'bg-emerald-600' : 'bg-slate-300'
+                                }`}
+                                title={plan.watchEnabled !== false ? '点击暂停此单守护' : '点击开启此单守护'}
+                              >
+                                <span
+                                  className={`pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                                    plan.watchEnabled !== false ? 'translate-x-4' : 'translate-x-0'
+                                  }`}
+                                />
+                              </button>
+                            </>
+                          )}
                         </div>
-                      </div>}
+                      </div>
 
                       {/* 点位展示或行内编辑 */}
                       {isEditing ? (
@@ -1426,7 +1444,7 @@ export default function SpaceCryptoCenter({
                     ? posPrice - pos.stopLoss < (pos.entryPrice - pos.stopLoss) * 0.3
                     : pos.stopLoss - posPrice < (pos.stopLoss - pos.entryPrice) * 0.3;
 
-                  const isActivelyEscorted = serverSentinelEnabled && pos.watchEnabled !== false;
+                  const isActivelyEscorted = pos.watchEnabled !== false;
 
                   return (
                     <div
@@ -1460,31 +1478,21 @@ export default function SpaceCryptoCenter({
                         </div>
                       </div>
 
-                      {monitoringUiEnabled && <div
+                      <div
                         className={`flex items-center justify-between rounded-lg border px-3 py-1.5 text-xs transition ${
-                          !serverSentinelEnabled
-                            ? 'bg-slate-100 border-slate-200 text-slate-400'
-                            : pos.watchEnabled !== false
+                          isActivelyEscorted
                             ? 'bg-blue-500/10 border-blue-500/20 text-slate-900'
-                            : 'bg-blue-50/50 border-blue-200/50 text-slate-900'
+                            : 'bg-slate-50 border-slate-200 text-slate-600'
                         }`}
                       >
                         <div className="flex items-center gap-1.5">
                           <span
                             className={`h-2 w-2 rounded-full ${
-                              !serverSentinelEnabled
-                                ? 'bg-slate-300'
-                                : pos.watchEnabled !== false
-                                ? 'bg-blue-600 animate-ping'
-                                : 'bg-slate-300'
+                              isActivelyEscorted ? 'bg-blue-600' : 'bg-slate-300'
                             }`}
                           />
                           <span className="font-black text-xs">
-                            {!serverSentinelEnabled
-                              ? '⏸️ 云端总控已关闭 (暂停护航)'
-                              : pos.watchEnabled !== false
-                              ? '持仓护航中'
-                              : '护航已暂停'}
+                            {isActivelyEscorted ? '持仓护航中' : '护航已暂停'}
                           </span>
                         </div>
 
@@ -1519,12 +1527,13 @@ export default function SpaceCryptoCenter({
                               setActivePositions((prev) =>
                                 prev.map((p) => (p.id === pos.id ? { ...p, watchEnabled: next } : p))
                               );
-                              setSyncNotification(
-                                next
-                                  ? `🟢 已开启【#${idx + 1} ${pos.symbol} ${pos.name}】实时护航！`
-                                  : `⏸️ 已暂停【#${idx + 1} ${pos.symbol} ${pos.name}】护航。`
-                              );
-                              setTimeout(() => setSyncNotification(null), 4000);
+                              const dir = pos.direction === 'SHORT' ? '空单' : '多单';
+                              const title = `${pos.symbol} ${dir}`;
+                              if (next) {
+                                toast.success(`已开启 ${title} 实时护航`);
+                              } else {
+                                toast.info(`已暂停 ${title} 护航`);
+                              }
                             }}
                             className={`relative inline-flex h-4 w-8 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${
                               pos.watchEnabled !== false ? 'bg-blue-600' : 'bg-slate-300'
@@ -1538,7 +1547,7 @@ export default function SpaceCryptoCenter({
                             />
                           </button>
                         </div>
-                      </div>}
+                      </div>
 
                       {/* 点位参数 */}
                       <div className="grid grid-cols-3 gap-2 text-xs">

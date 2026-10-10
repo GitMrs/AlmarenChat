@@ -2773,8 +2773,43 @@ export default function SpaceDetailPage() {
     }
   };
 
-  const rejectCryptoDecision = (messageId: string) => {
+  const getEffectiveCryptoDecisionStatus = (msg: SpaceMessage): 'accepted' | 'rejected' | undefined => {
+    if (cryptoDecisionStatuses[msg.id]) {
+      return cryptoDecisionStatuses[msg.id];
+    }
+    const sentinel = (space?.templateSnapshot as any)?.sentinelState;
+    const serverStatuses = sentinel?.decisionStatuses;
+    if (serverStatuses && serverStatuses[msg.id]) {
+      return serverStatuses[msg.id];
+    }
+    const attachments = Array.isArray(msg.attachments) ? msg.attachments : [];
+    const decision = attachments.find((a: any) => a?.type === 'crypto_plan_decision_v1') as any;
+    if (decision?.proposedPlan) {
+      const p = decision.proposedPlan;
+      const serverPlans: any[] = Array.isArray(sentinel?.ambushPlans) ? sentinel.ambushPlans : [];
+      const serverPositions: any[] = Array.isArray(sentinel?.activePositions) ? sentinel.activePositions : [];
+
+      const planExists = serverPlans.some(
+        (sp) => sp.sourceMessageId === msg.id ||
+          (sp.symbol === p.symbol && sp.direction === p.direction && sp.entryMin === p.entryMin && sp.entryMax === p.entryMax)
+      );
+      if (planExists) return 'accepted';
+
+      const posExists = serverPositions.some(
+        (pos) => pos.sourcePlanId === decision.targetPlanId || (pos.symbol === p.symbol && pos.direction === p.direction)
+      );
+      if (posExists) return 'accepted';
+    }
+    return undefined;
+  };
+
+  const rejectCryptoDecision = async (messageId: string) => {
     recordCryptoDecisionStatus(messageId, 'rejected');
+    try {
+      await cryptoSentinelApi.rejectDecision(spaceId, messageId);
+    } catch (err) {
+      console.warn('[Space] rejectCryptoDecision server sync failed', err);
+    }
   };
 
   const regenerateMessage = async () => {
@@ -3397,60 +3432,6 @@ export default function SpaceDetailPage() {
                 <span className="hidden md:inline">成员</span>
                 <span className="text-xs text-slate-400">{memberAgents.length + 1}</span>
               </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setSidePanel(null);
-                  setWorkspaceView('files');
-                }}
-                aria-expanded={workspaceView === 'files'}
-                aria-label={`空间资料，共 ${files.length} 个文件`}
-                title="空间资料"
-                className="inline-flex h-10 items-center gap-2 rounded-lg px-3 text-sm font-black text-slate-600 transition hover:bg-slate-100 hover:text-slate-950"
-              >
-                <FileText size={17} />
-                <span className="hidden md:inline">资料</span>
-                {files.length > 0 && <span className="text-xs text-slate-400">{files.length}</span>}
-              </button>
-              {space?.templateId === 'gaming-room' && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSidePanel(null);
-                    setGameCenterInitialGame(null);
-                    setWorkspaceView('games');
-                  }}
-                  aria-label="游戏中心"
-                  title="开黑游戏中心"
-                  className={`inline-flex h-10 items-center gap-1.5 rounded-lg px-2.5 text-sm font-black transition ${
-                    workspaceView === 'games'
-                      ? 'bg-amber-500 text-white shadow-sm'
-                      : 'bg-amber-500/10 text-amber-700 hover:bg-amber-500/20'
-                  }`}
-                >
-                  <Gamepad2 size={17} className={workspaceView === 'games' ? 'text-white' : 'text-amber-500'} />
-                  <span className="hidden md:inline">游戏中心</span>
-                </button>
-              )}
-              {space?.templateId === 'crypto-contract-trading' && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSidePanel(null);
-                    setWorkspaceView('crypto');
-                  }}
-                  aria-label="作战中心"
-                  title="实盘作战中心"
-                  className={`inline-flex h-10 items-center gap-1.5 rounded-lg px-2.5 text-sm font-black transition cursor-pointer ${
-                    workspaceView === 'crypto'
-                      ? 'bg-emerald-600 text-white shadow-sm'
-                      : 'bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/20'
-                  }`}
-                >
-                  <TrendingUp size={17} className={workspaceView === 'crypto' ? 'text-white' : 'text-emerald-600'} />
-                  <span className="hidden md:inline">作战中心</span>
-                </button>
-              )}
               {!isPiSpace && <button
                 type="button"
                 onClick={() => setSidePanel('runs')}
@@ -4404,7 +4385,7 @@ export default function SpaceDetailPage() {
                         textareaRef.current?.focus();
                       });
                     }}
-                    cryptoDecisionStatus={cryptoDecisionStatuses[message.id]}
+                    cryptoDecisionStatus={getEffectiveCryptoDecisionStatus(message)}
                     cryptoDecisionBusy={cryptoDecisionBusyId === message.id}
                     showCryptoDecision={space?.templateId === 'crypto-contract-trading' && message.id === latestCryptoDecisionMessageId}
                     onApproveCryptoDecision={(decision) => void approveCryptoDecision(message, decision)}

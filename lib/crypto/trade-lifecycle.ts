@@ -60,6 +60,22 @@ export interface CryptoPlanDecision {
   proposedPlan?: PlanItem;
 }
 
+/**
+ * 校验观察计划是否已过期（默认 24 小时生命周期，防止僵尸计划无休止轮询）
+ */
+export function isPlanExpired(
+  plan: { createdAt?: string; expiresInHours?: number },
+  nowMs: number = Date.now()
+): boolean {
+  if (!plan?.createdAt) return false;
+  const createdTime = new Date(plan.createdAt).getTime();
+  if (Number.isNaN(createdTime)) return false;
+  const ttlHours = typeof plan.expiresInHours === 'number' && plan.expiresInHours > 0
+    ? plan.expiresInHours
+    : 24;
+  return nowMs - createdTime > ttlHours * 3600 * 1000;
+}
+
 export function calculatePlanRiskReward(
   plan: Pick<PlanItem, 'direction' | 'entryMin' | 'entryMax' | 'stopLoss' | 'takeProfit1' | 'takeProfit2' | 'rrRatio'>
 ): PlanRiskRewardAnalysis | null {

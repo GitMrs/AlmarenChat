@@ -776,8 +776,10 @@ export const cryptoSentinel = {
     ambushPlans: any[];
     activePositions: any[];
     serverSentinelEnabled: boolean;
-    autoSyncChatPlans: boolean;
-    deletedSignatures: string[];
+    autoSyncChatPlans?: boolean;
+    deletedSignatures?: string[];
+    decisionStatuses?: Record<string, 'accepted' | 'rejected'>;
+    handledDecisionIds?: string[];
   }) => request<{ success: boolean; data: any }>('/crypto/sentinel', {
     method: 'POST',
     body: JSON.stringify(data),
@@ -791,6 +793,11 @@ export const cryptoSentinel = {
     request<{ success: boolean; data: any; plan: any }>('/crypto/sentinel', {
       method: 'POST',
       body: JSON.stringify({ spaceId, action: 'apply-decision', messageId }),
+    }),
+  rejectDecision: (spaceId: string, messageId: string) =>
+    request<{ success: boolean; data: any }>('/crypto/sentinel', {
+      method: 'POST',
+      body: JSON.stringify({ spaceId, action: 'reject-decision', messageId }),
     }),
 };
 

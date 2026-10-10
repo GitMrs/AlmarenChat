@@ -76,6 +76,7 @@ import { createExecutionEngineRegistry } from './engines/engine-registry.mjs';
 import { createNativeExecutionEngine, NATIVE_EXECUTION_ENGINE_ID } from './engines/native-engine.mjs';
 import { createPiExecutionEngine } from './engines/pi-engine.mjs';
 import { createPiWorkerGovernance } from './engines/pi-worker-governance.mjs';
+import { createScheduler } from '../lib/runtime/scheduler.mjs';
 
 const workerDir = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(workerDir, '..');
@@ -1746,6 +1747,13 @@ async function main() {
   recoverInterruptedConnectorExecutions();
   reconcileCompletionOutbox(db);
   console.log(`[agent-worker] ready (${fakeMode ? 'fake' : 'model'} mode)`);
+  const scheduler = createScheduler({
+    name: 'agent-scheduler',
+    pollMs: pollIntervalMs,
+    isStopping: () => stopping,
+  });
+  scheduler.register('space-automations', () => triggerNextDueAutomation(db, now()));
+  scheduler.start();
   await runWorkerLoop({
     isStopping: () => stopping,
     recover: () => {
@@ -1754,7 +1762,6 @@ async function main() {
       recoverRuntimeIntents(db, leaseCutoffIso(Date.now(), leaseTimeoutMs));
       recoverAutomationDeliveries(db, leaseCutoffIso(Date.now(), leaseTimeoutMs));
     },
-    triggerAutomation: () => triggerNextDueAutomation(db, now()),
     checkIdleTalk: () => checkAndTriggerIdleTalk(),
     claimAutomationDelivery: () => claimNextAutomationDelivery(db, now()),
     processAutomationDelivery,
@@ -1774,6 +1781,7 @@ async function main() {
     heartbeatIntervalMs,
     delay: () => delay(pollIntervalMs),
   });
+  scheduler.stop();
   db.close();
 }
 

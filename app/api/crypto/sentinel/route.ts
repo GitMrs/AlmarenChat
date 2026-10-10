@@ -67,7 +67,20 @@ export async function POST(request: Request) {
 
       const current = await getSentinelState(spaceId);
       const existing = current.ambushPlans.find((plan) => plan.sourceMessageId === message.id);
-      if (existing) return NextResponse.json({ success: true, data: current, plan: existing });
+      if (existing) {
+        const decisionStatuses = {
+          ...(current.decisionStatuses || {}),
+          [message.id]: 'accepted' as const,
+        };
+        const handledDecisionIds = Array.from(
+          new Set([...(current.handledDecisionIds || []), message.id])
+        );
+        const saved = await saveSentinelState(spaceId, userId, {
+          decisionStatuses,
+          handledDecisionIds,
+        });
+        return NextResponse.json({ success: true, data: saved, plan: existing });
+      }
 
       const source = decision.proposedPlan;
       const plan = {
@@ -81,16 +94,41 @@ export async function POST(request: Request) {
         takeProfit1: source.takeProfit1,
         takeProfit2: source.takeProfit2,
         invalidationPrice: source.invalidationPrice,
-        createdAt: decision.analyzedAt,
-        expiresInHours: 8,
-        watchEnabled: false,
-        notifyQQ: false,
+        createdAt: decision.analyzedAt || new Date().toISOString(),
+        expiresInHours: 24,
+        watchEnabled: true,
+        notifyQQ: true,
         sourceMessageId: message.id,
       };
+      const decisionStatuses = {
+        ...(current.decisionStatuses || {}),
+        [message.id]: 'accepted' as const,
+      };
+      const handledDecisionIds = Array.from(
+        new Set([...(current.handledDecisionIds || []), message.id])
+      );
       const saved = await saveSentinelState(spaceId, userId, {
         ambushPlans: [...current.ambushPlans, plan],
+        decisionStatuses,
+        handledDecisionIds,
       });
       return NextResponse.json({ success: true, data: saved, plan });
+    }
+
+    if (action === 'reject-decision') {
+      const current = await getSentinelState(spaceId);
+      const decisionStatuses = {
+        ...(current.decisionStatuses || {}),
+        [String(messageId)]: 'rejected' as const,
+      };
+      const handledDecisionIds = Array.from(
+        new Set([...(current.handledDecisionIds || []), String(messageId)])
+      );
+      const saved = await saveSentinelState(spaceId, userId, {
+        decisionStatuses,
+        handledDecisionIds,
+      });
+      return NextResponse.json({ success: true, data: saved });
     }
 
     // 动作一：仅触发一次服务端实时巡检
@@ -106,6 +144,8 @@ export async function POST(request: Request) {
       serverSentinelEnabled,
       autoSyncChatPlans,
       deletedSignatures,
+      decisionStatuses: body.decisionStatuses,
+      handledDecisionIds: body.handledDecisionIds,
     });
 
     // 保存后顺带进行一次检查

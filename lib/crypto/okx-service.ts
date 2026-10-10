@@ -17,6 +17,8 @@ export {
 
 export interface CryptoCandle {
   time: string;
+  startTimeMs: number;
+  isClosed: boolean;
   open: number;
   high: number;
   low: number;
@@ -28,6 +30,7 @@ export interface CryptoMarketSnapshot {
   symbol: string;
   instId: string;
   price: number;
+  open24h: number;
   high24h: number;
   low24h: number;
   vol24hQuote: number;
@@ -39,8 +42,24 @@ export interface CryptoMarketSnapshot {
   candles15m: CryptoCandle[];
   candles1h: CryptoCandle[];
   candles4h: CryptoCandle[];
+  priceDelta15mPercent: number;
   priceDelta1hPercent: number;
   priceDelta4hPercent: number;
+  realtimeFetchedAt: string;
+  derivativesFetchedAt: string;
+  structureFetchedAt: string;
+  dataQuality: CryptoDataQuality;
+}
+
+export interface CryptoDataQuality {
+  ticker: boolean;
+  openInterest: boolean;
+  fundingRate: boolean;
+  oiDelta1h: boolean;
+  longShortRatio: boolean;
+  candles15m: boolean;
+  candles1h: boolean;
+  candles4h: boolean;
 }
 
 export interface TrapAnalysisResult {
@@ -56,16 +75,37 @@ export interface TrapAnalysisResult {
 }
 
 /**
- * 2.5 秒超高频防抖缓存 + 并发请求合并 (In-Flight Deduplication)
- * - 杜绝 30 秒过长 TTL 带来的滞后行情风险（币圈秒级插针与流动性猎杀决不允许半分钟级延迟）
- * - 解决同一轮对话中多个 Agent 并发评估时对 OKX 接口产生重复突发请求 (burst calls)
+ * 行情按用途分层缓存：实时层短缓存，结构层跟随 K 线边界，衍生指标使用分钟级缓存。
+ * 同一轮并发请求继续合并，避免多个 Agent 重复访问 OKX。
  */
-const SNAPSHOT_CACHE_TTL_MS = 2500;
-const snapshotCache = new Map<string, { timestamp: number; snapshot: CryptoMarketSnapshot }>();
+const REALTIME_CACHE_TTL_MS = 2500;
+const DERIVATIVES_CACHE_TTL_MS = 60_000;
+const CANDLE_BOUNDARY_GRACE_MS = 5_000;
+type CacheEntry<T> = { fetchedAt: number; value: T };
+type CandleCacheEntry = CacheEntry<CryptoCandle[]> & { periodStartMs: number; periodMs: number };
+const realtimeCache = new Map<string, CacheEntry<{
+  price: number;
+  open24h: number;
+  high24h: number;
+  low24h: number;
+  vol24hQuote: number;
+  oiUsd: number;
+  dataQuality: Pick<CryptoDataQuality, 'ticker' | 'openInterest'>;
+}>>();
+const derivativesCache = new Map<string, CacheEntry<{
+  fundingRate: number;
+  nextFundingRate?: number;
+  oiDelta1hPercent: number;
+  longShortRatio?: number;
+  dataQuality: Pick<CryptoDataQuality, 'fundingRate' | 'oiDelta1h' | 'longShortRatio'>;
+}>>();
+const candleCache = new Map<string, CandleCacheEntry>();
 const inFlightRequests = new Map<string, Promise<CryptoMarketSnapshot | null>>();
 
 export function clearCryptoCache(): void {
-  snapshotCache.clear();
+  realtimeCache.clear();
+  derivativesCache.clear();
+  candleCache.clear();
   inFlightRequests.clear();
 }
 
@@ -75,27 +115,15 @@ export function clearCryptoCache(): void {
 export async function getCryptoMarketData(rawSymbol: string): Promise<CryptoMarketSnapshot | null> {
   const { ccy, instId } = normalizeSymbol(rawSymbol);
 
-  // 1. 命中 2.5 秒微防抖缓存直接返回
-  const cached = snapshotCache.get(instId);
-  const now = Date.now();
-  if (cached && now - cached.timestamp < SNAPSHOT_CACHE_TTL_MS) {
-    return cached.snapshot;
-  }
-
-  // 2. 如果当前 instId 已有正在进行的网络请求，直接合并复用该 Promise
+  // 同一交易对的整轮组装请求合并，内部各数据层按自己的过期时间决定是否访问 OKX。
   const existingPromise = inFlightRequests.get(instId);
   if (existingPromise) {
     return existingPromise;
   }
 
-  // 3. 发起真实网络请求并登记到 inFlightRequests
   const fetchPromise = (async () => {
     try {
-      const snapshot = await fetchMarketDataDirect(ccy, instId, rawSymbol);
-      if (snapshot) {
-        snapshotCache.set(instId, { timestamp: Date.now(), snapshot });
-      }
-      return snapshot;
+      return await fetchMarketDataDirect(ccy, instId, rawSymbol);
     } finally {
       inFlightRequests.delete(instId);
     }
@@ -108,131 +136,182 @@ export async function getCryptoMarketData(rawSymbol: string): Promise<CryptoMark
 async function fetchMarketDataDirect(ccy: string, instId: string, rawSymbol: string): Promise<CryptoMarketSnapshot | null> {
 
   try {
-    const [tickerRes, oiRes, frRes, c15mRes, c1hRes, c4hRes, rubikOiRes, lsRes] = await Promise.allSettled([
-      smartFetch(`https://www.okx.com/api/v5/market/ticker?instId=${instId}`, { timeoutMs: 5000 }),
-      smartFetch(`https://www.okx.com/api/v5/public/open-interest?instType=SWAP&instId=${instId}`, { timeoutMs: 5000 }),
-      smartFetch(`https://www.okx.com/api/v5/public/funding-rate?instId=${instId}`, { timeoutMs: 5000 }),
-      smartFetch(`https://www.okx.com/api/v5/market/candles?instId=${instId}&bar=15m&limit=10`, { timeoutMs: 5000 }),
-      smartFetch(`https://www.okx.com/api/v5/market/candles?instId=${instId}&bar=1H&limit=10`, { timeoutMs: 5000 }),
-      smartFetch(`https://www.okx.com/api/v5/market/candles?instId=${instId}&bar=4H&limit=10`, { timeoutMs: 5000 }),
-      smartFetch(`https://www.okx.com/api/v5/rubik/stat/contracts/open-interest-volume?ccy=${ccy}&period=1H`, { timeoutMs: 5000 }),
-      smartFetch(`https://www.okx.com/api/v5/rubik/stat/contracts/long-short-account-ratio?ccy=${ccy}&period=1H`, { timeoutMs: 5000 }),
+    const now = Date.now();
+    const realtime = await getRealtimeData(instId, now);
+    if (!realtime || realtime.value.price <= 0) return null;
+    const [derivatives, candles15m, candles1h, candles4h] = await Promise.all([
+      getDerivativesData(ccy, instId, now),
+      getCandles(instId, '15m', 15 * 60_000, now),
+      getCandles(instId, '1H', 60 * 60_000, now),
+      getCandles(instId, '4H', 4 * 60 * 60_000, now),
     ]);
-
-    // 1. Ticker 数据
-    let price = 0;
-    let high24h = 0;
-    let low24h = 0;
-    let vol24hQuote = 0;
-    if (tickerRes.status === 'fulfilled' && tickerRes.value.ok) {
-      const json = await tickerRes.value.json().catch(() => ({}));
-      const t = json.data?.[0];
-      if (t) {
-        price = parseFloat(t.last || '0');
-        high24h = parseFloat(t.high24h || '0');
-        low24h = parseFloat(t.low24h || '0');
-        vol24hQuote = parseFloat(t.volCcy24h || '0');
-      }
-    }
-    if (price <= 0) {
-      return null;
-    }
-
-    // 2. 资金费率
-    let fundingRate = 0;
-    let nextFundingRate: number | undefined;
-    if (frRes.status === 'fulfilled' && frRes.value.ok) {
-      const json = await frRes.value.json().catch(() => ({}));
-      const f = json.data?.[0];
-      if (f) {
-        fundingRate = parseFloat(f.fundingRate || '0');
-        if (f.nextFundingRate) nextFundingRate = parseFloat(f.nextFundingRate);
-      }
-    }
-
-    // 3. 实时未平仓量 (OI)
-    let oiUsd = 0;
-    if (oiRes.status === 'fulfilled' && oiRes.value.ok) {
-      const json = await oiRes.value.json().catch(() => ({}));
-      const o = json.data?.[0];
-      if (o) {
-        const oiCoins = parseFloat(o.oiCcy || '0');
-        oiUsd = oiCoins > 0 ? oiCoins * price : parseFloat(o.oi || '0') * 100;
-      }
-    }
-
-    // 4. 过去 1 小时 OI 变动比例 (基于 Rubik 数据)
-    let oiDelta1hPercent = 0;
-    if (rubikOiRes.status === 'fulfilled' && rubikOiRes.value.ok) {
-      const json = await rubikOiRes.value.json().catch(() => ({}));
-      const list = json.data;
-      if (Array.isArray(list) && list.length >= 2) {
-        const curOiVal = parseFloat(list[0][1] || '0');
-        const prevOiVal = parseFloat(list[1][1] || '0');
-        if (prevOiVal > 0) {
-          oiDelta1hPercent = ((curOiVal - prevOiVal) / prevOiVal) * 100;
-        }
-      }
-    }
-
-    // 5. 多空账户比
-    let longShortRatio: number | undefined;
-    if (lsRes.status === 'fulfilled' && lsRes.value.ok) {
-      const json = await lsRes.value.json().catch(() => ({}));
-      const list = json.data;
-      if (Array.isArray(list) && list.length > 0) {
-        longShortRatio = parseFloat(list[0][1] || '1');
-      }
-    }
-
-    // 6. 解析 K 线助手
-    const parseCandles = async (settled: PromiseSettledResult<Response>): Promise<CryptoCandle[]> => {
-      if (settled.status !== 'fulfilled' || !settled.value.ok) return [];
-      const json = await settled.value.json().catch(() => ({}));
-      const rawList = Array.isArray(json.data) ? json.data : [];
-      return rawList.map((item: any[]) => ({
-        time: new Date(parseInt(item[0])).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
-        open: parseFloat(item[1]),
-        high: parseFloat(item[2]),
-        low: parseFloat(item[3]),
-        close: parseFloat(item[4]),
-        vol: parseFloat(item[5] || '0'),
-      }));
-    };
-
-    const candles15m = await parseCandles(c15mRes);
-    const candles1h = await parseCandles(c1hRes);
-    const candles4h = await parseCandles(c4hRes);
-
-    // 计算 1H 和 4H 价格涨跌幅
-    const priceDelta1hPercent = candles1h.length >= 2 && candles1h[1].close > 0
-      ? ((price - candles1h[1].close) / candles1h[1].close) * 100
+    const delta = (candles: CryptoCandle[]) => candles[0]?.open > 0
+      ? ((realtime.value.price - candles[0].open) / candles[0].open) * 100
       : 0;
-
-    const priceDelta4hPercent = candles4h.length >= 2 && candles4h[1].close > 0
-      ? ((price - candles4h[1].close) / candles4h[1].close) * 100
-      : 0;
+    const structureFetchedAt = ['15m', '1H', '4H']
+      .map((bar) => candleCache.get(`${instId}:${bar}`)?.fetchedAt || 0)
+      .filter(Boolean)
+      .map((value) => new Date(value).toISOString())
+      .sort()[0] || new Date(now).toISOString();
 
     return {
       symbol: ccy,
       instId,
-      price,
-      high24h,
-      low24h,
-      vol24hQuote,
-      fundingRate,
-      nextFundingRate,
-      oiUsd,
-      oiDelta1hPercent,
-      longShortRatio,
+      ...realtime.value,
+      ...derivatives.value,
       candles15m: candles15m.slice(0, 5),
       candles1h: candles1h.slice(0, 6),
       candles4h: candles4h.slice(0, 6),
-      priceDelta1hPercent,
-      priceDelta4hPercent,
+      priceDelta15mPercent: delta(candles15m),
+      priceDelta1hPercent: delta(candles1h),
+      priceDelta4hPercent: delta(candles4h),
+      realtimeFetchedAt: new Date(realtime.fetchedAt).toISOString(),
+      derivativesFetchedAt: new Date(derivatives.fetchedAt).toISOString(),
+      structureFetchedAt,
+      dataQuality: {
+        ...realtime.value.dataQuality,
+        ...derivatives.value.dataQuality,
+        candles15m: candles15m.length > 0,
+        candles1h: candles1h.length > 0,
+        candles4h: candles4h.length > 0,
+      },
     };
   } catch (err: any) {
     console.error(`[getCryptoMarketData] Failed to fetch data for ${rawSymbol}:`, err?.message || err);
     return null;
   }
+}
+
+async function getRealtimeData(instId: string, now: number) {
+  const cached = realtimeCache.get(instId);
+  if (cached && now - cached.fetchedAt < REALTIME_CACHE_TTL_MS) return cached;
+  const [tickerRes, oiRes] = await Promise.allSettled([
+    smartFetch(`https://www.okx.com/api/v5/market/ticker?instId=${instId}`, { timeoutMs: 5000 }),
+    smartFetch(`https://www.okx.com/api/v5/public/open-interest?instType=SWAP&instId=${instId}`, { timeoutMs: 5000 }),
+  ]);
+  let price = 0;
+  let tickerAvailable = false;
+  let open24h = 0;
+  let high24h = 0;
+  let low24h = 0;
+  let vol24hQuote = 0;
+  if (tickerRes.status === 'fulfilled' && tickerRes.value.ok) {
+    const t = (await tickerRes.value.json().catch(() => ({}))).data?.[0];
+    if (t) {
+      price = parseFloat(t.last || '0');
+      tickerAvailable = price > 0;
+      open24h = parseFloat(t.open24h || '0');
+      high24h = parseFloat(t.high24h || '0');
+      low24h = parseFloat(t.low24h || '0');
+      vol24hQuote = parseFloat(t.volCcy24h || '0');
+    }
+  }
+  if (price <= 0) return null;
+  let oiUsd = 0;
+  let openInterestAvailable = false;
+  if (oiRes.status === 'fulfilled' && oiRes.value.ok) {
+    const o = (await oiRes.value.json().catch(() => ({}))).data?.[0];
+    if (o) {
+      const directUsd = parseFloat(o.oiUsd || '0');
+      const oiCoins = parseFloat(o.oiCcy || '0');
+      oiUsd = directUsd > 0 ? directUsd : oiCoins > 0 ? oiCoins * price : 0;
+      openInterestAvailable = directUsd > 0 || oiCoins > 0;
+    }
+  }
+  const entry = {
+    fetchedAt: Date.now(),
+    value: {
+      price, open24h, high24h, low24h, vol24hQuote, oiUsd,
+      dataQuality: {
+        ticker: tickerAvailable,
+        openInterest: openInterestAvailable,
+      },
+    },
+  };
+  realtimeCache.set(instId, entry);
+  return entry;
+}
+
+async function getDerivativesData(ccy: string, instId: string, now: number) {
+  const cached = derivativesCache.get(instId);
+  if (cached && now - cached.fetchedAt < DERIVATIVES_CACHE_TTL_MS) return cached;
+  const [frRes, rubikOiRes, lsRes] = await Promise.allSettled([
+    smartFetch(`https://www.okx.com/api/v5/public/funding-rate?instId=${instId}`, { timeoutMs: 5000 }),
+    smartFetch(`https://www.okx.com/api/v5/rubik/stat/contracts/open-interest-volume?ccy=${ccy}&period=1H`, { timeoutMs: 5000 }),
+    smartFetch(`https://www.okx.com/api/v5/rubik/stat/contracts/long-short-account-ratio?ccy=${ccy}&period=1H`, { timeoutMs: 5000 }),
+  ]);
+  let fundingRate = 0;
+  let fundingRateAvailable = false;
+  let nextFundingRate: number | undefined;
+  if (frRes.status === 'fulfilled' && frRes.value.ok) {
+    const f = (await frRes.value.json().catch(() => ({}))).data?.[0];
+    if (f) {
+      fundingRate = parseFloat(f.fundingRate || '0');
+      fundingRateAvailable = Number.isFinite(fundingRate);
+      if (f.nextFundingRate) nextFundingRate = parseFloat(f.nextFundingRate);
+    }
+  }
+  let oiDelta1hPercent = 0;
+  let oiDeltaAvailable = false;
+  if (rubikOiRes.status === 'fulfilled' && rubikOiRes.value.ok) {
+    const list = (await rubikOiRes.value.json().catch(() => ({}))).data;
+    if (Array.isArray(list) && list.length >= 2) {
+      const current = parseFloat(list[0][1] || '0');
+      const previous = parseFloat(list[1][1] || '0');
+      if (previous > 0) {
+        oiDelta1hPercent = ((current - previous) / previous) * 100;
+        oiDeltaAvailable = true;
+      }
+    }
+  }
+  let longShortRatio: number | undefined;
+  let longShortRatioAvailable = false;
+  if (lsRes.status === 'fulfilled' && lsRes.value.ok) {
+    const list = (await lsRes.value.json().catch(() => ({}))).data;
+    if (Array.isArray(list) && list.length > 0) {
+      longShortRatio = parseFloat(list[0][1] || '');
+      longShortRatioAvailable = Number.isFinite(longShortRatio);
+    }
+  }
+  const entry = {
+    fetchedAt: Date.now(),
+    value: {
+      fundingRate, nextFundingRate, oiDelta1hPercent, longShortRatio,
+      dataQuality: {
+        fundingRate: fundingRateAvailable,
+        oiDelta1h: oiDeltaAvailable,
+        longShortRatio: longShortRatioAvailable,
+      },
+    },
+  };
+  derivativesCache.set(instId, entry);
+  return entry;
+}
+
+async function getCandles(instId: string, bar: string, periodMs: number, now: number): Promise<CryptoCandle[]> {
+  const periodStartMs = Math.floor(now / periodMs) * periodMs;
+  const key = `${instId}:${bar}`;
+  const cached = candleCache.get(key);
+  if (cached && cached.periodStartMs === periodStartMs && now < periodStartMs + CANDLE_BOUNDARY_GRACE_MS + periodMs) {
+    return cached.value;
+  }
+  const response = await smartFetch(`https://www.okx.com/api/v5/market/candles?instId=${instId}&bar=${bar}&limit=10`, { timeoutMs: 5000 }).catch(() => null);
+  if (!response?.ok) return cached?.value || [];
+  const json = await response.json().catch(() => ({}));
+  const rawList = Array.isArray(json.data) ? json.data : [];
+  const candles = rawList.map((item: any[]) => {
+    const startTimeMs = parseInt(item[0], 10);
+    return {
+      time: new Date(startTimeMs).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
+      startTimeMs,
+      isClosed: item[8] === '1',
+      open: parseFloat(item[1]),
+      high: parseFloat(item[2]),
+      low: parseFloat(item[3]),
+      close: parseFloat(item[4]),
+      vol: parseFloat(item[5] || '0'),
+    };
+  });
+  candleCache.set(key, { fetchedAt: Date.now(), value: candles, periodStartMs, periodMs });
+  return candles;
 }

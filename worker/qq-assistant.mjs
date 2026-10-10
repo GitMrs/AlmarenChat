@@ -19,6 +19,7 @@ import {
 } from '../lib/qq-assistant/policy.mjs';
 import { resolveWorkerDatabasePath } from './runtime/worker-config.mjs';
 import { openWorkerDatabase } from './runtime/worker-database.mjs';
+import { createScheduler } from '../lib/runtime/scheduler.mjs';
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const secret = process.env.QQ_ASSISTANT_SECRET || '';
@@ -33,6 +34,11 @@ const recentWebhookEvents = new Map();
 let stopping = false;
 let reminderLoopRunning = false;
 let webhookServer = null;
+const scheduler = createScheduler({
+  name: 'qq-assistant-scheduler',
+  pollMs,
+  isStopping: () => stopping,
+});
 
 function shortError(error) {
   return (error instanceof Error ? error.message : String(error)).slice(0, 500);
@@ -546,8 +552,7 @@ function startWebhookServer() {
 function shutdown() {
   if (stopping) return;
   stopping = true;
-  clearInterval(bindingTimer);
-  clearInterval(reminderTimer);
+  scheduler.stop();
   webhookServer?.close();
   for (const entry of clients.values()) entry.bot.stop();
   clients.clear();
@@ -561,8 +566,9 @@ if (secret.length < 32) {
   void deliverDueReminders();
 }
 
-const bindingTimer = setInterval(reconcileBindings, pollMs);
-const reminderTimer = setInterval(() => void deliverDueReminders(), pollMs);
+scheduler.register('reconcile-bindings', reconcileBindings);
+scheduler.register('deliver-reminders', deliverDueReminders);
+scheduler.start();
 startWebhookServer();
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
