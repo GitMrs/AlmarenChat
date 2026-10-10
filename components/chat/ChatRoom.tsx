@@ -843,10 +843,6 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
         setStreamingContent(fullContent);
       }
 
-      if (!fullContent.trim()) {
-        throw new Error('模型没有返回可展示的正文');
-      }
-
       const assistantMessage: ChatMessage = {
         id: `assistant-${Date.now()}`,
         role: 'assistant',

@@ -30,12 +30,8 @@ export function extractUrls(text: string): string[] {
 }
 
 export async function fetchWebpageContent(url: string): Promise<FetchedPage> {
-  try {
-    const page = await fetchWebPage(url);
-    return { url: page.url, title: page.title, content: page.content };
-  } catch (err: any) {
-    return { url, content: '', error: err?.message || '抓取失败' };
-  }
+  const page = await fetchWebPage(url);
+  return { url: page.url, title: page.title, content: page.content };
 }
 
 export async function buildWebpageContext(text: string): Promise<string | null> {
@@ -46,10 +42,6 @@ export async function buildWebpageContext(text: string): Promise<string | null> 
   const retrievedAt = new Date().toISOString();
 
   const usable = pages.filter((page) => page.content.trim().length > 0);
-  if (usable.length === 0) {
-    const failed = pages.map((page) => `${page.url}（${page.error || '未知原因'}）`).join('、');
-    return `检测到链接并尝试读取，但抓取失败：${failed}。检索时间：${retrievedAt}`;
-  }
 
   const blocks = usable.map((page, index) => {
     const title = page.title ? `${page.title}\n` : '';

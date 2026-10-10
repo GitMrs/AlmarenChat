@@ -284,6 +284,7 @@ export async function POST(request: Request) {
               controller.enqueue(encoder.encode(text));
             }
           }
+          if (!fullContent) throw new Error('模型没有返回正文');
           controller.close();
 
           // Persist assistant message after stream completes

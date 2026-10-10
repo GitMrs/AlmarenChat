@@ -202,7 +202,7 @@ export async function POST(request: Request) {
       loadUserMemoryItems(userId),
       buildAssistantPlatformContext(userId, contextSources),
       buildAssistantActivityContext(userId, textMessage, contextSources),
-      webSearchEnabled ? buildWebpageContext(messageForModel).catch(() => null) : Promise.resolve(null),
+      webSearchEnabled ? buildWebpageContext(messageForModel) : Promise.resolve(null),
     ]);
     
     // 智能热点感知注入
@@ -358,23 +358,18 @@ export async function POST(request: Request) {
           });
         };
         try {
-          for (let attempt = 0; attempt < 2 && !fullContent; attempt += 1) {
-            const stream = await client.chat.completions.create(
-              { model, messages, stream: true },
-              { signal: modelAbortController.signal }
-            );
-            for await (const chunk of stream) {
-              const content = chunk.choices[0]?.delta?.content;
-              if (content) {
-                fullContent += content;
-                controller.enqueue(encoder.encode(content));
-              }
+          const stream = await client.chat.completions.create(
+            { model, messages, stream: true },
+            { signal: modelAbortController.signal }
+          );
+          for await (const chunk of stream) {
+            const content = chunk.choices[0]?.delta?.content;
+            if (content) {
+              fullContent += content;
+              controller.enqueue(encoder.encode(content));
             }
           }
-          if (!fullContent) {
-            fullContent = '这次模型没有返回可展示的正文，请再发一次，我会接着当前对话继续。';
-            controller.enqueue(encoder.encode(fullContent));
-          }
+          if (!fullContent) throw new Error('模型没有返回正文');
           await persistAssistantMessage();
           controller.close();
         } catch (error: any) {
