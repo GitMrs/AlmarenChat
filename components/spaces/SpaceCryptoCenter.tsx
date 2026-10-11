@@ -126,6 +126,7 @@ export default function SpaceCryptoCenter({
   const [symbol, setSymbol] = useState<string>('BTC');
   const [marketData, setMarketData] = useState<any>(null);
   const [marketLoading, setMarketLoading] = useState<boolean>(false);
+  const marketRequestId = useRef(0);
   const [qqConnected, setQqConnected] = useState<boolean | null>(null);
 
   // 跨币种价格缓存池 (symbol -> price)
@@ -554,12 +555,14 @@ export default function SpaceCryptoCenter({
 
   // 获取实时行情（主标的）
   const fetchMarket = async (targetSym: string) => {
+    const requestId = ++marketRequestId.current;
     setMarketLoading(true);
     try {
       const res = await fetch(`/api/crypto/market?symbol=${encodeURIComponent(targetSym)}`);
       if (res.ok) {
         const json = await res.json();
         const payload = json.data ? { ...json.data, trapAnalysis: json.analysis } : json;
+        if (requestId !== marketRequestId.current) return;
         setMarketData(payload);
         const p = Number(payload.price ?? 0);
         if (p > 0) {
@@ -738,6 +741,7 @@ export default function SpaceCryptoCenter({
     (p) => p.watchEnabled !== false
   ).length;
   const totalWatchedCount = activeWatchedPlansCount + activeWatchedPositionsCount;
+  const magnet = marketData?.trapAnalysis?.liquidationMagnet;
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto bg-[#f8f9fa]">
@@ -853,6 +857,118 @@ export default function SpaceCryptoCenter({
             )}
           </div>
         </div>
+
+        {/* ==================== 清算密集区与价格磁铁雷达 ==================== */}
+        {magnet && (
+          <div className="rounded-2xl border border-black/[0.08] bg-white p-4 sm:p-5 shadow-sm space-y-3.5">
+            <div className="flex flex-wrap items-center justify-between gap-2.5">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-base">🧲</span>
+                <h3 className="text-sm font-black text-slate-950">
+                  {symbol} 期货清算压力估算
+                </h3>
+                <span
+                  className={`rounded-full px-2 py-0.5 text-[10px] font-black border ${
+                    magnet.magnetBias === 'DOWN_SWEEP'
+                      ? 'bg-rose-50 text-rose-700 border-rose-200/60'
+                      : magnet.magnetBias === 'UP_SWEEP'
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200/60'
+                      : 'bg-slate-50 text-slate-600 border-slate-200/60'
+                  }`}
+                >
+                  {magnet.biasTitle}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 text-xs font-semibold text-slate-400">
+                <span>引力指数: <strong className="text-slate-800">{magnet.intensityScore}</strong>/100</span>
+                <span>·</span>
+                <span>多空比: <strong className="text-slate-800">{magnet.crowdSentiment?.longShortRatio ?? 1}</strong></span>
+              </div>
+            </div>
+
+            {/* 核心指标卡片网格 */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs font-medium">
+              {/* 1. 磁铁推演目标价 */}
+              <div className="rounded-xl border border-black/[0.06] bg-[#fbfaf7] p-3 space-y-1">
+                <div className="text-[11px] font-bold text-slate-400">估算优先观察位</div>
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-lg font-black text-slate-950">
+                    ${(magnet.targetPrice || curPrice).toLocaleString()}
+                  </span>
+                  <span className="text-[10px] font-bold text-indigo-600">情景估算</span>
+                </div>
+                <p className="text-[11px] font-semibold text-slate-500 leading-4 line-clamp-2">
+                  {magnet.targetDescription}
+                </p>
+              </div>
+
+              {/* 2. 下方多头清算池 */}
+              <div className="rounded-xl border border-rose-100 bg-rose-50/40 p-3 space-y-1.5">
+                <div className="flex items-center justify-between text-[11px] font-bold text-rose-700">
+                  <span>下方多头风险区（估算）</span>
+                  <span>OI 代理 ~${((magnet.longClusters?.totalAtRiskUsd || 0) / 1e6).toFixed(1)}M</span>
+                </div>
+                <div className="space-y-1 text-[11px]">
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">20x 情景距离:</span>
+                    <span className="font-black text-slate-900">${Math.round(magnet.longClusters?.tier20x?.price || 0).toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">50x 情景距离:</span>
+                    <span className="font-black text-slate-900">${Math.round(magnet.longClusters?.tier50x?.price || 0).toLocaleString()}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* 3. 上方空头清算池 */}
+              <div className="rounded-xl border border-emerald-100 bg-emerald-50/40 p-3 space-y-1.5">
+                <div className="flex items-center justify-between text-[11px] font-bold text-emerald-700">
+                  <span>上方空头风险区（估算）</span>
+                  <span>OI 代理 ~${((magnet.shortClusters?.totalAtRiskUsd || 0) / 1e6).toFixed(1)}M</span>
+                </div>
+                <div className="space-y-1 text-[11px]">
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">20x 情景距离:</span>
+                    <span className="font-black text-slate-900">${Math.round(magnet.shortClusters?.tier20x?.price || 0).toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">50x 情景距离:</span>
+                    <span className="font-black text-slate-900">${Math.round(magnet.shortClusters?.tier50x?.price || 0).toLocaleString()}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 反向情绪与费率趋势提醒 */}
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-black/[0.05] text-[11px] font-semibold text-slate-500">
+              <div>
+                <span>散户情绪反向预警：</span>
+                <span className="font-black text-slate-800">{magnet.crowdSentiment?.contrarianSignal}</span>
+              </div>
+              {magnet.fundingRateShift?.warning && (
+                <div className="text-indigo-600 font-bold">
+                  {magnet.fundingRateShift.warning}
+                </div>
+              )}
+              {magnet.microstructure && (
+                <div className="text-slate-600 font-bold">
+                  盘口/成交确认：{magnet.microstructure.confirmation} · {magnet.microstructure.pressureScore}/100
+                </div>
+              )}
+              {magnet.microstructure && magnet.microstructure.liquidationBias !== 'UNAVAILABLE' && (
+                <div className="text-slate-600 font-bold">
+                  爆仓流：{magnet.microstructure.liquidationBias} · 多头 ${(magnet.microstructure.liquidationLongUsd / 1e6).toFixed(2)}M · 空头 ${(magnet.microstructure.liquidationShortUsd / 1e6).toFixed(2)}M
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {marketData && !magnet && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-800">
+            OI 或多空账户比数据不足，暂不生成清算压力估算；当前仅展示可用的行情数据。
+          </div>
+        )}
 
         {/* ==================== 主战场：持仓与观察分区 ==================== */}
         <div className="flex flex-col gap-5">

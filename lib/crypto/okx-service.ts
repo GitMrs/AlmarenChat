@@ -3,6 +3,7 @@ import {
   extractCryptoSymbolFromText,
   normalizeSymbol,
   analyzeCryptoTrap,
+  estimateLiquidationMagnet,
   formatCryptoContextForPrompt,
   COMMON_SYMBOLS,
 } from './okx-analysis.mjs';
@@ -11,6 +12,7 @@ export {
   extractCryptoSymbolFromText,
   normalizeSymbol,
   analyzeCryptoTrap,
+  estimateLiquidationMagnet,
   formatCryptoContextForPrompt,
   COMMON_SYMBOLS,
 };
@@ -42,6 +44,7 @@ export interface CryptoMarketSnapshot {
   candles15m: CryptoCandle[];
   candles1h: CryptoCandle[];
   candles4h: CryptoCandle[];
+  microstructure: CryptoMicrostructure;
   priceDelta15mPercent: number;
   priceDelta1hPercent: number;
   priceDelta4hPercent: number;
@@ -60,6 +63,76 @@ export interface CryptoDataQuality {
   candles15m: boolean;
   candles1h: boolean;
   candles4h: boolean;
+  orderBook: boolean;
+  trades: boolean;
+  liquidations: boolean;
+}
+
+export interface CryptoMicrostructure {
+  bidDepthUsd: number;
+  askDepthUsd: number;
+  depthImbalance: number;
+  aggressiveBuyUsd: number;
+  aggressiveSellUsd: number;
+  liquidationLongUsd: number;
+  liquidationShortUsd: number;
+  liquidationCount: number;
+  fetchedAt: string;
+  dataQuality: Pick<CryptoDataQuality, 'orderBook' | 'trades' | 'liquidations'>;
+}
+
+export interface LiquidationTier {
+  leverage: number;
+  price: number;
+  distancePercent: number;
+  estVolumeUsd: number;
+}
+
+export interface LiquidationClusterGroup {
+  tier50x: LiquidationTier;
+  tier20x: LiquidationTier;
+  tier10x: LiquidationTier;
+  denseMin: number;
+  denseMax: number;
+  totalAtRiskUsd: number;
+}
+
+export interface FundingRateShift {
+  current: number;
+  next?: number;
+  diff: number;
+  trend: 'INCREASING' | 'DECREASING' | 'STABLE';
+  warning: string;
+}
+
+export interface CrowdSentiment {
+  longShortRatio: number;
+  longSharePercent: number;
+  shortSharePercent: number;
+  crowdState: 'HEAVILY_LONG' | 'MODERATELY_LONG' | 'BALANCED' | 'MODERATELY_SHORT' | 'HEAVILY_SHORT';
+  contrarianSignal: string;
+}
+
+export interface LiquidationMagnetResult {
+  methodology: 'HEURISTIC_ACCOUNT_RATIO';
+  magnetBias: 'DOWN_SWEEP' | 'UP_SWEEP' | 'BALANCED';
+  biasTitle: string;
+  intensityScore: number;
+  targetPrice: number;
+  targetDescription: string;
+  longClusters: LiquidationClusterGroup;
+  shortClusters: LiquidationClusterGroup;
+  fundingRateShift: FundingRateShift | null;
+  microstructure?: {
+    pressureScore: number;
+    confirmation: 'SUPPORTIVE' | 'MIXED' | 'UNCONFIRMED';
+    liquidationBias: 'UP' | 'DOWN' | 'MIXED' | 'UNAVAILABLE';
+    liquidationLongUsd: number;
+    liquidationShortUsd: number;
+    liquidationCount: number;
+    summary: string;
+  };
+  crowdSentiment: CrowdSentiment;
 }
 
 export interface TrapAnalysisResult {
@@ -72,6 +145,7 @@ export interface TrapAnalysisResult {
   checklist: string[];
   sentimentRisk: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
   suggestedAction: string;
+  liquidationMagnet?: LiquidationMagnetResult;
 }
 
 /**
@@ -81,6 +155,7 @@ export interface TrapAnalysisResult {
 const REALTIME_CACHE_TTL_MS = 2500;
 const DERIVATIVES_CACHE_TTL_MS = 60_000;
 const CANDLE_BOUNDARY_GRACE_MS = 5_000;
+const MICROSTRUCTURE_CACHE_TTL_MS = 5_000;
 type CacheEntry<T> = { fetchedAt: number; value: T };
 type CandleCacheEntry = CacheEntry<CryptoCandle[]> & { periodStartMs: number; periodMs: number };
 const realtimeCache = new Map<string, CacheEntry<{
@@ -100,12 +175,14 @@ const derivativesCache = new Map<string, CacheEntry<{
   dataQuality: Pick<CryptoDataQuality, 'fundingRate' | 'oiDelta1h' | 'longShortRatio'>;
 }>>();
 const candleCache = new Map<string, CandleCacheEntry>();
+const microstructureCache = new Map<string, CacheEntry<CryptoMicrostructure>>();
 const inFlightRequests = new Map<string, Promise<CryptoMarketSnapshot | null>>();
 
 export function clearCryptoCache(): void {
   realtimeCache.clear();
   derivativesCache.clear();
   candleCache.clear();
+  microstructureCache.clear();
   inFlightRequests.clear();
 }
 
@@ -139,11 +216,12 @@ async function fetchMarketDataDirect(ccy: string, instId: string, rawSymbol: str
     const now = Date.now();
     const realtime = await getRealtimeData(instId, now);
     if (!realtime || realtime.value.price <= 0) return null;
-    const [derivatives, candles15m, candles1h, candles4h] = await Promise.all([
+    const [derivatives, candles15m, candles1h, candles4h, microstructure] = await Promise.all([
       getDerivativesData(ccy, instId, now),
       getCandles(instId, '15m', 15 * 60_000, now),
       getCandles(instId, '1H', 60 * 60_000, now),
       getCandles(instId, '4H', 4 * 60 * 60_000, now),
+      getMicrostructureData(instId, now),
     ]);
     const delta = (candles: CryptoCandle[]) => candles[0]?.open > 0
       ? ((realtime.value.price - candles[0].open) / candles[0].open) * 100
@@ -162,6 +240,7 @@ async function fetchMarketDataDirect(ccy: string, instId: string, rawSymbol: str
       candles15m: candles15m.slice(0, 5),
       candles1h: candles1h.slice(0, 6),
       candles4h: candles4h.slice(0, 6),
+      microstructure: microstructure.value,
       priceDelta15mPercent: delta(candles15m),
       priceDelta1hPercent: delta(candles1h),
       priceDelta4hPercent: delta(candles4h),
@@ -174,12 +253,98 @@ async function fetchMarketDataDirect(ccy: string, instId: string, rawSymbol: str
         candles15m: candles15m.length > 0,
         candles1h: candles1h.length > 0,
         candles4h: candles4h.length > 0,
+        ...microstructure.value.dataQuality,
       },
     };
   } catch (err: any) {
     console.error(`[getCryptoMarketData] Failed to fetch data for ${rawSymbol}:`, err?.message || err);
     return null;
   }
+}
+
+async function getMicrostructureData(instId: string, now: number): Promise<CacheEntry<CryptoMicrostructure>> {
+  const cached = microstructureCache.get(instId);
+  if (cached && now - cached.fetchedAt < MICROSTRUCTURE_CACHE_TTL_MS) return cached;
+
+  const [bookRes, tradesRes, liquidationRes] = await Promise.allSettled([
+    smartFetch(`https://www.okx.com/api/v5/market/books?instId=${instId}&sz=20`, { timeoutMs: 5000 }),
+    smartFetch(`https://www.okx.com/api/v5/market/trades?instId=${instId}&limit=100`, { timeoutMs: 5000 }),
+    smartFetch(`https://www.okx.com/api/v5/public/liquidation-orders?instType=SWAP&instId=${instId}&state=filled&limit=100`, { timeoutMs: 5000 }),
+  ]);
+
+  let bidDepthUsd = 0;
+  let askDepthUsd = 0;
+  let orderBookAvailable = false;
+  if (bookRes.status === 'fulfilled' && bookRes.value.ok) {
+    const book = (await bookRes.value.json().catch(() => ({}))).data?.[0];
+    const sumDepth = (levels: any[]) => (Array.isArray(levels) ? levels : []).reduce((total, level) => {
+      const price = Number(level?.[0]);
+      const size = Number(level?.[1]);
+      return total + (Number.isFinite(price) && Number.isFinite(size) ? price * size : 0);
+    }, 0);
+    bidDepthUsd = sumDepth(book?.bids);
+    askDepthUsd = sumDepth(book?.asks);
+    orderBookAvailable = bidDepthUsd > 0 || askDepthUsd > 0;
+  }
+
+  let aggressiveBuyUsd = 0;
+  let aggressiveSellUsd = 0;
+  let tradesAvailable = false;
+  if (tradesRes.status === 'fulfilled' && tradesRes.value.ok) {
+    const trades = (await tradesRes.value.json().catch(() => ({}))).data;
+    if (Array.isArray(trades)) {
+      for (const trade of trades) {
+        const value = Number(trade?.px) * Number(trade?.sz);
+        if (!Number.isFinite(value) || value <= 0) continue;
+        if (trade?.side === 'buy') aggressiveBuyUsd += value;
+        if (trade?.side === 'sell') aggressiveSellUsd += value;
+      }
+      tradesAvailable = trades.length > 0;
+    }
+  }
+
+  let liquidationLongUsd = 0;
+  let liquidationShortUsd = 0;
+  let liquidationCount = 0;
+  let liquidationsAvailable = false;
+  if (liquidationRes.status === 'fulfilled' && liquidationRes.value.ok) {
+    const groups = (await liquidationRes.value.json().catch(() => ({}))).data;
+    const details = Array.isArray(groups)
+      ? groups.flatMap((group: any) => Array.isArray(group?.details) ? group.details : [])
+      : [];
+    for (const detail of details) {
+      const value = Number(detail?.bkPx) * Number(detail?.sz);
+      if (!Number.isFinite(value) || value <= 0) continue;
+      if (detail?.posSide === 'long' || detail?.side === 'sell') liquidationLongUsd += value;
+      if (detail?.posSide === 'short' || detail?.side === 'buy') liquidationShortUsd += value;
+      liquidationCount += 1;
+    }
+    liquidationsAvailable = true;
+  }
+
+  const entry = {
+    fetchedAt: Date.now(),
+    value: {
+      bidDepthUsd,
+      askDepthUsd,
+      depthImbalance: bidDepthUsd + askDepthUsd > 0
+        ? (bidDepthUsd - askDepthUsd) / (bidDepthUsd + askDepthUsd)
+        : 0,
+      aggressiveBuyUsd,
+      aggressiveSellUsd,
+      liquidationLongUsd,
+      liquidationShortUsd,
+      liquidationCount,
+      fetchedAt: new Date().toISOString(),
+      dataQuality: {
+        orderBook: orderBookAvailable,
+        trades: tradesAvailable,
+        liquidations: liquidationsAvailable,
+      },
+    },
+  };
+  microstructureCache.set(instId, entry);
+  return entry;
 }
 
 async function getRealtimeData(instId: string, now: number) {
@@ -246,9 +411,11 @@ async function getDerivativesData(ccy: string, instId: string, now: number) {
   if (frRes.status === 'fulfilled' && frRes.value.ok) {
     const f = (await frRes.value.json().catch(() => ({}))).data?.[0];
     if (f) {
-      fundingRate = parseFloat(f.fundingRate || '0');
-      fundingRateAvailable = Number.isFinite(fundingRate);
-      if (f.nextFundingRate) nextFundingRate = parseFloat(f.nextFundingRate);
+      const parsedFundingRate = parseFloat(f.fundingRate || '');
+      fundingRate = Number.isFinite(parsedFundingRate) ? parsedFundingRate : 0;
+      fundingRateAvailable = Number.isFinite(parsedFundingRate);
+      const parsedNextFundingRate = parseFloat(f.nextFundingRate || '');
+      if (Number.isFinite(parsedNextFundingRate)) nextFundingRate = parsedNextFundingRate;
     }
   }
   let oiDelta1hPercent = 0;
@@ -258,7 +425,7 @@ async function getDerivativesData(ccy: string, instId: string, now: number) {
     if (Array.isArray(list) && list.length >= 2) {
       const current = parseFloat(list[0][1] || '0');
       const previous = parseFloat(list[1][1] || '0');
-      if (previous > 0) {
+      if (Number.isFinite(current) && Number.isFinite(previous) && previous > 0) {
         oiDelta1hPercent = ((current - previous) / previous) * 100;
         oiDeltaAvailable = true;
       }

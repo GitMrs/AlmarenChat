@@ -585,7 +585,7 @@ export default function SpaceDetailPage() {
   const [gameCenterInitialAutoPlay, setGameCenterInitialAutoPlay] = useState<boolean>(false);
   const [gameCenterInitialAutoVoice, setGameCenterInitialAutoVoice] = useState<boolean | undefined>(undefined);
   const [operationsTab, setOperationsTab] = useState<SpaceOperationsTab>('overview');
-  const [sidePanel, setSidePanel] = useState<'members' | 'files' | 'skills' | 'runs' | 'operations' | 'publications' | 'settings' | 'automation' | 'notifications' | 'connector' | null>(null);
+  const [sidePanel, setSidePanel] = useState<'members' | 'files' | 'skills' | 'runs' | 'operations' | 'publications' | 'settings' | 'automation' | 'connector' | null>(null);
   const [loading, setLoading] = useState(true);
   const [needsLogin, setNeedsLogin] = useState(false);
   const [error, setError] = useState('');
@@ -3354,22 +3354,6 @@ export default function SpaceDetailPage() {
                 </section>
               )}
 
-              {!isPiSpace && (
-                <section className="border-b border-black/[0.06] px-6 py-5">
-                  <div className="mb-3 flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-xs font-black text-slate-500">
-                      <Globe2 size={15} />
-                      通知 Webhook
-                      <span className="text-slate-300">{webhooks.length}</span>
-                    </div>
-                    <button type="button" onClick={() => setSidePanel('notifications')} className="text-xs font-black text-slate-400 transition hover:text-slate-950">管理</button>
-                  </div>
-                  <p className="text-xs font-semibold leading-5 text-slate-400">
-                    {webhooks.length > 0 ? `${webhooks.filter((webhook) => webhook.enabled).length} 个已启用，可供自动化任务复用。` : '配置后可供多个自动化任务复用。'}
-                  </p>
-                </section>
-              )}
-
               <section className="px-6 py-5">
                 <div className="mb-3 flex items-center justify-between">
                   <div className="flex items-center gap-2 text-xs font-black text-slate-500">
@@ -3441,16 +3425,6 @@ export default function SpaceDetailPage() {
                 className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-950"
               >
                 <History size={17} />
-              </button>}
-              {!isPiSpace && <button
-                type="button"
-                onClick={() => setSidePanel('notifications')}
-                aria-expanded={sidePanel === 'notifications'}
-                aria-label="通知 Webhook"
-                title="通知 Webhook"
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-950"
-              >
-                <Globe2 size={17} />
               </button>}
               <button
                 type="button"
@@ -4823,8 +4797,8 @@ export default function SpaceDetailPage() {
               <aside className="absolute inset-y-0 right-0 z-20 flex w-full flex-col border-l border-black/[0.06] bg-white shadow-[-16px_0_40px_-24px_rgba(15,23,42,0.35)] sm:w-[420px] lg:w-[480px] xl:w-[500px]">
                 <div className="flex h-[65px] shrink-0 items-center justify-between border-b border-black/[0.06] px-5">
                   <div className="flex items-center gap-2 text-sm font-black text-slate-800">
-                    {sidePanel === 'members' ? <UsersRound size={17} /> : sidePanel === 'skills' ? <BookOpen size={17} /> : sidePanel === 'runs' ? <History size={17} /> : sidePanel === 'automation' ? <CalendarClock size={17} /> : sidePanel === 'notifications' ? <Globe2 size={17} /> : sidePanel === 'connector' ? <Globe2 size={17} /> : <Settings2 size={17} />}
-                    {sidePanel === 'members' ? '空间成员' : sidePanel === 'skills' ? 'Space Skills' : sidePanel === 'runs' ? '历史任务' : sidePanel === 'automation' ? (editingAutomationId ? '编辑自动化' : '新建自动化') : sidePanel === 'notifications' ? '通知 Webhook' : sidePanel === 'connector' ? '微信连接设置' : '空间设置'}
+                    {sidePanel === 'members' ? <UsersRound size={17} /> : sidePanel === 'skills' ? <BookOpen size={17} /> : sidePanel === 'runs' ? <History size={17} /> : sidePanel === 'automation' ? <CalendarClock size={17} /> : sidePanel === 'connector' ? <Globe2 size={17} /> : <Settings2 size={17} />}
+                    {sidePanel === 'members' ? '空间成员' : sidePanel === 'skills' ? 'Space Skills' : sidePanel === 'runs' ? '历史任务' : sidePanel === 'automation' ? (editingAutomationId ? '编辑自动化' : '新建自动化') : sidePanel === 'connector' ? '微信连接设置' : '空间设置'}
                   </div>
                   <button
                     type="button"
@@ -5421,6 +5395,119 @@ export default function SpaceDetailPage() {
                           </button>
                         </div>
                       </section>
+                      {!isPiSpace && (
+                        <section className="border-t border-black/[0.06] pt-5">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <div className="flex items-center gap-2 text-sm font-black text-slate-700">
+                                <Globe2 size={16} />
+                                通知 Webhook
+                              </div>
+                              <p className="mt-1 text-xs font-semibold leading-5 text-slate-400">
+                                自定义通知目标只允许公开 HTTPS 地址，JSON 模板支持安全变量替换。
+                              </p>
+                            </div>
+                            <span className="shrink-0 text-xs font-black text-slate-400">{webhooks.length} 个</span>
+                          </div>
+                          {webhooks.length > 0 && (
+                            <div className="mt-4 space-y-2">
+                              {webhooks.map((webhook) => (
+                                <div key={webhook.id} className="rounded-lg border border-black/[0.07] bg-[#fbfaf7] px-3 py-2.5">
+                                  <div className="flex items-center gap-3">
+                                    <div className="min-w-0 flex-1">
+                                      <div className="truncate text-xs font-black text-slate-700">{webhook.name}</div>
+                                      <div className="truncate text-[11px] font-semibold text-slate-400">{webhook.url}</div>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleWebhook(webhook)}
+                                      disabled={webhookBusy}
+                                      role="switch"
+                                      aria-checked={webhook.enabled}
+                                      aria-label={webhook.enabled ? `停用 ${webhook.name}` : `启用 ${webhook.name}`}
+                                      className={`relative h-6 w-10 shrink-0 rounded-full transition ${webhook.enabled ? 'bg-emerald-500' : 'bg-slate-200'}`}
+                                    >
+                                      <span className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow-sm transition ${webhook.enabled ? 'left-5' : 'left-1'}`} />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => editWebhook(webhook)}
+                                      disabled={webhookBusy}
+                                      aria-label={`编辑 ${webhook.name}`}
+                                      title="编辑"
+                                      className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-800 disabled:text-slate-200"
+                                    >
+                                      <FilePenLine size={14} />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => removeWebhook(webhook)}
+                                      disabled={webhookBusy}
+                                      aria-label={`删除 ${webhook.name}`}
+                                      title="删除"
+                                      className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-300 hover:bg-rose-50 hover:text-rose-600 disabled:text-slate-200"
+                                    >
+                                      <Trash2 size={14} />
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          <div className="mt-4 space-y-2 border-t border-black/[0.06] pt-4">
+                            <input
+                              value={webhookName}
+                              onChange={(event) => setWebhookName(event.target.value)}
+                              maxLength={80}
+                              placeholder="通知名称，例如飞书日报"
+                              className="h-10 w-full rounded-lg border border-black/[0.08] bg-[#fbfaf7] px-3 text-xs font-semibold text-slate-700 outline-none focus:border-slate-300"
+                            />
+                            <input
+                              value={webhookUrl}
+                              onChange={(event) => setWebhookUrl(event.target.value)}
+                              maxLength={2048}
+                              placeholder="https://example.com/webhook"
+                              className="h-10 w-full rounded-lg border border-black/[0.08] bg-[#fbfaf7] px-3 text-xs font-semibold text-slate-700 outline-none focus:border-slate-300"
+                            />
+                            <textarea
+                              value={webhookTemplate}
+                              onChange={(event) => setWebhookTemplate(event.target.value)}
+                              rows={5}
+                              maxLength={12_000}
+                              placeholder={'{"content":"{{content.text}}"}'}
+                              className="w-full resize-y rounded-lg border border-black/[0.08] bg-white px-3 py-2.5 text-[11px] font-mono leading-5 text-slate-700 outline-none"
+                            />
+                            <p className="text-[10px] font-semibold leading-4 text-slate-400">
+                              变量：&#123;&#123;content.text&#125;&#125;、&#123;&#123;content.markdown&#125;&#125;、&#123;&#123;source.automationName&#125;&#125;、&#123;&#123;run.status&#125;&#125;。
+                            </p>
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={saveWebhook}
+                                disabled={!webhookName.trim() || !webhookUrl.trim() || !webhookTemplate.trim() || webhookBusy}
+                                className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-slate-950 px-3 text-xs font-black text-white disabled:bg-slate-200 disabled:text-slate-400"
+                              >
+                                {webhookBusy ? <Loader2 className="animate-spin" size={13} /> : editingWebhookId ? <Save size={13} /> : <Plus size={13} />}
+                                {editingWebhookId ? '保存修改' : '添加通知 Webhook'}
+                              </button>
+                              {editingWebhookId && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEditingWebhookId('');
+                                    setWebhookName('');
+                                    setWebhookUrl('');
+                                    setWebhookTemplate('');
+                                  }}
+                                  className="h-9 rounded-lg px-3 text-xs font-black text-slate-500 hover:bg-slate-100"
+                                >
+                                  取消
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </section>
+                      )}
                       </>}
                       {String(sidePanel) === 'operations' && actionRequests.some((action) => action.status === 'PENDING' || action.status === 'APPROVED' || (['WECHAT_CREATE_DRAFT', 'WECHAT_PUBLISH'].includes(action.kind) && ['COMPLETED', 'FAILED'].includes(action.status))) && (
                         <section className="border-t border-black/[0.06] pt-5">
@@ -5598,44 +5685,6 @@ export default function SpaceDetailPage() {
                         <p className="mt-3 text-[11px] font-semibold leading-5 text-amber-600">
                           草稿创建与正式发布将在独立高风险审批后执行，自动执行模式不能跳过该确认。
                         </p>
-                      </section>}
-                      {sidePanel === 'notifications' && !isPiSpace && <section>
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <div className="flex items-center gap-2 text-sm font-black text-slate-700"><Globe2 size={16} />通知 Webhook</div>
-                            <p className="mt-1 text-xs font-semibold leading-5 text-slate-400">自定义通知目标只允许公开 HTTPS 地址，JSON 模板支持安全变量替换。</p>
-                          </div>
-                          <span className="shrink-0 text-xs font-black text-slate-400">{webhooks.length} 个</span>
-                        </div>
-                        <div className="mt-4 space-y-2">
-                          {webhooks.map((webhook) => (
-                            <div key={webhook.id} className="rounded-lg border border-black/[0.07] bg-[#fbfaf7] px-3 py-2.5">
-                              <div className="flex items-center gap-3">
-                                <div className="min-w-0 flex-1">
-                                  <div className="truncate text-xs font-black text-slate-700">{webhook.name}</div>
-                                  <div className="truncate text-[11px] font-semibold text-slate-400">{webhook.url}</div>
-                                </div>
-                                <button type="button" onClick={() => toggleWebhook(webhook)} disabled={webhookBusy} role="switch" aria-checked={webhook.enabled} aria-label={webhook.enabled ? `停用 ${webhook.name}` : `启用 ${webhook.name}`} className={`relative h-6 w-10 shrink-0 rounded-full transition ${webhook.enabled ? 'bg-emerald-500' : 'bg-slate-200'}`}>
-                                  <span className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow-sm transition ${webhook.enabled ? 'left-5' : 'left-1'}`} />
-                                </button>
-                                <button type="button" onClick={() => editWebhook(webhook)} disabled={webhookBusy} aria-label={`编辑 ${webhook.name}`} title="编辑" className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-800 disabled:text-slate-200"><FilePenLine size={14} /></button>
-                                <button type="button" onClick={() => removeWebhook(webhook)} disabled={webhookBusy} aria-label={`删除 ${webhook.name}`} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-300 hover:bg-rose-50 hover:text-rose-600 disabled:text-slate-200"><Trash2 size={14} /></button>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                        <div className="mt-4 space-y-2 border-t border-black/[0.06] pt-4">
-                          <input value={webhookName} onChange={(event) => setWebhookName(event.target.value)} maxLength={80} placeholder="通知名称，例如飞书日报" className="h-10 w-full rounded-lg border border-black/[0.08] bg-[#fbfaf7] px-3 text-xs font-semibold text-slate-700 outline-none focus:border-slate-300" />
-                          <input value={webhookUrl} onChange={(event) => setWebhookUrl(event.target.value)} maxLength={2048} placeholder="https://example.com/webhook" className="h-10 w-full rounded-lg border border-black/[0.08] bg-[#fbfaf7] px-3 text-xs font-semibold text-slate-700 outline-none focus:border-slate-300" />
-                          <textarea value={webhookTemplate} onChange={(event) => setWebhookTemplate(event.target.value)} rows={5} maxLength={12_000} placeholder={'{"content":"{{content.text}}"}'} className="w-full resize-y rounded-lg border border-black/[0.08] bg-white px-3 py-2.5 text-[11px] font-mono leading-5 text-slate-700 outline-none" />
-                          <p className="text-[10px] font-semibold leading-4 text-slate-400">变量：&#123;&#123;content.text&#125;&#125;、&#123;&#123;content.markdown&#125;&#125;、&#123;&#123;source.automationName&#125;&#125;、&#123;&#123;run.status&#125;&#125;。</p>
-                          <div className="flex items-center gap-2">
-                            <button type="button" onClick={saveWebhook} disabled={!webhookName.trim() || !webhookUrl.trim() || !webhookTemplate.trim() || webhookBusy} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-slate-950 px-3 text-xs font-black text-white disabled:bg-slate-200 disabled:text-slate-400">
-                              {webhookBusy ? <Loader2 className="animate-spin" size={13} /> : editingWebhookId ? <Save size={13} /> : <Plus size={13} />}{editingWebhookId ? '保存修改' : '添加通知 Webhook'}
-                            </button>
-                            {editingWebhookId && <button type="button" onClick={() => { setEditingWebhookId(''); setWebhookName(''); setWebhookUrl(''); setWebhookTemplate(''); }} className="h-9 rounded-lg px-3 text-xs font-black text-slate-500 hover:bg-slate-100">取消</button>}
-                          </div>
-                        </div>
                       </section>}
                       {sidePanel === 'automation' && !isPiSpace && <section>
                         <div className="flex items-start justify-between gap-3">
@@ -5841,17 +5890,24 @@ export default function SpaceDetailPage() {
                                   <option value="CUSTOM_WEBHOOK">自定义 HTTPS Webhook</option>
                                 </select>
                                 {automationWebhookTarget === 'CUSTOM_WEBHOOK' ? (
-                                  <select
-                                    value={automationWebhookId}
-                                    onChange={(event) => setAutomationWebhookId(event.target.value)}
-                                    aria-label="自定义 Webhook"
-                                    className="h-9 w-full rounded-md border border-black/[0.08] bg-white px-2.5 text-[11px] font-bold text-slate-700 outline-none"
-                                  >
-                                    <option value="">选择已配置的 Webhook</option>
-                                    {webhooks.filter((webhook) => webhook.enabled).map((webhook) => (
-                                      <option key={webhook.id} value={webhook.id}>{webhook.name}</option>
-                                    ))}
-                                  </select>
+                                  <div className="space-y-1.5">
+                                    <select
+                                      value={automationWebhookId}
+                                      onChange={(event) => setAutomationWebhookId(event.target.value)}
+                                      aria-label="自定义 Webhook"
+                                      className="h-9 w-full rounded-md border border-black/[0.08] bg-white px-2.5 text-[11px] font-bold text-slate-700 outline-none"
+                                    >
+                                      <option value="">选择已配置的 Webhook</option>
+                                      {webhooks.filter((webhook) => webhook.enabled).map((webhook) => (
+                                        <option key={webhook.id} value={webhook.id}>{webhook.name}</option>
+                                      ))}
+                                    </select>
+                                    {webhooks.filter((webhook) => webhook.enabled).length === 0 && (
+                                      <p className="text-[11px] font-semibold text-amber-600">
+                                        空间暂无已启用的 Webhook，可在【空间设置】中配置。
+                                      </p>
+                                    )}
+                                  </div>
                                 ) : (
                                   <p className="text-[11px] font-semibold leading-5 text-slate-400">使用个人中心已绑定的 QQ Webhook；需要先完成 QQ 私聊绑定。</p>
                                 )}
