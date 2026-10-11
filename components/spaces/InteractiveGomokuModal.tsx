@@ -16,6 +16,7 @@ import {
   type GomokuSituation,
 } from '@/lib/relay/gomoku-ai';
 import { useTTS } from '@/hooks/useTTS';
+import { spaces } from '@/lib/api';
 import type { Agent } from '@/types';
 
 export type GomokuEngineMode = 'js' | 'perceive' | 'full';
@@ -150,40 +151,27 @@ export default function InteractiveGomokuModal({
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 15000);
 
-      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-
-      const res = await fetch(`/api/spaces/${spaceId}/gomoku/ai-turn`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
+      const data = await spaces.gomokuAiTurn(
+        spaceId,
+        {
           board: currentBoard,
           currentTurn: turn,
           agentId: targetAgentId,
           opponentId: targetOpponentId,
           moveHistory: currentHistory,
           engineMode: engineMode === 'full' ? 'full' : 'perceive',
-        }),
-        signal: controller.signal,
-      });
+        },
+        { signal: controller.signal }
+      );
 
       clearTimeout(timeoutId);
 
-      if (res.ok) {
-        const data = await res.json();
-        if (data.row && data.col) {
-          return {
-            row: data.row,
-            col: data.col,
-            speech: data.speech || '',
-          };
-        }
-      } else {
-        const errText = await res.text().catch(() => '');
-        console.warn(`[Gomoku] AI turn API responded with ${res.status}:`, errText);
+      if (data?.row && data?.col) {
+        return {
+          row: data.row,
+          col: data.col,
+          speech: data.speech || '',
+        };
       }
     } catch (err) {
       console.warn('[Gomoku] AI engine fetch failed/timed out, falling back to local JS:', err);

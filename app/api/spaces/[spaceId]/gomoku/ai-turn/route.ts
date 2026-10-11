@@ -1,8 +1,6 @@
 import { NextResponse } from 'next/server';
-import prisma from '@/app/api/_lib/db';
 import { getUserIdFromRequest } from '@/app/api/_lib/auth';
-import { getSpaceForUser, resolveAgent } from '@/app/api/_lib/spaces';
-import { createModelClient, resolveModelName } from '@/lib/model-client';
+import { getSpaceForUser, resolveAgent, resolveSpaceMemberModelConfig } from '@/app/api/_lib/spaces';
 import { findCandidateMoves, findBestMove } from '@/lib/relay/gomoku-ai';
 
 export async function POST(
@@ -12,6 +10,10 @@ export async function POST(
   try {
     const { spaceId } = await params;
     const userId = getUserIdFromRequest(request);
+    if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!await getSpaceForUser(spaceId, userId)) {
+      return NextResponse.json({ error: 'Space not found' }, { status: 404 });
+    }
     const body = await request.json();
     const {
       board,
@@ -26,46 +28,17 @@ export async function POST(
       return NextResponse.json({ error: '无效的五子棋盘数据' }, { status: 400 });
     }
 
-    const space = userId
-      ? await getSpaceForUser(spaceId, userId)
-      : await prisma.space.findUnique({
-          where: { id: spaceId },
-          include: {
-            members: {
-              orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
-            },
-          },
-        });
+    const {
+      agentName,
+      agentPersona,
+      agentTone,
+      client,
+      model,
+      hasApiKey,
+    } = await resolveSpaceMemberModelConfig({ spaceId, agentId, userId });
 
-    // 解析当前落子角色与对手角色
-    const currentAgent = await resolveAgent(agentId, userId || undefined);
     const opponentAgent = await resolveAgent(opponentId, userId || undefined);
-
-    const agentName = currentAgent?.name || '搭子棋手';
     const opponentName = opponentAgent?.name || '对手';
-    const agentPersona = currentAgent?.description || currentAgent?.systemPrompt || '机智热情的五子棋对弈搭子';
-    const agentTone = currentAgent?.tone || '自信幽默';
-
-    // 确定模型配置（优先使用空间成员配置，其次用户自定义模型，最后兜底系统默认模型）
-    const user = userId
-      ? await prisma.user.findUnique({
-          where: { id: userId },
-          select: {
-            customModelEnabled: true,
-            apiBaseUrl: true,
-            apiKey: true,
-            modelName: true,
-          },
-        })
-      : null;
-
-    const targetMember = space?.members?.find((m: any) => m.agentId === agentId);
-    const effectiveApiBaseUrl = targetMember?.apiBaseUrl?.trim() || user?.apiBaseUrl?.trim();
-    const effectiveApiKey = targetMember?.apiKey?.trim() || user?.apiKey?.trim();
-    const effectiveModelName = targetMember?.modelName?.trim() || user?.modelName?.trim();
-
-    const client = createModelClient(effectiveApiBaseUrl, effectiveApiKey);
-    const model = resolveModelName(effectiveModelName);
 
     // 启发式算法快速产出前 4 个战术候选位
     const otherTurn = currentTurn === 1 ? 2 : 1;
@@ -138,6 +111,20 @@ ${candidateDescriptions}
 【输出格式要求】：
 必须严格返回纯 JSON 对象，不要附加任何 Markdown 标签或包裹说明：
 {"row": <行号数字 1-15>, "col": <列号数字 1-15>, "speech": "<你的即兴台词>"}`;
+    }
+
+    if (!client || !hasApiKey) {
+      console.warn(`[Gomoku AI Move] No API key for agent ${agentId}, fallback to best heuristic move.`);
+      return NextResponse.json({
+        success: true,
+        row: bestFallback.row,
+        col: bestFallback.col,
+        speech: '这一步棋暗藏玄机，看你如何应对！',
+        tacticalAdvice: '基于 JS 战术参谋计算出的最优落子点位',
+        engine: 'fallback',
+        model: 'heuristic-engine',
+        fromFallback: true,
+      });
     }
 
     try {

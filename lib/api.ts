@@ -766,6 +766,90 @@ export const spaces = {
     ),
   clearCheckpoint: (id: string) =>
     request<{ success: boolean }>(`/spaces/${id}/compression-stats`, { method: 'DELETE' }),
+
+  // 谁是卧底 AI 回合推进
+  undercoverAiTurn: (
+    spaceId: string,
+    data: {
+      agentId: string;
+      action: 'statement' | 'debate' | 'vote' | 'guess';
+      [key: string]: any;
+    },
+    options?: { signal?: AbortSignal }
+  ) =>
+    request<{
+      ok: boolean;
+      statement?: string;
+      speech?: string;
+      debateText?: string;
+      suspect?: { playerId: string; playerName: string };
+      targetId?: string;
+      guessWord?: string;
+      reasoning?: string;
+      fromFallback?: boolean;
+      error?: string;
+    }>(`/spaces/${spaceId}/undercover/ai-turn`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+      signal: options?.signal,
+    }),
+
+  // 五子棋 AI 落子与战术分析
+  gomokuAiTurn: (
+    spaceId: string,
+    data: {
+      board: number[];
+      currentTurn: number;
+      agentId: string;
+      opponentId?: string;
+      moveHistory?: any[];
+      engineMode?: string;
+      [key: string]: any;
+    },
+    options?: { signal?: AbortSignal }
+  ) =>
+    request<{
+      success?: boolean;
+      ok?: boolean;
+      row?: number;
+      col?: number;
+      move?: { row: number; col: number };
+      speech?: string;
+      tacticalAdvice?: string;
+      model?: string;
+      modelUsed?: string;
+      engine?: string;
+      fromFallback?: boolean;
+      error?: string;
+    }>(`/spaces/${spaceId}/gomoku/ai-turn`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+      signal: options?.signal,
+    }),
+
+  // 沉浸跑团 TRPG AI 守秘人叙事与伴聊
+  trpgAiTurn: (
+    spaceId: string,
+    data: {
+      state: any;
+      actionText: string;
+      checkResult?: any;
+      localFallbackNarration?: string;
+    },
+    options?: { signal?: AbortSignal }
+  ) =>
+    request<{
+      ok: boolean;
+      narration?: string;
+      suggestions?: string[];
+      companionSpeech?: { agentId: import('@/lib/trpg/ai-narrator').TrpgCompanionAgentId; text: string };
+      fromFallback?: boolean;
+      error?: string;
+    }>(`/spaces/${spaceId}/trpg/ai-turn`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+      signal: options?.signal,
+    }),
 };
 
 export const cryptoSentinel = {

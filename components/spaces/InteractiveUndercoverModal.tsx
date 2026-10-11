@@ -26,6 +26,8 @@ import {
 } from 'lucide-react';
 import {
   createUndercoverGame,
+  DEFAULT_TABLE_AGENTS,
+  setUndercoverEngineMode,
   getAgentClueStatement,
   getAgentDebateLine,
   determineAgentVote,
@@ -34,15 +36,18 @@ import {
   getShortName,
   UndercoverGameState,
   UndercoverPlayer,
+  UndercoverEngineMode,
   DiscussionMessage,
 } from '@/lib/undercover/engine';
 import { useTTS } from '@/hooks/useTTS';
+import { spaces } from '@/lib/api';
 import type { Agent } from '@/types';
 
 export interface InteractiveUndercoverModalProps {
   isOpen: boolean;
   onClose: () => void;
   spaceAgents?: Agent[];
+  spaceId?: string;
   onShareToSpace?: (content: string) => void;
 }
 
@@ -50,6 +55,7 @@ export default function InteractiveUndercoverModal({
   isOpen,
   onClose,
   spaceAgents = [],
+  spaceId,
   onShareToSpace,
 }: InteractiveUndercoverModalProps) {
   const [mounted, setMounted] = useState(false);
@@ -96,22 +102,35 @@ export default function InteractiveUndercoverModal({
   }, [game.messages, scrollToBottom]);
 
   // 重置开局
-  const handleStartNewGame = useCallback(() => {
+  const handleStartNewGame = useCallback((engineMode: UndercoverEngineMode = 'ai') => {
     stopTTS();
     if (autoTurnTimerRef.current) clearTimeout(autoTurnTimerRef.current);
-    const newGame = createUndercoverGame('玩家（你）');
+    const configuredAgents = spaceAgents
+      .filter((agent) => agent.id !== 'space-coordinator')
+      .slice(0, 3)
+      .map((agent, index) => ({
+        id: agent.id,
+        name: agent.name,
+        avatar: agent.avatar || DEFAULT_TABLE_AGENTS[index]?.avatar || '🤖',
+        voice: agent.voice || DEFAULT_TABLE_AGENTS[index]?.voice || 'zh-CN-XiaoxiaoNeural',
+        rate: DEFAULT_TABLE_AGENTS[index]?.rate,
+      }));
+    const tableAgents = configuredAgents.length === 3
+      ? configuredAgents
+      : undefined;
+    const newGame = createUndercoverGame('玩家（你）', tableAgents, engineMode);
     setGame(newGame);
     setIsCardRevealed(false);
     setUserInputStatement('');
     setSelectedVoteTarget(null);
     setUndercoverGuessWord('');
     setIsAiProcessing(false);
-  }, [stopTTS]);
+  }, [spaceAgents, stopTTS]);
 
   // 弹窗开启时初始化
   useEffect(() => {
     if (isOpen) {
-      handleStartNewGame();
+      handleStartNewGame('ai');
     } else {
       stopTTS();
       if (autoTurnTimerRef.current) clearTimeout(autoTurnTimerRef.current);
@@ -131,6 +150,30 @@ export default function InteractiveUndercoverModal({
     playTTS(text, { voice, rate });
   };
 
+  // 封装大模型调用请求（通过 spaces.undercoverAiTurn 统一鉴权、带超时与优雅回退）
+  const callUndercoverAi = async (
+    agentId: string,
+    action: 'statement' | 'debate' | 'vote' | 'guess',
+    payload: Record<string, any>
+  ) => {
+    if (!spaceId) return null;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 9500); // 9.5秒超时保护
+    try {
+      const data = await spaces.undercoverAiTurn(
+        spaceId,
+        { agentId, action, ...payload },
+        { signal: controller.signal }
+      );
+      clearTimeout(timeoutId);
+      return data?.ok ? data : null;
+    } catch (err) {
+      clearTimeout(timeoutId);
+      console.warn('[Undercover] AI turn request error or timed out, fallback to local rules:', err);
+      return null;
+    }
+  };
+
   // 当前轮到的发言玩家（越界时严格返回 null，杜绝错误回退到 aliveSpeakers[0]）
   const aliveSpeakers = game.speakerOrder
     .map((id) => game.players.find((p) => p.id === id)!)
@@ -141,50 +184,75 @@ export default function InteractiveUndercoverModal({
       : null;
 
   // 触发 AI 的陈述发言
-  const triggerAiTurn = (currentState: UndercoverGameState, aiPlayer: UndercoverPlayer) => {
+  const triggerAiTurn = async (currentState: UndercoverGameState, aiPlayer: UndercoverPlayer) => {
     setIsAiProcessing(true);
     if (autoTurnTimerRef.current) clearTimeout(autoTurnTimerRef.current);
-    const delay = 1000 + Math.random() * 400;
 
-    autoTurnTimerRef.current = setTimeout(() => {
-      const statement = getAgentClueStatement(aiPlayer, currentState.wordPair, currentState.round);
-      const newMsg: DiscussionMessage = {
-        id: `stmt-${Date.now()}-${aiPlayer.id}`,
-        senderId: aiPlayer.id,
-        senderName: aiPlayer.name,
-        senderAvatar: aiPlayer.avatar,
-        senderVoice: aiPlayer.voice,
-        senderRate: aiPlayer.rate,
-        text: statement,
-        timestamp: Date.now(),
-        type: 'statement',
-      };
+    let statement = '';
 
-      const updatedPlayers = currentState.players.map((p) =>
-        p.id === aiPlayer.id
-          ? {
-              ...p,
-              statement,
-              statementHistory: [...p.statementHistory, statement],
-            }
-          : p
-      );
+    if (currentState.engineMode === 'ai' && spaceId) {
+      // 收集前序历史发言记录
+      const historyStatements = currentState.players
+        .filter((p) => p.statement)
+        .map((p) => ({ playerName: p.name, text: p.statement! }));
 
-      const nextState: UndercoverGameState = {
-        ...currentState,
-        players: updatedPlayers,
-        messages: [...currentState.messages, newMsg],
-      };
+      const fallbackText = getAgentClueStatement(aiPlayer, currentState.wordPair, currentState.round);
+      const aiRes = await callUndercoverAi(aiPlayer.id, 'statement', {
+        word: aiPlayer.word,
+        round: currentState.round,
+        historyStatements,
+        fallbackText,
+      });
 
-      setGame(nextState);
-      setIsAiProcessing(false);
-      speakMessage(statement, aiPlayer.voice, aiPlayer.rate);
-      advanceToNextSpeaker(nextState);
-    }, delay);
+      if (aiRes && aiRes.statement) {
+        statement = aiRes.statement;
+      } else {
+        statement = fallbackText;
+      }
+    } else {
+      // 本地代码模式：模拟轻微打字思考延迟
+      await new Promise((resolve) => {
+        autoTurnTimerRef.current = setTimeout(resolve, 800 + Math.random() * 400);
+      });
+      statement = getAgentClueStatement(aiPlayer, currentState.wordPair, currentState.round);
+    }
+
+    const newMsg: DiscussionMessage = {
+      id: `stmt-${Date.now()}-${aiPlayer.id}`,
+      senderId: aiPlayer.id,
+      senderName: aiPlayer.name,
+      senderAvatar: aiPlayer.avatar,
+      senderVoice: aiPlayer.voice,
+      senderRate: aiPlayer.rate,
+      text: statement,
+      timestamp: Date.now(),
+      type: 'statement',
+    };
+
+    const updatedPlayers = currentState.players.map((p) =>
+      p.id === aiPlayer.id
+        ? {
+            ...p,
+            statement,
+            statementHistory: [...p.statementHistory, statement],
+          }
+        : p
+    );
+
+    const nextState: UndercoverGameState = {
+      ...currentState,
+      players: updatedPlayers,
+      messages: [...currentState.messages, newMsg],
+    };
+
+    setGame(nextState);
+    setIsAiProcessing(false);
+    speakMessage(statement, aiPlayer.voice, aiPlayer.rate);
+    advanceToNextSpeaker(nextState);
   };
 
   // 进入自由辩论阶段
-  const triggerDiscussionPhase = (state: UndercoverGameState) => {
+  const triggerDiscussionPhase = async (state: UndercoverGameState) => {
     setIsAiProcessing(true);
 
     const aliveAi = state.players.filter((p) => p.isAlive && p.id !== 'user');
@@ -212,10 +280,34 @@ export default function InteractiveUndercoverModal({
     const debatingAiList = [...aliveAi].sort(() => Math.random() - 0.5).slice(0, 2);
     const debateMessages: DiscussionMessage[] = [];
 
-    debatingAiList.forEach((speaker, idx) => {
+    // 收集所有活着的玩家本轮的发言
+    const allStatements = state.players
+      .filter((p) => p.isAlive && p.statement)
+      .map((p) => ({ playerId: p.id, playerName: p.name, text: p.statement! }));
+
+    for (let idx = 0; idx < debatingAiList.length; idx++) {
+      const speaker = debatingAiList[idx];
       const otherAlive = state.players.filter((p) => p.isAlive && p.id !== speaker.id);
-      const suspect = otherAlive[Math.floor(Math.random() * otherAlive.length)] || otherAlive[0];
-      const debateText = getAgentDebateLine(speaker, suspect, state);
+      const fallbackSuspect = otherAlive[Math.floor(Math.random() * otherAlive.length)] || otherAlive[0];
+      const fallbackText = getAgentDebateLine(speaker, fallbackSuspect, state);
+
+      let debateText = fallbackText;
+
+      if (state.engineMode === 'ai' && spaceId) {
+        const candidates = otherAlive.map((p) => ({ playerId: p.id, playerName: p.name }));
+        const aiRes = await callUndercoverAi(speaker.id, 'debate', {
+          word: speaker.word,
+          round: state.round,
+          allStatements,
+          candidates,
+          fallbackText,
+          fallbackSuspect: { playerId: fallbackSuspect.id, playerName: fallbackSuspect.name },
+        });
+        if (aiRes && aiRes.debateText) {
+          debateText = aiRes.debateText;
+        }
+      }
+
       debateMessages.push({
         id: `debate-${Date.now()}-${idx}`,
         senderId: speaker.id,
@@ -227,21 +319,18 @@ export default function InteractiveUndercoverModal({
         timestamp: Date.now() + (idx + 1) * 800,
         type: 'discussion',
       });
-    });
+    }
 
-    if (autoTurnTimerRef.current) clearTimeout(autoTurnTimerRef.current);
-    autoTurnTimerRef.current = setTimeout(() => {
-      setIsAiProcessing(false);
-      setGame({
-        ...stateWithNotice,
-        phase: 'voting',
-        messages: [...stateWithNotice.messages, ...debateMessages],
-      });
-      // 播报第一个辩论者的语音
-      if (debateMessages[0]) {
-        speakMessage(debateMessages[0].text, debateMessages[0].senderVoice, debateMessages[0].senderRate);
-      }
-    }, 1200);
+    setIsAiProcessing(false);
+    setGame({
+      ...stateWithNotice,
+      phase: 'voting',
+      messages: [...stateWithNotice.messages, ...debateMessages],
+    });
+    // 播报第一个辩论者的语音
+    if (debateMessages[0]) {
+      speakMessage(debateMessages[0].text, debateMessages[0].senderVoice, debateMessages[0].senderRate);
+    }
   };
 
   // 推进到下一个发言人或进入讨论阶段
@@ -353,7 +442,7 @@ export default function InteractiveUndercoverModal({
   };
 
   // 用户点击投票确认
-  const handleConfirmVote = (targetPlayerId: string) => {
+  const handleConfirmVote = async (targetPlayerId: string) => {
     if (game.phase !== 'voting' || isAiProcessing) return;
     setSelectedVoteTarget(targetPlayerId);
     setIsAiProcessing(true);
@@ -363,156 +452,205 @@ export default function InteractiveUndercoverModal({
       user: targetPlayerId,
     };
 
+    const allStatements = game.players
+      .filter((p) => p.statement)
+      .map((p) => ({ playerId: p.id, playerName: p.name, text: p.statement! }));
+
     // 所有活着的 AI 进行投票决策
-    alivePlayers
-      .filter((p) => p.id !== 'user')
-      .forEach((ai) => {
-        votes[ai.id] = determineAgentVote(ai, alivePlayers, game);
-      });
+    const aiVoters = alivePlayers.filter((p) => p.id !== 'user');
+    for (const ai of aiVoters) {
+      const fallbackTarget = determineAgentVote(ai, alivePlayers, game);
+      if (game.engineMode === 'ai' && spaceId) {
+        const aliveCandidates = alivePlayers.filter((p) => p.id !== ai.id).map((p) => ({ id: p.id, name: p.name }));
+        const aiRes = await callUndercoverAi(ai.id, 'vote', {
+          word: ai.word,
+          round: game.round,
+          allStatements,
+          aliveCandidates,
+          fallbackTargetId: fallbackTarget,
+        });
+        votes[ai.id] = aiRes?.targetId || fallbackTarget;
+      } else {
+        votes[ai.id] = fallbackTarget;
+      }
+    }
 
     // 统计选票
     const tallyResult = tallyVotes(votes, alivePlayers);
+    setIsAiProcessing(false);
 
-    setTimeout(() => {
-      setIsAiProcessing(false);
-
-      // 如果平票
-      if (tallyResult.isTie || !tallyResult.eliminatedId) {
-        const tieNotice: DiscussionMessage = {
-          id: `tie-${Date.now()}`,
-          senderId: 'system',
-          senderName: '裁判',
-          senderAvatar: '⚖️',
-          senderVoice: '',
-          text: '【平票安全】本轮投票出现平票，无人被放逐！全员进入下一轮发言！',
-          timestamp: Date.now(),
-          type: 'system',
-        };
-
-        const nextState: UndercoverGameState = {
-          ...game,
-          round: game.round + 1,
-          phase: 'statement',
-          currentSpeakerIndex: 0,
-          votes,
-          messages: [...game.messages, tieNotice],
-        };
-        setGame(nextState);
-
-        const aliveList = nextState.speakerOrder
-          .map((id) => nextState.players.find((p) => p.id === id)!)
-          .filter((p) => p && p.isAlive);
-        const firstSpeaker = aliveList[0];
-        if (firstSpeaker && firstSpeaker.id !== 'user') {
-          triggerAiTurn(nextState, firstSpeaker);
-        } else {
-          setIsAiProcessing(false);
-        }
-        return;
-      }
-
-      // 产生被淘汰者
-      const eliminated = game.players.find((p) => p.id === tallyResult.eliminatedId)!;
-      const updatedPlayers = game.players.map((p) =>
-        p.id === eliminated.id ? { ...p, isAlive: false, votesReceived: tallyResult.voteCounts[p.id] || 0 } : p
-      );
-
-      const elimNotice: DiscussionMessage = {
-        id: `elim-${Date.now()}`,
+    // 如果平票
+    if (tallyResult.isTie || !tallyResult.eliminatedId) {
+      const tieNotice: DiscussionMessage = {
+        id: `tie-${Date.now()}`,
         senderId: 'system',
         senderName: '裁判',
         senderAvatar: '⚖️',
         senderVoice: '',
-        text: `【投票出局】${eliminated.name} 得票最多被放逐淘汰！真实的词语是：【${eliminated.word}】！`,
+        text: '【平票安全】本轮投票出现平票，无人被放逐！全员进入下一轮发言！',
         timestamp: Date.now(),
         type: 'system',
       };
 
-      // 检查胜负
-      const winCheck = checkUndercoverGameOver(updatedPlayers);
+      const nextState: UndercoverGameState = {
+        ...game,
+        round: game.round + 1,
+        phase: 'statement',
+        currentSpeakerIndex: 0,
+        votes,
+        messages: [...game.messages, tieNotice],
+      };
+      setGame(nextState);
 
-      // 如果被淘汰的是卧底，触发绝地反杀（Undercover Guess）环节！
-      if (eliminated.role === 'undercover' && !winCheck.isOver) {
-        setGame({
-          ...game,
-          phase: 'undercover_guess',
-          players: updatedPlayers,
-          eliminatedPlayer: eliminated,
-          votes,
-          messages: [...game.messages, elimNotice],
-        });
-        return;
-      }
-
-      if (winCheck.isOver) {
-        setGame({
-          ...game,
-          phase: 'game_over',
-          players: updatedPlayers,
-          eliminatedPlayer: eliminated,
-          winner: winCheck.winner,
-          winReason: winCheck.reason,
-          votes,
-          messages: [...game.messages, elimNotice],
-        });
+      const aliveList = nextState.speakerOrder
+        .map((id) => nextState.players.find((p) => p.id === id)!)
+        .filter((p) => p && p.isAlive);
+      const firstSpeaker = aliveList[0];
+      if (firstSpeaker && firstSpeaker.id !== 'user') {
+        triggerAiTurn(nextState, firstSpeaker);
       } else {
-        // 游戏继续下一轮
-        const nextRoundNotice: DiscussionMessage = {
-          id: `next-round-${Date.now()}`,
-          senderId: 'system',
-          senderName: '裁判',
-          senderAvatar: '⚖️',
-          senderVoice: '',
-          text: `战局尚未结束！剩余存活：${updatedPlayers.filter((p) => p.isAlive).map((p) => p.name).join('、')}，进入第 ${game.round + 1} 轮陈述！`,
-          timestamp: Date.now(),
-          type: 'system',
-        };
-
-        const nextState: UndercoverGameState = {
-          ...game,
-          round: game.round + 1,
-          phase: 'statement',
-          currentSpeakerIndex: 0,
-          players: updatedPlayers,
-          eliminatedPlayer: eliminated,
-          votes,
-          messages: [...game.messages, elimNotice, nextRoundNotice],
-        };
-
-        setGame(nextState);
-
-        const aliveList = nextState.speakerOrder
-          .map((id) => nextState.players.find((p) => p.id === id)!)
-          .filter((p) => p && p.isAlive);
-        const firstSpeaker = aliveList[0];
-        if (firstSpeaker && firstSpeaker.id !== 'user') {
-          triggerAiTurn(nextState, firstSpeaker);
-        } else {
-          setIsAiProcessing(false);
-        }
+        setIsAiProcessing(false);
       }
-    }, 1000);
+      return;
+    }
+
+    // 产生被淘汰者
+    const eliminated = game.players.find((p) => p.id === tallyResult.eliminatedId)!;
+    const updatedPlayers = game.players.map((p) =>
+      p.id === eliminated.id ? { ...p, isAlive: false, votesReceived: tallyResult.voteCounts[p.id] || 0 } : p
+    );
+
+    const elimNotice: DiscussionMessage = {
+      id: `elim-${Date.now()}`,
+      senderId: 'system',
+      senderName: '裁判',
+      senderAvatar: '⚖️',
+      senderVoice: '',
+      text: `【投票出局】${eliminated.name} 得票最多被放逐淘汰！真实的词语是：【${eliminated.word}】！`,
+      timestamp: Date.now(),
+      type: 'system',
+    };
+
+    // 检查胜负
+    const winCheck = checkUndercoverGameOver(updatedPlayers);
+
+    // 如果被淘汰的是卧底，触发绝地反杀（Undercover Guess）环节！
+    if (eliminated.role === 'undercover' && !winCheck.isOver) {
+      setGame({
+        ...game,
+        phase: 'undercover_guess',
+        players: updatedPlayers,
+        eliminatedPlayer: eliminated,
+        votes,
+        messages: [...game.messages, elimNotice],
+      });
+      return;
+    }
+
+    if (winCheck.isOver) {
+      setGame({
+        ...game,
+        phase: 'game_over',
+        players: updatedPlayers,
+        eliminatedPlayer: eliminated,
+        winner: winCheck.winner,
+        winReason: winCheck.reason,
+        votes,
+        messages: [...game.messages, elimNotice],
+      });
+    } else {
+      // 游戏继续下一轮
+      const nextRoundNotice: DiscussionMessage = {
+        id: `next-round-${Date.now()}`,
+        senderId: 'system',
+        senderName: '裁判',
+        senderAvatar: '⚖️',
+        senderVoice: '',
+        text: `战局尚未结束！剩余存活：${updatedPlayers.filter((p) => p.isAlive).map((p) => p.name).join('、')}，进入第 ${game.round + 1} 轮陈述！`,
+        timestamp: Date.now(),
+        type: 'system',
+      };
+
+      const nextState: UndercoverGameState = {
+        ...game,
+        round: game.round + 1,
+        phase: 'statement',
+        currentSpeakerIndex: 0,
+        players: updatedPlayers,
+        eliminatedPlayer: eliminated,
+        votes,
+        messages: [...game.messages, elimNotice, nextRoundNotice],
+      };
+
+      setGame(nextState);
+
+      const aliveList = nextState.speakerOrder
+        .map((id) => nextState.players.find((p) => p.id === id)!)
+        .filter((p) => p && p.isAlive);
+      const firstSpeaker = aliveList[0];
+      if (firstSpeaker && firstSpeaker.id !== 'user') {
+        triggerAiTurn(nextState, firstSpeaker);
+      } else {
+        setIsAiProcessing(false);
+      }
+    }
   };
 
   // 卧底猜测平民词（绝地反杀）
-  const handleUndercoverGuess = (guessText: string) => {
-    const isCorrect = guessText.trim().toLowerCase() === game.civilianWord.trim().toLowerCase();
+  const handleUndercoverGuess = (guessText: string, reasoning?: string) => {
+    const isCorrect =
+      guessText.trim().toLowerCase() === game.civilianWord.trim().toLowerCase() ||
+      (guessText.trim().length >= 2 && game.civilianWord.toLowerCase().includes(guessText.trim().toLowerCase())) ||
+      (game.civilianWord.length >= 2 && guessText.trim().toLowerCase().includes(game.civilianWord.toLowerCase()));
+
+    const guesserName = game.eliminatedPlayer?.name || '卧底';
+    const reasonText = reasoning ? `（推断：${reasoning}）` : '';
 
     if (isCorrect) {
       setGame({
         ...game,
         phase: 'game_over',
         winner: 'undercover',
-        winReason: `🔥 绝地反杀！卧底成功猜中平民词【${game.civilianWord}】，卧底逆风获胜！`,
+        winReason: `🔥 绝地反杀！卧底【${guesserName}】成功猜中平民词【${game.civilianWord}】${reasonText}，卧底逆风获胜！`,
       });
     } else {
       setGame({
         ...game,
         phase: 'game_over',
         winner: 'civilian',
-        winReason: `🎉 卧底猜测错误（猜的是【${guessText}】，平民词为【${game.civilianWord}】），平民阵营锁定胜局！`,
+        winReason: `🎉 卧底【${guesserName}】猜测错误（猜的是【${guessText}】${reasonText}，平民词为【${game.civilianWord}】），平民阵营锁定胜局！`,
       });
     }
+  };
+
+  const handleAiUndercoverGuess = async () => {
+    if (!game.eliminatedPlayer || isAiProcessing) return;
+    setIsAiProcessing(true);
+    let guessWord = '';
+    let reasoning = '';
+
+    if (game.engineMode === 'ai' && spaceId) {
+      const clues = game.players
+        .filter((p) => p.role === 'civilian' && p.statement)
+        .map((p) => ({ playerName: p.name, text: p.statement! }));
+      const aiRes = await callUndercoverAi(game.eliminatedPlayer.id, 'guess', {
+        word: game.eliminatedPlayer.word,
+        historyStatements: clues,
+        fallbackText: '日常事物',
+      });
+      if (aiRes && aiRes.guessWord) {
+        guessWord = aiRes.guessWord;
+        reasoning = aiRes.reasoning || '';
+      }
+    }
+
+    if (!guessWord) {
+      const willWin = Math.random() < 0.35;
+      guessWord = willWin ? game.civilianWord : '日常物品';
+    }
+
+    setIsAiProcessing(false);
+    handleUndercoverGuess(guessWord, reasoning);
   };
 
   // 分享对局战报到空间
@@ -556,17 +694,41 @@ export default function InteractiveUndercoverModal({
                 <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-bold text-indigo-700">
                   第 {game.round} 轮
                 </span>
+                <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${
+                  game.engineMode === 'ai' ? 'bg-purple-100 text-purple-800' : 'bg-slate-100 text-slate-600'
+                }`}>
+                  {game.engineMode === 'ai' ? '🧠 AI智能' : '⚡ 规则'}
+                </span>
                 <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600">
                   {game.phase === 'dealing' ? '🎴 准备发牌' : game.phase === 'statement' ? '🎙️ 轮流陈述' : game.phase === 'voting' ? '🗳️ 投票指认' : '🏆 终局揭晓'}
                 </span>
               </div>
               <p className="text-[11px] text-slate-400 font-medium mt-0.5">
-                4人暗牌局（3平民 vs 1卧底）· 全角色独立性格语音
+                4人暗牌局（3平民 vs 1卧底）· 支持各 Agent 专属大模型与语音对决
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
+            {/* 引擎切换开关: 大模型智能 vs 本地规则 */}
+            <button
+              type="button"
+              onClick={() => {
+                const nextMode = game.engineMode === 'ai' ? 'code' : 'ai';
+                setGame((prev) => setUndercoverEngineMode(prev, nextMode));
+              }}
+              disabled={isAiProcessing}
+              className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-bold transition cursor-pointer border ${
+                game.engineMode === 'ai'
+                  ? 'bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100'
+                  : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'
+              }`}
+              title={game.engineMode === 'ai' ? '当前：大模型智能对决（支持各Agent独立模型与真实心理博弈）' : '当前：本地代码规则（零延时免Token）'}
+            >
+              {game.engineMode === 'ai' ? <Sparkles size={14} className="text-purple-600" /> : <Zap size={14} className="text-slate-500" />}
+              <span className="hidden sm:inline">{game.engineMode === 'ai' ? '大模型博弈' : '快速代码'}</span>
+            </button>
+
             {/* 语音播报开关 */}
             <button
               type="button"
@@ -588,7 +750,7 @@ export default function InteractiveUndercoverModal({
             {/* 重开对局 */}
             <button
               type="button"
-              onClick={handleStartNewGame}
+              onClick={() => handleStartNewGame(game.engineMode)}
               className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition cursor-pointer"
               title="重新随机发牌开局"
             >
@@ -1021,13 +1183,12 @@ export default function InteractiveUndercoverModal({
                       </span>
                       <button
                         type="button"
-                        onClick={() => {
-                          const willWin = Math.random() < 0.35;
-                          handleUndercoverGuess(willWin ? game.civilianWord : '错误答案');
-                        }}
-                        className="rounded-xl bg-rose-600 px-3.5 py-1.5 text-xs font-black text-white hover:bg-rose-700 transition cursor-pointer"
+                        onClick={handleAiUndercoverGuess}
+                        disabled={isAiProcessing}
+                        className="rounded-xl bg-rose-600 px-3.5 py-1.5 text-xs font-black text-white hover:bg-rose-700 transition cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
                       >
-                        揭晓反杀结果
+                        {isAiProcessing && <Loader2 size={13} className="animate-spin" />}
+                        <span>揭晓反杀结果</span>
                       </button>
                     </div>
                   )}
@@ -1065,7 +1226,7 @@ export default function InteractiveUndercoverModal({
                       )}
                       <button
                         type="button"
-                        onClick={handleStartNewGame}
+                        onClick={() => handleStartNewGame(game.engineMode)}
                         className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 px-4 py-1.5 text-xs font-black text-white hover:bg-slate-800 transition cursor-pointer shadow-sm"
                       >
                         <RotateCcw size={13} />

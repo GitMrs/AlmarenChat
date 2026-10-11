@@ -83,22 +83,12 @@ export function parseAiNarrationResponse(rawText: string): AiNarrationResult | n
   return null;
 }
 
-/**
- * 调用大语言模型流式/异步接口生成深度跑团守秘人剧情与伴聊
- * 附带超时熔断，失败或超时返回 null，供外层无缝降级到本地物理沙盘
- */
-export async function generateTrpgAiNarration(
-  state: TrpgGameState,
-  actionText: string,
-  checkResult?: SkillCheckResult | null,
-  localFallbackNarration?: string,
-  signal?: AbortSignal
-): Promise<AiNarrationResult | null> {
+export function buildTrpgSystemPrompt(state: TrpgGameState): string {
   const aiContext = getTrpgAiContext(state);
   const scenarioTitle = state.scenario.title;
   const isCoc = state.scenario.system === 'coc';
 
-  const systemPrompt = `你是一位世界顶级的 TRPG 跑团守秘人（Keeper / DM），精通 ${isCoc ? '克苏鲁神话体系（COC 7th）风格：充满阴冷悬疑、洛夫克拉夫特式不可名状与宇宙恐怖' : '龙与地下城（DND 5e）风格：充满宏大史诗感、奇幻探险与地城秘辛'}。
+  return `你是一位世界顶级的 TRPG 跑团守秘人（Keeper / DM），精通 ${isCoc ? '克苏鲁神话体系（COC 7th）风格：充满阴冷悬疑、洛夫克拉夫特式不可名状与宇宙恐怖' : '龙与地下城（DND 5e）风格：充满宏大史诗感、奇幻探险与地城秘辛'}。
 当前剧本：《${scenarioTitle}》· ${state.scenario.systemName}
 当前地点：${aiContext.location}（第 ${aiContext.chapter} 章）
 当前阶段：${aiContext.phase.title}
@@ -132,26 +122,68 @@ export async function generateTrpgAiNarration(
     "text": "队友的实时反应台词"
   }
 }`;
+}
 
+export function buildTrpgUserPrompt(
+  actionText: string,
+  checkResult?: SkillCheckResult | null,
+  localFallbackNarration?: string
+): string {
   let checkSummaryText = '自由探索行动（无需掷骰直接执行）';
   if (checkResult) {
     checkSummaryText = `技能【${checkResult.skillName}】检定：${checkResult.summary}（掷出 ${checkResult.diceRoll.roll} / 目标 ${checkResult.targetValue}）`;
   }
 
-  const userPrompt = `【玩家行动宣言】：${actionText}
+  return `【玩家行动宣言】：${actionText}
 【判定结果】：${checkSummaryText}
 【现场基础参考】：${localFallbackNarration || '玩家在场景中展开行动。'}
 
 请根据以上判定生成守秘人叙事与队友反应 JSON。`;
+}
+
+/**
+ * 调用大语言模型流式/异步接口生成深度跑团守秘人剧情与伴聊
+ * 优先走空间专属端点 spaces.trpgAiTurn；未提供 spaceId 时回退走单聊 streamChat
+ * 附带超时熔断，失败或超时返回 null，供外层无缝降级到本地物理沙盘
+ */
+export async function generateTrpgAiNarration(
+  state: TrpgGameState,
+  actionText: string,
+  checkResult?: SkillCheckResult | null,
+  localFallbackNarration?: string,
+  signal?: AbortSignal,
+  spaceId?: string
+): Promise<AiNarrationResult | null> {
+  const systemPrompt = buildTrpgSystemPrompt(state);
+  const userPrompt = buildTrpgUserPrompt(actionText, checkResult, localFallbackNarration);
 
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 9000); // 9秒超时保护
+    const timeoutId = setTimeout(() => controller.abort(), 9500); // 9.5秒超时保护
 
     if (signal) {
       signal.addEventListener('abort', () => controller.abort());
     }
 
+    // 优先：如果处于空间内，走空间统一游戏接口与模型解析
+    if (spaceId) {
+      const { spaces } = await import('@/lib/api');
+      const res = await spaces.trpgAiTurn(
+        spaceId,
+        { state, actionText, checkResult, localFallbackNarration },
+        { signal: controller.signal }
+      );
+      clearTimeout(timeoutId);
+      if (res && res.ok && res.narration) {
+        return {
+          narration: res.narration,
+          suggestions: res.suggestions || [],
+          companionSpeech: res.companionSpeech,
+        };
+      }
+    }
+
+    // 回退：单聊环境或无 spaceId 时使用 streamChat
     const { stream } = await streamChat({
       message: userPrompt,
       history: [],

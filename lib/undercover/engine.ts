@@ -38,10 +38,13 @@ export interface DiscussionMessage {
   type?: 'statement' | 'discussion' | 'system';
 }
 
+export type UndercoverEngineMode = 'ai' | 'code';
+
 export interface UndercoverGameState {
   id: string;
   round: number;
   phase: UndercoverPhase;
+  engineMode: UndercoverEngineMode;
   wordPair: WordPair;
   civilianWord: string;
   undercoverWord: string;
@@ -85,7 +88,8 @@ export const getShortName = (name: string) => {
  */
 export function createUndercoverGame(
   userCustomName = '玩家（你）',
-  tableAgents: Array<{ id: string; name: string; avatar: string; voice: string; rate?: string }> = DEFAULT_TABLE_AGENTS
+  tableAgents: Array<{ id: string; name: string; avatar: string; voice: string; rate?: string }> = DEFAULT_TABLE_AGENTS,
+  engineMode: UndercoverEngineMode = 'ai'
 ): UndercoverGameState {
   const wordPair = getRandomWordPair();
   const allParticipantIds = ['user', ...tableAgents.map((a) => a.id)];
@@ -127,6 +131,7 @@ export function createUndercoverGame(
     id: `undercover-${Date.now()}`,
     round: 1,
     phase: 'dealing',
+    engineMode,
     wordPair,
     civilianWord: wordPair.civilianWord,
     undercoverWord: wordPair.undercoverWord,
@@ -150,6 +155,13 @@ export function createUndercoverGame(
     winner: null,
     historyRounds: [],
   };
+}
+
+export function setUndercoverEngineMode(
+  state: UndercoverGameState,
+  engineMode: UndercoverEngineMode
+): UndercoverGameState {
+  return { ...state, engineMode };
 }
 
 /**

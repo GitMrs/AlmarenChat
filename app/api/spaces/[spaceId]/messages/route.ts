@@ -11,6 +11,7 @@ import {
   resolveAgent,
   resolveManyAgents,
   resolveMentionTarget,
+  resolveSpaceMemberModelConfig,
 } from '@/app/api/_lib/spaces';
 import { describeWorkspaceArtifact, executeWorkspaceTool, workspaceToolSchemas } from '@/lib/agent-runtime/runtime-tools.mjs';
 import { fetchWebPage } from '@/lib/web-fetch.mjs';
@@ -24,7 +25,6 @@ import { persistSpaceMemory, rebuildSpaceMemory, spaceMemoryNeedsTrustedRebuild 
 import { recentRunEvidenceContext } from '@/lib/agent-run-evidence.mjs';
 import { readSpaceLearning, spaceLearningContext } from '@/lib/space-learning.mjs';
 import { buildWebSearchContext, buildWebSearchQuery } from '@/lib/web-search';
-import { createModelClient, DEFAULT_BASE_URL, DEFAULT_MODEL, resolveModelName } from '@/lib/model-client';
 import { getSpaceSkill, readSpaceSkillFile } from '@/lib/space-skills.mjs';
 import { spaceSkillReferenceToolSchema } from '@/lib/agent-runtime/skill-registry.mjs';
 import { runPiSpaceTurn } from '@/lib/pi-runtime/space-session.mjs';
@@ -388,10 +388,12 @@ async function handlePiMessage(options: {
   }
 
   const settings = await userModelSettings(userId);
-  const targetMember = space.members.find((m: any) => m.agentId === targetAgent.id);
-  const effectiveApiBaseUrl = targetMember?.apiBaseUrl?.trim() || settings.apiBaseUrl;
-  const effectiveApiKey = targetMember?.apiKey?.trim() || settings.apiKey;
-  const effectiveModelName = targetMember?.modelName?.trim() || settings.modelName;
+  const modelConfig = await resolveSpaceMemberModelConfig({
+    spaceId,
+    agentId: targetAgent.id,
+    userId,
+    space,
+  });
 
   const changedPaths = new Set<string>();
   const encoder = new TextEncoder();
@@ -417,9 +419,9 @@ async function handlePiMessage(options: {
             message: textMessage,
             interactionMode,
             multiReplyIndex,
-            apiBaseUrl: effectiveApiBaseUrl || DEFAULT_BASE_URL,
-            apiKey: effectiveApiKey || process.env.apiKey,
-            modelName: effectiveModelName || DEFAULT_MODEL,
+            apiBaseUrl: modelConfig.effectiveApiBaseUrl,
+            apiKey: modelConfig.effectiveApiKey,
+            modelName: modelConfig.effectiveModelName,
             modelContextWindow: settings.modelContextWindow,
             allowWebSearch,
             imageGenerationRequested,
@@ -999,13 +1001,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
       openaiMessages.push({ role: 'user', content: textMessage });
     }
 
-    const targetMember = space.members.find((m: any) => m.agentId === targetAgent.id);
-    const effectiveApiBaseUrl = targetMember?.apiBaseUrl?.trim() || settings.apiBaseUrl;
-    const effectiveApiKey = targetMember?.apiKey?.trim() || settings.apiKey;
-    const effectiveModelName = targetMember?.modelName?.trim() || settings.modelName;
-
-    const client = createModelClient(effectiveApiBaseUrl, effectiveApiKey);
-    const model = resolveModelName(effectiveModelName);
+    const modelConfig = await resolveSpaceMemberModelConfig({
+      spaceId,
+      agentId: targetAgent.id,
+      userId,
+      space,
+    });
+    if (!modelConfig.client) throw new Error('当前空间成员没有可用的大模型配置');
+    const client = modelConfig.client;
+    const model = modelConfig.model;
 
     const encoder = new TextEncoder();
     const readable = new ReadableStream({

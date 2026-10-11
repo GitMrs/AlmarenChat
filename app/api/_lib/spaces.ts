@@ -2,6 +2,7 @@ import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import prisma from '@/app/api/_lib/db';
 import { getBuiltInAgents } from '@/lib/agents-data';
+import { createModelClient, resolveModelName, DEFAULT_BASE_URL, DEFAULT_MODEL } from '@/lib/model-client';
 import type { Agent } from '@/types';
 
 export type ResolvedSpaceAgent = Pick<
@@ -190,4 +191,105 @@ ${mentionGuidance}
 
 当前普通成员列表：
 ${membersList || '- 暂无普通成员。'}`;
+}
+
+export interface SpaceMemberModelConfig {
+  space: any;
+  currentAgent: ResolvedSpaceAgent | null;
+  agentName: string;
+  agentPersona: string;
+  agentTone: string;
+  effectiveApiBaseUrl: string;
+  effectiveApiKey: string | null;
+  effectiveModelName: string;
+  client: ReturnType<typeof createModelClient> | null;
+  model: string;
+  hasApiKey: boolean;
+}
+
+/**
+ * 统一解析空间成员在当前空间与用户上下文下的生效大模型配置与客户端
+ * 优先级：SpaceMember 独立配置 > Agent 自身模型 > 用户自定义模型 > 系统/环境变量默认
+ */
+export async function resolveSpaceMemberModelConfig(options: {
+  spaceId: string;
+  agentId: string;
+  userId?: string | null;
+  space?: any;
+}): Promise<SpaceMemberModelConfig> {
+  const { spaceId, agentId } = options;
+  let space = options.space;
+
+  if (!space) {
+    space = options.userId
+      ? await getSpaceForUser(spaceId, options.userId)
+      : await prisma.space.findUnique({
+          where: { id: spaceId },
+          include: {
+            members: {
+              orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+            },
+          },
+      });
+  }
+  if (!space) throw Object.assign(new Error('Space not found'), { status: 404 });
+
+  const effectiveUserId = options.userId || space?.userId || null;
+  const [user, currentAgent] = await Promise.all([
+    effectiveUserId
+      ? prisma.user.findUnique({
+          where: { id: effectiveUserId },
+          select: {
+            customModelEnabled: true,
+            apiBaseUrl: true,
+            apiKey: true,
+            modelName: true,
+          },
+        })
+      : null,
+    resolveAgent(agentId, effectiveUserId || undefined),
+  ]);
+
+  const targetMember = space?.members?.find((m: any) => m.agentId === agentId);
+  const userModel = user?.customModelEnabled ? user : null;
+  const effectiveApiBaseUrl =
+    targetMember?.apiBaseUrl?.trim() ||
+    userModel?.apiBaseUrl?.trim() ||
+    process.env.OPENAI_BASE_URL ||
+    DEFAULT_BASE_URL;
+
+  const effectiveApiKey =
+    targetMember?.apiKey?.trim() ||
+    userModel?.apiKey?.trim() ||
+    process.env.apiKey ||
+    process.env.OPENAI_API_KEY ||
+    null;
+
+  const effectiveModelName =
+    targetMember?.modelName?.trim() ||
+    (currentAgent as { model?: string | null } | null)?.model?.trim() ||
+    userModel?.modelName?.trim() ||
+    DEFAULT_MODEL;
+
+  const model = resolveModelName(effectiveModelName);
+  const hasApiKey = Boolean(effectiveApiKey);
+  const client = hasApiKey ? createModelClient(effectiveApiBaseUrl, effectiveApiKey) : null;
+
+  const agentName = currentAgent?.name || '搭子牌友';
+  const agentPersona = currentAgent?.systemPrompt || currentAgent?.description || '性格鲜明的空间搭子';
+  const agentTone = currentAgent?.tone || '个性鲜明';
+
+  return {
+    space,
+    currentAgent,
+    agentName,
+    agentPersona,
+    agentTone,
+    effectiveApiBaseUrl,
+    effectiveApiKey,
+    effectiveModelName,
+    client,
+    model,
+    hasApiKey,
+  };
 }

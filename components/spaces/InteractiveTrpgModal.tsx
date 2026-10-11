@@ -87,6 +87,7 @@ export interface InteractiveTrpgModalProps {
   spaceAgents?: Agent[];
   onShareToSpace?: (content: string) => void;
   initialScenarioId?: string;
+  spaceId?: string;
 }
 
 export default function InteractiveTrpgModal({
@@ -95,6 +96,7 @@ export default function InteractiveTrpgModal({
   spaceAgents = EMPTY_SPACE_AGENTS,
   onShareToSpace,
   initialScenarioId = 'coc_blackwood_manor',
+  spaceId,
 }: InteractiveTrpgModalProps) {
   const [mounted, setMounted] = useState(false);
 
@@ -405,7 +407,8 @@ export default function InteractiveTrpgModal({
           textToExecute,
           null,
           localNarration,
-          controller.signal
+          controller.signal,
+          spaceId
         );
 
         if (aiResult && aiResult.narration) {
@@ -482,7 +485,8 @@ export default function InteractiveTrpgModal({
             actionLabel,
             nextState.lastCheckResult,
             localNarration,
-            controller.signal
+            controller.signal,
+            spaceId
           )
             .then((aiResult) => {
               if (aiResult && aiResult.narration) {

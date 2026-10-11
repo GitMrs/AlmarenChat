@@ -403,6 +403,7 @@ export default function SpaceGameCenter({
         isOpen={isUndercoverModalOpen}
         onClose={() => setIsUndercoverModalOpen(false)}
         spaceAgents={spaceAgents}
+        spaceId={spaceId}
         onShareToSpace={(text) => {
           setIsUndercoverModalOpen(false);
           onShareToSpace?.(text);
@@ -414,6 +415,7 @@ export default function SpaceGameCenter({
         isOpen={isTrpgModalOpen}
         onClose={() => setIsTrpgModalOpen(false)}
         spaceAgents={spaceAgents}
+        spaceId={spaceId}
         onShareToSpace={(text) => {
           setIsTrpgModalOpen(false);
           onShareToSpace?.(text);
