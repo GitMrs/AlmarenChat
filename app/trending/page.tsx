@@ -186,26 +186,33 @@ export default function TrendingPage() {
     date: string;
     sampleCount: number;
   } | null>(null);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
 
   // 获取 AI 舆情总结
   const fetchSummary = async (targetDate = selectedDate, force = false) => {
     setSummaryLoading(true);
+    setSummaryError(null);
     try {
       const catParam = activeCategory === 'favorites' ? 'all' : activeCategory;
       const url = `/api/trending/summary?date=${targetDate}&category=${catParam}${force ? '&refresh=true' : ''}`;
-      const res = await fetch(url);
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      const res = await fetch(url, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
       const json = await res.json();
-      if (json.success) {
-        setSummaryData({
-          summary: json.summary,
-          cached: json.cached,
-          updatedAt: json.updatedAt,
-          date: json.date,
-          sampleCount: json.sampleCount || 35,
-        });
+      if (!res.ok || !json.success) {
+        throw new Error(json.error || 'AI 汇总生成失败');
       }
+      setSummaryData({
+        summary: json.summary,
+        cached: json.cached,
+        updatedAt: json.updatedAt,
+        date: json.date,
+        sampleCount: json.sampleCount || 35,
+      });
     } catch (err) {
       console.error('Failed to fetch summary:', err);
+      setSummaryError(err instanceof Error ? err.message : 'AI 汇总生成失败');
     } finally {
       setSummaryLoading(false);
     }
@@ -602,6 +609,7 @@ export default function TrendingPage() {
         {summaryOpen && (
           <TrendingSummaryCard
             summary={summaryData?.summary || ''}
+            error={summaryError}
             loading={summaryLoading}
             cached={summaryData?.cached}
             updatedAt={summaryData?.updatedAt}

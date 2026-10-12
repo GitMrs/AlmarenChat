@@ -19,6 +19,7 @@ import {
 
 export interface TrendingSummaryCardProps {
   summary: string;
+  error?: string | null;
   loading: boolean;
   cached?: boolean;
   updatedAt?: string;
@@ -67,6 +68,7 @@ function buildPodcastScript(summary: string, dateLabel: string): string {
 
 export default function TrendingSummaryCard({
   summary,
+  error = null,
   loading,
   cached = false,
   updatedAt,
@@ -360,6 +362,10 @@ export default function TrendingSummaryCard({
             <p className="mt-1 text-xs text-slate-400 max-w-md">
               已将 21 平台 500+ 条原始数据脱水压缩至约 1500 Tokens，大模型正在梳理核心定调与底层主线...
             </p>
+          </div>
+        ) : error ? (
+          <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:border-rose-900/50 dark:bg-rose-950/30 dark:text-rose-300">
+            {error}
           </div>
         ) : !summary ? (
           <div className="py-6 text-center text-xs text-slate-400">
