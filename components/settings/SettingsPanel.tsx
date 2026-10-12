@@ -896,7 +896,7 @@ export default function SettingsPanel() {
                 <div className="text-sm font-black text-slate-950">当前版本</div>
                 <div className="mt-1 truncate text-xs text-slate-500">
                   {deploymentInfo
-                    ? `${deploymentInfo.branch} · ${new Date(deploymentInfo.builtAt).toLocaleString('zh-CN')}`
+                    ? `${new Date(deploymentInfo.builtAt).toLocaleString('zh-CN')}`
                     : '当前构建未记录版本信息'}
                 </div>
               </div>
