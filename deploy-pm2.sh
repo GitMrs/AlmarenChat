@@ -12,7 +12,11 @@ SERVICES_STOPPED=0
 MIGRATION_FAILED=0
 LOCK_FILE="${DEPLOY_LOCK_FILE:-/tmp/almaren-chat-deploy.lock}"
 HEALTH_URL="${HEALTH_URL:-}"
+VERSION_URL="${VERSION_URL:-}"
 DATABASE_BACKUP_RESULT=""
+DEPLOY_COMMIT="unknown"
+DEPLOY_BRANCH="unknown"
+DEPLOY_VERSION=""
 
 if ! command -v flock >/dev/null 2>&1; then
   echo "Error: flock is required for serialized deployments"
@@ -97,9 +101,37 @@ wait_for_health() {
   return 1
 }
 
+verify_deployment_version() {
+  local version_url="${VERSION_URL:-http://127.0.0.1:${PORT}/api/version}"
+  local version_payload
+  local reported_commit
+  echo "Verifying deployed version at $version_url..."
+  if ! version_payload="$(curl --fail --silent --show-error --max-time 3 "$version_url")"; then
+    echo "Failed to read deployed version."
+    return 1
+  fi
+  if ! reported_commit="$(node -e 'const info = JSON.parse(process.argv[1]); process.stdout.write(String(info.commit || ""));' "$version_payload" 2>/dev/null)"; then
+    echo "Invalid deployment version response: $version_payload"
+    return 1
+  fi
+  if [ "$reported_commit" != "$DEPLOY_COMMIT" ]; then
+    echo "Deployment version mismatch: expected $DEPLOY_COMMIT, received ${reported_commit:-<empty>}"
+    return 1
+  fi
+  echo "Deployment version verified: $DEPLOY_VERSION"
+}
+
 if command -v git >/dev/null 2>&1 && [ -d .git ]; then
   echo "Updating code..."
   git pull --ff-only
+  if [ -n "$(git status --porcelain --untracked-files=normal)" ]; then
+    echo "Error: the deployment source contains uncommitted files:"
+    git status --short
+    echo "Commit, remove, or ignore these files before deploying."
+    exit 1
+  fi
+  DEPLOY_COMMIT="$(git rev-parse HEAD)"
+  DEPLOY_BRANCH="$(git symbolic-ref --quiet --short HEAD || git rev-parse --short HEAD)"
 fi
 
 echo "Preparing directories..."
@@ -161,6 +193,20 @@ if [ ! -f "$BUILD_DIR/BUILD_ID" ]; then
   echo "Error: Next.js build completed without $BUILD_DIR/BUILD_ID"
   exit 1
 fi
+BUILD_ID="$(tr -d '\r\n' < "$BUILD_DIR/BUILD_ID")"
+BUILT_AT="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+if [ "$DEPLOY_COMMIT" = "unknown" ]; then
+  DEPLOY_VERSION="build-$BUILD_ID"
+else
+  DEPLOY_VERSION="${DEPLOY_COMMIT:0:12}"
+fi
+DEPLOY_VERSION="$DEPLOY_VERSION" \
+DEPLOY_COMMIT="$DEPLOY_COMMIT" \
+DEPLOY_BRANCH="$DEPLOY_BRANCH" \
+BUILT_AT="$BUILT_AT" \
+BUILD_ID="$BUILD_ID" \
+node -e 'const fs = require("node:fs"); const info = { version: process.env.DEPLOY_VERSION, commit: process.env.DEPLOY_COMMIT, branch: process.env.DEPLOY_BRANCH, builtAt: process.env.BUILT_AT, buildId: process.env.BUILD_ID }; fs.writeFileSync(process.argv[1], `${JSON.stringify(info, null, 2)}\n`, "utf8");' "$BUILD_DIR/deploy-info.json"
+echo "Prepared deployment version: $DEPLOY_VERSION ($DEPLOY_BRANCH)"
 
 echo "Backing up SQLite database before schema changes..."
 DATABASE_BACKUP_RESULT="$(yarn db:backup)"
@@ -221,6 +267,19 @@ if ! wait_for_health; then
   exit 1
 fi
 
+if ! verify_deployment_version; then
+  echo "New build reported the wrong version; rolling back the previous build..."
+  rm -rf .next
+  if [ -d "$BACKUP_DIR" ]; then
+    mv "$BACKUP_DIR" .next
+  fi
+  if ! restart_services; then
+    echo "CRITICAL: version-check rollback failed to restore PM2 services"
+  fi
+  SERVICES_STOPPED=0
+  exit 1
+fi
+
 pm2 save
 SERVICES_STOPPED=0
 rm -rf "$BACKUP_DIR"
@@ -233,3 +292,8 @@ echo "Worker logs: pm2 logs almaren-chat-worker"
 echo "QQ Bot logs: pm2 logs almaren-chat-qq"
 echo "Status: pm2 status"
 echo "URL: http://localhost:$PORT"
+echo "Version: $DEPLOY_VERSION"
+echo "Commit: $DEPLOY_COMMIT"
+echo "Branch: $DEPLOY_BRANCH"
+echo "Built at: $BUILT_AT"
+echo "Version endpoint: ${VERSION_URL:-http://127.0.0.1:${PORT}/api/version}"

@@ -68,6 +68,13 @@ type SearchSnapshot = {
   tavilyApiKey: string;
 };
 
+type DeploymentInfo = {
+  version: string;
+  commit: string;
+  branch: string;
+  builtAt: string;
+};
+
 export default function SettingsPanel() {
   const router = useRouter();
 
@@ -105,6 +112,8 @@ export default function SettingsPanel() {
   const [error, setError] = useState('');
   const [browserModelError, setBrowserModelError] = useState('');
   const [needsLogin, setNeedsLogin] = useState(false);
+  const [deploymentInfo, setDeploymentInfo] = useState<DeploymentInfo | null>(null);
+  const [versionLoading, setVersionLoading] = useState(true);
 
   const currentAccount = useMemo(
     () => ({
@@ -150,6 +159,15 @@ export default function SettingsPanel() {
     const storedBrowserModel = readBrowserModelConfigForScope('GLOBAL');
     setBrowserModelConfig(storedBrowserModel);
     setInitialBrowserModelConfig(storedBrowserModel);
+
+    fetch('/api/version', { cache: 'no-store' })
+      .then(async (response) => {
+        if (!response.ok) throw new Error('Version unavailable');
+        return response.json() as Promise<DeploymentInfo>;
+      })
+      .then((info) => setDeploymentInfo(info))
+      .catch(() => setDeploymentInfo(null))
+      .finally(() => setVersionLoading(false));
 
     if (!localStorage.getItem('token')) {
       setNeedsLogin(true);
@@ -873,6 +891,22 @@ export default function SettingsPanel() {
               <div className="text-sm font-black text-slate-950">导出聊天记录</div>
               <div className="mt-1 text-xs text-slate-500">后续支持 Markdown / JSON 导出。</div>
             </button>
+            <div className="mt-4 flex items-center justify-between gap-4 border-t border-black/[0.06] pt-4">
+              <div className="min-w-0">
+                <div className="text-sm font-black text-slate-950">当前版本</div>
+                <div className="mt-1 truncate text-xs text-slate-500">
+                  {deploymentInfo
+                    ? `${deploymentInfo.branch} · ${new Date(deploymentInfo.builtAt).toLocaleString('zh-CN')}`
+                    : '当前构建未记录版本信息'}
+                </div>
+              </div>
+              <code
+                className="shrink-0 rounded-md bg-slate-100 px-2 py-1 text-xs font-bold text-slate-700"
+                title={deploymentInfo?.commit}
+              >
+                {versionLoading ? '读取中...' : deploymentInfo?.version || (process.env.NODE_ENV === 'development' ? '本地开发' : '暂不可用')}
+              </code>
+            </div>
           </section>
 
           <button
