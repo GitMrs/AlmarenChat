@@ -134,64 +134,21 @@ export default function SpaceCryptoCenter({
 
   // 本地持久化 key
   const storageKey = `crypto-cockpit-${spaceId}`;
-  const handledDecisionsStorageKey = `${storageKey}-handled-decisions-v2`;
 
   // 1. 伏击哨队列 (未开单 · 埋伏阶段)
-  const [ambushPlans, setAmbushPlans] = useState<AmbushPlan[]>(() => {
-    if (typeof window === 'undefined') return [];
-    const saved = localStorage.getItem(`${storageKey}-ambush-list`);
-    if (saved !== null) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
-      } catch {}
-    }
-    return [];
-  });
+  const [ambushPlans, setAmbushPlans] = useState<AmbushPlan[]>([]);
 
   // 2. 模拟仓位队列
-  const [activePositions, setActivePositions] = useState<ActivePosition[]>(() => {
-    if (typeof window === 'undefined') return [];
-    const saved = localStorage.getItem(`${storageKey}-position-list`);
-    if (saved !== null) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
-      } catch {}
-    }
-    return [];
-  });
+  const [activePositions, setActivePositions] = useState<ActivePosition[]>([]);
 
   // 记录用户已主动撤销/删除过的战术签名（黑名单），确保删除是“真删除”，杜绝群聊历史旧消息把删掉的单子重新当作“新推演”强行加回
-  const [deletedSignatures, setDeletedSignatures] = useState<string[]>(() => {
-    if (typeof window === 'undefined') return [];
-    const saved = localStorage.getItem(`${storageKey}-deleted-signatures`);
-    if (saved !== null) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
-      } catch {}
-    }
-    return [];
-  });
+  const [deletedSignatures, setDeletedSignatures] = useState<string[]>([]);
 
   // 3. 战绩复盘列表 (已平仓记录)
-  const [reviews, setReviews] = useState<ReviewRecord[]>(() => {
-    if (typeof window === 'undefined') return [];
-    const saved = localStorage.getItem(`${storageKey}-reviews`);
-    if (saved) {
-      try { return JSON.parse(saved); } catch {}
-    }
-    return [];
-  });
+  const [reviews, setReviews] = useState<ReviewRecord[]>([]);
 
   // 服务端云端守护状态（默认静默开启，始终运行）
-  const [serverSentinelEnabled, setServerSentinelEnabled] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return true;
-    const saved = localStorage.getItem(`${storageKey}-server-sentinel`);
-    if (saved !== null) return saved !== 'false';
-    return true;
-  });
+  const [serverSentinelEnabled, setServerSentinelEnabled] = useState<boolean>(true);
   const [serverStateHydrated, setServerStateHydrated] = useState(false);
   const [serverCheckedAt, setServerCheckedAt] = useState<string | null>(null);
   const [checkingServer, setCheckingServer] = useState<boolean>(false);
@@ -228,17 +185,7 @@ export default function SpaceCryptoCenter({
 
   const [autoSyncChatPlans] = useState(false);
   const [pendingDecision, setPendingDecision] = useState<PendingCryptoDecision | null>(null);
-  const [handledDecisionIds, setHandledDecisionIds] = useState<string[]>(() => {
-    if (typeof window === 'undefined') return [];
-    const saved = localStorage.getItem(handledDecisionsStorageKey);
-    if (!saved) return [];
-    try {
-      const parsed = JSON.parse(saved);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
-    }
-  });
+  const [handledDecisionIds, setHandledDecisionIds] = useState<string[]>([]);
   const handledDecisionIdsRef = useRef(handledDecisionIds);
   useEffect(() => {
     handledDecisionIdsRef.current = handledDecisionIds;
@@ -257,7 +204,6 @@ export default function SpaceCryptoCenter({
   const markDecisionHandled = (messageId: string) => {
     setHandledDecisionIds((prev) => {
       const next = Array.from(new Set([...prev, messageId])).slice(-100);
-      localStorage.setItem(handledDecisionsStorageKey, JSON.stringify(next));
       return next;
     });
   };
@@ -411,11 +357,7 @@ export default function SpaceCryptoCenter({
     if (target) {
       const sig = computeSinglePlanSignature(target);
       setDeletedSignatures((prev) => {
-        const next = Array.from(new Set([...prev, sig]));
-        if (typeof window !== 'undefined') {
-          localStorage.setItem(`${storageKey}-deleted-signatures`, JSON.stringify(next));
-        }
-        return next;
+        return Array.from(new Set([...prev, sig]));
       });
     }
     setAmbushPlans((prev) => prev.filter((p) => p.id !== planId));
@@ -463,27 +405,75 @@ export default function SpaceCryptoCenter({
   // 从服务端读取持久化状态
   useEffect(() => {
     cryptoSentinelApi.get(spaceId)
-      .then((res) => {
+      .then(async (res) => {
         if (res?.success && res.data) {
           const d = res.data;
-          // 哪怕服务端是空数组 [] 也真实采纳，绝不强行回退示范单
-          if (Array.isArray(d.ambushPlans)) {
-            setAmbushPlans(d.ambushPlans);
-          }
-          if (Array.isArray(d.activePositions)) {
-            setActivePositions(d.activePositions);
-          }
-          if (Array.isArray(d.deletedSignatures)) {
-            setDeletedSignatures(d.deletedSignatures);
-          }
-          if (Array.isArray(d.handledDecisionIds)) {
-            setHandledDecisionIds((prev) => Array.from(new Set([...prev, ...d.handledDecisionIds])));
-          }
+          const readLegacy = <T,>(key: string, fallback: T): T => {
+            if (typeof window === 'undefined') return fallback;
+            try {
+              const value = JSON.parse(localStorage.getItem(key) || 'null');
+              return value === null ? fallback : value as T;
+            } catch {
+              return fallback;
+            }
+          };
+          const hasServerState = Boolean(
+            d.updatedAt
+            || (Array.isArray(d.ambushPlans) && d.ambushPlans.length > 0)
+            || (Array.isArray(d.activePositions) && d.activePositions.length > 0)
+            || (Array.isArray(d.reviews) && d.reviews.length > 0)
+          );
+          const nextPlans = Array.isArray(d.ambushPlans) && (hasServerState || d.ambushPlans.length > 0)
+            ? d.ambushPlans
+            : readLegacy<AmbushPlan[]>(`${storageKey}-ambush-list`, []);
+          const nextPositions = Array.isArray(d.activePositions) && (hasServerState || d.activePositions.length > 0)
+            ? d.activePositions
+            : readLegacy<ActivePosition[]>(`${storageKey}-position-list`, []);
+          const nextDeletedSignatures = Array.isArray(d.deletedSignatures) && (hasServerState || d.deletedSignatures.length > 0)
+            ? d.deletedSignatures
+            : readLegacy<string[]>(`${storageKey}-deleted-signatures`, []);
+          const nextHandledDecisionIds = Array.isArray(d.handledDecisionIds) && (hasServerState || d.handledDecisionIds.length > 0)
+            ? d.handledDecisionIds
+            : readLegacy<string[]>(`${storageKey}-handled-decisions-v2`, []);
+
+          setAmbushPlans(nextPlans);
+          setActivePositions(nextPositions);
+          if (Array.isArray(d.reviews)) setReviews(d.reviews);
+          setDeletedSignatures(nextDeletedSignatures);
+          setHandledDecisionIds(nextHandledDecisionIds);
           if (typeof d.serverSentinelEnabled === 'boolean') {
             setServerSentinelEnabled(d.serverSentinelEnabled);
           }
           if (d.lastCheckedAt) {
             setServerCheckedAt(d.lastCheckedAt);
+          }
+
+          const migratedLegacyState = !hasServerState && (
+            nextPlans.length > 0
+            || nextPositions.length > 0
+            || nextDeletedSignatures.length > 0
+            || nextHandledDecisionIds.length > 0
+          );
+          if (migratedLegacyState) {
+            await cryptoSentinelApi.save({
+              spaceId,
+              ambushPlans: nextPlans,
+              activePositions: nextPositions,
+              reviews: Array.isArray(d.reviews) ? d.reviews : [],
+              serverSentinelEnabled: typeof d.serverSentinelEnabled === 'boolean' ? d.serverSentinelEnabled : true,
+              deletedSignatures: nextDeletedSignatures,
+              handledDecisionIds: nextHandledDecisionIds,
+            });
+          }
+          if (typeof window !== 'undefined') {
+            [
+              `${storageKey}-ambush-list`,
+              `${storageKey}-position-list`,
+              `${storageKey}-deleted-signatures`,
+              `${storageKey}-handled-decisions-v2`,
+              `${storageKey}-server-sentinel`,
+              `${storageKey}-reviews`,
+            ].forEach((key) => localStorage.removeItem(key));
           }
         }
       })
@@ -499,6 +489,7 @@ export default function SpaceCryptoCenter({
         spaceId,
         ambushPlans,
         activePositions,
+        reviews,
         serverSentinelEnabled,
         autoSyncChatPlans,
         deletedSignatures,
@@ -506,33 +497,7 @@ export default function SpaceCryptoCenter({
       }).catch((e) => console.warn('[SpaceCryptoCenter] sync to server failed:', e));
     }, 1500);
     return () => clearTimeout(timer);
-  }, [spaceId, ambushPlans, activePositions, serverSentinelEnabled, autoSyncChatPlans, deletedSignatures, handledDecisionIds, serverStateHydrated]);
-
-  // 本地轻持久化
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    localStorage.setItem(`${storageKey}-ambush-list`, JSON.stringify(ambushPlans));
-  }, [ambushPlans, storageKey]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    localStorage.setItem(`${storageKey}-position-list`, JSON.stringify(activePositions));
-  }, [activePositions, storageKey]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    localStorage.setItem(`${storageKey}-reviews`, JSON.stringify(reviews));
-  }, [reviews, storageKey]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    localStorage.setItem(`${storageKey}-server-sentinel`, String(serverSentinelEnabled));
-  }, [serverSentinelEnabled, storageKey]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    localStorage.setItem(`${storageKey}-deleted-signatures`, JSON.stringify(deletedSignatures));
-  }, [deletedSignatures, storageKey]);
+  }, [spaceId, ambushPlans, activePositions, reviews, serverSentinelEnabled, autoSyncChatPlans, deletedSignatures, handledDecisionIds, serverStateHydrated]);
 
   // 手动触发一次云端巡检
   const triggerServerCheck = async () => {

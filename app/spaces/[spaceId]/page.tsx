@@ -694,6 +694,7 @@ export default function SpaceDetailPage() {
   const chatScrollTopRef = useRef<number>(0);
   const wasAtBottomRef = useRef<boolean>(true);
   const abortRef = useRef<AbortController | null>(null);
+  const sendInFlightRef = useRef<symbol | null>(null);
   const cancelRelayRef = useRef<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const skillZipInputRef = useRef<HTMLInputElement>(null);
@@ -1560,10 +1561,17 @@ export default function SpaceDetailPage() {
     }
   ) => {
     if (!content || isStreaming || activeRelay) return;
+    if (sendInFlightRef.current) return;
+    const sendToken = Symbol('space-message');
+    sendInFlightRef.current = sendToken;
 
     if (!isPiSpace && activeDiscussion && !options?.reuseLastUserMessage) {
-      await updateDiscussion('inject', undefined, content);
-      setInput('');
+      try {
+        await updateDiscussion('inject', undefined, content);
+        setInput('');
+      } finally {
+        if (sendInFlightRef.current === sendToken) sendInFlightRef.current = null;
+      }
       return;
     }
 
@@ -1656,6 +1664,7 @@ export default function SpaceDetailPage() {
         console.error('Failed to persist direct gomoku note:', err);
       });
 
+      if (sendInFlightRef.current === sendToken) sendInFlightRef.current = null;
       return;
     }
 
@@ -1980,6 +1989,7 @@ export default function SpaceDetailPage() {
         setError(err.message || '发送失败');
       }
     } finally {
+      if (sendInFlightRef.current === sendToken) sendInFlightRef.current = null;
       setIsStreaming(false);
       setStreamingContent('');
       setStreamingPiActivity(null);

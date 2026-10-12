@@ -40,7 +40,7 @@ export async function POST(request: Request) {
   try {
     const userId = requireAuth(request);
     const body = await request.json();
-    const { spaceId, ambushPlans, activePositions, serverSentinelEnabled, autoSyncChatPlans, deletedSignatures, action, messageId } = body;
+    const { spaceId, ambushPlans, activePositions, reviews, serverSentinelEnabled, autoSyncChatPlans, deletedSignatures, action, messageId } = body;
 
     if (!spaceId) {
       return NextResponse.json({ error: 'spaceId is required' }, { status: 400 });
@@ -141,6 +141,7 @@ export async function POST(request: Request) {
     const saved = await saveSentinelState(spaceId, userId, {
       ambushPlans,
       activePositions,
+      reviews,
       serverSentinelEnabled,
       autoSyncChatPlans,
       deletedSignatures,

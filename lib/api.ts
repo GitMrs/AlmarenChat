@@ -859,6 +859,7 @@ export const cryptoSentinel = {
     spaceId: string;
     ambushPlans: any[];
     activePositions: any[];
+    reviews?: any[];
     serverSentinelEnabled: boolean;
     autoSyncChatPlans?: boolean;
     deletedSignatures?: string[];
@@ -1073,12 +1074,16 @@ export async function streamSpaceMessage(data: {
   signal?: AbortSignal;
 }): Promise<{ stream: ReadableStream<Uint8Array>; speakerAgentId?: string; speakerAgentName?: string; workspaceFilesChanged: number; streamFormat?: 'pi-ndjson' }> {
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+  const requestId = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
   const res = await fetch(`${API_BASE}/spaces/${data.spaceId}/messages`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      'X-Space-Message-Request-Id': requestId,
     },
     body: JSON.stringify({
       message: data.message,
