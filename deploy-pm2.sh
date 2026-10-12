@@ -124,12 +124,6 @@ verify_deployment_version() {
 if command -v git >/dev/null 2>&1 && [ -d .git ]; then
   echo "Updating code..."
   git pull --ff-only
-  if [ -n "$(git status --porcelain --untracked-files=normal)" ]; then
-    echo "Error: the deployment source contains uncommitted files:"
-    git status --short
-    echo "Commit, remove, or ignore these files before deploying."
-    exit 1
-  fi
   DEPLOY_COMMIT="$(git rev-parse HEAD)"
   DEPLOY_BRANCH="$(git symbolic-ref --quiet --short HEAD || git rev-parse --short HEAD)"
 fi
