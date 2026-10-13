@@ -206,7 +206,9 @@ ${secondSection}
 ${thirdSection}`;
 
   // 5. 调用大模型
-  const client = createModelClient(options?.apiBaseUrl, options?.apiKey);
+  const client = createModelClient(options?.apiBaseUrl, options?.apiKey, {
+    timeoutMs: 300_000,
+  });
   const model = resolveModelName(options?.modelName);
 
   const completion = await client.chat.completions.create({
