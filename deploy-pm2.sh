@@ -89,15 +89,16 @@ trap rollback_after_failure EXIT
 wait_for_health() {
   local health_url="${HEALTH_URL:-http://127.0.0.1:${PORT}/}"
   local attempt
+  local max_attempts="${HEALTH_ATTEMPTS:-30}"
   echo "Checking application health at $health_url..."
-  for attempt in {1..12}; do
-    if curl --fail --silent --show-error --max-time 3 "$health_url" >/dev/null; then
+  for ((attempt=1; attempt<=max_attempts; attempt++)); do
+    if curl --fail --silent --show-error --max-time 10 --noproxy "*" "$health_url" >/dev/null; then
       echo "Application health check passed."
       return 0
     fi
     sleep 2
   done
-  echo "Application health check failed after 12 attempts."
+  echo "Application health check failed after $max_attempts attempts."
   return 1
 }
 
