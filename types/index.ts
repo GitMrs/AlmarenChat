@@ -136,6 +136,8 @@ export interface AssistantContextStats {
   archivedCount: number;
   totalCount: number;
   contextLimit: number;
+  archiveTrigger: number;
+  autoPreserveRecent: number;
   estimatedTokens: number;
   experiencesCount: number;
   experiences: AssistantExperience[];

@@ -134,8 +134,8 @@ export function AssistantContextModal({
     ? Math.max(0.1, Math.round(stats.estimatedTokens / 100) / 10)
     : 0;
 
-  const usageRatio = stats && stats.contextLimit > 0
-    ? Math.min(1, stats.unarchivedCount / stats.contextLimit)
+  const usageRatio = conversationMode === 'MAIN' && stats && stats.archiveTrigger > 0
+    ? Math.min(1, stats.unarchivedCount / stats.archiveTrigger)
     : 0;
 
   const usageColor =
@@ -214,28 +214,28 @@ export function AssistantContextModal({
           <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
             <div className={cn('rounded-xl border p-3 transition', usageColor)}>
               <div className="flex items-center justify-between text-[11px] font-bold">
-                <span>活跃对话</span>
+                <span>未归档对话</span>
                 <Activity size={13} />
               </div>
               <div className="mt-1 text-lg font-black tracking-tight">
                 {stats ? stats.unarchivedCount : '...'}
-                <span className="text-xs font-bold opacity-75"> / {stats ? stats.contextLimit : 40} 条</span>
+                <span className="text-xs font-bold opacity-75">{conversationMode === 'MAIN' && stats ? ` / ${stats.archiveTrigger}` : ''} 条</span>
               </div>
               <div className="mt-0.5 text-[10px] font-semibold opacity-80">
-                实时供给模型
+                {conversationMode === 'MAIN' ? '自动归档进度' : '当前未归档消息'}
               </div>
             </div>
 
             <div className="rounded-xl border border-sky-200 bg-sky-50/70 p-3 text-sky-800">
               <div className="flex items-center justify-between text-[11px] font-bold text-sky-700">
-                <span>活跃 Tokens</span>
+                <span>未归档 Tokens</span>
                 <Sparkles size={13} />
               </div>
               <div className="mt-1 text-lg font-black tracking-tight text-sky-950">
                 ~{stats ? (estimatedKTokens >= 1 ? `${estimatedKTokens}k` : `${stats.estimatedTokens}`) : '...'}
               </div>
               <div className="mt-0.5 text-[10px] font-semibold text-sky-600">
-                预估上下文消耗
+                未归档正文估算
               </div>
             </div>
 
@@ -268,6 +268,10 @@ export function AssistantContextModal({
             </div>
           </div>
 
+          <p className="text-xs leading-5 text-slate-500">
+            模型最多读取最近 {stats ? stats.contextLimit : '…'} 条未归档原文，仍受 Token 预算限制；主会话另会结合经历摘要。
+          </p>
+
           {/* 深度归档沉淀操作卡片 */}
           <div className="rounded-xl border border-emerald-200 bg-gradient-to-br from-emerald-50/70 via-white to-teal-50/40 p-4">
             <div className="flex items-start justify-between gap-3">
@@ -277,7 +281,10 @@ export function AssistantContextModal({
                   <span>🌱 沉淀为经历记忆（深度归档）</span>
                 </div>
                 <p className="mt-1 text-xs font-medium leading-5 text-slate-600">
-                  小伴通常在活跃对话达到 64 条时自动归档。点击此处可随时将早期活跃对话浓缩为结构化经历摘要，并保留最近 {preserveRecent} 条近期上下文，瞬间释放模型记忆负荷。
+                  {conversationMode === 'MAIN'
+                    ? `主会话在未归档对话达到 ${stats ? stats.archiveTrigger : '…'} 条时，于后续请求中自动归档早期消息，保留最近 ${stats ? stats.autoPreserveRecent : '…'} 条原文。`
+                    : '临时会话不自动沉淀经历。'}
+                  手动归档按下方选项保留最近 {preserveRecent} 条原文，原始聊天记录不删除。
                 </p>
               </div>
             </div>

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { ensurePersonalAssistant } from '@/lib/personal-assistant/profile';
-import { manualArchiveAssistantMessages } from '@/lib/personal-assistant/experience-memory';
+import { manualArchiveAssistantMessages, EXPERIENCE_ARCHIVE_TRIGGER, EXPERIENCE_ARCHIVE_BATCH } from '@/lib/personal-assistant/experience-memory';
 import { estimateMessagesTokens } from '@/lib/context-compression';
 import { createModelClient, resolveModelName } from '@/lib/model-client';
 
@@ -73,6 +73,8 @@ export async function GET(request: Request) {
       archivedCount,
       totalCount,
       contextLimit,
+      archiveTrigger: EXPERIENCE_ARCHIVE_TRIGGER,
+      autoPreserveRecent: EXPERIENCE_ARCHIVE_TRIGGER - EXPERIENCE_ARCHIVE_BATCH,
       estimatedTokens,
       experiencesCount: experiences.length,
       experiences: experiences.map((exp) => ({
