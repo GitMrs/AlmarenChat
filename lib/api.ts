@@ -734,8 +734,13 @@ export const spaces = {
 
     return res.json() as Promise<{ file: any }>;
   },
-  getCompressionStats: (id: string, thresholdKB?: number) =>
+  getCompressionStats: (id: string) =>
     request<{
+      thresholdTokens: number;
+      modelContextWindow: number;
+      totalTokens: number;
+      activeTokens: number;
+      savedTokens: number;
       originalCount: number;
       originalTokens: number;
       compressedCount: number;
@@ -758,7 +763,7 @@ export const spaces = {
         compressedTokens: number;
       }>;
       lastCompressedAt: string | null;
-    }>(`/spaces/${id}/compression-stats${thresholdKB ? `?thresholdKB=${thresholdKB}` : ''}`),
+    }>(`/spaces/${id}/compression-stats`),
   createCheckpoint: (id: string, options?: { preserveRecent?: number }) =>
     request<{ success: boolean; checkpoint: any; archivedCount: number; preservedCount: number }>(
       `/spaces/${id}/compression-stats`,

@@ -23,25 +23,17 @@ interface CompressionStatusPanelProps {
   showMessageCount?: boolean;
 }
 
-const THRESHOLD_OPTIONS = [
-  { value: 30, label: '30 KB (轻量)' },
-  { value: 50, label: '50 KB (推荐)' },
-  { value: 100, label: '100 KB (深度)' },
-];
-
 export function CompressionStatusPanel({
   spaceId,
   enabled = true,
   refreshKey,
   compact = false,
 }: CompressionStatusPanelProps) {
-  const [thresholdKB, setThresholdKB] = useState(50);
   const { stats, isLoading, refetch } = useContextCompression({
     spaceId,
     enabled,
     autoRefresh: false,
     refreshKey,
-    thresholdKB,
   });
 
   const [modalOpen, setModalOpen] = useState(false);
@@ -62,7 +54,7 @@ export function CompressionStatusPanel({
 
   const isCompressed = Boolean(stats.isCompressed || stats.checkpoint);
   const usagePercentage = Math.min(100, Math.max(0, stats.usagePercentage ?? 0));
-  const isNearLimit = !isCompressed && usagePercentage >= 80;
+  const isNearLimit = usagePercentage >= 80;
 
   const handleCompress = async () => {
     if (compressing) return;
@@ -70,7 +62,7 @@ export function CompressionStatusPanel({
     setActionError('');
     try {
       await spacesApi.createCheckpoint(spaceId);
-      await refetch(thresholdKB);
+      await refetch();
     } catch (err: any) {
       setActionError(err.message || '压缩归档失败');
     } finally {
@@ -85,17 +77,12 @@ export function CompressionStatusPanel({
     setActionError('');
     try {
       await spacesApi.clearCheckpoint(spaceId);
-      await refetch(thresholdKB);
+      await refetch();
     } catch (err: any) {
       setActionError(err.message || '清除检查点失败');
     } finally {
       setCompressing(false);
     }
-  };
-
-  const handleThresholdChange = (newKB: number) => {
-    setThresholdKB(newKB);
-    void refetch(newKB);
   };
 
   const renderFullContent = () => (
@@ -121,8 +108,8 @@ export function CompressionStatusPanel({
               </div>
               <div className="text-[11px] font-semibold text-slate-500">
                 {isCompressed
-                  ? `当前活跃 ${stats.formattedActive || '0 KB'} · 原始体积 ${stats.formattedTotal || '0 KB'}`
-                  : `当前已用 ${stats.formattedActive || stats.formattedTotal || '0 KB'} / 额度 ${stats.formattedThreshold || '50 KB'}`}
+                  ? `估算活跃 ${stats.formattedActive || '0 Token'} · 历史 ${stats.formattedTotal || '0 Token'}`
+                  : `估算已用 ${stats.formattedActive || '0 Token'} / 压缩阈值 ${stats.formattedThreshold || '-'}`}
               </div>
             </div>
           </div>
@@ -161,7 +148,7 @@ export function CompressionStatusPanel({
             <span>旧历史已自动浓缩为背景提要</span>
           </div>
           <p className="mt-1.5 leading-5 text-slate-600">
-            早期 {stats.archivedMessages || stats.checkpoint?.sourceMessageCount || 0} 条历史对话已沉淀为紧凑前情提要，当前模型仅携带提要与最新的 {stats.activeMessages || 10} 条活跃消息，彻底避免长对话导致的遗忘与高额 Token 消耗。
+            早期 {stats.archivedMessages || stats.checkpoint?.sourceMessageCount || 0} 条历史对话已生成背景提要，原始聊天记录仍然保留。
           </p>
         </div>
       ) : (
@@ -171,7 +158,7 @@ export function CompressionStatusPanel({
             <span>自动压缩机制已就绪</span>
           </div>
           <p className="mt-1.5 leading-5 text-slate-600">
-            当空间消息累积达到 <b>{thresholdKB} KB</b> 时，系统将自动触发背景摘要归档，无需手动操作。你也可以随时点击下方按钮进行主动压缩。
+            自动压缩阈值：<b>{stats.formattedThreshold}</b>。
           </p>
         </div>
       )}
@@ -183,7 +170,7 @@ export function CompressionStatusPanel({
           <div className="mt-1 text-sm font-black text-slate-800">
             {stats.activeMessages ?? stats.messageCount} 条
             <span className="ml-1 text-xs font-semibold text-slate-500">
-              ({stats.formattedActive || stats.formattedTotal || '0 KB'})
+              ({stats.formattedActive || '0 Token'})
             </span>
           </div>
         </div>
@@ -204,28 +191,12 @@ export function CompressionStatusPanel({
         </div>
       </div>
 
-      {/* 阈值切换 */}
       <div className="rounded-xl border border-black/[0.06] bg-white p-3.5">
         <div className="flex items-center justify-between">
-          <div className="text-xs font-bold text-slate-700">自动压缩额度</div>
-          <div className="text-[11px] font-semibold text-slate-400">到达额度时自动归档</div>
+          <div className="text-xs font-bold text-slate-700">模型上下文窗口</div>
+          <div className="text-[11px] font-semibold text-slate-500">{stats.modelContextWindow?.toLocaleString('en-US')} Token</div>
         </div>
-        <div className="mt-2.5 grid grid-cols-3 gap-2">
-          {THRESHOLD_OPTIONS.map((opt) => (
-            <button
-              key={opt.value}
-              type="button"
-              onClick={() => handleThresholdChange(opt.value)}
-              className={`rounded-lg py-2 text-center text-xs font-bold transition cursor-pointer ${
-                thresholdKB === opt.value
-                  ? 'bg-slate-950 text-white shadow-xs'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
+        <div className="mt-2 text-[11px] leading-5 text-slate-500">压缩阈值 {stats.formattedThreshold} · 个人中心模型配置</div>
       </div>
 
       {actionError && (
@@ -261,7 +232,7 @@ export function CompressionStatusPanel({
 
         <button
           type="button"
-          onClick={() => void refetch(thresholdKB)}
+          onClick={() => void refetch()}
           disabled={compressing}
           className="inline-flex h-9 items-center justify-center gap-1 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-600 transition hover:bg-slate-50 disabled:opacity-50 cursor-pointer"
         >

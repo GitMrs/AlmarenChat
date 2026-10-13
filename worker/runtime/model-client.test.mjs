@@ -21,16 +21,19 @@ function fixture({
   create = null,
   retryTransient = (operation) => operation(),
   modelTimeoutMs = 180_000,
+  retryOfId = null,
 } = {}) {
   const clientOptions = [];
   const requests = [];
   const reservations = [];
   const warnings = [];
   const completions = [];
+  const timeouts = [];
   const client = createWorkerModelClient({
     db: { marker: 'db' },
     fakeMode,
     modelTimeoutMs,
+    getRun: () => ({ retryOfId }),
     now: () => 'now',
     createClient: (options) => {
       clientOptions.push(options);
@@ -49,8 +52,9 @@ function fixture({
     retryTransient,
     warn: (...args) => warnings.push(args),
     onRequestComplete: (event) => completions.push(event),
+    onRequestTimeout: (event) => timeouts.push(event),
   });
-  return { client, clientOptions, requests, reservations, warnings, completions };
+  return { client, clientOptions, requests, reservations, warnings, completions, timeouts };
 }
 
 test('worker model client sends DeepSeek-compatible tool requests', async () => {
@@ -120,6 +124,24 @@ test('worker model client prefers provider usage for estimated token telemetry',
   assert.equal(current.completions[0].estimatedInputTokens, 12);
   assert.equal(current.completions[0].estimatedOutputTokens, 3);
   assert.equal(current.completions[0].estimatedTotalTokens, 15);
+});
+
+test('manual run retries double the configured model timeout', async () => {
+  const current = fixture({ retryOfId: 'previous-run' });
+  await current.client.completeMessage(model, [], [], { runId: 'retry-run' });
+  assert.equal(current.clientOptions[0].timeout, 360_000);
+});
+
+test('manual retry doubles both provider timeout and the total stream deadline', async () => {
+  async function* delayedStream() {
+    await new Promise((resolve) => setTimeout(resolve, 70));
+    yield { choices: [{ delta: { content: '完成' } }] };
+  }
+  const current = fixture({ modelTimeoutMs: 50, retryOfId: 'previous-run', stream: delayedStream() });
+  const message = await current.client.completeMessage(model, [], [], { runId: 'retry-run' });
+  assert.equal(message.content, '完成');
+  assert.equal(current.clientOptions[0].timeout, 100);
+  assert.equal(current.timeouts.length, 0);
 });
 
 test('worker model client omits tool fields and can reserve only the run budget', async () => {
@@ -213,6 +235,50 @@ test('worker model client timeout covers complete stream consumption', async () 
   );
   assert.equal(streamReturned, false);
   assert.equal(current.completions.length, 0);
+  assert.equal(current.timeouts.length, 1);
+  assert.equal(current.timeouts[0].stage, 'WAITING_FIRST_CHUNK');
+  assert.equal(current.timeouts[0].firstChunkAfterMs, null);
+  assert.equal(current.timeouts[0].lastChunkAgoMs, null);
+});
+
+test('timeout diagnostics retain partial reasoning and tool counts without exposing text', async () => {
+  async function* partialStream() {
+    yield { choices: [{ delta: { reasoning_content: 'private reasoning', content: 'hello' } }] };
+    yield { choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: 'secret args' } }] } }] };
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  const current = fixture({ modelTimeoutMs: 20, stream: partialStream() });
+  await assert.rejects(current.client.completeMessage(model, [], [], { runId: 'run-1' }), (error) => {
+    assert.equal(error.code, 'MODEL_TIMEOUT');
+    assert.equal(error.diagnostics.stage, 'STREAM_STARTED');
+    assert.equal(error.diagnostics.chunkCount, 2);
+    assert.equal(error.diagnostics.contentChars, 5);
+    assert.equal(error.diagnostics.reasoningContentChars, 17);
+    assert.equal(error.diagnostics.toolArgumentChars, 11);
+    assert.equal(error.diagnostics.lastChunkAgoMs >= 0, true);
+    return true;
+  });
+  assert.equal(current.timeouts.length, 1);
+  assert.equal(JSON.stringify(current.timeouts).includes('private reasoning'), false);
+  assert.equal(JSON.stringify(current.warnings).includes('secret args'), false);
+});
+
+test('timeout diagnostics track responses still arriving near the deadline', async () => {
+  async function* activeStream() {
+    for (let index = 0; index < 20; index += 1) {
+      yield { choices: [{ delta: { content: 'x' } }] };
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+  }
+  const current = fixture({ modelTimeoutMs: 40, stream: activeStream() });
+  await assert.rejects(current.client.completeMessage(model, [], [], {}), (error) => {
+    assert.equal(error.code, 'MODEL_TIMEOUT');
+    assert.equal(error.diagnostics.stage, 'STREAM_STARTED');
+    assert.equal(error.diagnostics.chunkCount > 1, true);
+    assert.equal(error.diagnostics.contentChars, error.diagnostics.chunkCount);
+    assert.equal(error.diagnostics.lastChunkAgoMs < error.diagnostics.durationMs, true);
+    return true;
+  });
 });
 
 test('fake worker model client does not create a provider client or reserve budget', async () => {

@@ -18,7 +18,7 @@ import { fetchWebPage } from '@/lib/web-fetch.mjs';
 import { collectChatCompletionStream, runToolLoop } from '@/lib/agent-runtime/tool-loop.mjs';
 import { normalizeTaskProposalSteps, taskProposalCapabilities, taskProposalNeedsClarification, taskProposalWithTurnNetworkAuthorization } from '@/lib/task-proposals';
 import { professionalDeliverableNeedsTask } from '@/lib/task-proposal-policy.mjs';
-import { buildContextCheckpointSummary, calculateMessagesBytes, estimateMessagesTokens, formatKB, DEFAULT_COMPRESSION_THRESHOLD_KB } from '@/lib/context-compression';
+import { buildContextCheckpointSummary, estimateMessagesTokens } from '@/lib/context-compression';
 import { conversationContextTargetTokens, modelTokenLimits } from '@/lib/model-limits.mjs';
 import { spaceMemoryContext } from '@/lib/space-memory-policy.mjs';
 import { persistSpaceMemory, rebuildSpaceMemory, spaceMemoryNeedsTrustedRebuild } from '@/app/api/_lib/space-memory';
@@ -795,19 +795,19 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
     const pendingProposalMessage = [...rawHistory].reverse().find((item: { attachments?: unknown }) => pendingTaskProposal(item.attachments));
     const currentPendingProposal = pendingTaskProposal(pendingProposalMessage?.attachments);
 
-    // 增量上下文压缩：基于真实 KB 阈值自动检测与归档（默认 50 KB）
+    // 与个人中心共用模型上下文预算，预留响应空间后压缩历史。
     let sourceHistory = rawHistory;
-    const rawHistoryBytes = calculateMessagesBytes(rawHistory);
-    const autoCompressionThresholdBytes = DEFAULT_COMPRESSION_THRESHOLD_KB * 1024; // 50 KB
+    const rawHistoryTokens = estimateMessagesTokens(rawHistory);
+    const autoCompressionThresholdTokens = modelTokenLimits(settings.modelName, settings.modelContextWindow).compactionTriggerTokens;
 
-    if (checkpointAvailable && rawHistoryBytes >= autoCompressionThresholdBytes && rawHistory.length > 5) {
+    if (!useIsolatedContext && checkpointAvailable && rawHistoryTokens >= autoCompressionThresholdTokens && rawHistory.length > 5) {
       const recentCount = Math.max(5, Math.min(15, 10));
       const boundary = Math.max(1, rawHistory.length - recentCount);
       const checkpointSource = rawHistory.slice(0, boundary).filter((message) => !String(message.id).startsWith('checkpoint:'));
       const recentMessages = rawHistory.slice(boundary);
       const throughMessage = checkpointSource[checkpointSource.length - 1];
       if (throughMessage) {
-        const summary = buildContextCheckpointSummary(checkpointSource);
+        const summary = buildContextCheckpointSummary(checkpointMessage ? [checkpointMessage, ...checkpointSource] : checkpointSource);
         await prisma.spaceContextCheckpoint.upsert({
           where: { spaceId },
           create: {
@@ -835,7 +835,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
           attachments: null,
           createdAt: new Date().toISOString(),
         }, ...recentMessages];
-        console.log(`[Space ${spaceId}] 达到 KB 阈值自动压缩：当前 ${formatKB(rawHistoryBytes)} >= ${formatKB(autoCompressionThresholdBytes)}，自动归档 ${checkpointSource.length} 条消息，保留 ${recentMessages.length} 条近期活跃消息`);
+        console.log(`[Space ${spaceId}] 达到 Token 阈值自动压缩：当前 ${rawHistoryTokens} >= ${autoCompressionThresholdTokens}，自动归档 ${checkpointSource.length} 条消息，保留 ${recentMessages.length} 条近期活跃消息`);
       }
     }
 

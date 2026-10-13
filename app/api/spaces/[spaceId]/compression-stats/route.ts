@@ -8,13 +8,12 @@ import {
   estimateMessagesTokens,
   calculateTextBytes,
   calculateMessagesBytes,
-  formatKB,
-  DEFAULT_COMPRESSION_THRESHOLD_KB,
 } from '@/lib/context-compression';
+import { modelTokenLimits } from '@/lib/model-limits.mjs';
 
 /**
  * GET /api/spaces/[spaceId]/compression-stats
- * 获取空间的上下文容量与压缩统计（基于真实 KB 体积）
+ * 获取空间对话的估算 Token 用量，与自动压缩使用相同预算。
  */
 export async function GET(request: Request, { params }: { params: Promise<{ spaceId: string }> }) {
   try {
@@ -24,16 +23,16 @@ export async function GET(request: Request, { params }: { params: Promise<{ spac
     // 验证空间权限
     const space = await prisma.space.findFirst({
       where: { id: spaceId, userId },
-      include: { user: { select: { contextMessageLimit: true } } },
+      include: { user: { select: { contextMessageLimit: true, modelName: true, modelContextWindow: true } } },
     });
 
     if (!space) {
       return NextResponse.json({ error: '空间不存在或无权限' }, { status: 404 });
     }
 
-    const { searchParams } = new URL(request.url);
-    const thresholdKB = Math.max(10, Math.min(500, parseInt(searchParams.get('thresholdKB') || String(DEFAULT_COMPRESSION_THRESHOLD_KB), 10) || DEFAULT_COMPRESSION_THRESHOLD_KB));
-    const thresholdBytes = thresholdKB * 1024;
+    const limits = modelTokenLimits(space.user.modelName, space.user.modelContextWindow);
+    const thresholdTokens = limits.compactionTriggerTokens;
+    const formatTokens = (tokens: number) => `${tokens.toLocaleString('en-US')} Token`;
 
     let checkpoint: any = null;
     try {
@@ -51,42 +50,21 @@ export async function GET(request: Request, { params }: { params: Promise<{ spac
     const totalMessageCount = allMessages.length;
     const totalBytes = calculateMessagesBytes(allMessages);
 
-    if (totalMessageCount === 0) {
-      return NextResponse.json({
-        totalBytes: 0,
-        activeBytes: 0,
-        thresholdBytes,
-        thresholdKB,
-        savedBytes: 0,
-        usagePercentage: 0,
-        isCompressed: false,
-        totalMessages: 0,
-        activeMessages: 0,
-        archivedMessages: 0,
-        formattedTotal: '0 KB',
-        formattedActive: '0 KB',
-        formattedThreshold: `${thresholdKB} KB`,
-        formattedSaved: '0 KB',
-        originalCount: 0,
-        compressedCount: 0,
-        reductionPercentage: 0,
-        compressionLevel: 'none',
-        messageCount: 0,
-        checkpoint: null,
-      });
-    }
-
-    let activeBytes = totalBytes;
+    const totalTokens = estimateMessagesTokens(allMessages);
+    const historyLimit = Math.max(1, Math.min(240, space.user.contextMessageLimit * 4));
+    let activeHistory = allMessages.slice(-historyLimit);
+    let activeBytes = calculateMessagesBytes(activeHistory);
     let savedBytes = 0;
     let isCompressed = false;
-    let activeMessages = totalMessageCount;
+    let activeMessages = activeHistory.length;
     let archivedMessages = 0;
 
     if (checkpoint) {
       const recentMessages = allMessages.filter((m) =>
         new Date(m.createdAt) > new Date(checkpoint.throughCreatedAt) ||
         (new Date(m.createdAt).getTime() === new Date(checkpoint.throughCreatedAt).getTime() && m.id > checkpoint.throughMessageId)
-      );
+      ).slice(0, historyLimit);
+      activeHistory = [{ id: `checkpoint:${spaceId}`, role: 'system', content: checkpoint.summary, createdAt: checkpoint.updatedAt }, ...recentMessages];
       const checkpointSummaryBytes = calculateTextBytes(checkpoint.summary);
       const recentBytes = calculateMessagesBytes(recentMessages);
       activeBytes = checkpointSummaryBytes + recentBytes;
@@ -96,23 +74,28 @@ export async function GET(request: Request, { params }: { params: Promise<{ spac
       archivedMessages = checkpoint.sourceMessageCount;
     }
 
-    const usagePercentage = Math.min(100, Math.round((activeBytes / thresholdBytes) * 100));
+    const activeTokens = estimateMessagesTokens(activeHistory);
+    const savedTokens = Math.max(0, totalTokens - activeTokens);
+    const usagePercentage = Math.min(100, Math.round((activeTokens / thresholdTokens) * 100));
 
     return NextResponse.json({
       totalBytes,
       activeBytes,
-      thresholdBytes,
-      thresholdKB,
+      thresholdTokens,
+      modelContextWindow: limits.contextWindow,
+      totalTokens,
+      activeTokens,
+      savedTokens,
       savedBytes,
       usagePercentage,
       isCompressed,
       totalMessages: totalMessageCount,
       activeMessages,
       archivedMessages,
-      formattedTotal: formatKB(totalBytes),
-      formattedActive: formatKB(activeBytes),
-      formattedThreshold: `${thresholdKB} KB`,
-      formattedSaved: formatKB(savedBytes),
+      formattedTotal: formatTokens(totalTokens),
+      formattedActive: formatTokens(activeTokens),
+      formattedThreshold: formatTokens(thresholdTokens),
+      formattedSaved: formatTokens(savedTokens),
       checkpoint: checkpoint ? {
         updatedAt: checkpoint.updatedAt,
         sourceMessageCount: checkpoint.sourceMessageCount,
@@ -121,8 +104,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ spac
       } : null,
       // 兼容字段
       originalCount: totalMessageCount,
-      compressedCount: isCompressed ? 1 + activeMessages : totalMessageCount,
-      reductionPercentage: totalBytes > 0 ? Math.round((savedBytes / totalBytes) * 100) : 0,
+      originalTokens: totalTokens,
+      compressedTokens: activeTokens,
+      compressedCount: activeHistory.length,
+      reductionPercentage: totalTokens > 0 ? Math.round((savedTokens / totalTokens) * 100) : 0,
       compressionLevel: isCompressed ? 'moderate' : (usagePercentage >= 80 ? 'light' : 'none'),
       messageCount: totalMessageCount,
       lastCompressedAt: checkpoint ? checkpoint.updatedAt : null,

@@ -4,11 +4,14 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { spaces as spacesApi } from '@/lib/api';
 
 export interface CompressionStats {
-  // KB-first metrics
+  totalTokens?: number;
+  activeTokens?: number;
+  thresholdTokens?: number;
+  savedTokens?: number;
+  modelContextWindow?: number;
   totalBytes?: number;
   activeBytes?: number;
   thresholdBytes?: number;
-  thresholdKB?: number;
   savedBytes?: number;
   usagePercentage?: number;
   isCompressed?: boolean;
@@ -52,7 +55,6 @@ export interface UseContextCompressionOptions {
   autoRefresh?: boolean;
   refreshInterval?: number; // milliseconds
   refreshKey?: string | number;
-  thresholdKB?: number;
 }
 
 export function useContextCompression({
@@ -61,14 +63,13 @@ export function useContextCompression({
   autoRefresh = false,
   refreshInterval = 30000,
   refreshKey,
-  thresholdKB = 50,
 }: UseContextCompressionOptions = {}) {
   const [stats, setStats] = useState<CompressionStats | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const requestSequence = useRef(0);
 
-  const fetchCompressionStats = useCallback(async (currentSpaceId?: string, currentThreshold?: number) => {
+  const fetchCompressionStats = useCallback(async (currentSpaceId?: string) => {
     if (!currentSpaceId) return;
     const sequence = ++requestSequence.current;
 
@@ -76,7 +77,7 @@ export function useContextCompression({
     setError(null);
 
     try {
-      const result = await spacesApi.getCompressionStats(currentSpaceId, currentThreshold);
+      const result = await spacesApi.getCompressionStats(currentSpaceId);
       if (sequence === requestSequence.current) setStats(result as CompressionStats);
     } catch (err: any) {
       if (sequence === requestSequence.current) setError(err.message || '获取压缩统计失败');
@@ -102,23 +103,23 @@ export function useContextCompression({
       setStats(null);
     }
 
-    fetchCompressionStats(spaceId, thresholdKB);
+    fetchCompressionStats(spaceId);
 
     const interval = autoRefresh
       ? setInterval(() => {
-        fetchCompressionStats(spaceId, thresholdKB);
+        fetchCompressionStats(spaceId);
       }, refreshInterval)
       : null;
     return () => {
       if (interval) clearInterval(interval);
       requestSequence.current += 1;
     };
-  }, [spaceId, enabled, autoRefresh, refreshInterval, refreshKey, thresholdKB, fetchCompressionStats]);
+  }, [spaceId, enabled, autoRefresh, refreshInterval, refreshKey, fetchCompressionStats]);
 
   return {
     stats,
     isLoading,
     error,
-    refetch: (newThreshold?: number) => fetchCompressionStats(spaceId, newThreshold || thresholdKB),
+    refetch: () => fetchCompressionStats(spaceId),
   };
 }

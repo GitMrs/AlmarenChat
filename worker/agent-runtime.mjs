@@ -129,6 +129,10 @@ const { completeMessage, complete } = createWorkerModelClient({
   fakeMode,
   modelTimeoutMs,
   now,
+  onRequestTimeout: (event) => {
+    if (!event.runId) return;
+    addEvent(event.runId, 'MODEL_REQUEST_TIMEOUT', '模型请求超时，已记录流式响应诊断', event);
+  },
   onRequestComplete: (event) => {
     if (!event.runId) return;
     addEvent(event.runId, 'MODEL_REQUEST_COMPLETED', '模型请求已完成', {
