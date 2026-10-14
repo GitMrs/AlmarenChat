@@ -107,7 +107,7 @@ verify_deployment_version() {
   local version_payload
   local reported_commit
   echo "Verifying deployed version at $version_url..."
-  if ! version_payload="$(curl --fail --silent --show-error --max-time 3 "$version_url")"; then
+  if ! version_payload="$(curl --fail --silent --show-error --max-time 3 --noproxy "*" "$version_url")"; then
     echo "Failed to read deployed version."
     return 1
   fi
