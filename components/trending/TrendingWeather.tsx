@@ -1,7 +1,26 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowUpRight, Cloud, CloudRain, CloudSnow, Droplets, MapPin, RefreshCw, Search, Sun, Thermometer, Wind, X } from 'lucide-react';
+import {
+  ArrowUpRight,
+  Cloud,
+  CloudMoon,
+  CloudRain,
+  CloudSnow,
+  Droplets,
+  MapPin,
+  Moon,
+  RefreshCw,
+  Search,
+  Sparkles,
+  Sun,
+  Sunrise,
+  Sunset,
+  Thermometer,
+  Wind,
+  X,
+} from 'lucide-react';
+import AlmarenIslandScene, { Season, TimePhase, WeatherType } from './AlmarenIslandScene';
 import styles from './TrendingWeather.module.css';
 
 const STORAGE_KEY = 'almaren_trending_weather_location';
@@ -19,7 +38,15 @@ interface WeatherData {
   source: string;
   link?: string;
   location: WeatherLocation;
-  observations: { temp: string; text: string; feelsLike?: string; obsTime: string; windDir?: string; windScale?: string; humidity?: string };
+  observations: {
+    temp: string;
+    text: string;
+    feelsLike?: string;
+    obsTime: string;
+    windDir?: string;
+    windScale?: string;
+    humidity?: string;
+  };
 }
 
 function weatherPage(link?: string) {
@@ -32,6 +59,110 @@ function weatherPage(link?: string) {
 
 function regionLabel(location: WeatherLocation) {
   return [...new Set([location.country, location.province, location.city, location.name].filter(Boolean))].join(' · ');
+}
+
+function getSeason(date = new Date()): Season {
+  const month = date.getMonth() + 1;
+  if (month >= 3 && month <= 5) return 'spring';
+  if (month >= 6 && month <= 8) return 'summer';
+  if (month >= 9 && month <= 11) return 'autumn';
+  return 'winter';
+}
+
+function getTimePhase(obsTime?: string, timezone?: string): TimePhase {
+  let hour = new Date().getHours();
+  if (obsTime) {
+    try {
+      const d = new Date(obsTime);
+      if (!Number.isNaN(d.getTime())) {
+        const hourStr = d.toLocaleTimeString('en-US', {
+          hour12: false,
+          hour: '2-digit',
+          timeZone: timezone || 'Asia/Shanghai',
+        });
+        hour = parseInt(hourStr, 10);
+      }
+    } catch { /* Fallback to local browser hour */ }
+  }
+  if (hour >= 5 && hour < 7) return 'dawn';
+  if (hour >= 7 && hour < 17) return 'day';
+  if (hour >= 17 && hour < 19.5) return 'dusk';
+  return 'night';
+}
+
+function getWeatherType(conditionText: string): WeatherType {
+  if (/雪/.test(conditionText)) return 'snow';
+  if (/雨|雷/.test(conditionText)) return 'rain';
+  if (/阴|雾|霾/.test(conditionText)) return 'overcast';
+  if (/多云/.test(conditionText)) return 'cloudy';
+  return 'clear';
+}
+
+function getConditionIcon(conditionText: string, phase: TimePhase) {
+  if (/雪/.test(conditionText)) return CloudSnow;
+  if (/雨|雷/.test(conditionText)) return CloudRain;
+  if (/阴|雾|霾/.test(conditionText)) return Cloud;
+  if (/多云/.test(conditionText)) return phase === 'night' ? CloudMoon : Cloud;
+  if (phase === 'night') return Moon;
+  if (phase === 'dawn') return Sunrise;
+  if (phase === 'dusk') return Sunset;
+  return Sun;
+}
+
+function timePhaseLabel(phase: TimePhase) {
+  switch (phase) {
+    case 'dawn': return '清晨·晨曦';
+    case 'day': return '盛昼·白日';
+    case 'dusk': return '黄昏·晚霞';
+    case 'night': return '子夜·星海';
+  }
+}
+
+function seasonLabel(s: Season) {
+  switch (s) {
+    case 'spring': return '春意';
+    case 'summer': return '盛夏';
+    case 'autumn': return '金秋';
+    case 'winter': return '凛冬';
+  }
+}
+
+function getWeatherWhisper(params: {
+  temp: number;
+  condition: string;
+  windScale: number;
+  timePhase: TimePhase;
+}): string {
+  const { temp, condition, windScale, timePhase } = params;
+
+  // 极端/显著气象优先（8~9字精炼短句）
+  if (/雷/.test(condition)) return '雷雨频现，注意防雷避雨';
+  if (/暴雨|大雨/.test(condition)) return '雨势较大，留意出行安全';
+  if (/雨/.test(condition)) return '今日有雨，出门记得带伞';
+  if (/雪/.test(condition)) return '雪落天寒，地面湿滑慢行';
+  if (/雾|霾/.test(condition)) return '能见度低，外出慢行慢走';
+  if (windScale >= 5) return '风力强劲，外出注意防风';
+
+  // 昼夜时相
+  if (timePhase === 'night') {
+    if (temp <= 10) return '夜深天凉，早点关灯安歇';
+    return '海风轻拂，今晚睡个好梦';
+  }
+  if (timePhase === 'dawn') {
+    return '晨光破晓，开启元气一天';
+  }
+  if (timePhase === 'dusk') {
+    return '落日熔金，享受惬意归途';
+  }
+
+  // 常规气温与天气
+  if (temp >= 32) return '天气炎热，注意防暑降温';
+  if (temp <= 5) return '寒气逼人，记得裹紧外套';
+  if (temp <= 16) return '温差微凉，适时增添衣物';
+  if (/晴/.test(condition)) return '天朗气清，适宜出门散心';
+  if (/多云|阴/.test(condition)) return '微云舒卷，今日体感舒适';
+
+  return '晴雨有常，心向暖阳';
 }
 
 async function weatherRequest(params: Record<string, string>, signal: AbortSignal) {
@@ -56,6 +187,8 @@ export default function TrendingWeather() {
   const [locations, setLocations] = useState<WeatherLocation[]>([]);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState('');
+  const [previewPhase, setPreviewPhase] = useState<'auto' | TimePhase>('auto');
+
   const container = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const detailsTrigger = useRef<HTMLButtonElement>(null);
@@ -143,9 +276,27 @@ export default function TrendingWeather() {
     void loadWeather(next, true);
   };
 
+  // 天气与时段参数解析
   const condition = weather?.observations.text || '';
-  const WeatherIcon = /雪/.test(condition) ? CloudSnow : /雨/.test(condition) ? CloudRain : /晴/.test(condition) ? Sun : Cloud;
-  const scene = /雪/.test(condition) ? 'snow' : /雨/.test(condition) ? 'rain' : /晴/.test(condition) ? 'sun' : 'cloud';
+  const autoPhase = getTimePhase(weather?.observations.obsTime, weather?.location.timezone);
+  const activePhase = previewPhase === 'auto' ? autoPhase : previewPhase;
+  const season = getSeason();
+  const weatherType = getWeatherType(condition);
+  const windScaleNum = parseInt(weather?.observations.windScale || '0', 10) || 0;
+  const isWindy = /风|飑|飓/.test(condition) || windScaleNum >= 3;
+  const isDarkSky = activePhase === 'night' || activePhase === 'dusk';
+  const tempNum = parseFloat(weather?.observations.temp || '20') || 20;
+  const whisperText = getWeatherWhisper({
+    temp: tempNum,
+    condition,
+    windScale: windScaleNum,
+    timePhase: activePhase,
+  });
+
+  // 触发栏与卡片内图标
+  const TriggerIcon = getConditionIcon(condition, autoPhase);
+  const ActiveIcon = getConditionIcon(condition, activePhase);
+
   const forecastLink = weatherPage(weather?.link);
   let observationTime = '';
   if (weather?.observations.obsTime && !Number.isNaN(Date.parse(weather.observations.obsTime))) {
@@ -156,78 +307,320 @@ export default function TrendingWeather() {
 
   return (
     <div ref={container} className="relative min-w-0 text-xs text-slate-600 dark:text-slate-300">
+      {/* 顶部触发栏按钮 */}
       <div className="flex min-h-8 flex-wrap items-center justify-end gap-x-2 gap-y-1">
-        <button ref={trigger} type="button" onClick={() => { setOpen(!open); setDetailsOpen(false); }} aria-expanded={open} aria-controls="trending-weather-regions"
+        <button
+          ref={trigger}
+          type="button"
+          onClick={() => { setOpen(!open); setDetailsOpen(false); }}
+          aria-expanded={open}
+          aria-controls="trending-weather-regions"
           title={location ? `${regionLabel(location)}，切换地区` : '选择天气地区'}
-          className="flex min-w-0 max-w-40 items-center gap-1 rounded px-1 py-1.5 font-semibold hover:bg-slate-100 dark:hover:bg-slate-800">
+          className="flex min-w-0 max-w-40 items-center gap-1 rounded-xl px-2 py-1.5 font-semibold transition hover:bg-slate-100 dark:hover:bg-slate-800"
+        >
           <MapPin size={13} className="shrink-0 text-sky-500" />
           <span className="truncate">{location?.name || '选择地区'}</span>
         </button>
         {location && (
-          <button ref={detailsTrigger} type="button" onClick={() => { setDetailsOpen(!detailsOpen); setOpen(false); }} aria-label="查看天气详情" aria-expanded={detailsOpen} aria-controls="trending-weather-details"
-            className="flex min-h-8 items-center gap-1.5 rounded px-1 py-1 hover:bg-slate-100 dark:hover:bg-slate-800"
-            title={weather ? `查看天气详情${observationTime ? ` · ${observationTime} 观测` : ''}` : '查看天气详情'}>
-            <WeatherIcon size={16} className={`text-sky-500${loading ? ' animate-spin' : ''}`} />
-            {weather ? <><span>{condition}</span><span className="font-semibold text-slate-900 dark:text-white">{weather.observations.temp}℃</span></> : <span>{loading ? '查询中' : '暂无数据'}</span>}
+          <button
+            ref={detailsTrigger}
+            type="button"
+            onClick={() => { setDetailsOpen(!detailsOpen); setOpen(false); }}
+            aria-label="查看天气详情"
+            aria-expanded={detailsOpen}
+            aria-controls="trending-weather-details"
+            className="flex min-h-8 items-center gap-1.5 rounded-xl px-2 py-1 transition hover:bg-slate-100 dark:hover:bg-slate-800"
+            title={weather ? `查看天气详情${observationTime ? ` · ${observationTime} 观测` : ''}` : '查看天气详情'}
+          >
+            <TriggerIcon size={16} className={`text-sky-500 transition-transform ${loading ? 'animate-spin' : ''}`} />
+            {weather ? (
+              <>
+                <span>{condition}</span>
+                <span className="font-semibold text-slate-900 dark:text-white">{weather.observations.temp}℃</span>
+              </>
+            ) : (
+              <span>{loading ? '查询中' : '暂无数据'}</span>
+            )}
           </button>
         )}
       </div>
-      {error && <p role="alert" className="max-w-sm text-right text-[11px] text-rose-600 dark:text-rose-400">{error}{weather ? '（显示上次数据）' : ''}</p>}
+
+      {error && (
+        <p role="alert" className="max-w-sm text-right text-[11px] text-rose-600 dark:text-rose-400">
+          {error}{weather ? '（显示上次数据）' : ''}
+        </p>
+      )}
+
+      {/* 展开的天气详情卡片：阿尔玛伦微缩海岛 */}
       {detailsOpen && location && (
-        <div id="trending-weather-details" role="dialog" aria-label="天气详情"
-          className={`${styles.panel} ${styles[scene]} absolute right-0 top-full z-40 mt-2 w-[360px] max-w-[calc(100vw-3rem)] overflow-hidden rounded-lg border border-white/60 p-5 text-slate-900 shadow-xl`}>
-          <div className={styles.scene} aria-hidden="true">
-            {scene === 'sun' && <Sun className={styles.sunlight} size={150} strokeWidth={1} />}
-            {(scene === 'cloud' || scene === 'rain') && <><Cloud className={styles.cloudOne} size={140} strokeWidth={0.8} /><Cloud className={styles.cloudTwo} size={95} strokeWidth={0.8} /></>}
-            {(scene === 'rain' || scene === 'snow') && Array.from({ length: 12 }, (_, i) => <i key={i} className={scene === 'rain' ? styles.raindrop : styles.snowflake} style={{ left: `${5 + i * 8}%`, animationDelay: `${-i * 0.47}s`, animationDuration: `${scene === 'rain' ? 1.1 + i % 3 * 0.2 : 4 + i % 3}s` }} />)}
-          </div>
-          <div className="relative">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0"><div className="truncate text-base font-semibold" title={regionLabel(location)}>{location.name}</div><div className="mt-1 text-[11px] text-slate-600">{weather?.source || '和风天气'}</div></div>
-              <button type="button" onClick={() => { setDetailsOpen(false); detailsTrigger.current?.focus(); }} aria-label="关闭天气详情" title="关闭天气详情" className="flex h-7 w-7 shrink-0 items-center justify-center rounded hover:bg-white/40"><X size={16} /></button>
+        <div
+          id="trending-weather-details"
+          role="dialog"
+          aria-label="天气详情"
+          className={`absolute right-0 top-full z-40 mt-2 w-[370px] max-w-[calc(100vw-2.5rem)] overflow-hidden rounded-3xl border p-5 shadow-2xl backdrop-blur-xl transition-all duration-700 ${
+            isDarkSky
+              ? 'border-white/20 text-white shadow-indigo-950/60'
+              : 'border-white/60 text-slate-800 shadow-slate-900/15'
+          } ${styles.panel}`}
+        >
+          {/* 阿尔玛伦微缩海岛动态全景层 */}
+          <AlmarenIslandScene
+            timePhase={activePhase}
+            weatherType={weatherType}
+            isWindy={isWindy}
+            windScale={windScaleNum}
+            windDir={weather?.observations.windDir}
+            season={season}
+          />
+
+          {/* 前景内容层：通透穿透以响应海岛与灵树交互 */}
+          <div className="relative z-10 pointer-events-none">
+            {/* 顶栏：地点与拟时穿梭胶囊 */}
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0 flex flex-wrap items-center gap-1.5">
+                <span className="truncate text-base font-bold" title={regionLabel(location)}>
+                  {location.name}
+                </span>
+                <span
+                  className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold border ${
+                    isDarkSky
+                      ? 'border-white/20 bg-white/10 text-white/90'
+                      : 'border-slate-900/15 bg-white/60 text-slate-700'
+                  }`}
+                >
+                  {timePhaseLabel(activePhase)} · {seasonLabel(season)}
+                </span>
+              </div>
+
+              <div className="flex items-center gap-1.5 shrink-0 pointer-events-auto">
+                {/* 拟时穿梭机微胶囊 */}
+                <div
+                  className={`flex items-center rounded-full p-0.5 text-[10px] border shadow-sm ${
+                    isDarkSky ? 'border-white/20 bg-black/40' : 'border-slate-900/15 bg-white/70'
+                  }`}
+                  role="group"
+                  aria-label="拟时切换"
+                >
+                  {(['auto', 'dawn', 'day', 'dusk', 'night'] as const).map((phase) => {
+                    const isSelected = previewPhase === phase;
+                    const labels = { auto: '实时', dawn: '晨', day: '昼', dusk: '暮', night: '夜' };
+                    return (
+                      <button
+                        key={phase}
+                        type="button"
+                        onClick={() => setPreviewPhase(phase)}
+                        className={`rounded-full px-1.5 py-0.5 font-medium transition-all ${
+                          isSelected
+                            ? isDarkSky
+                              ? 'bg-white font-bold text-slate-900 shadow-sm'
+                              : 'bg-slate-900 font-bold text-white shadow-sm'
+                            : isDarkSky
+                            ? 'text-white/70 hover:text-white'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                        title={phase === 'auto' ? `根据当地观测时间实时呈现 (${timePhaseLabel(autoPhase)})` : `模拟体验【${labels[phase]}】时段海岛气象`}
+                      >
+                        {labels[phase]}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* 关闭按钮 */}
+                <button
+                  type="button"
+                  onClick={() => { setDetailsOpen(false); detailsTrigger.current?.focus(); }}
+                  aria-label="关闭天气详情"
+                  title="关闭天气详情"
+                  className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-xl transition ${
+                    isDarkSky ? 'text-white/80 hover:bg-white/20 hover:text-white' : 'text-slate-700 hover:bg-black/10'
+                  }`}
+                >
+                  <X size={15} />
+                </button>
+              </div>
             </div>
-            {weather ? <>
-              <div className="mb-6 mt-7 flex items-end gap-3">
-                <span className="text-6xl font-light leading-none">{weather.observations.temp}<span className="align-top text-2xl">℃</span></span>
-                <span className="mb-1 flex items-center gap-1.5 text-sm"><WeatherIcon size={19} />{condition}</span>
-              </div>
-              <div className="grid grid-cols-2 gap-x-3 gap-y-3 border-t border-slate-600/15 pt-4 text-xs">
-                <span className="flex items-center gap-1.5"><Thermometer size={15} />体感 {weather.observations.feelsLike ?? '--'}℃</span>
-                <span className="flex items-center gap-1.5"><Droplets size={15} />湿度 {weather.observations.humidity != null ? `${weather.observations.humidity}%` : '--'}</span>
-                <span className="col-span-2 flex items-center gap-1.5"><Wind size={15} />{weather.observations.windDir || '风向暂无'}{weather.observations.windScale != null ? ` ${weather.observations.windScale}级` : ''}</span>
-              </div>
-            </> : <p role="status" className="py-8 text-sm">{loading ? '正在查询天气…' : '暂时没有天气数据'}</p>}
-            <div className="mt-5 flex flex-wrap items-center justify-between gap-2 border-t border-slate-600/15 pt-3">
-              {forecastLink ? <a href={forecastLink} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs hover:underline">近七天天气<ArrowUpRight size={13} /></a> : <span />}
-              <button type="button" onClick={() => void loadWeather(location)} disabled={loading} aria-label="刷新天气" title={observationTime ? `${observationTime} 观测 · 点击刷新（5 分钟缓存）` : '刷新天气'} className="flex h-7 w-7 items-center justify-center rounded hover:bg-white/40 disabled:opacity-50"><RefreshCw size={14} className={loading ? 'animate-spin' : ''} /></button>
+
+            {/* 核心温湿度与气象呈现 */}
+            {weather ? (
+              <>
+                <div className="mb-4 mt-6 flex items-end justify-between">
+                  <div className="flex items-end gap-2.5">
+                    <span className="text-5xl font-light leading-none tracking-tight drop-shadow-sm">
+                      {weather.observations.temp}
+                      <span className="align-top text-2xl font-normal">℃</span>
+                    </span>
+                    <div className="mb-0.5 flex flex-col">
+                      <span className="flex items-center gap-1.5 text-sm font-semibold">
+                        <ActiveIcon size={18} />
+                        {condition}
+                      </span>
+                      {isWindy && (
+                        <span
+                          className={`mt-0.5 inline-flex items-center gap-1 text-[10px] font-medium ${
+                            isDarkSky ? 'text-amber-300' : 'text-amber-700'
+                          }`}
+                        >
+                          <Wind size={11} />
+                          {windScaleNum ? `${windScaleNum}级` : ''}{weather.observations.windDir || '微风'}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 气象指标：左侧通透排版，彻底移除遮挡海岛的色块底板 */}
+                <div
+                  className={`flex flex-col gap-1.5 pt-2 text-xs max-w-[215px] ${
+                    isDarkSky
+                      ? 'text-white/95 [text-shadow:0_1px_3px_rgba(0,0,0,0.6)]'
+                      : 'text-slate-800 [text-shadow:0_1px_2px_rgba(255,255,255,0.85)]'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="flex items-center gap-1">
+                      <Thermometer size={13} className={isDarkSky ? 'text-sky-300' : 'text-sky-600'} />
+                      体感 {weather.observations.feelsLike ?? '--'}℃
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <Droplets size={13} className={isDarkSky ? 'text-cyan-300' : 'text-cyan-600'} />
+                      湿度 {weather.observations.humidity != null ? `${weather.observations.humidity}%` : '--'}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1 truncate">
+                    <Wind size={13} className={isDarkSky ? 'text-teal-300' : 'text-teal-600'} />
+                    <span>
+                      {weather.observations.windDir || '风向暂无'}
+                      {weather.observations.windScale != null ? ` · ${weather.observations.windScale}级` : ''}
+                      {isWindy ? ' (风力劲吹)' : ' (微风)'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* 暖心一句话生活寄语 */}
+                <div
+                  className={`mt-3 flex items-center gap-1.5 text-[11px] leading-tight max-w-[235px] truncate ${
+                    isDarkSky
+                      ? 'text-white/85 [text-shadow:0_1px_2px_rgba(0,0,0,0.6)]'
+                      : 'text-slate-700 [text-shadow:0_1px_1px_rgba(255,255,255,0.85)]'
+                  }`}
+                  title={whisperText}
+                >
+                  <Sparkles size={11} className={isDarkSky ? 'text-amber-300 shrink-0' : 'text-amber-600 shrink-0'} />
+                  <span className="truncate">{whisperText}</span>
+                </div>
+              </>
+            ) : (
+              <p role="status" className="py-8 text-sm">
+                {loading ? '正在查询天气…' : '暂时没有天气数据'}
+              </p>
+            )}
+
+            {/* 底栏：七天天气与刷新 */}
+            <div
+              className={`mt-4 flex flex-wrap items-center justify-between gap-2 border-t pt-3 text-xs pointer-events-auto ${
+                isDarkSky ? 'border-white/15' : 'border-slate-900/10'
+              }`}
+            >
+              {forecastLink ? (
+                <a
+                  href={forecastLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`flex items-center gap-1 transition hover:underline ${
+                    isDarkSky ? 'text-white/80 hover:text-white' : 'text-slate-700 hover:text-slate-900'
+                  }`}
+                >
+                  近七天天气预报
+                  <ArrowUpRight size={13} />
+                </a>
+              ) : (
+                <span />
+              )}
+              <button
+                type="button"
+                onClick={() => void loadWeather(location)}
+                disabled={loading}
+                aria-label="刷新天气"
+                title={observationTime ? `${observationTime} 观测 · 点击刷新（5 分钟缓存）` : '刷新天气'}
+                className={`flex h-7 w-7 items-center justify-center rounded-xl transition disabled:opacity-50 ${
+                  isDarkSky ? 'text-white hover:bg-white/20' : 'text-slate-700 hover:bg-black/10'
+                }`}
+              >
+                <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+              </button>
             </div>
           </div>
         </div>
       )}
+
+      {/* 地区切换弹出面板 */}
       {open && (
-        <div id="trending-weather-regions" role="dialog" aria-label="选择天气地区"
-          className="absolute right-0 top-full z-40 mt-2 w-80 max-w-[calc(100vw-3rem)] rounded-lg border border-slate-200 bg-white p-3 shadow-lg dark:border-slate-700 dark:bg-slate-900">
-          <div className="mb-2 flex items-center justify-between">
-            <span className="font-semibold text-slate-900 dark:text-white">天气地区</span>
-            <button type="button" onClick={() => { setOpen(false); trigger.current?.focus(); }} title="关闭地区选择" aria-label="关闭地区选择"
-              className="flex h-7 w-7 items-center justify-center rounded hover:bg-slate-100 dark:hover:bg-slate-800"><X size={14} /></button>
+        <div
+          id="trending-weather-regions"
+          role="dialog"
+          aria-label="选择天气地区"
+          className="absolute right-0 top-full z-40 mt-2 w-80 max-w-[calc(100vw-3rem)] rounded-2xl border border-slate-200 bg-white/95 p-3.5 shadow-xl backdrop-blur-md dark:border-slate-700 dark:bg-slate-900/95"
+        >
+          <div className="mb-2.5 flex items-center justify-between">
+            <span className="font-bold text-slate-900 dark:text-white">天气地区</span>
+            <button
+              type="button"
+              onClick={() => { setOpen(false); trigger.current?.focus(); }}
+              title="关闭地区选择"
+              aria-label="关闭地区选择"
+              className="flex h-7 w-7 items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
+            >
+              <X size={14} />
+            </button>
           </div>
-          <form className="flex gap-2" onSubmit={(event) => { event.preventDefault(); void findLocations(); }}>
-            <input ref={input} type="search" aria-label="城市或区县" placeholder="城市或区县" maxLength={100} value={search}
-              onChange={(event) => { searchController.current?.abort(); setSearching(false); setSearch(event.target.value); setLocations([]); setSearchError(''); }}
-              className="min-w-0 flex-1 rounded border border-slate-200 bg-transparent px-2.5 py-2 outline-none focus:border-sky-500 dark:border-slate-700" />
-            <button type="submit" disabled={searching || !search.trim()} title="搜索地区" aria-label="搜索地区"
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded bg-sky-600 text-white hover:bg-sky-700 disabled:opacity-40">
-              {searching ? <RefreshCw size={15} className="animate-spin" /> : <Search size={15} />}
+          <form
+            className="flex gap-2"
+            onSubmit={(event) => { event.preventDefault(); void findLocations(); }}
+          >
+            <input
+              ref={input}
+              type="search"
+              aria-label="城市或区县"
+              placeholder="城市或区县名称"
+              maxLength={100}
+              value={search}
+              onChange={(event) => {
+                searchController.current?.abort();
+                setSearching(false);
+                setSearch(event.target.value);
+                setLocations([]);
+                setSearchError('');
+              }}
+              className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-transparent px-3 py-2 text-xs outline-none focus:border-sky-500 dark:border-slate-700"
+            />
+            <button
+              type="submit"
+              disabled={searching || !search.trim()}
+              title="搜索地区"
+              aria-label="搜索地区"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-sky-600 text-white transition hover:bg-sky-700 disabled:opacity-40"
+            >
+              {searching ? <RefreshCw size={14} className="animate-spin" /> : <Search size={14} />}
             </button>
           </form>
-          {searchError && <p role="alert" className="mt-2 text-rose-600 dark:text-rose-400">{searchError}</p>}
+          {searchError && (
+            <p role="alert" className="mt-2 text-rose-600 dark:text-rose-400">
+              {searchError}
+            </p>
+          )}
           <div className="mt-2 max-h-60 overflow-y-auto">
-            {locations.map((place) => <button type="button" key={place.id} onClick={() => selectLocation(place)}
-              className="block w-full rounded px-2 py-2 text-left hover:bg-sky-50 dark:hover:bg-slate-800">
-              <span className="block font-semibold text-slate-900 dark:text-white">{place.name}</span>
-              <span className="mt-0.5 block break-words text-[11px] text-slate-400">{regionLabel(place)}</span>
-            </button>)}
+            {locations.map((place) => (
+              <button
+                type="button"
+                key={place.id}
+                onClick={() => selectLocation(place)}
+                className="block w-full rounded-xl px-2.5 py-2 text-left transition hover:bg-sky-50 dark:hover:bg-slate-800"
+              >
+                <span className="block font-semibold text-slate-900 dark:text-white">{place.name}</span>
+                <span className="mt-0.5 block break-words text-[11px] text-slate-400">{regionLabel(place)}</span>
+              </button>
+            ))}
           </div>
         </div>
       )}

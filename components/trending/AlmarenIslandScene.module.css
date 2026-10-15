@@ -1,0 +1,645 @@
+.container {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  isolation: isolate;
+  border-radius: inherit;
+  transition: background 0.8s ease-in-out;
+}
+
+/* 天空底色：昼夜 × 气象渐变 */
+.dawn {
+  background: linear-gradient(155deg, #fce7f3 0%, #fed7aa 40%, #bae6fd 90%);
+}
+
+.day_clear {
+  background: linear-gradient(155deg, #e0f2fe 0%, #bae6fd 45%, #fef08a 100%);
+}
+
+.day_cloudy {
+  background: linear-gradient(155deg, #f1f5f9 0%, #cbd5e1 55%, #e2e8f0 100%);
+}
+
+.day_overcast {
+  background: linear-gradient(155deg, #e2e8f0 0%, #94a3b8 60%, #cbd5e1 100%);
+}
+
+.day_rain {
+  background: linear-gradient(155deg, #e2e8f0 0%, #94a3b8 50%, #64748b 100%);
+}
+
+.day_snow {
+  background: linear-gradient(155deg, #f0f9ff 0%, #e0f2fe 50%, #cbd5e1 100%);
+}
+
+.dusk {
+  background: linear-gradient(155deg, #fdba74 0%, #f472b6 40%, #6366f1 85%, #312e81 100%);
+}
+
+.night_clear {
+  background: linear-gradient(155deg, #090d16 0%, #0f172a 45%, #1e1b4b 100%);
+}
+
+.night_cloudy {
+  background: linear-gradient(155deg, #090d16 0%, #1e293b 55%, #0f172a 100%);
+}
+
+.night_overcast {
+  background: linear-gradient(155deg, #050811 0%, #111827 60%, #030712 100%);
+}
+
+.night_rain {
+  background: linear-gradient(155deg, #030712 0%, #0c1a2e 50%, #172554 100%);
+}
+
+.night_snow {
+  background: linear-gradient(155deg, #08111e 0%, #112240 55%, #1e293b 100%);
+}
+
+/* 动效：天体 */
+.sunGlow {
+  transform-origin: 290px 45px;
+  animation: sunPulse 8s ease-in-out infinite alternate;
+}
+
+@keyframes sunPulse {
+  0% { transform: scale(0.95); opacity: 0.85; }
+  100% { transform: scale(1.08); opacity: 1; }
+}
+
+.moonGlow {
+  transform-origin: 290px 45px;
+  animation: moonFloat 7s ease-in-out infinite alternate;
+}
+
+@keyframes moonFloat {
+  0% { transform: translateY(0) rotate(-3deg); }
+  100% { transform: translateY(-4px) rotate(3deg); }
+}
+
+/* 星星纯净闪烁（仅呼吸亮度，绝对静止不位移） */
+.star {
+  animation: starTwinkle 3s ease-in-out infinite alternate;
+}
+
+@keyframes starTwinkle {
+  0%, 100% {
+    opacity: 0.15;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* ==================== 动态海岛流云系统 ==================== */
+/* 水平连续缓移（从画布外 -120px 匀速漂移至 420px，画布外无感回环，杜绝瞬移与跳跃） */
+.cloudDriftRight {
+  animation-name: driftRightContinuous;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+/* 逆向气流东风缓移（从 420px 漂移至 -120px） */
+.cloudDriftLeft {
+  animation-name: driftLeftContinuous;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+@keyframes driftRightContinuous {
+  0% {
+    transform: translateX(-120px);
+  }
+  100% {
+    transform: translateX(420px);
+  }
+}
+
+@keyframes driftLeftContinuous {
+  0% {
+    transform: translateX(420px);
+  }
+  100% {
+    transform: translateX(-120px);
+  }
+}
+
+/* 垂直方向微浮动沉浮（模拟高空气流上升与下沉，极度缓和舒展） */
+.cloudBob1 {
+  animation: cloudBob1 18s ease-in-out infinite alternate;
+}
+
+.cloudBob2 {
+  animation: cloudBob2 24s ease-in-out infinite alternate;
+}
+
+.cloudBob3 {
+  animation: cloudBob3 20s ease-in-out infinite alternate;
+}
+
+.cloudBob4 {
+  animation: cloudBob4 26s ease-in-out infinite alternate;
+}
+
+@keyframes cloudBob1 {
+  0% { transform: translateY(0px) rotate(0deg); }
+  50% { transform: translateY(-1.8px) rotate(0.2deg); }
+  100% { transform: translateY(1.0px) rotate(-0.15deg); }
+}
+
+@keyframes cloudBob2 {
+  0% { transform: translateY(0.8px) rotate(-0.15deg); }
+  50% { transform: translateY(-2.2px) rotate(0.2deg); }
+  100% { transform: translateY(0.4px) rotate(0deg); }
+}
+
+@keyframes cloudBob3 {
+  0% { transform: translateY(-0.6px) rotate(0.12deg); }
+  50% { transform: translateY(1.5px) rotate(-0.15deg); }
+  100% { transform: translateY(-1.2px) rotate(0.1deg); }
+}
+
+@keyframes cloudBob4 {
+  0% { transform: translateY(0.4px) rotate(0deg); }
+  50% { transform: translateY(1.8px) rotate(-0.2deg); }
+  100% { transform: translateY(-1.0px) rotate(0.15deg); }
+}
+
+.cloudInteractive {
+  cursor: pointer;
+  transition: filter 0.3s ease, opacity 0.3s ease;
+}
+
+.cloudInteractive:hover {
+  filter: brightness(1.18) drop-shadow(0 0 8px rgba(255, 255, 255, 0.45));
+}
+
+.cloudNear {
+  animation: driftNear 16s ease-in-out infinite alternate;
+}
+
+@keyframes driftNear {
+  0% { transform: translateX(10px); }
+  100% { transform: translateX(-20px); }
+}
+
+/* 海岛灵树层级动效 (纯刚体左右摇摆，树叶绝不挤压、绝不拉伸变形)：
+   1. 树根：transform-origin 锁定在土中 (215px 158px)，绝对坚固扎根不动
+   2. 树腰与树干 (treeTrunk)：纯粹 rotate 左右自然摆动，带动树腰与树梢自然摇曳
+   3. 树冠头部 (treeCanopy)：生长于树梢 (218px 122px)，天然由树腰带动，并叠加树冠自身的摆幅
+   4. 彻底剔除所有 skew 与 scale，确保树冠圆弧叶片 100% 保持饱满圆润，纯粹纯净地左右摇摆 */
+.treeTrunk {
+  transform-origin: 215px 158px;
+  animation: trunkBreeze 4.5s ease-in-out infinite alternate;
+}
+
+.treeTrunkWindy {
+  transform-origin: 215px 158px;
+  animation: trunkGale 1.9s ease-in-out infinite alternate;
+}
+
+.treeCanopy {
+  transform-origin: 218px 122px;
+  animation: canopyBreeze 4.5s ease-in-out infinite alternate;
+  animation-delay: -0.35s; /* 微小的相位滞后，带来真实的植物自然摆动惯性 */
+}
+
+.treeCanopyWindy {
+  transform-origin: 218px 122px;
+  animation: canopyGale 1.9s ease-in-out infinite alternate;
+  animation-delay: -0.2s;
+}
+
+/* 微风状态：树根绝对固定，树腰左右摇摆约 2.8px，树冠左右摆动达约 9.6px */
+@keyframes trunkBreeze {
+  0% {
+    transform: rotate(-4.2deg);
+  }
+  100% {
+    transform: rotate(4.2deg);
+  }
+}
+
+/* 大风/起风：树身在风向一侧深幅呼啸左右摆动 */
+@keyframes trunkGale {
+  0% {
+    transform: rotate(-2.5deg);
+  }
+  100% {
+    transform: rotate(8.5deg);
+  }
+}
+
+/* 树冠微风子跟随：纯粹旋转摆动，树叶始终饱满圆润，绝不挤压变形 */
+@keyframes canopyBreeze {
+  0% {
+    transform: rotate(-3.5deg);
+  }
+  100% {
+    transform: rotate(3.5deg);
+  }
+}
+
+/* 树冠大风子跟随：纯粹旋转摆动，生动自然 */
+@keyframes canopyGale {
+  0% {
+    transform: rotate(-3.0deg);
+  }
+  100% {
+    transform: rotate(7.5deg);
+  }
+}
+
+/* 灯塔夜间扫光 */
+.lighthouseBeam {
+  transform-origin: 308px 126px;
+  animation: beamSweep 7s ease-in-out infinite alternate;
+}
+
+@keyframes beamSweep {
+  0% { opacity: 0.2; transform: rotate(-10deg) scaleX(0.85); }
+  50% { opacity: 0.6; transform: rotate(2deg) scaleX(1.15); }
+  100% { opacity: 0.25; transform: rotate(14deg) scaleX(0.9); }
+}
+
+/* 窗户暖光呼吸 */
+.windowWarm {
+  animation: windowGlow 4s ease-in-out infinite alternate;
+}
+
+@keyframes windowGlow {
+  0% { opacity: 0.8; }
+  100% { opacity: 1; filter: drop-shadow(0 0 6px rgba(251, 191, 36, 0.9)); }
+}
+
+/* 海浪涟漪起伏 */
+.seaWaveFront {
+  animation: waveRoll 6s ease-in-out infinite alternate;
+}
+
+.seaWaveBack {
+  animation: waveRollBack 8s ease-in-out infinite alternate;
+}
+
+@keyframes waveRoll {
+  0% { transform: translateX(-4px) translateY(0); }
+  100% { transform: translateX(5px) translateY(-1.5px); }
+}
+
+@keyframes waveRollBack {
+  0% { transform: translateX(6px) translateY(0); }
+  100% { transform: translateX(-5px) translateY(1.5px); }
+}
+
+/* 雨滴 */
+.rainLayer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.raindrop {
+  position: absolute;
+  top: -20px;
+  width: 1px;
+  height: 16px;
+  background: linear-gradient(180deg, transparent, rgba(255, 255, 255, 0.75));
+  animation: rainDropFall 0.85s linear infinite;
+}
+
+.raindropWindy {
+  position: absolute;
+  top: -20px;
+  width: 1.2px;
+  height: 20px;
+  background: linear-gradient(180deg, transparent, rgba(255, 255, 255, 0.85));
+  animation: rainDropWindyFall 0.55s linear infinite;
+}
+
+@keyframes rainDropFall {
+  to { transform: translate(-8px, 320px); }
+}
+
+@keyframes rainDropWindyFall {
+  to { transform: translate(-42px, 320px) rotate(22deg); }
+}
+
+/* 雪花 */
+.snowLayer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.snowflake {
+  position: absolute;
+  top: -15px;
+  background: #ffffff;
+  border-radius: 50%;
+  box-shadow: 0 0 4px rgba(255, 255, 255, 0.85);
+  animation: snowSwayFall linear infinite;
+}
+
+@keyframes snowSwayFall {
+  0% {
+    transform: translate(0, 0) scale(1);
+    opacity: 0.8;
+  }
+  50% {
+    transform: translate(14px, 150px) scale(0.9);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-10px, 310px) scale(0.85);
+    opacity: 0.2;
+  }
+}
+
+/* 风痕气流 */
+.windLayer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.windStreak {
+  position: absolute;
+  height: 1.5px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.5) 40%, rgba(255, 255, 255, 0.6) 60%, transparent);
+  border-radius: 999px;
+  filter: blur(0.3px);
+  animation: windRush linear infinite;
+}
+
+@keyframes windRush {
+  0% {
+    transform: translateX(-110%) scaleX(0.3);
+    opacity: 0;
+  }
+  25% {
+    opacity: 0.65;
+    transform: translateX(-20%) scaleX(1);
+  }
+  75% {
+    opacity: 0.65;
+    transform: translateX(60%) scaleX(1.1);
+  }
+  100% {
+    transform: translateX(160%) scaleX(0.4);
+    opacity: 0;
+  }
+}
+
+/* 夜间孤舟流星彩蛋 */
+.shootingStar {
+  position: absolute;
+  top: 15%;
+  left: 10%;
+  width: 70px;
+  height: 1.5px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.95) 60%, transparent);
+  border-radius: 999px;
+  filter: drop-shadow(0 0 3px #ffffff);
+  opacity: 0;
+  animation: meteorStreak 18s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes meteorStreak {
+  0%, 93%, 100% {
+    opacity: 0;
+    transform: translate(0, 0) rotate(-35deg) scaleX(0);
+  }
+  94.5% {
+    opacity: 0.95;
+    transform: translate(35px, 25px) rotate(-35deg) scaleX(1);
+  }
+  96.5% {
+    opacity: 0;
+    transform: translate(95px, 70px) rotate(-35deg) scaleX(0.2);
+  }
+}
+
+/* 守望木屋袅袅炊烟 */
+.smokePuff {
+  transform-origin: center;
+  animation: smokeFloat 3.8s ease-out infinite;
+  pointer-events: none;
+}
+
+@keyframes smokeFloat {
+  0% {
+    transform: translate(0, 0) scale(0.5);
+    opacity: 0;
+  }
+  20% {
+    opacity: 0.45;
+  }
+  65% {
+    opacity: 0.22;
+    transform: translate(-5px, -15px) scale(1.6);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-9px, -24px) scale(2.4);
+  }
+}
+
+/* 灵树交互微动效 */
+.sacredTreeInteractive {
+  cursor: pointer;
+  pointer-events: auto;
+  transition: filter 0.25s ease;
+}
+
+.sacredTreeInteractive:hover {
+  filter: brightness(1.12) drop-shadow(0 0 6px rgba(255, 255, 255, 0.5));
+}
+
+.treeTrunkShake {
+  transform-origin: 215px 158px;
+  animation: trunkHappyShake 0.75s cubic-bezier(0.36, 0.07, 0.19, 0.97);
+}
+
+.treeCanopyShake {
+  transform-origin: 218px 122px;
+  animation: canopyHappyShake 0.75s cubic-bezier(0.36, 0.07, 0.19, 0.97);
+}
+
+@keyframes trunkHappyShake {
+  0%, 100% { transform: rotate(0deg); }
+  20% { transform: rotate(-5.0deg); }
+  40% { transform: rotate(5.5deg); }
+  60% { transform: rotate(-3.0deg); }
+  80% { transform: rotate(1.8deg); }
+}
+
+@keyframes canopyHappyShake {
+  0%, 100% { transform: rotate(0deg); }
+  20% { transform: rotate(-6.5deg); }
+  40% { transform: rotate(7.0deg); }
+  60% { transform: rotate(-3.8deg); }
+  80% { transform: rotate(2.0deg); }
+}
+
+/* 灵树花瓣/树叶飘落：结合风向与风速（左/右 + 柔风/大风），速度舒缓自然 */
+.petalDriftLeft {
+  animation: leafDriftLeft 5.2s cubic-bezier(0.33, 0, 0.2, 1) forwards;
+  pointer-events: none;
+}
+
+.petalDriftLeftWindy {
+  animation: leafDriftLeftWindy 3.6s cubic-bezier(0.2, 0.5, 0.3, 1) forwards;
+  pointer-events: none;
+}
+
+.petalDriftRight {
+  animation: leafDriftRight 5.2s cubic-bezier(0.33, 0, 0.2, 1) forwards;
+  pointer-events: none;
+}
+
+.petalDriftRightWindy {
+  animation: leafDriftRightWindy 3.6s cubic-bezier(0.2, 0.5, 0.3, 1) forwards;
+  pointer-events: none;
+}
+
+/* 向左舒缓摇曳飘落（东风或无风海面） */
+@keyframes leafDriftLeft {
+  0% {
+    transform: translate(0, 0) rotate(0deg) scale(1);
+    opacity: 0.95;
+  }
+  20% {
+    transform: translate(-9px, 14px) rotate(45deg) scale(0.95);
+    opacity: 0.92;
+  }
+  40% {
+    transform: translate(-4px, 26px) rotate(-15deg) scale(0.9);
+    opacity: 0.88;
+  }
+  65% {
+    transform: translate(-18px, 42px) rotate(70deg) scale(0.85);
+    opacity: 0.75;
+  }
+  85% {
+    transform: translate(-13px, 56px) rotate(25deg) scale(0.8);
+    opacity: 0.5;
+  }
+  100% {
+    transform: translate(-26px, 68px) rotate(140deg) scale(0.7);
+    opacity: 0;
+  }
+}
+
+/* 向左大风急卷飘落 */
+@keyframes leafDriftLeftWindy {
+  0% {
+    transform: translate(0, 0) rotate(0deg) scale(1);
+    opacity: 0.95;
+  }
+  25% {
+    transform: translate(-28px, 12px) rotate(65deg) scale(0.9);
+    opacity: 0.9;
+  }
+  50% {
+    transform: translate(-55px, 24px) rotate(130deg) scale(0.82);
+    opacity: 0.8;
+  }
+  75% {
+    transform: translate(-88px, 40px) rotate(210deg) scale(0.75);
+    opacity: 0.5;
+  }
+  100% {
+    transform: translate(-120px, 56px) rotate(310deg) scale(0.65);
+    opacity: 0;
+  }
+}
+
+/* 向右舒缓摇曳飘落（西风拂面） */
+@keyframes leafDriftRight {
+  0% {
+    transform: translate(0, 0) rotate(0deg) scale(1);
+    opacity: 0.95;
+  }
+  20% {
+    transform: translate(9px, 14px) rotate(-45deg) scale(0.95);
+    opacity: 0.92;
+  }
+  40% {
+    transform: translate(4px, 26px) rotate(15deg) scale(0.9);
+    opacity: 0.88;
+  }
+  65% {
+    transform: translate(18px, 42px) rotate(-70deg) scale(0.85);
+    opacity: 0.75;
+  }
+  85% {
+    transform: translate(13px, 56px) rotate(-25deg) scale(0.8);
+    opacity: 0.5;
+  }
+  100% {
+    transform: translate(26px, 68px) rotate(-140deg) scale(0.7);
+    opacity: 0;
+  }
+}
+
+/* 向右大风急卷飘落（西风+大风） */
+@keyframes leafDriftRightWindy {
+  0% {
+    transform: translate(0, 0) rotate(0deg) scale(1);
+    opacity: 0.95;
+  }
+  25% {
+    transform: translate(28px, 12px) rotate(-65deg) scale(0.9);
+    opacity: 0.9;
+  }
+  50% {
+    transform: translate(55px, 24px) rotate(-130deg) scale(0.82);
+    opacity: 0.8;
+  }
+  75% {
+    transform: translate(88px, 40px) rotate(-210deg) scale(0.75);
+    opacity: 0.5;
+  }
+  100% {
+    transform: translate(120px, 56px) rotate(-310deg) scale(0.65);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sunGlow,
+  .moonGlow,
+  .star,
+  .cloudFar,
+  .cloudNear,
+  .cloudDriftRight,
+  .cloudDriftLeft,
+  .cloudBob1,
+  .cloudBob2,
+  .cloudBob3,
+  .cloudBob4,
+  .treeTrunk,
+  .treeTrunkWindy,
+  .treeTrunkShake,
+  .treeCanopy,
+  .treeCanopyWindy,
+  .treeCanopyShake,
+  .lighthouseBeam,
+  .windowWarm,
+  .seaWaveFront,
+  .seaWaveBack,
+  .raindrop,
+  .raindropWindy,
+  .snowflake,
+  .windStreak,
+  .shootingStar,
+  .smokePuff,
+  .petalDriftLeft,
+  .petalDriftLeftWindy,
+  .petalDriftRight,
+  .petalDriftRightWindy {
+    animation: none !important;
+  }
+}
