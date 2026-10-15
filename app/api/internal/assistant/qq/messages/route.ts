@@ -17,6 +17,7 @@ import { buildCryptoMarketContext } from '@/lib/crypto/market-query.mjs';
 import { queryCryptoMarket } from '@/lib/crypto/market-tools';
 import { explicitMemoryPrompt, parseExplicitMemory } from '@/lib/personal-assistant/memory-intent.mjs';
 import { handleQQMemoryRequest } from '@/lib/personal-assistant/qq-memory';
+import { buildRetrievalNotice } from '@/lib/personal-assistant/retrieval-notice.mjs';
 import { isValidInternalQQSecret } from '@/lib/qq-assistant/credentials.mjs';
 import { classifyQQCommand, qqImageAttachments } from '@/lib/qq-assistant/policy.mjs';
 import { compressConversationContext } from '@/lib/context-compression';
@@ -165,9 +166,11 @@ export async function POST(request: Request) {
     ]);
     const cryptoContext = await buildCryptoMarketContext({ message, history: memoryContext.history, query: queryCryptoMarket });
     let weatherPending: any = undefined;
+    let weatherStatus = '';
     const weatherContext = await buildWeatherContext({
       message, history: memoryContext.history, memories, service: platformWeather,
       onPending: (pending: any) => { weatherPending = [pending]; },
+      onStatus: (status: string) => { weatherStatus = status; },
       resolve: async (weatherMessages: Array<{ role: 'system' | 'user'; content: string }>) => {
         const result = await client.chat.completions.create({ model, messages: weatherMessages, temperature: 0 }, { timeout: 15_000, maxRetries: 0 });
         return result.choices[0]?.message?.content || '';
@@ -264,7 +267,8 @@ export async function POST(request: Request) {
       const reminderSummary = reminderCandidates.length
         ? `\n\n已记录${reminderCandidates.length > 1 ? ` ${reminderCandidates.length} 条` : ''}提醒：${reminderCandidates.map((item) => item.content).join('、')}`
         : '';
-      const content = `${normalizedModelContent}${reminderSummary}`;
+      const notice = buildRetrievalNotice({ weatherStatus, searched: Boolean(webContext), webpage: Boolean(webpageContext), crypto: Boolean(cryptoContext), trending: Boolean(trendingContext) });
+      const content = `${normalizedModelContent}${reminderSummary}${notice}`;
 
       try {
         await prisma.$transaction([
@@ -314,7 +318,7 @@ export async function POST(request: Request) {
 
       return {
         content,
-        streamContent: `${modelContent.trimStart()}${reminderSummary}`,
+        streamContent: `${modelContent.trimStart()}${reminderSummary}${notice}`,
       };
     };
 

@@ -23,6 +23,7 @@ import { detectTrendingIntent, formatTrendingForPrompt, getTrendingSnapshot, get
 import { parseMcpServers } from '@/lib/agent-runtime/mcp-config.mjs';
 import { createAssistantToolBroker } from '@/lib/personal-assistant/tool-broker.mjs';
 import { runAssistantToolLoop } from '@/lib/personal-assistant/tool-loop.mjs';
+import { buildRetrievalNotice } from '@/lib/personal-assistant/retrieval-notice.mjs';
 
 export const runtime = 'nodejs';
 
@@ -227,9 +228,11 @@ export async function POST(request: Request) {
 
     const cryptoContext = await buildCryptoMarketContext({ message: messageForModel, history: memoryContext.history, query: queryCryptoMarket });
     let weatherPending: any = undefined;
+    let weatherStatus = '';
     const weatherContext = await buildWeatherContext({
       message: messageForModel, history: memoryContext.history, memories, service: platformWeather,
       onPending: (pending: any) => { weatherPending = [pending]; },
+      onStatus: (status: string) => { weatherStatus = status; },
       resolve: async (weatherMessages: Array<{ role: 'system' | 'user'; content: string }>) => {
         if (localMode) throw new Error('浏览器本地模型暂不支持服务端天气解析，请使用平台天气接口并明确地点');
         const result = await client.chat.completions.create({ model, messages: weatherMessages, temperature: 0 }, { timeout: 15_000, maxRetries: 0 });
@@ -239,6 +242,8 @@ export async function POST(request: Request) {
     const webContext = webSearchEnabled && !weatherContext && !cryptoContext
       ? await buildWebSearchContext(buildWebSearchQuery(messageForModel, memoryContext.history), userSettings.tavilyApiKey)
       : null;
+    let toolCalled = false;
+    const retrievalNotice = () => buildRetrievalNotice({ weatherStatus, searched: Boolean(webContext), webpage: Boolean(webpageContext), crypto: Boolean(cryptoContext), trending: Boolean(trendingContext), toolCalled });
 
     const systemPrompt = buildPersonalAssistantPrompt({
       userName: userSettings.name,
@@ -311,7 +316,7 @@ export async function POST(request: Request) {
           const toolResult = await runAssistantToolLoop({
             messages,
             tools: assistantTools.map((tool) => ({ type: 'function', function: tool })),
-            broker,
+            broker: { call: async (...args: Parameters<typeof broker.call>) => { toolCalled = true; return broker.call(...args); } },
             complete: (toolMessages, tools) => client.chat.completions.create({
               model,
               messages: toolMessages as any,
@@ -320,10 +325,11 @@ export async function POST(request: Request) {
             }),
           });
           if (toolResult.trim()) {
+            const content = toolResult + retrievalNotice();
             await prisma.message.create({
-              data: { id: assistantMessageId, conversationId, role: 'assistant', source: 'WEB', content: toolResult, attachments: weatherPending },
+              data: { id: assistantMessageId, conversationId, role: 'assistant', source: 'WEB', content, attachments: weatherPending },
             });
-            return new Response(toolResult, {
+            return new Response(content, {
               headers: {
                 'Content-Type': 'text/plain; charset=utf-8',
                 'Cache-Control': 'no-cache, no-transform',
@@ -386,6 +392,9 @@ export async function POST(request: Request) {
             }
           }
           if (!fullContent) throw new Error('模型没有返回正文');
+          const notice = retrievalNotice();
+          fullContent += notice;
+          controller.enqueue(encoder.encode(notice));
           await persistAssistantMessage();
           controller.close();
         } catch (error: any) {
