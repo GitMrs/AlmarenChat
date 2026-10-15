@@ -226,8 +226,10 @@ export async function POST(request: Request) {
     }
 
     const cryptoContext = await buildCryptoMarketContext({ message: messageForModel, history: memoryContext.history, query: queryCryptoMarket });
+    let weatherPending: any = undefined;
     const weatherContext = await buildWeatherContext({
       message: messageForModel, history: memoryContext.history, memories, service: platformWeather,
+      onPending: (pending: any) => { weatherPending = [pending]; },
       resolve: async (weatherMessages: Array<{ role: 'system' | 'user'; content: string }>) => {
         if (localMode) throw new Error('浏览器本地模型暂不支持服务端天气解析，请使用平台天气接口并明确地点');
         const result = await client.chat.completions.create({ model, messages: weatherMessages, temperature: 0 }, { timeout: 15_000, maxRetries: 0 });
@@ -319,7 +321,7 @@ export async function POST(request: Request) {
           });
           if (toolResult.trim()) {
             await prisma.message.create({
-              data: { id: assistantMessageId, conversationId, role: 'assistant', source: 'WEB', content: toolResult },
+              data: { id: assistantMessageId, conversationId, role: 'assistant', source: 'WEB', content: toolResult, attachments: weatherPending },
             });
             return new Response(toolResult, {
               headers: {
@@ -358,11 +360,11 @@ export async function POST(request: Request) {
           await prisma.$transaction(async (tx) => {
             const updated = await tx.message.updateMany({
               where: { id: assistantMessageId, conversationId, role: 'assistant' },
-              data: { content: fullContent },
+              data: { content: fullContent, attachments: weatherPending },
             });
             if (!updated.count) {
               await tx.message.create({
-                data: { id: assistantMessageId, conversationId, role: 'assistant', source: 'WEB', content: fullContent },
+                data: { id: assistantMessageId, conversationId, role: 'assistant', source: 'WEB', content: fullContent, attachments: weatherPending },
               });
             }
             await tx.conversation.update({

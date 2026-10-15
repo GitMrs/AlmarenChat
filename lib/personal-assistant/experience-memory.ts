@@ -240,7 +240,7 @@ export async function loadAssistantMemoryContext(options: {
       },
       orderBy: { createdAt: 'desc' },
       take: options.historyLimit,
-      select: { role: true, content: true, createdAt: true },
+      select: { role: true, content: true, createdAt: true, attachments: true },
     }),
     options.includeExperiences
       ? prisma.assistantExperience.findMany({

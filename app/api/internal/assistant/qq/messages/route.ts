@@ -164,8 +164,10 @@ export async function POST(request: Request) {
       buildAssistantActivityContext(userId, message, contextSources),
     ]);
     const cryptoContext = await buildCryptoMarketContext({ message, history: memoryContext.history, query: queryCryptoMarket });
+    let weatherPending: any = undefined;
     const weatherContext = await buildWeatherContext({
       message, history: memoryContext.history, memories, service: platformWeather,
+      onPending: (pending: any) => { weatherPending = [pending]; },
       resolve: async (weatherMessages: Array<{ role: 'system' | 'user'; content: string }>) => {
         const result = await client.chat.completions.create({ model, messages: weatherMessages, temperature: 0 }, { timeout: 15_000, maxRetries: 0 });
         return result.choices[0]?.message?.content || '';
@@ -294,7 +296,7 @@ export async function POST(request: Request) {
             },
           }),
           prisma.message.create({
-            data: { id: assistantMessageId, conversationId: binding.conversationId, role: 'assistant', source: 'QQ', content },
+            data: { id: assistantMessageId, conversationId: binding.conversationId, role: 'assistant', source: 'QQ', content, attachments: weatherPending },
           }),
           prisma.conversation.update({
             where: { id: binding.conversationId },
