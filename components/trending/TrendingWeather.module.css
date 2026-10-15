@@ -1,0 +1,20 @@
+.panel { isolation: isolate; }
+.sun { background: linear-gradient(135deg, #e8f6ff, #c7e9fa 55%, #ffe6a3); }
+.cloud { background: linear-gradient(140deg, #eef3f6, #c8d9e2); }
+.rain { background: linear-gradient(140deg, #e0edf0, #a9c5d0); }
+.snow { background: linear-gradient(140deg, #effaff, #d5e6ee); }
+.scene { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.sunlight { position: absolute; right: -25px; top: 12px; color: #e9b744; opacity: .32; filter: drop-shadow(0 0 15px #ffe19a); animation: sunlight 12s ease-in-out infinite; }
+.cloudOne, .cloudTwo { position: absolute; color: #fff; fill: #fff; opacity: .3; animation: cloud 14s ease-in-out infinite alternate; }
+.cloudOne { right: -20px; top: 25px; }
+.cloudTwo { right: 100px; top: 60px; animation-delay: -7s; }
+.raindrop, .snowflake { position: absolute; top: -15px; animation: fall linear infinite; }
+.raindrop { width: 1px; height: 15px; background: #477f9c; opacity: .18; }
+.snowflake { width: 4px; height: 4px; border-radius: 50%; background: #fff; opacity: .8; }
+@keyframes sunlight { 0%, 100% { transform: rotate(-8deg); opacity: .22; } 50% { transform: rotate(8deg); opacity: .42; } }
+@keyframes cloud { from { transform: translateX(-15px); } to { transform: translateX(20px); } }
+@keyframes fall { to { transform: translate(-24px, 360px); } }
+@media (prefers-reduced-motion: reduce) {
+  .scene * { animation: none; }
+  .raindrop, .snowflake { display: none; }
+}

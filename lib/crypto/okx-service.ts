@@ -177,6 +177,59 @@ const derivativesCache = new Map<string, CacheEntry<{
 const candleCache = new Map<string, CandleCacheEntry>();
 const microstructureCache = new Map<string, CacheEntry<CryptoMicrostructure>>();
 const inFlightRequests = new Map<string, Promise<CryptoMarketSnapshot | null>>();
+export interface CryptoQuote {
+  symbol: string;
+  instId: string;
+  price: number;
+  open24h: number | null;
+  high24h: number | null;
+  low24h: number | null;
+  change24hPercent: number | null;
+  volume24hBase: number | null;
+  observedAt: string | null;
+  fetchedAt: string;
+}
+const quoteCache = new Map<string, CacheEntry<CryptoQuote>>();
+const quoteRequests = new Map<string, Promise<CryptoQuote | null>>();
+
+export async function getCryptoQuoteData(rawSymbol: string): Promise<CryptoQuote | null> {
+  const { ccy, instId } = normalizeSymbol(rawSymbol);
+  const cached = quoteCache.get(instId);
+  if (cached && Date.now() - cached.fetchedAt < REALTIME_CACHE_TTL_MS) return cached.value;
+  const pending = quoteRequests.get(instId);
+  if (pending) return pending;
+  const task = (async () => {
+    try {
+      const response = await smartFetch(`https://www.okx.com/api/v5/market/ticker?instId=${instId}`, { timeoutMs: 5000 });
+      if (!response.ok) return null;
+      const payload = await response.json();
+      const ticker = payload.code === '0' ? payload.data?.[0] : null;
+      const positive = (value: unknown) => Number.isFinite(Number(value)) && Number(value) > 0 ? Number(value) : null;
+      const price = positive(ticker?.last);
+      if (!price) return null;
+      const open24h = positive(ticker.open24h);
+      const fetchedAt = Date.now();
+      const observedMs = Number(ticker.ts);
+      const quote = {
+        symbol: ccy, instId, price, open24h,
+        high24h: positive(ticker.high24h), low24h: positive(ticker.low24h),
+        volume24hBase: Number.isFinite(Number(ticker.volCcy24h)) && ticker.volCcy24h !== '' && ticker.volCcy24h != null ? Number(ticker.volCcy24h) : null,
+        change24hPercent: open24h ? (price - open24h) / open24h * 100 : null,
+        observedAt: Number.isFinite(observedMs) && observedMs > 0 && observedMs <= 8.64e15 ? new Date(observedMs).toISOString() : null,
+        fetchedAt: new Date(fetchedAt).toISOString(),
+      };
+      if (quoteCache.size >= 300) quoteCache.delete(quoteCache.keys().next().value!);
+      quoteCache.set(instId, { fetchedAt, value: quote });
+      return quote;
+    } catch {
+      return null;
+    } finally {
+      quoteRequests.delete(instId);
+    }
+  })();
+  quoteRequests.set(instId, task);
+  return task;
+}
 
 export function clearCryptoCache(): void {
   realtimeCache.clear();
@@ -184,6 +237,8 @@ export function clearCryptoCache(): void {
   candleCache.clear();
   microstructureCache.clear();
   inFlightRequests.clear();
+  quoteCache.clear();
+  quoteRequests.clear();
 }
 
 /**
@@ -351,7 +406,7 @@ async function getRealtimeData(instId: string, now: number) {
   const cached = realtimeCache.get(instId);
   if (cached && now - cached.fetchedAt < REALTIME_CACHE_TTL_MS) return cached;
   const [tickerRes, oiRes] = await Promise.allSettled([
-    smartFetch(`https://www.okx.com/api/v5/market/ticker?instId=${instId}`, { timeoutMs: 5000 }),
+    getCryptoQuoteData(instId),
     smartFetch(`https://www.okx.com/api/v5/public/open-interest?instType=SWAP&instId=${instId}`, { timeoutMs: 5000 }),
   ]);
   let price = 0;
@@ -360,15 +415,15 @@ async function getRealtimeData(instId: string, now: number) {
   let high24h = 0;
   let low24h = 0;
   let vol24hQuote = 0;
-  if (tickerRes.status === 'fulfilled' && tickerRes.value.ok) {
-    const t = (await tickerRes.value.json().catch(() => ({}))).data?.[0];
+  if (tickerRes.status === 'fulfilled') {
+    const t = tickerRes.value;
     if (t) {
-      price = parseFloat(t.last || '0');
+      price = t.price;
       tickerAvailable = price > 0;
-      open24h = parseFloat(t.open24h || '0');
-      high24h = parseFloat(t.high24h || '0');
-      low24h = parseFloat(t.low24h || '0');
-      vol24hQuote = parseFloat(t.volCcy24h || '0');
+      open24h = t.open24h || 0;
+      high24h = t.high24h || 0;
+      low24h = t.low24h || 0;
+      vol24hQuote = t.volume24hBase || 0;
     }
   }
   if (price <= 0) return null;

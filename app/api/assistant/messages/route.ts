@@ -13,6 +13,9 @@ import { buildPersonalAssistantPrompt } from '@/lib/personal-assistant/prompt-bu
 import { buildAssistantActivityContext, buildAssistantPlatformContext } from '@/lib/personal-assistant/platform-context';
 import { archiveOldMainChatMessages, loadAssistantMemoryContext } from '@/lib/personal-assistant/experience-memory';
 import { loadUserMemoryItems } from '@/lib/personal-assistant/user-memory';
+import { buildWeatherContext, platformWeather, weatherRequested } from '@/lib/weather.mjs';
+import { buildCryptoMarketContext } from '@/lib/crypto/market-query.mjs';
+import { queryCryptoMarket } from '@/lib/crypto/market-tools';
 import { buildTimedAssistantHistory } from '@/lib/personal-assistant/history-context.mjs';
 import { compressConversationContext } from '@/lib/context-compression';
 import { conversationContextTargetTokens } from '@/lib/model-limits.mjs';
@@ -202,7 +205,7 @@ export async function POST(request: Request) {
       loadUserMemoryItems(userId),
       buildAssistantPlatformContext(userId, contextSources),
       buildAssistantActivityContext(userId, textMessage, contextSources),
-      webSearchEnabled ? buildWebpageContext(messageForModel) : Promise.resolve(null),
+      webSearchEnabled && !weatherRequested(messageForModel) ? buildWebpageContext(messageForModel) : Promise.resolve(null),
     ]);
     
     // 智能热点感知注入
@@ -222,7 +225,16 @@ export async function POST(request: Request) {
       }
     }
 
-    const webContext = webSearchEnabled
+    const cryptoContext = await buildCryptoMarketContext({ message: messageForModel, history: memoryContext.history, query: queryCryptoMarket });
+    const weatherContext = await buildWeatherContext({
+      message: messageForModel, history: memoryContext.history, memories, service: platformWeather,
+      resolve: async (weatherMessages: Array<{ role: 'system' | 'user'; content: string }>) => {
+        if (localMode) throw new Error('浏览器本地模型暂不支持服务端天气解析，请使用平台天气接口并明确地点');
+        const result = await client.chat.completions.create({ model, messages: weatherMessages, temperature: 0 }, { timeout: 15_000, maxRetries: 0 });
+        return result.choices[0]?.message?.content || '';
+      },
+    });
+    const webContext = webSearchEnabled && !weatherContext && !cryptoContext
       ? await buildWebSearchContext(buildWebSearchQuery(messageForModel, memoryContext.history), userSettings.tavilyApiKey)
       : null;
 
@@ -262,6 +274,8 @@ export async function POST(request: Request) {
         role: 'system',
         content: [
           systemPrompt,
+          weatherContext || '',
+          cryptoContext || '',
           conversationMode === 'TEMPORARY' ? '【会话模式】：这是临时聊天，不将本轮内容视为长期经历。' : '',
           webContext ? `本轮联网结果：\n${webContext}` : '',
           webpageContext ? `本轮网页/JSON 数据：\n${webpageContext}` : '',

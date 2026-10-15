@@ -10,6 +10,8 @@ import { createModelClient, resolveModelName } from '@/lib/model-client';
 import { reserveChatQuota } from '@/lib/chat-quota';
 import { loadAgentMemoryContext } from '@/lib/agent-memory';
 import { currentTimeContext } from '@/lib/current-time-context.mjs';
+import { buildCryptoMarketContext } from '@/lib/crypto/market-query.mjs';
+import { queryCryptoMarket } from '@/lib/crypto/market-tools';
 import { buildUserMemoryContext, loadUserMemoryItems } from '@/lib/personal-assistant/user-memory';
 import { compressConversationContext, estimateMessagesTokens } from '@/lib/context-compression';
 import { conversationContextTargetTokens } from '@/lib/model-limits.mjs';
@@ -198,6 +200,8 @@ export async function POST(request: Request) {
       loadUserMemoryItems(userId, agentId),
     ]);
     let finalContext = [currentTimeContext(), context, buildUserMemoryContext(userMemories, textMessage), employeeMemory].filter(Boolean).join('\n\n');
+    const cryptoContext = await buildCryptoMarketContext({ message: textMessage, history: sourceHistory, query: queryCryptoMarket });
+    finalContext = [finalContext, cryptoContext].filter(Boolean).join('\n\n');
 
     const trendingIntent = detectTrendingIntent(textMessage);
     if (trendingIntent.wantsTrending) {
@@ -223,7 +227,7 @@ export async function POST(request: Request) {
         console.warn('[chat/knowledge] Knowledge hit retrieval failed:', err?.message);
       }
     }
-    if (webSearchEnabled) {
+    if (webSearchEnabled && !cryptoContext) {
       const webSearchContext = await buildWebSearchContext(
         buildWebSearchQuery(textMessage, sourceHistory),
         userSettings.tavilyApiKey

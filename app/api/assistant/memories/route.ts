@@ -8,7 +8,7 @@ export async function GET(request: Request) {
   try {
     const userId = requireAuth(request);
     const agentId = new URL(request.url).searchParams.get('agentId')?.trim() || null;
-    const memories = await prisma.assistantMemoryItem.findMany({ where: { userId, ...(agentId ? { agentId } : { agentId: null }) }, orderBy: { updatedAt: 'desc' } });
+    const memories = await prisma.assistantMemoryItem.findMany({ where: { userId, status: { not: 'PENDING_QQ' }, ...(agentId ? { agentId } : { agentId: null }) }, orderBy: { updatedAt: 'desc' } });
     return NextResponse.json({ memories });
   } catch (error: any) {
     if (error.message === 'Unauthorized') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

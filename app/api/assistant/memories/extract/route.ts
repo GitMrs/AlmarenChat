@@ -3,6 +3,7 @@ import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { createModelClient, resolveModelName } from '@/lib/model-client';
 import { memoryFingerprint } from '@/lib/personal-assistant/memory-dedup.mjs';
+import { explicitMemoryContent, explicitMemoryPrompt, parseExplicitMemory } from '@/lib/personal-assistant/memory-intent.mjs';
 
 export const runtime = 'nodejs';
 
@@ -46,6 +47,7 @@ export async function POST(request: Request) {
     const agentId = typeof body.agentId === 'string' && body.agentId.trim() ? body.agentId.trim() : null;
 
     let dialogueContext = '';
+    let explicitContent: string | null = null;
 
     if (mode === 'single') {
       const userMsg = typeof body.userMessage === 'string' ? body.userMessage.trim() : '';
@@ -59,6 +61,10 @@ export async function POST(request: Request) {
       }) : null;
       if (!conversation) return NextResponse.json({ suggestions: [] });
       if (!userMsg || isTrivial(userMsg)) {
+        return NextResponse.json({ suggestions: [] });
+      }
+      if (!agentId) explicitContent = explicitMemoryContent(userMsg);
+      if (explicitContent !== null && (!explicitContent || explicitContent.length > 500 || /^(?:这个|那个|刚才的|上面说的)[。！!]?$/u.test(explicitContent))) {
         return NextResponse.json({ suggestions: [] });
       }
       dialogueContext = `用户说：${userMsg}\n助理回复：${assistantMsg.slice(0, 300)}`;
@@ -127,7 +133,7 @@ ${dialogueContext}
   ]
 }`;
 
-    const modelMessages = [{ role: 'user' as const, content: prompt }];
+    const modelMessages = [{ role: 'user' as const, content: explicitContent ? explicitMemoryPrompt(explicitContent) : prompt }];
     const hasLocalResponse = typeof body.localResponse === 'string';
     let rawResponse = hasLocalResponse ? body.localResponse : '';
 
@@ -153,15 +159,19 @@ ${dialogueContext}
         usesCustomModel ? userSettings?.apiKey : undefined
       );
       const model = resolveModelName(usesCustomModel ? userSettings?.modelName : undefined);
-      const completion = await client.chat.completions.create({
-        model,
-        messages: modelMessages,
-        temperature: 0.1,
-      });
-      rawResponse = completion.choices[0]?.message?.content || '';
+      try {
+        const completion = await client.chat.completions.create({
+          model,
+          messages: modelMessages,
+          temperature: 0.1,
+        }, explicitContent ? { timeout: 15_000, maxRetries: 0 } : undefined);
+        rawResponse = completion.choices[0]?.message?.content || '';
+      } catch (error) {
+        if (!explicitContent) throw error;
+      }
     }
 
-    const rawSuggestions = extractJsonArray(rawResponse);
+    const rawSuggestions = explicitContent ? [parseExplicitMemory(rawResponse, explicitContent)] : extractJsonArray(rawResponse);
 
     const knownFingerprints = new Set(existingMemories.map((memory) => memoryFingerprint(memory.content)));
     const finalSuggestions = rawSuggestions.filter((item) => {

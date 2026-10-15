@@ -18,6 +18,7 @@ import LoadingSpinner from '@/components/shared/LoadingSpinner';
 import { TRENDING_CATEGORIES, TRENDING_SOURCES } from '@/lib/trending/sources';
 import type { TrendingCategory } from '@/lib/trending/types';
 import TrendingCalendarPicker from '@/components/trending/TrendingCalendarPicker';
+import TrendingWeather from '@/components/trending/TrendingWeather';
 import TrendingSummaryCard from '@/components/trending/TrendingSummaryCard';
 import NetworkDiagnosticModal from '@/components/trending/NetworkDiagnosticModal';
 
@@ -563,7 +564,7 @@ export default function TrendingPage() {
         </div>
 
         {/* 历史时光机选择器（极简一体化时光胶囊） */}
-        <div className="relative z-30 mb-4 flex items-center justify-between rounded-2xl border border-slate-200/80 bg-white/70 p-2.5 shadow-sm backdrop-blur-sm dark:border-slate-800 dark:bg-slate-900/60">
+        <div className="relative z-30 mb-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 rounded-2xl border border-slate-200/80 bg-white/70 p-2.5 shadow-sm backdrop-blur-sm dark:border-slate-800 dark:bg-slate-900/60">
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-1.5 px-2 text-xs font-black text-slate-700 dark:text-slate-200">
               <History size={15} className="text-amber-500" />
@@ -576,15 +577,18 @@ export default function TrendingPage() {
             />
           </div>
 
-          {selectedDate !== 'today' && (
-            <button
-              onClick={() => handleDateChange('today')}
-              className="flex items-center gap-1 text-xs font-bold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 px-3 py-1.5 rounded-xl hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition"
-              title="快速重置时光机回到今日实时热榜"
-            >
-              <span>回到今日实时 →</span>
-            </button>
-          )}
+          <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2">
+            {selectedDate !== 'today' && (
+              <button
+                onClick={() => handleDateChange('today')}
+                className="flex items-center gap-1 text-xs font-bold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 px-3 py-1.5 rounded-xl hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition"
+                title="快速重置时光机回到今日实时热榜"
+              >
+                <span>回到今日实时 →</span>
+              </button>
+            )}
+            <TrendingWeather />
+          </div>
         </div>
 
         {/* 历史只读归档横幅提醒 */}

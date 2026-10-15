@@ -12,6 +12,11 @@ import { archiveOldMainChatMessages, loadAssistantMemoryContext } from '@/lib/pe
 import { buildTimedAssistantHistory } from '@/lib/personal-assistant/history-context.mjs';
 import { buildReminderExtractionPrompt, parseReminderExtraction } from '@/lib/personal-assistant/reminder-extraction.mjs';
 import { classifyReminderRequest } from '@/lib/personal-assistant/reminder-intent.mjs';
+import { buildWeatherContext, platformWeather } from '@/lib/weather.mjs';
+import { buildCryptoMarketContext } from '@/lib/crypto/market-query.mjs';
+import { queryCryptoMarket } from '@/lib/crypto/market-tools';
+import { explicitMemoryPrompt, parseExplicitMemory } from '@/lib/personal-assistant/memory-intent.mjs';
+import { handleQQMemoryRequest } from '@/lib/personal-assistant/qq-memory';
 import { isValidInternalQQSecret } from '@/lib/qq-assistant/credentials.mjs';
 import { classifyQQCommand, qqImageAttachments } from '@/lib/qq-assistant/policy.mjs';
 import { compressConversationContext } from '@/lib/context-compression';
@@ -89,6 +94,24 @@ export async function POST(request: Request) {
     const usesCustomModel = Boolean(
       userSettings.customModelEnabled && userSettings.apiBaseUrl && userSettings.apiKey && userSettings.modelName
     );
+    const memoryReply = await handleQQMemoryRequest({
+      userId, conversationId: binding.conversationId, message,
+      userMessageId: eventMessageId('user', binding.appId, eventId), assistantMessageId,
+      normalize: async (content) => {
+        try {
+          const memoryClient = createModelClient(usesCustomModel ? userSettings.apiBaseUrl : undefined, usesCustomModel ? userSettings.apiKey : undefined);
+          const result = await memoryClient.chat.completions.create({
+            model: resolveModelName(usesCustomModel ? userSettings.modelName : undefined),
+            messages: [{ role: 'user', content: explicitMemoryPrompt(content) }], temperature: 0.1,
+          }, { timeout: 15_000, maxRetries: 0 });
+          return parseExplicitMemory(result.choices[0]?.message?.content, content);
+        } catch {
+          return parseExplicitMemory('', content);
+        }
+      },
+    });
+    if (memoryReply !== null) return NextResponse.json({ content: memoryReply, conversationId: binding.conversationId });
+
     const quota = await reserveChatQuota({
       userId,
       email: userSettings.email,
@@ -140,10 +163,18 @@ export async function POST(request: Request) {
       buildAssistantPlatformContext(userId, contextSources),
       buildAssistantActivityContext(userId, message, contextSources),
     ]);
-    const webContext = webSearchEnabled
+    const cryptoContext = await buildCryptoMarketContext({ message, history: memoryContext.history, query: queryCryptoMarket });
+    const weatherContext = await buildWeatherContext({
+      message, history: memoryContext.history, memories, service: platformWeather,
+      resolve: async (weatherMessages: Array<{ role: 'system' | 'user'; content: string }>) => {
+        const result = await client.chat.completions.create({ model, messages: weatherMessages, temperature: 0 }, { timeout: 15_000, maxRetries: 0 });
+        return result.choices[0]?.message?.content || '';
+      },
+    });
+    const webContext = webSearchEnabled && !weatherContext && !cryptoContext
       ? await buildWebSearchContext(buildWebSearchQuery(message, memoryContext.history), userSettings.tavilyApiKey)
       : null;
-    const webpageContext = webSearchEnabled ? await buildWebpageContext(message) : null;
+    const webpageContext = webSearchEnabled && !weatherContext && !cryptoContext ? await buildWebpageContext(message) : null;
 
     let trendingContext = '';
     const trendingIntent = detectTrendingIntent(message);
@@ -172,6 +203,8 @@ export async function POST(request: Request) {
         experienceContext: memoryContext.experienceContext,
       }),
       webContext ? `本轮联网搜索结果：\n${webContext}` : '',
+      weatherContext || '',
+      cryptoContext || '',
       webpageContext ? `本轮直接网页/JSON 结果：\n${webpageContext}` : '',
       trendingContext ? trendingContext : '',
       '【当前渠道】：你正在 QQ 私聊中回复用户。QQ 与网页共用同一个主聊天上下文；不要提供站内相对链接，可以使用 QQ 支持的标准 Markdown，但避免 HTML 和复杂表格，回答保持适合即时消息阅读。长期记忆、任务和提醒也与网页共享。用户要求提醒时不要声称已经创建，系统会在回复末尾附加真实创建结果。',
