@@ -25,6 +25,7 @@ model User {
   imageApiBaseUrl String?
   imageApiKey  String?
   tavilyApiKey String?
+  defaultWeatherLocation Json?
   assistantMcpServers Json?
   defaultStyle String?
   contextMessageLimit Int @default(40)

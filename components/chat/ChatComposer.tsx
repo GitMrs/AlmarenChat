@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Check, Cloud, Cpu, Flame, Globe2, Image as ImageIcon, ImagePlus, Loader2, Plus, Send, Square, Trash2, X } from 'lucide-react';
+import { Check, Cloud, Cpu, Flame, Image as ImageIcon, ImagePlus, Loader2, Plus, Send, Square, Trash2, X } from 'lucide-react';
 import ComposerShell from '@/components/chat/ComposerShell';
 import { cn } from '@/lib/utils';
 import type { MessageAttachment } from '@/types';
@@ -25,8 +25,6 @@ type ChatComposerProps = {
   onClearAttachment: () => void;
   onSend: () => void;
   onStop: () => void;
-  webSearchEnabled: boolean;
-  onToggleWebSearch: () => void;
   mode: 'chat' | 'image';
   imageGenerationAvailable: boolean;
   onModeChange: (mode: 'chat' | 'image') => void;
@@ -56,8 +54,6 @@ export default function ChatComposer({
   onClearAttachment,
   onSend,
   onStop,
-  webSearchEnabled,
-  onToggleWebSearch,
   mode,
   imageGenerationAvailable,
   onModeChange,
@@ -191,25 +187,7 @@ export default function ChatComposer({
                   {uploadingImage ? <Loader2 className="animate-spin" size={16} /> : <ImagePlus size={16} />}
                   <span className="min-w-0 flex-1">上传图片</span>
                 </button>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={webSearchEnabled}
-                  onClick={() => {
-                    onModeChange('chat');
-                    onToggleWebSearch();
-                    setToolsOpen(false);
-                  }}
-                  disabled={isStreaming}
-                  className={cn(
-                    'flex min-h-10 w-full items-center gap-3 rounded-md px-3 py-2 text-left text-xs font-black transition disabled:text-slate-300',
-                    webSearchEnabled ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-950'
-                  )}
-                >
-                  <Globe2 size={16} />
-                  <span className="min-w-0 flex-1">联网搜索</span>
-                  {webSearchEnabled && <Check size={14} />}
-                </button>
+
                 <button
                   type="button"
                   onClick={() => {
@@ -273,7 +251,7 @@ export default function ChatComposer({
               )}
             >
               <Plus size={19} className={cn('transition-transform', toolsOpen && 'rotate-45')} />
-              {(webSearchEnabled || mode === 'image') && (
+              {(mode === 'image') && (
                 <span className={cn('absolute right-2 top-2 h-2 w-2 rounded-full ring-2 ring-white', mode === 'image' ? 'bg-rose-500' : 'bg-emerald-500')} />
               )}
             </button>

@@ -3,19 +3,15 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
-import { buildWebSearchContext, buildWebSearchQuery } from '@/lib/web-search';
-import { buildWebpageContext } from '@/lib/fetch-webpage';
+import { createChatWebTools, runAutoWebChat } from '@/lib/auto-web';
 import { formatKnowledgeContext, getKnowledgeHits } from '@/lib/knowledge';
 import { createModelClient, resolveModelName } from '@/lib/model-client';
 import { reserveChatQuota } from '@/lib/chat-quota';
 import { loadAgentMemoryContext } from '@/lib/agent-memory';
 import { currentTimeContext } from '@/lib/current-time-context.mjs';
-import { buildCryptoMarketContext } from '@/lib/crypto/market-query.mjs';
-import { queryCryptoMarket } from '@/lib/crypto/market-tools';
 import { buildUserMemoryContext, loadUserMemoryItems } from '@/lib/personal-assistant/user-memory';
 import { compressConversationContext, estimateMessagesTokens } from '@/lib/context-compression';
 import { conversationContextTargetTokens } from '@/lib/model-limits.mjs';
-import { detectTrendingIntent, formatTrendingForPrompt, getTrendingSnapshot } from '@/lib/trending';
 
 const TEXT_CHAT_COST = 1;
 const IMAGE_CHAT_COST = 3;
@@ -53,7 +49,6 @@ export async function POST(request: Request) {
       contextMessageLimit,
       skipPersistUserMessage,
       attachments,
-      webSearchEnabled,
       knowledgeEnabled,
     } = await request.json();
     const imageAttachments: ChatAttachment[] = Array.isArray(attachments)
@@ -73,14 +68,12 @@ export async function POST(request: Request) {
         modelName: true,
         modelContextWindow: true,
         tavilyApiKey: true,
+        defaultWeatherLocation: true,
         dailyChatLimit: true,
       },
     });
     if (!userSettings) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-    if (webSearchEnabled && !textMessage.trim()) {
-      return NextResponse.json({ error: '联网搜索需要输入文本问题。' }, { status: 400 });
     }
     const usesCustomModel = Boolean(
       userSettings.customModelEnabled &&
@@ -200,21 +193,6 @@ export async function POST(request: Request) {
       loadUserMemoryItems(userId, agentId),
     ]);
     let finalContext = [currentTimeContext(), context, buildUserMemoryContext(userMemories, textMessage), employeeMemory].filter(Boolean).join('\n\n');
-    const cryptoContext = await buildCryptoMarketContext({ message: textMessage, history: sourceHistory, query: queryCryptoMarket });
-    finalContext = [finalContext, cryptoContext].filter(Boolean).join('\n\n');
-
-    const trendingIntent = detectTrendingIntent(textMessage);
-    if (trendingIntent.wantsTrending) {
-      try {
-        const snapshot = await getTrendingSnapshot(trendingIntent.preferredSource || 'zhihu');
-        if (snapshot.items && snapshot.items.length > 0) {
-          const trendingContext = formatTrendingForPrompt(snapshot, { limit: 10 });
-          finalContext = [finalContext, trendingContext].filter(Boolean).join('\n\n');
-        }
-      } catch (err: any) {
-        console.warn('[chat/trending] Auto trending injection failed:', err?.message);
-      }
-    }
     if (knowledgeEnabled && agentId && textMessage.trim()) {
       try {
         const hits = await getKnowledgeHits(agentId, textMessage);
@@ -226,15 +204,6 @@ export async function POST(request: Request) {
       } catch (err: any) {
         console.warn('[chat/knowledge] Knowledge hit retrieval failed:', err?.message);
       }
-    }
-    if (webSearchEnabled && !cryptoContext) {
-      const webSearchContext = await buildWebSearchContext(
-        buildWebSearchQuery(textMessage, sourceHistory),
-        userSettings.tavilyApiKey
-      );
-      finalContext = [finalContext, webSearchContext].filter(Boolean).join('\n\n');
-      const webpageContext = await buildWebpageContext(textMessage);
-      finalContext = [finalContext, webpageContext].filter(Boolean).join('\n\n');
     }
 
     if (finalContext) openaiMessages.unshift({ role: 'system', content: finalContext });
@@ -269,45 +238,39 @@ export async function POST(request: Request) {
         },
       });
     }
-    const stream = await client.chat.completions.create({
-      model,
-      messages: openaiMessages,
-      stream: true,
-    });
-
     let fullContent = '';
     const encoder = new TextEncoder();
+    const abortController = new AbortController();
     const readable = new ReadableStream({
       async start(controller) {
+        const emit = (event: Record<string, unknown>) => controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
+        const web = createChatWebTools({ apiKey: userSettings.tavilyApiKey, defaultWeatherLocation: userSettings.defaultWeatherLocation, history: sourceHistory, signal: abortController.signal, onStatus: (label: string) => emit({ type: 'status', label }) });
         try {
-          for await (const chunk of stream) {
-            const choice = chunk.choices[0];
-            const text = choice?.delta?.content;
-            if (text) {
-              fullContent += text;
-              controller.enqueue(encoder.encode(text));
-            }
-          }
+          fullContent = await runAutoWebChat({ client, model, messages: openaiMessages, web, signal: abortController.signal, onText: (text: string) => emit({ type: 'text_delta', text }) });
           if (!fullContent) throw new Error('模型没有返回正文');
-          controller.close();
 
           // Persist assistant message after stream completes
           if (resolvedConversationId && fullContent) {
             await prisma.message.create({
-              data: { conversationId: resolvedConversationId, role: 'assistant', content: fullContent },
+              data: { conversationId: resolvedConversationId, role: 'assistant', content: fullContent, attachments: web.attachments() as any },
             });
             await prisma.conversation.update({
               where: { id: resolvedConversationId },
               data: { updatedAt: new Date() },
             });
           }
+          controller.close();
         } catch (error) {
-          controller.error(error);
+          if (!abortController.signal.aborted) {
+            emit({ type: 'error', error: error instanceof Error ? error.message : '回复失败' });
+            controller.close();
+          }
         }
       },
+      cancel() { abortController.abort(); },
     });
 
-    const headers: Record<string, string> = { 'Content-Type': 'text/plain; charset=utf-8' };
+    const headers: Record<string, string> = { 'Content-Type': 'application/x-ndjson; charset=utf-8', 'x-chat-stream-format': 'ndjson', 'Cache-Control': 'no-cache, no-transform', 'X-Accel-Buffering': 'no' };
     if (resolvedConversationId) headers['x-conversation-id'] = resolvedConversationId;
 
     return new Response(readable, { headers });

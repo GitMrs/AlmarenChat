@@ -127,7 +127,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
   const [pendingLargeTextMeta, setPendingLargeTextMeta] = useState<{ chars: number; kind: 'json' | 'text' } | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [uploadError, setUploadError] = useState('');
-  const [webSearchEnabled, setWebSearchEnabled] = useState(false);
+  const [webStatus, setWebStatus] = useState('');
   const [chatMode, setChatMode] = useState<'chat' | 'image'>('chat');
   const [trendingPickerOpen, setTrendingPickerOpen] = useState(false);
   const [quickTopics, setQuickTopics] = useState<{ id: string; source: string; sourceName: string; title: string; heat?: string }[]>([]);
@@ -691,6 +691,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
     }
     setIsStreaming(true);
     setStreamingContent('');
+    setWebStatus('');
 
     try {
       const historySource = options.historyOverride || nextLocalMessages;
@@ -748,9 +749,6 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
       }
 
       if (usesBrowserModel) {
-        if (webSearchEnabled) {
-          throw new Error('浏览器直连 Ollama 时不能使用服务端联网搜索');
-        }
 
         let localConversationId = conversationId || undefined;
         if (!localConversationId) {
@@ -812,7 +810,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
           attachments: outgoingAttachments,
           contextMessageLimit,
           skipPersistUserMessage: options.reuseLastUserMessage,
-          webSearchEnabled,
+          onStatus: setWebStatus,
           knowledgeEnabled: true,
           agentSnapshot,
           ...(userSettings?.apiBaseUrl && userSettings.apiKey && userSettings.modelName
@@ -1195,6 +1193,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
                   }}
                 />
               ))}
+            {isLoggedIn && isStreaming && webStatus && <div className="text-xs text-slate-500" role="status">{webStatus}</div>}
             {isLoggedIn && isStreaming && streamingContent && (
               <div className="flex justify-start gap-3">
                 <Avatar src={displayAgent.avatar} alt={displayAgent.name} size="sm" className="mt-1 shrink-0" />
@@ -1258,8 +1257,6 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
             }}
             onSend={() => handleSend()}
             onStop={handleStop}
-            webSearchEnabled={webSearchEnabled}
-            onToggleWebSearch={() => setWebSearchEnabled((value) => !value)}
             mode={chatMode}
             onOpenTrending={() => setTrendingPickerOpen(true)}
             onClearMessages={() => setConfirmClearOpen(true)}
@@ -1272,13 +1269,11 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
               setBrowserModelConfig(nextConfig);
               setModelSource(nextConfig.source);
               if (source === 'OLLAMA') {
-                setWebSearchEnabled(false);
                 setChatMode('chat');
               }
             }}
             onModeChange={(mode) => {
               setChatMode(mode);
-              if (mode === 'image') setWebSearchEnabled(false);
             }}
           />
         )}

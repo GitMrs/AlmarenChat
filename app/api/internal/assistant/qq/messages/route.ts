@@ -3,8 +3,7 @@ import { NextResponse } from 'next/server';
 import prisma from '@/app/api/_lib/db';
 import { reserveChatQuota } from '@/lib/chat-quota';
 import { createModelClient, resolveModelName } from '@/lib/model-client';
-import { buildWebSearchContext, buildWebSearchQuery } from '@/lib/web-search';
-import { buildWebpageContext } from '@/lib/fetch-webpage';
+import { createChatWebTools, runAutoWebChat } from '@/lib/auto-web';
 import { buildAssistantActivityContext, buildAssistantPlatformContext } from '@/lib/personal-assistant/platform-context';
 import { buildPersonalAssistantPrompt } from '@/lib/personal-assistant/prompt-builder';
 import { ensurePersonalAssistant } from '@/lib/personal-assistant/profile';
@@ -12,18 +11,14 @@ import { archiveOldMainChatMessages, loadAssistantMemoryContext } from '@/lib/pe
 import { buildTimedAssistantHistory } from '@/lib/personal-assistant/history-context.mjs';
 import { buildReminderExtractionPrompt, parseReminderExtraction } from '@/lib/personal-assistant/reminder-extraction.mjs';
 import { classifyReminderRequest } from '@/lib/personal-assistant/reminder-intent.mjs';
-import { buildWeatherContext, platformWeather } from '@/lib/weather.mjs';
-import { buildCryptoMarketContext } from '@/lib/crypto/market-query.mjs';
-import { queryCryptoMarket } from '@/lib/crypto/market-tools';
 import { explicitMemoryPrompt, parseExplicitMemory } from '@/lib/personal-assistant/memory-intent.mjs';
 import { handleQQMemoryRequest } from '@/lib/personal-assistant/qq-memory';
 import { loadUserMemoryItems } from '@/lib/personal-assistant/user-memory';
-import { buildRetrievalNotice, stripRetrievalNotices } from '@/lib/personal-assistant/retrieval-notice.mjs';
+import { stripRetrievalNotices } from '@/lib/personal-assistant/retrieval-notice.mjs';
 import { isValidInternalQQSecret } from '@/lib/qq-assistant/credentials.mjs';
 import { classifyQQCommand, qqImageAttachments } from '@/lib/qq-assistant/policy.mjs';
 import { compressConversationContext } from '@/lib/context-compression';
 import { conversationContextTargetTokens } from '@/lib/model-limits.mjs';
-import { detectTrendingIntent, formatTrendingForPrompt, getTrendingSnapshot, getCompositeTrendingSnapshot } from '@/lib/trending';
 
 export const runtime = 'nodejs';
 
@@ -42,7 +37,6 @@ export async function POST(request: Request) {
     const userId = typeof body.userId === 'string' ? body.userId.trim() : '';
     const eventId = typeof body.eventId === 'string' ? body.eventId.trim().slice(0, 200) : '';
     const message = typeof body.message === 'string' ? body.message.trim().slice(0, 50000) : '';
-    const webSearchEnabled = body.webSearchEnabled === true;
     const imageAttachments = qqImageAttachments(body.attachments);
     if (!userId || !eventId || !message) {
       return NextResponse.json({ error: 'QQ 消息参数不完整' }, { status: 400 });
@@ -87,6 +81,7 @@ export async function POST(request: Request) {
         modelName: true,
         modelContextWindow: true,
         tavilyApiKey: true,
+        defaultWeatherLocation: true,
         dailyChatLimit: true,
         contextMessageLimit: true,
       },
@@ -160,38 +155,8 @@ export async function POST(request: Request) {
       buildAssistantPlatformContext(userId, contextSources),
       buildAssistantActivityContext(userId, message, contextSources),
     ]);
-    const cryptoContext = await buildCryptoMarketContext({ message, history: memoryContext.history, query: queryCryptoMarket });
-    let weatherPending: any = undefined;
-    let weatherStatus = '';
-    const weatherContext = await buildWeatherContext({
-      message, history: memoryContext.history, memories, service: platformWeather,
-      onPending: (pending: any) => { weatherPending = [pending]; },
-      onStatus: (status: string) => { weatherStatus = status; },
-      resolve: async (weatherMessages: Array<{ role: 'system' | 'user'; content: string }>) => {
-        const result = await client.chat.completions.create({ model, messages: weatherMessages, temperature: 0 }, { timeout: 15_000, maxRetries: 0 });
-        return result.choices[0]?.message?.content || '';
-      },
-    });
-    const webContext = webSearchEnabled && !weatherContext && !cryptoContext
-      ? await buildWebSearchContext(buildWebSearchQuery(message, memoryContext.history), userSettings.tavilyApiKey)
-      : null;
-    const webpageContext = webSearchEnabled && !weatherContext && !cryptoContext ? await buildWebpageContext(message) : null;
-
-    let trendingContext = '';
-    const trendingIntent = detectTrendingIntent(message);
-    if (trendingIntent.wantsTrending) {
-      try {
-        const source = trendingIntent.preferredSource || 'all';
-        const snapshot = source === 'all'
-          ? await getCompositeTrendingSnapshot(['zhihu', 'weibo', 'baidu'])
-          : await getTrendingSnapshot(source);
-        if (snapshot.items && snapshot.items.length > 0) {
-          trendingContext = formatTrendingForPrompt(snapshot, { limit: 8 });
-        }
-      } catch (err: any) {
-        console.warn('[qq/trending] Auto trending injection failed:', err?.message);
-      }
-    }
+    let reportStatus: ((label: string) => void) | undefined;
+    const web = createChatWebTools({ apiKey: userSettings.tavilyApiKey, defaultWeatherLocation: userSettings.defaultWeatherLocation, history: memoryContext.history, signal: request.signal, onStatus: (label: string) => reportStatus?.(label) });
 
     const systemPrompt = [
       buildPersonalAssistantPrompt({
@@ -200,14 +165,9 @@ export async function POST(request: Request) {
         memories,
         platformContext,
         activityContext,
-        webEnabled: webSearchEnabled,
+        webEnabled: true,
         experienceContext: memoryContext.experienceContext,
       }),
-      webContext ? `本轮联网搜索结果：\n${webContext}` : '',
-      weatherContext || '',
-      cryptoContext || '',
-      webpageContext ? `本轮直接网页/JSON 结果：\n${webpageContext}` : '',
-      trendingContext ? trendingContext : '',
       '【当前渠道】：你正在 QQ 私聊中回复用户。QQ 与网页共用同一个主聊天上下文；不要提供站内相对链接，可以使用 QQ 支持的标准 Markdown，但避免 HTML 和复杂表格，回答保持适合即时消息阅读。长期记忆、任务和提醒也与网页共享。用户要求提醒时不要声称已经创建，系统会在回复末尾附加真实创建结果。',
     ].filter(Boolean).join('\n\n');
     const compressedHistory = compressConversationContext(
@@ -263,8 +223,7 @@ export async function POST(request: Request) {
       const reminderSummary = reminderCandidates.length
         ? `\n\n已记录${reminderCandidates.length > 1 ? ` ${reminderCandidates.length} 条` : ''}提醒：${reminderCandidates.map((item) => item.content).join('、')}`
         : '';
-      const notice = buildRetrievalNotice({ weatherStatus, searched: Boolean(webContext), webpage: Boolean(webpageContext), crypto: Boolean(cryptoContext), trending: Boolean(trendingContext) });
-      const content = `${normalizedModelContent}${reminderSummary}${notice}`;
+      const content = `${normalizedModelContent}${reminderSummary}`;
 
       try {
         await prisma.$transaction([
@@ -296,7 +255,7 @@ export async function POST(request: Request) {
             },
           }),
           prisma.message.create({
-            data: { id: assistantMessageId, conversationId: binding.conversationId, role: 'assistant', source: 'QQ', content, attachments: weatherPending },
+            data: { id: assistantMessageId, conversationId: binding.conversationId, role: 'assistant', source: 'QQ', content, attachments: web.attachments() as any },
           }),
           prisma.conversation.update({
             where: { id: binding.conversationId },
@@ -327,18 +286,8 @@ export async function POST(request: Request) {
           };
 
           try {
-            let modelContent = '';
-            const completion = await client.chat.completions.create({
-              model,
-              messages: modelMessages,
-              stream: true,
-            });
-            for await (const chunk of completion) {
-              const delta = chunk.choices[0]?.delta?.content;
-              if (!delta) continue;
-              modelContent += delta;
-              emit({ type: 'delta', content: delta });
-            }
+            reportStatus = (label: string) => emit({ type: 'status', label });
+            const modelContent = await runAutoWebChat({ client, model, messages: modelMessages, web, signal: request.signal, onText: (delta: string) => emit({ type: 'delta', content: delta }) });
 
             const finalized = await finalizeResponse(modelContent);
             emit({ type: 'done', content: finalized.streamContent, conversationId: binding.conversationId });
@@ -359,8 +308,7 @@ export async function POST(request: Request) {
       });
     }
 
-    const completion = await client.chat.completions.create({ model, messages: modelMessages });
-    const modelContent = completion.choices[0]?.message?.content;
+    const modelContent = await runAutoWebChat({ client, model, messages: modelMessages, web, signal: request.signal });
     if (!modelContent?.trim()) throw new Error('模型没有返回可展示的正文');
     const finalized = await finalizeResponse(modelContent);
     return NextResponse.json({ content: finalized.content, conversationId: binding.conversationId });

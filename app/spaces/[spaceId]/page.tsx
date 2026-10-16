@@ -591,7 +591,6 @@ export default function SpaceDetailPage() {
   const [error, setError] = useState('');
   const [input, setInput] = useState('');
   const [pendingLargeTextMeta, setPendingLargeTextMeta] = useState<{ chars: number; kind: 'json' | 'text' } | null>(null);
-  const [webSearchEnabled, setWebSearchEnabled] = useState(false);
   const [imageGenerationMode, setImageGenerationMode] = useState(false);
   const [skills, setSkills] = useState<SpaceSkill[]>([]);
   const [selectedSkillId, setSelectedSkillId] = useState<string | null>(null);
@@ -1771,7 +1770,6 @@ export default function SpaceDetailPage() {
         coordinationScope?: SpacePiCoordinationRequest;
         multiReplyIndex?: number;
         skipPersistUserMessage: boolean;
-        allowWebSearch: boolean;
         imageGenerationRequested?: boolean;
         isHandoffTurn?: boolean;
       }> = targets.length > 1
@@ -1781,7 +1779,6 @@ export default function SpaceDetailPage() {
             interactionMode: 'multi_reply',
             multiReplyIndex: index,
             skipPersistUserMessage: Boolean(options?.reuseLastUserMessage || index > 0),
-            allowWebSearch: false,
             imageGenerationRequested: false,
           }))
         : [{
@@ -1789,7 +1786,6 @@ export default function SpaceDetailPage() {
             message: content,
             interactionMode: 'chat',
             skipPersistUserMessage: Boolean(options?.reuseLastUserMessage),
-            allowWebSearch: webSearchEnabled,
             imageGenerationRequested: requestImageGeneration,
           }];
       setReplyQueueAgentIds(targets.length > 1 ? targets.map((agent) => agent.id) : []);
@@ -1825,7 +1821,6 @@ export default function SpaceDetailPage() {
           interactionMode: replyRequest.interactionMode,
           coordinationScope: replyRequest.coordinationScope,
           multiReplyIndex: replyRequest.multiReplyIndex,
-          webSearchEnabled: replyRequest.allowWebSearch,
           imageGenerationRequested: replyRequest.imageGenerationRequested,
           skipPersistUserMessage: replyRequest.skipPersistUserMessage,
           isHandoffTurn: replyRequest.isHandoffTurn,
@@ -1872,7 +1867,7 @@ export default function SpaceDetailPage() {
                 setStreamingContent('');
               } else if (event.type === 'activity' && event.activity) {
                 setStreamingPiActivity(event.activity.status === 'running' ? event.activity : null);
-              } else if (event.type === 'status' && event.label) {
+              } else if (event.type === 'status' && typeof event.label === 'string') {
                 setStreamingPiStatus(event.label);
               } else if (event.type === 'process_note' && event.note) {
                 setStreamingPiNotes((notes) => [...notes, event.note!]);
@@ -1912,7 +1907,6 @@ export default function SpaceDetailPage() {
                 interactionMode: 'coordinated_turn',
                 coordinationScope: request,
                 skipPersistUserMessage: true,
-                allowWebSearch: false,
               });
             }
             replyRequests.push({
@@ -1921,7 +1915,6 @@ export default function SpaceDetailPage() {
               interactionMode: 'coordination_summary',
               coordinationScope: request,
               skipPersistUserMessage: true,
-              allowWebSearch: false,
             });
             setReplyQueueAgentIds([
               coordinatorAgent.id,
@@ -1952,7 +1945,6 @@ export default function SpaceDetailPage() {
               interactionMode: 'multi_reply',
               multiReplyIndex: index + 1,
               skipPersistUserMessage: true,
-              allowWebSearch: false,
               imageGenerationRequested: false,
               isHandoffTurn: isLastHop,
             });
@@ -4378,12 +4370,12 @@ export default function SpaceDetailPage() {
                     onRejectCryptoDecision={() => rejectCryptoDecision(message.id)}
                   />
                 ))}
-                {isStreaming && (streamingContent || (isPiSpace && (streamingPiActivity || streamingPiStatus || streamingPiNotes.length > 0))) && (
+                {isStreaming && (streamingContent || (streamingPiActivity || streamingPiStatus || streamingPiNotes.length > 0)) && (
                   <div className="flex justify-start gap-3">
                     <Avatar src={streamingSpeaker?.avatar || '🤖'} alt={streamingSpeaker?.name || 'Agent'} size="sm" className="mt-1 shrink-0" />
                     <div className="min-w-0 max-w-[84%] rounded-[24px] rounded-bl-md border border-black/[0.06] bg-white px-5 py-4 text-slate-800 shadow-sm">
                       <div className="mb-1 text-xs font-black text-slate-400">{streamingSpeaker?.name || '空间 Agent'}</div>
-                      {isPiSpace && (streamingPiActivity || streamingPiStatus) && (
+                      {(streamingPiActivity || streamingPiStatus) && (
                         <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-slate-500">
                           <Activity size={13} className="animate-pulse" />
                           <span>{streamingPiActivity ? `正在${streamingPiActivity.label}${streamingPiActivity.target ? ` ${streamingPiActivity.target}` : ''}` : streamingPiStatus}</span>
@@ -4403,7 +4395,7 @@ export default function SpaceDetailPage() {
                     </div>
                   </div>
                 )}
-                {isStreaming && !streamingContent && !(isPiSpace && (streamingPiActivity || streamingPiStatus || streamingPiNotes.length > 0)) && (
+                {isStreaming && !streamingContent && !(streamingPiActivity || streamingPiStatus || streamingPiNotes.length > 0) && (
                   <div className="flex justify-start gap-3">
                     <Avatar src={streamingSpeaker?.avatar || '🤖'} alt={streamingSpeaker?.name || 'Agent'} size="sm" className="mt-1 shrink-0" />
                     <div className="rounded-[24px] rounded-bl-md border border-black/[0.06] bg-white px-5 py-4 shadow-sm">
@@ -4553,19 +4545,7 @@ export default function SpaceDetailPage() {
                         {uploadingFile ? <Loader2 className="animate-spin" size={16} /> : <Paperclip size={16} />}
                         <span className="min-w-0 flex-1 whitespace-nowrap">上传资料</span>
                       </button>
-                      <button
-                        type="button"
-                        role="switch"
-                        aria-checked={webSearchEnabled}
-                        onClick={() => {
-                          setWebSearchEnabled((enabled) => !enabled);
-                          setComposerToolsOpen(false);
-                        }}
-                        className={`flex h-10 w-full items-center gap-3 rounded-md px-3 text-left text-xs font-black transition ${webSearchEnabled ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-950'}`}
-                      >
-                        <Globe2 size={16} />
-                        <span className="min-w-0 flex-1 whitespace-nowrap">联网搜索</span>
-                      </button>
+
                       <button
                         type="button"
                         onClick={() => {
@@ -4692,7 +4672,7 @@ export default function SpaceDetailPage() {
                     className={`relative flex h-11 w-11 items-center justify-center rounded-xl transition disabled:text-slate-300 ${composerToolsOpen ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-500 hover:bg-white hover:text-slate-950'}`}
                   >
                     <Plus size={19} className={`transition-transform ${composerToolsOpen ? 'rotate-45' : ''}`} />
-                    {(webSearchEnabled || imageGenerationMode) && (
+                    {(imageGenerationMode) && (
                       <span className={`absolute right-2 top-2 h-2 w-2 rounded-full ring-2 ring-white ${imageGenerationMode ? 'bg-rose-500' : 'bg-emerald-500'}`} />
                     )}
                   </button>

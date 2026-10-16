@@ -6,23 +6,17 @@ import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { reserveChatQuota } from '@/lib/chat-quota';
 import { createModelClient, resolveModelName } from '@/lib/model-client';
-import { buildWebSearchContext, buildWebSearchQuery } from '@/lib/web-search';
-import { buildWebpageContext } from '@/lib/fetch-webpage';
+import { createChatWebTools, runAutoWebChat } from '@/lib/auto-web';
 import { ensurePersonalAssistant } from '@/lib/personal-assistant/profile';
 import { buildPersonalAssistantPrompt } from '@/lib/personal-assistant/prompt-builder';
 import { buildAssistantActivityContext, buildAssistantPlatformContext } from '@/lib/personal-assistant/platform-context';
 import { archiveOldMainChatMessages, loadAssistantMemoryContext } from '@/lib/personal-assistant/experience-memory';
 import { loadUserMemoryItems } from '@/lib/personal-assistant/user-memory';
-import { buildWeatherContext, platformWeather, weatherRequested } from '@/lib/weather.mjs';
-import { buildCryptoMarketContext } from '@/lib/crypto/market-query.mjs';
-import { queryCryptoMarket } from '@/lib/crypto/market-tools';
 import { buildTimedAssistantHistory } from '@/lib/personal-assistant/history-context.mjs';
 import { compressConversationContext } from '@/lib/context-compression';
 import { conversationContextTargetTokens } from '@/lib/model-limits.mjs';
-import { detectTrendingIntent, formatTrendingForPrompt, getTrendingSnapshot, getCompositeTrendingSnapshot } from '@/lib/trending';
 import { parseMcpServers } from '@/lib/agent-runtime/mcp-config.mjs';
 import { createAssistantToolBroker } from '@/lib/personal-assistant/tool-broker.mjs';
-import { runAssistantToolLoop } from '@/lib/personal-assistant/tool-loop.mjs';
 import { buildRetrievalNotice } from '@/lib/personal-assistant/retrieval-notice.mjs';
 
 export const runtime = 'nodejs';
@@ -111,11 +105,7 @@ export async function POST(request: Request) {
     const textMessage = typeof body.message === 'string' ? body.message.trim().slice(0, 50000) : '';
     const imageAttachments = normalizeImageAttachments(body.attachments);
     const messageForModel = textMessage || (imageAttachments.length ? '请分析这张图片。' : '');
-    const webSearchEnabled = body.webSearchEnabled === true;
     if (!messageForModel) return NextResponse.json({ error: '请输入消息' }, { status: 400 });
-    if (localMode && webSearchEnabled) {
-      return NextResponse.json({ error: '浏览器直连 Ollama 时不能使用服务端联网搜索' }, { status: 400 });
-    }
 
     const [profile, userSettings] = await Promise.all([
       ensurePersonalAssistant(userId),
@@ -130,6 +120,7 @@ export async function POST(request: Request) {
           modelName: true,
           modelContextWindow: true,
           tavilyApiKey: true,
+        defaultWeatherLocation: true,
           assistantMcpServers: true,
           dailyChatLimit: true,
           contextMessageLimit: true,
@@ -195,7 +186,7 @@ export async function POST(request: Request) {
       tasks: profile.includeTaskContext,
       chats: profile.includeChatContext,
     };
-    const [memoryContext, memories, platformContext, activityContext, webpageContext] = await Promise.all([
+    const [memoryContext, memories, platformContext, activityContext] = await Promise.all([
       loadAssistantMemoryContext({
         userId,
         conversationId,
@@ -206,44 +197,10 @@ export async function POST(request: Request) {
       loadUserMemoryItems(userId),
       buildAssistantPlatformContext(userId, contextSources),
       buildAssistantActivityContext(userId, textMessage, contextSources),
-      webSearchEnabled && !weatherRequested(messageForModel) ? buildWebpageContext(messageForModel) : Promise.resolve(null),
     ]);
     
-    // 智能热点感知注入
-    let trendingContext = '';
-    const trendingIntent = detectTrendingIntent(textMessage);
-    if (trendingIntent.wantsTrending) {
-      try {
-        const source = trendingIntent.preferredSource || 'all';
-        const snapshot = source === 'all'
-          ? await getCompositeTrendingSnapshot(['zhihu', 'weibo', 'baidu'])
-          : await getTrendingSnapshot(source);
-        if (snapshot.items && snapshot.items.length > 0) {
-          trendingContext = formatTrendingForPrompt(snapshot, { limit: 8 });
-        }
-      } catch (err: any) {
-        console.warn('[assistant/trending] Auto trending injection failed:', err?.message);
-      }
-    }
-
-    const cryptoContext = await buildCryptoMarketContext({ message: messageForModel, history: memoryContext.history, query: queryCryptoMarket });
-    let weatherPending: any = undefined;
-    let weatherStatus = '';
-    const weatherContext = await buildWeatherContext({
-      message: messageForModel, history: memoryContext.history, memories, service: platformWeather,
-      onPending: (pending: any) => { weatherPending = [pending]; },
-      onStatus: (status: string) => { weatherStatus = status; },
-      resolve: async (weatherMessages: Array<{ role: 'system' | 'user'; content: string }>) => {
-        if (localMode) throw new Error('浏览器本地模型暂不支持服务端天气解析，请使用平台天气接口并明确地点');
-        const result = await client.chat.completions.create({ model, messages: weatherMessages, temperature: 0 }, { timeout: 15_000, maxRetries: 0 });
-        return result.choices[0]?.message?.content || '';
-      },
-    });
-    const webContext = webSearchEnabled && !weatherContext && !cryptoContext
-      ? await buildWebSearchContext(buildWebSearchQuery(messageForModel, memoryContext.history), userSettings.tavilyApiKey)
-      : null;
     let toolCalled = false;
-    const retrievalNotice = () => buildRetrievalNotice({ weatherStatus, searched: Boolean(webContext), webpage: Boolean(webpageContext), crypto: Boolean(cryptoContext), trending: Boolean(trendingContext), toolCalled });
+    const retrievalNotice = () => buildRetrievalNotice({ toolCalled });
 
     const systemPrompt = buildPersonalAssistantPrompt({
       userName: userSettings.name,
@@ -251,7 +208,7 @@ export async function POST(request: Request) {
       memories,
       platformContext,
       activityContext,
-      webEnabled: webSearchEnabled,
+      webEnabled: !localMode,
       experienceContext: memoryContext.experienceContext,
     });
     const compressedHistory = compressConversationContext(
@@ -281,12 +238,7 @@ export async function POST(request: Request) {
         role: 'system',
         content: [
           systemPrompt,
-          weatherContext || '',
-          cryptoContext || '',
           conversationMode === 'TEMPORARY' ? '【会话模式】：这是临时聊天，不将本轮内容视为长期经历。' : '',
-          webContext ? `本轮联网结果：\n${webContext}` : '',
-          webpageContext ? `本轮网页/JSON 数据：\n${webpageContext}` : '',
-          trendingContext ? trendingContext : '',
         ].filter(Boolean).join('\n\n'),
       },
       ...compressedHistory.map((item) => ({
@@ -307,41 +259,8 @@ export async function POST(request: Request) {
       },
     });
 
-    if (!localMode) {
-      const assistantMcpServers = parseMcpServers(userSettings.assistantMcpServers).filter((s) => s.enabled !== false);
-      if (assistantMcpServers.length > 0) {
-        const broker = createAssistantToolBroker({ servers: assistantMcpServers });
-        const assistantTools = await broker.discover();
-        if (assistantTools.length > 0) {
-          const toolResult = await runAssistantToolLoop({
-            messages,
-            tools: assistantTools.map((tool) => ({ type: 'function', function: tool })),
-            broker: { call: async (...args: Parameters<typeof broker.call>) => { toolCalled = true; return broker.call(...args); } },
-            complete: (toolMessages, tools) => client.chat.completions.create({
-              model,
-              messages: toolMessages as any,
-              tools: tools as any,
-              tool_choice: 'auto',
-            }),
-          });
-          if (toolResult.trim()) {
-            const content = toolResult + retrievalNotice();
-            await prisma.message.create({
-              data: { id: assistantMessageId, conversationId, role: 'assistant', source: 'WEB', content, attachments: weatherPending },
-            });
-            return new Response(content, {
-              headers: {
-                'Content-Type': 'text/plain; charset=utf-8',
-                'Cache-Control': 'no-cache, no-transform',
-                'x-conversation-id': conversationId,
-                'x-conversation-mode': conversationMode,
-                'x-assistant-tools': 'used',
-              },
-            });
-          }
-        }
-      }
-    }
+    const broker = createAssistantToolBroker({ servers: localMode ? [] : parseMcpServers(userSettings.assistantMcpServers).filter((server) => server.enabled !== false) });
+    const assistantTools = localMode ? [] : await broker.discover();
 
     if (memoryContext.history.length === 0) {
       const generatedTitle = textMessage.slice(0, 24).replace(/[\r\n]+/g, ' ').trim();
@@ -361,16 +280,19 @@ export async function POST(request: Request) {
     const readable = new ReadableStream({
       async start(controller) {
         let fullContent = '';
+        const emit = (event: Record<string, unknown>) => controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
+        const web = createChatWebTools({ apiKey: userSettings.tavilyApiKey, defaultWeatherLocation: userSettings.defaultWeatherLocation, history: memoryContext.history, signal: modelAbortController.signal, onStatus: (label: string) => emit({ type: 'status', label }) });
+        const messageAttachments = () => web.attachments() as any;
         const persistAssistantMessage = async () => {
           if (!fullContent.trim()) return;
           await prisma.$transaction(async (tx) => {
             const updated = await tx.message.updateMany({
               where: { id: assistantMessageId, conversationId, role: 'assistant' },
-              data: { content: fullContent, attachments: weatherPending },
+              data: { content: fullContent, attachments: messageAttachments() },
             });
             if (!updated.count) {
               await tx.message.create({
-                data: { id: assistantMessageId, conversationId, role: 'assistant', source: 'WEB', content: fullContent, attachments: weatherPending },
+                data: { id: assistantMessageId, conversationId, role: 'assistant', source: 'WEB', content: fullContent, attachments: messageAttachments() },
               });
             }
             await tx.conversation.update({
@@ -380,21 +302,11 @@ export async function POST(request: Request) {
           });
         };
         try {
-          const stream = await client.chat.completions.create(
-            { model, messages, stream: true },
-            { signal: modelAbortController.signal }
-          );
-          for await (const chunk of stream) {
-            const content = chunk.choices[0]?.delta?.content;
-            if (content) {
-              fullContent += content;
-              controller.enqueue(encoder.encode(content));
-            }
-          }
+          await runAutoWebChat({ client, model, messages, web, extraTools: assistantTools.map((tool) => ({ type: 'function', function: tool })), callTool: async (name: string, args: any) => { toolCalled = true; return broker.call(name, args); }, signal: modelAbortController.signal, onText: (text: string) => { fullContent += text; emit({ type: 'text_delta', text }); } });
           if (!fullContent) throw new Error('模型没有返回正文');
           const notice = retrievalNotice();
           fullContent += notice;
-          controller.enqueue(encoder.encode(notice));
+          if (notice) emit({ type: 'text_delta', text: notice });
           await persistAssistantMessage();
           controller.close();
         } catch (error: any) {
@@ -402,7 +314,10 @@ export async function POST(request: Request) {
             fullContent = `${fullContent.trimEnd()}\n\n_回复已中止_`;
             await persistAssistantMessage().catch(() => {});
           }
-          controller.error(error);
+          if (!modelAbortController.signal.aborted) {
+            emit({ type: 'error', error: error.message || '回复失败' });
+            controller.close();
+          }
         }
       },
       cancel() {
@@ -412,7 +327,9 @@ export async function POST(request: Request) {
 
     return new Response(readable, {
       headers: {
-        'Content-Type': 'text/plain; charset=utf-8',
+        'Content-Type': 'application/x-ndjson; charset=utf-8',
+        'x-chat-stream-format': 'ndjson',
+        'X-Accel-Buffering': 'no',
         'Cache-Control': 'no-cache, no-transform',
         'x-conversation-id': conversationId,
         'x-conversation-mode': conversationMode,

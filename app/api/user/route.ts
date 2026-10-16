@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server';
+import { Prisma } from '@/src/generated/prisma/client';
+import { normalizeWeatherLocation, platformWeather } from '@/lib/weather.mjs';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { MODEL_CONTEXT_WINDOW_OPTIONS } from '@/lib/model-limits.mjs';
@@ -27,6 +29,7 @@ export async function GET(request: Request) {
         imageApiBaseUrl: true,
         imageApiKey: true,
         tavilyApiKey: true,
+        defaultWeatherLocation: true,
         assistantMcpServers: true,
         defaultStyle: true,
         contextMessageLimit: true,
@@ -52,11 +55,28 @@ export async function PATCH(request: Request) {
     const userId = requireAuth(request);
     const body = await request.json();
 
-    const allowedFields = ['name', 'avatar', 'apiBaseUrl', 'apiKey', 'modelName', 'modelContextWindow', 'customModelEnabled', 'imageModelEnabled', 'imageModelName', 'imageModelSize', 'imageModelProtocol', 'imageApiBaseUrl', 'imageApiKey', 'tavilyApiKey', 'assistantMcpServers', 'defaultStyle', 'contextMessageLimit'] as const;
+    const allowedFields = ['name', 'avatar', 'apiBaseUrl', 'apiKey', 'modelName', 'modelContextWindow', 'customModelEnabled', 'imageModelEnabled', 'imageModelName', 'imageModelSize', 'imageModelProtocol', 'imageApiBaseUrl', 'imageApiKey', 'tavilyApiKey', 'defaultWeatherLocation', 'assistantMcpServers', 'defaultStyle', 'contextMessageLimit'] as const;
     const data: Record<string, any> = {};
     for (const field of allowedFields) {
       if (body[field] !== undefined) {
         data[field] = body[field];
+      }
+    }
+    if (data.defaultWeatherLocation !== undefined) {
+      if (data.defaultWeatherLocation === null) {
+        data.defaultWeatherLocation = Prisma.DbNull;
+      } else {
+        const selected = normalizeWeatherLocation(data.defaultWeatherLocation);
+        if (!selected) return NextResponse.json({ error: '请选择有效的天气地点' }, { status: 400 });
+        let locations;
+        try {
+          locations = await platformWeather.lookup(selected.id);
+        } catch {
+          return NextResponse.json({ error: '暂时无法确认天气地点，请稍后重试' }, { status: 502 });
+        }
+        const canonical = locations.find((place: any) => place.id === selected.id);
+        if (!canonical) return NextResponse.json({ error: '天气地点不存在，请重新选择' }, { status: 400 });
+        data.defaultWeatherLocation = normalizeWeatherLocation(canonical);
       }
     }
     if (data.contextMessageLimit !== undefined) {
@@ -104,6 +124,7 @@ export async function PATCH(request: Request) {
         imageApiBaseUrl: true,
         imageApiKey: true,
         tavilyApiKey: true,
+        defaultWeatherLocation: true,
         assistantMcpServers: true,
         defaultStyle: true,
         contextMessageLimit: true,

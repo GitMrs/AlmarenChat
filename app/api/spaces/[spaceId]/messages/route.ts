@@ -14,7 +14,7 @@ import {
   resolveSpaceMemberModelConfig,
 } from '@/app/api/_lib/spaces';
 import { describeWorkspaceArtifact, executeWorkspaceTool, workspaceToolSchemas } from '@/lib/agent-runtime/runtime-tools.mjs';
-import { fetchWebPage } from '@/lib/web-fetch.mjs';
+import { createChatWebTools } from '@/lib/auto-web';
 import { collectChatCompletionStream, runToolLoop } from '@/lib/agent-runtime/tool-loop.mjs';
 import { normalizeTaskProposalSteps, taskProposalCapabilities, taskProposalNeedsClarification, taskProposalWithTurnNetworkAuthorization } from '@/lib/task-proposals';
 import { professionalDeliverableNeedsTask } from '@/lib/task-proposal-policy.mjs';
@@ -24,7 +24,6 @@ import { spaceMemoryContext } from '@/lib/space-memory-policy.mjs';
 import { persistSpaceMemory, rebuildSpaceMemory, spaceMemoryNeedsTrustedRebuild } from '@/app/api/_lib/space-memory';
 import { recentRunEvidenceContext } from '@/lib/agent-run-evidence.mjs';
 import { readSpaceLearning, spaceLearningContext } from '@/lib/space-learning.mjs';
-import { buildWebSearchContext, buildWebSearchQuery } from '@/lib/web-search';
 import { getSpaceSkill, readSpaceSkillFile } from '@/lib/space-skills.mjs';
 import { spaceSkillReferenceToolSchema } from '@/lib/agent-runtime/skill-registry.mjs';
 import { runPiSpaceTurn } from '@/lib/pi-runtime/space-session.mjs';
@@ -35,8 +34,6 @@ import { relayStagePolicy } from '@/lib/relay/stage-policy.mjs';
 import { loadAgentMemoryContext } from '@/lib/agent-memory';
 import { currentTimeContext } from '@/lib/current-time-context.mjs';
 import { buildUserMemoryContext, loadUserMemoryItems } from '@/lib/personal-assistant/user-memory';
-import { createRuntimePermissionBroker } from '@/lib/runtime-permission-broker.mjs';
-import { detectTrendingIntent, formatTrendingForPrompt, getTrendingSnapshot } from '@/lib/trending';
 import { prepareSpaceMessageRuntime } from '@/lib/space-message-runtime';
 
 const MESSAGE_PAGE_SIZE = 40;
@@ -66,34 +63,6 @@ function normalizePiCoordinationScope(value: unknown, memberAgentIds: Set<string
   if (!scopeId || !PI_COORDINATION_MODES.has(mode) || !topic || participantIds.length === 0) return null;
   return { scopeId, mode: mode as PiCoordinationScope['mode'], topic, participantIds };
 }
-const WEB_SEARCH_TOOL = {
-  type: 'function',
-  function: {
-    name: 'web_search',
-    description: '搜索公共互联网并返回带来源的结果。只用于外部公开资料、实时事实或指定网页，不得用于查询当前空间的目录和文件。',
-    parameters: {
-      type: 'object',
-      additionalProperties: false,
-      required: ['query'],
-      properties: {
-        query: { type: 'string', description: '具体、简短的互联网搜索关键词' },
-      },
-    },
-  },
-} as const;
-const WEB_FETCH_TOOL = {
-  type: 'function',
-  function: {
-    name: 'web_fetch',
-    description: '读取指定的公开 HTTPS 网页或 JSON 接口并返回正文。不得访问当前工作区、内网或本机地址。',
-    parameters: {
-      type: 'object',
-      additionalProperties: false,
-      required: ['url'],
-      properties: { url: { type: 'string', description: '需要读取的 HTTPS 网页地址' } },
-    },
-  },
-} as const;
 const TASK_PROPOSAL_TOOL = {
   type: 'function',
   function: {
@@ -224,7 +193,6 @@ function pendingTaskProposal(attachments: unknown) {
 
 function taskProposalFromArgs(
   args: Record<string, unknown>,
-  allowWebSearch: boolean,
   imageModelAvailable: boolean,
   skillSnapshot?: Record<string, unknown> | null,
   skillAgentId?: string,
@@ -264,7 +232,7 @@ function taskProposalFromArgs(
       : undefined,
     status: 'pending',
     ...(skillSnapshot ? { skillSnapshot, skillAgentId } : {}),
-  }, allowWebSearch, userRequest) as TaskProposal;
+  }, false, userRequest) as TaskProposal;
 }
 
 async function userModelSettings(userId: string) {
@@ -283,6 +251,7 @@ async function userModelSettings(userId: string) {
       imageApiBaseUrl: true,
       imageApiKey: true,
       tavilyApiKey: true,
+        defaultWeatherLocation: true,
       contextMessageLimit: true,
     },
   });
@@ -304,6 +273,7 @@ async function userModelSettings(userId: string) {
       protocol: user.imageModelProtocol,
     } : null,
     tavilyApiKey: user.tavilyApiKey,
+    defaultWeatherLocation: user.defaultWeatherLocation,
     contextMessageLimit: user.contextMessageLimit || 40,
   };
 }
@@ -402,6 +372,7 @@ async function handlePiMessage(options: {
       const send = (event: Record<string, unknown>) => {
         try { controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`)); } catch { /* Pi continues and persists after a client disconnect */ }
       };
+      const web = createChatWebTools({ apiKey: settings.tavilyApiKey, defaultWeatherLocation: settings.defaultWeatherLocation, onStatus: (label: string) => send({ type: 'status', label }) });
       try {
         let result;
         let coordinationRequest: Record<string, unknown> | null = null;
@@ -433,7 +404,9 @@ async function handlePiMessage(options: {
               coordinationRequest = request;
               return true;
             },
-            webSearch: (query: string) => buildWebSearchContext(query, settings.tavilyApiKey),
+            queryTools: web.tools,
+            queryGuidance: web.guidance,
+            queryTool: (name: string, args: any, signal: AbortSignal) => web.execute(name, args, signal),
             onMutation: (relativePath: string) => changedPaths.add(relativePath),
             onTextDelta: (delta: string) => send({ type: 'text_delta', delta }),
             onTextReset: () => send({ type: 'text_reset' }),
@@ -468,6 +441,11 @@ async function handlePiMessage(options: {
           return;
         }
         await syncPiWorkspaceFiles(userId, spaceId, changedPaths);
+        const webFooter = web.footer();
+        if (webFooter) {
+          result.content += webFooter;
+          send({ type: 'text_delta', delta: webFooter });
+        }
         const memoryEpisode = interactionMode === 'coordination_summary' && coordinationScope ? {
           type: 'space_memory_episode',
           scopeId: coordinationScope.scopeId,
@@ -487,7 +465,7 @@ async function handlePiMessage(options: {
                 role: 'assistant',
                 speakerAgentId: targetAgent.id,
                 content: result.content,
-                attachments: [result.execution, ...(memoryEpisode ? [memoryEpisode] : [])] as Prisma.InputJsonValue,
+                attachments: [result.execution, ...(memoryEpisode ? [memoryEpisode] : []), ...web.attachments()] as Prisma.InputJsonValue,
               },
               select: { id: true, createdAt: true },
             }),
@@ -553,13 +531,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
     const { spaceId } = await params;
     const {
       message, targetAgentId, history, skipPersistUserMessage, interactionMode, coordinationScope,
-      multiReplyIndex, webSearchEnabled, imageGenerationRequested, skillId, workId, persistMessages,
+      multiReplyIndex, imageGenerationRequested, skillId, workId, persistMessages,
       isolatedContext, contextAgentIds, isHandoffTurn, directContent, speakerId,
     } = await request.json();
     const textMessage = typeof message === 'string' ? message.trim() : '';
     const shouldPersistMessages = persistMessages !== false;
     const useIsolatedContext = isolatedContext === true;
-    const allowWebSearch = webSearchEnabled === true;
+    const allowWebSearch = !useIsolatedContext;
     const explicitImageRequest = imageGenerationRequested === true;
     if (!textMessage) return NextResponse.json({ error: '消息不能为空' }, { status: 400 });
 
@@ -852,9 +830,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
     const discussionTool = !isMultiReply && targetAgent.id === SPACE_COORDINATOR.id && memberAgents.length >= 2
       ? discussionStartTool(memberAgents)
       : null;
+    let reportQueryStatus: ((label: string) => void) | undefined;
+    let spaceMessageRuntime: Awaited<ReturnType<typeof prepareSpaceMessageRuntime>>;
+    const web = createChatWebTools({ apiKey: settings.tavilyApiKey, defaultWeatherLocation: settings.defaultWeatherLocation, history: rawHistory, signal: request.signal, onStatus: (label: string) => reportQueryStatus?.(label), cryptoContext: (data: any) => spaceMessageRuntime?.marketContext?.(data) || '' });
     const availableTools = [
       ...(selectedWork ? workspaceToolSchemas.filter((tool: any) => READ_ONLY_WORKSPACE_TOOLS.has(tool.function.name)) : []),
-      ...(!isMultiReply && allowWebSearch ? [WEB_SEARCH_TOOL, WEB_FETCH_TOOL] : []),
+      ...(allowWebSearch ? web.tools : []),
       ...(!isMultiReply ? [TASK_PROPOSAL_TOOL] : []),
       ...(relayTool ? [relayTool] : []),
       ...(discussionTool ? [discussionTool] : []),
@@ -874,18 +855,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
         ].join('\n')
       : '';
 
-    let spaceTrendingContext = '';
-    const trendingIntent = detectTrendingIntent(textMessage);
-    if (trendingIntent.wantsTrending) {
-      try {
-        const snapshot = await getTrendingSnapshot(trendingIntent.preferredSource || 'zhihu');
-        if (snapshot.items && snapshot.items.length > 0) {
-          spaceTrendingContext = formatTrendingForPrompt(snapshot, { limit: 10 });
-        }
-      } catch (err: any) {
-      }
-    }
-
     let spaceKnowledgeContext = '';
     if (textMessage.trim()) {
       try {
@@ -902,16 +871,16 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
       }
     }
 
-    const spaceMessageRuntime = await prepareSpaceMessageRuntime({
+    spaceMessageRuntime = await prepareSpaceMessageRuntime({
       templateId: space.templateId,
       spaceId,
       textMessage,
       persistedMessages,
+      deferMarketQuery: true,
     });
 
     const systemPrompt = [
       currentTimeContext(),
-      spaceTrendingContext,
       spaceKnowledgeContext,
       spaceMessageRuntime.promptContext,
       targetAgent.systemPrompt || targetAgent.description || `你是 ${targetAgent.name}。`,
@@ -953,18 +922,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
         '你是空间助手。普通问答、讨论方案和少量只读查看直接回答；需要项目事实时可使用只读文件工具核实。',
         isMultiReply
           ? (isAutoRelayEnabled
-              ? '当前是多成员接力回应，不是任务执行。只代表自己给出观点，不得创建任务方案，不得写文件、联网或声称已经开始执行。请严格区分【引用名字】（直接写名字，切勿带@）与【传麦接话】（若需要特定伙伴继续推进或发表意见，可在文末使用「@伙伴名」；若本轮结束或最后一轮请向用户总结还麦，不要再@其他人）。'
-              : '当前是多人分别回答，不是任务执行。只代表自己给出观点，不得创建任务方案，不得写文件、联网或声称已经开始执行。交流或提及其他在场成员时直接称呼姓名或昵称，不要在正文中使用 @ 符号。')
+              ? '当前是多成员接力回应，不是任务执行。只代表自己给出观点，不得创建任务方案，不得写文件或声称已经开始执行。请严格区分【引用名字】（直接写名字，切勿带@）与【传麦接话】（若需要特定伙伴继续推进或发表意见，可在文末使用「@伙伴名」；若本轮结束或最后一轮请向用户总结还麦，不要再@其他人）。'
+              : '当前是多人分别回答，不是任务执行。只代表自己给出观点，不得创建任务方案，不得写文件或声称已经开始执行。交流或提及其他在场成员时直接称呼姓名或昵称，不要在正文中使用 @ 符号。')
           : '你没有写入、终端和浏览器权限。普通问答、简单分析、本地只读查看或一到两次联网事实查询应直接完成；需要形成带明确数量、格式或验收要求的专业交付，或者需要修改文件、编写代码并落盘、制作网页或文档、运行命令、操作浏览器、多个步骤持续执行时，调用 propose_task 生成目标授权方案。',
         !isMultiReply ? '任务方案必须覆盖完整目标、范围、主要里程碑、预期产物和总体验收要求，但不要提前选择成员或生成固定执行链。用户确认的是目标与能力边界；运行时 Coordinator 会读取空间中的实时成员、工作状态和每轮成果，动态决定下一件任务交给谁。按可独立验收的产物描述里程碑，不要按页面结构、样式、功能点或检查阶段机械拆分。不要声称任务已经开始。' : '',
         relayTool ? '用户明确要求多个成员按顺序参与同一件事时，调用 start_relay；这包含让大家依次参与、每个人分别回应、轮流处理、接力推进、相互审阅或持续改进同一份文字成果。只有明确的逐员参与或顺序推进要求才启动，泛泛征询意见不自动启动。用户说“大家”“所有成员”或“全员”时，participantIds 必须包含全部可用普通成员；用户只要求几位成员时才选择子集。需要文件、联网、命令、浏览器或专业交付时仍调用 propose_task。接力开始后会按接力规则推进并在最后验收。' : '',
         discussionTool ? '用户说“大家聊聊”“自然接话”“互相讨论”“一起聊”或类似表达时，调用 start_group_chat，创建真正的多人闲聊讨论；不要调用 start_relay。闲聊讨论由成员根据前序发言动态选择接话者，用户可以随后插话、暂停或继续。用户说“大家”“所有成员”或“全员”时必须包含全部可用普通成员；用户只点名几位成员时只选择这些成员。' : '',
-        !isMultiReply ? (allowWebSearch
-          ? '本轮用户已开启联网总权限。不要在任务方案中声明联网策略；实际执行到需要外部资料时，运行时再调用 web_search 或 web_fetch，并受次数预算限制。'
-          : '本轮用户没有开启联网权限。实际执行不得调用 web_search 或 web_fetch；需要外部资料时提示用户开启联网。') : '',
+        allowWebSearch ? web.guidance : '当前为隔离互动场景，不提供联网工具，不得声称已查询外部资料。',
         !isMultiReply ? '如果品种、单位、范围、输入文件、输出要求等关键信息不足，先在普通对话中追问；获得用户回答前不得调用 propose_task，也不得把“询问用户、确认用户信息、等待用户补充”写成后台执行步骤。' : '',
-        !isMultiReply && allowWebSearch ? '本轮联网已开启：关键词检索使用 web_search，用户给出具体网页或公开 JSON 地址时使用 web_fetch；两者都不得访问当前空间目录、文件、本机或内网。一次联网查询直接回答，不要生成任务方案。' : '',
-        !isMultiReply && !allowWebSearch ? '本轮联网搜索未开启。需要外部公开资料或实时事实时，请简短提示用户开启输入框的联网开关；不得仅为获得联网能力而生成任务方案。' : '',
+        '普通聊天按需查询公开资料，不要仅为联网创建任务。后台任务仍遵守各自的能力授权和 Skill 网络策略。',
         !isMultiReply ? '仅在用户明确要求创建或修改文件、网页、代码或文档时，才把写入工作区列入任务。只有任务确实需要运行已注册 Skill 的 Python/Node 入口时才申请 code_execute；普通文件编辑和静态检查不得申请。' : '',
         !isMultiReply && settings.imageModelAvailable
           ? '账号已配置图片生成模型。用户明确要求生成图片，或交付物确实需要新图片且方案明确列出图片产物时，可以申请 image_generate；方案必须同时包含 workspace_write，并说明图片来源内容和用途。每个任务只能生成 1 张图片，需要多张时分别生成并由用户逐次确认。执行时由协调者选择最了解来源内容的成员，不要拆出独立的提示词规划步骤。不要把使用已有图片误写为图片生成。'
@@ -1012,15 +978,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
     const model = modelConfig.model;
 
     const encoder = new TextEncoder();
+    const abortController = new AbortController();
     const readable = new ReadableStream({
       async start(controller) {
         let taskProposal: TaskProposal | null = null;
         let relayDraft: RelayDraft | null = null;
         let discussionDraft: DiscussionDraft | null = null;
-        const runtimePermissions = createRuntimePermissionBroker({
-          authorization: { capabilities: allowWebSearch ? ['web_research'] : [], networkPolicy: allowWebSearch ? 'allowed' : 'forbidden' },
-          operationLimit: 2,
-        });
+        const emit = (event: Record<string, unknown>) => controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
+        reportQueryStatus = (label: string) => emit({ type: 'status', label });
         try {
           const loopResult = await runToolLoop({
             messages: openaiMessages,
@@ -1032,44 +997,18 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
                 messages: conversation as any,
                 stream: true,
                 ...(hasTools ? { tools: tools as any, tool_choice: 'auto' } : {}),
-              });
+              }, { signal: abortController.signal });
               return collectChatCompletionStream(completionStream, {
-                onContentDelta: (text: string) => controller.enqueue(encoder.encode(text)),
+                onContentDelta: (delta: string) => emit({ type: 'text_delta', delta }),
               });
             },
             executeTool: async (name: string, args: Record<string, unknown>) => {
-              if (name === 'web_search') {
-                if (!allowWebSearch || isMultiReply) throw new Error('本轮没有获得联网搜索授权');
-                const query = typeof args.query === 'string' ? args.query.trim().slice(0, 300) : '';
-                if (!query) return { ok: false, error: '搜索关键词不能为空' };
-                const permission = runtimePermissions.consume('web_research', 'web_search');
-                if (!permission.allowed) return { ok: false, error: permission.error };
-                return {
-                  ok: true,
-                  context: await buildWebSearchContext(
-                    buildWebSearchQuery(query, sourceHistory),
-                    settings.tavilyApiKey
-                  ),
-                };
-              }
-              if (name === 'web_fetch') {
-                if (!allowWebSearch || isMultiReply) throw new Error('本轮没有获得联网权限');
-                const url = typeof args.url === 'string' ? args.url.trim().slice(0, 2_000) : '';
-                if (!url) return { ok: false, error: '网址不能为空' };
-                const permission = runtimePermissions.consume('web_research', 'web_fetch');
-                if (!permission.allowed) return { ok: false, error: permission.error };
-                try {
-                  return { ok: true, ...(await fetchWebPage(url)) };
-                } catch (error) {
-                  return { ok: false, error: error instanceof Error ? error.message : String(error) };
-                }
-              }
+              if (web.tools.some((tool) => tool.function.name === name)) return allowWebSearch ? web.execute(name, args, abortController.signal) : { ok: false, error: '隔离互动场景不提供联网工具' };
               if (name === 'propose_task') {
                 if (taskProposal) return { ok: false, error: '本轮已经生成任务方案' };
                 const proposalSkill = selectedSkill || currentPendingProposal?.skillSnapshot || null;
                 const candidate = taskProposalFromArgs(
                   args,
-                  allowWebSearch,
                   settings.imageModelAvailable,
                   proposalSkill as Record<string, unknown> | null,
                   selectedSkill && targetAgent.id !== SPACE_COORDINATOR.id
@@ -1157,7 +1096,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
                 args
               );
             },
-            isCancelled: () => request.signal.aborted,
+            isCancelled: () => request.signal.aborted || abortController.signal.aborted,
             onModelRequest: undefined,
             maxEmptyResponseRetries: 2,
             onEmptyResponse: ({ retry, maxRetries, diagnostics }) => {
@@ -1173,6 +1112,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
           });
 
           if (!shouldPersistMessages) {
+            const webFooter = web.footer();
+            if (webFooter) emit({ type: 'text_delta', delta: webFooter });
             try { controller.close(); } catch { /* client disconnected */ }
             return;
           }
@@ -1257,6 +1198,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
             if (assistantContent) {
               assistantContent = assistantContent.replace(/^\[[^\]\n]{1,50}\]\s*/, '');
             }
+            assistantContent += web.footer();
             const baseAttachments = taskProposal
               ? [taskProposal]
               : relayDraft && relayId
@@ -1282,6 +1224,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
             const attachments = [
               ...baseAttachments,
               ...runtimeAttachments,
+              ...web.attachments(),
             ];
             const assistantMessage = await tx.spaceMessage.create({
               data: {
@@ -1312,6 +1255,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
             }] : []),
           ]);
           await prisma.space.update({ where: { id: spaceId }, data: { updatedAt: new Date() } });
+          const webFooter = web.footer();
+          if (webFooter) emit({ type: 'text_delta', delta: webFooter });
           controller.close();
         } catch (error: any) {
           if (!request.signal.aborted && error?.code === 'EMPTY_MODEL_RESPONSE') {
@@ -1332,22 +1277,29 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
                 },
               });
               await prisma.space.update({ where: { id: spaceId }, data: { updatedAt: new Date() } });
-              controller.enqueue(encoder.encode(failureMessage));
+              emit({ type: 'text_delta', delta: failureMessage });
               controller.close();
               return;
             } catch (persistError) {
               console.error('[space-message] failed to persist empty-response notice', persistError);
             }
           }
-          controller.error(error);
+          if (!abortController.signal.aborted) {
+            emit({ type: 'error', message: error.message || '回复失败' });
+            controller.close();
+          }
           return;
         }
       },
+      cancel() { abortController.abort(); },
     });
 
     return new Response(readable, {
       headers: {
-        'Content-Type': 'text/plain; charset=utf-8',
+        'Content-Type': 'application/x-ndjson; charset=utf-8',
+        'x-space-stream-format': 'pi-ndjson',
+        'Cache-Control': 'no-cache, no-transform',
+        'X-Accel-Buffering': 'no',
         'x-speaker-agent-id': targetAgent.id,
         'x-speaker-agent-name': encodeURIComponent(targetAgent.name),
         'x-workspace-files-changed': '0',

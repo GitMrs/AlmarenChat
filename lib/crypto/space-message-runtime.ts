@@ -18,6 +18,7 @@ export interface CryptoMessageRuntimeInput {
   spaceId: string;
   textMessage: string;
   persistedMessages: RuntimeHistoryMessage[];
+  deferMarketQuery?: boolean;
 }
 
 export interface CryptoAgentPolicyInput {
@@ -36,6 +37,7 @@ export interface PreparedCryptoMessageRuntime {
   promptContext: string;
   agentPolicy(input: CryptoAgentPolicyInput): string;
   assistantAttachments(input: CryptoAttachmentInput): object[];
+  marketContext?(data: { symbol: string; price: number }): string;
 }
 
 const CRYPTO_QUERY_PATTERN = /(?:BTC|ETH|SOL|SUI|DOGE|PEPE|XRP|BNB|APT|AVAX|LINK|NEAR|ADA|TRX|DOT|ARB|OP|WIF|TON|AAVE|UNI|合约|开单|做多|做空|多单|空单|持仓|费率|OI|抄底|止损|大饼|以太)/i;
@@ -138,7 +140,7 @@ function cryptoAgentPolicy(hasOpenPositions: boolean, input: CryptoAgentPolicyIn
       : '【专业分析纪律】：你负责提供本角色的专业分析依据，不替代雷震发布最终风控结论，也不要把中间意见包装成最终执行命令；需要形成交易计划时，请明确邀请雷震完成最终审核。';
 
   return [
-    '本空间为加密合约实战作战室。当分析行情与开单时，严格依托所注入的实时 OKX 盘面数据进行技术和筹码推演，严禁脱离实盘数据胡编价格；严格遵守轻重双轨制，日常看盘快问快答短平快，开单把关必须核验盈亏比 ≥ 1:2 与 2% 风控线。',
+    '本空间为加密合约实战作战室。当分析行情与开单时，按需调用 crypto_quote 或 crypto_market_snapshot，严格依托本轮取得的 OKX 盘面数据进行技术和筹码推演，严禁脱离实盘数据胡编价格；严格遵守轻重双轨制，日常看盘快问快答短平快，开单把关必须核验盈亏比 ≥ 1:2 与 2% 风控线。',
     rolePolicy,
   ].join('\n');
 }
@@ -160,7 +162,7 @@ export async function prepareCryptoSpaceMessageRuntime(
     promptContext = '【交易状态】读取失败，当前无法确认是否存在已开仓仓位或有效观察计划。不要根据历史聊天自行认定计划已经生效。';
   }
 
-  if (input.textMessage.trim()) {
+  if (!input.deferMarketQuery && input.textMessage.trim()) {
     try {
       promptContext = await appendMarketContext(promptContext, input, observationPlans, true);
     } catch (error: any) {
@@ -170,6 +172,10 @@ export async function prepareCryptoSpaceMessageRuntime(
 
   return {
     promptContext,
+    marketContext: (data) => {
+      const plans = observationPlans.filter((plan) => plan.symbol.toUpperCase() === data.symbol.toUpperCase()).map((plan) => ({ ...plan, status: 'PENDING' } as PlanItem));
+      return plans.length ? formatPlanInspectionForPrompt(inspectPlansLifecycle(plans, data.price), data.price) : '';
+    },
     agentPolicy: (policyInput) => cryptoAgentPolicy(openPositions.length > 0, policyInput),
     assistantAttachments: (attachmentInput) => {
       if (attachmentInput.agentId !== 'crypto-risk-warden') return [];
@@ -188,7 +194,7 @@ export async function prepareCryptoSpaceMessageRuntime(
 export async function prepareGeneralCryptoQueryRuntime(
   input: CryptoMessageRuntimeInput
 ): Promise<PreparedCryptoMessageRuntime> {
-  if (!input.textMessage.trim() || !CRYPTO_QUERY_PATTERN.test(input.textMessage)) return EMPTY_RUNTIME;
+  if (input.deferMarketQuery || !input.textMessage.trim() || !CRYPTO_QUERY_PATTERN.test(input.textMessage)) return EMPTY_RUNTIME;
   try {
     return {
       ...EMPTY_RUNTIME,

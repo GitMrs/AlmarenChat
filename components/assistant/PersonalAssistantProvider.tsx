@@ -480,7 +480,7 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState('');
-  const [webEnabled, setWebEnabled] = useState(false);
+  const [webStatus, setWebStatus] = useState('');
   const [loggedIn, setLoggedIn] = useState(false);
   const [mobile, setMobile] = useState(false);
   const [view, setView] = useState<'chat' | 'history'>('chat');
@@ -641,7 +641,6 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
     const local = config.source === 'OLLAMA';
     setModelSource(config.source);
     setOllamaAvailable(Boolean(config.baseUrl && config.model));
-    if (local) setWebEnabled(false);
   }, [data?.conversationId, open]);
 
   useEffect(() => {
@@ -1185,6 +1184,7 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
     setInput('');
     setPendingAttachment(null);
     setError('');
+    setWebStatus('');
     setStreaming(true);
     const controller = new AbortController();
     abortRef.current = controller;
@@ -1194,7 +1194,6 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
     try {
       const modelConfig = { ...readBrowserModelConfigForScope('GLOBAL'), source: modelSource };
       usesLocalModel = modelSource === 'OLLAMA';
-      if (usesLocalModel && webEnabled) throw new Error('浏览器直连 Ollama 时不能使用服务端联网搜索');
 
       let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
       if (usesLocalModel) {
@@ -1218,7 +1217,7 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
           conversationId: data.conversationId,
           userMessageId: userMessage.id,
           assistantMessageId: assistantMessage.id,
-          webSearchEnabled: webEnabled,
+          onStatus: setWebStatus,
           attachments: attachment ? [attachment] : undefined,
           signal: controller.signal,
         });
@@ -1299,6 +1298,7 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
       if (err.name !== 'AbortError') setError(err.message || '发送失败');
     } finally {
       setStreaming(false);
+      setWebStatus('');
       abortRef.current = null;
     }
   };
@@ -1880,6 +1880,7 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
                             来自 QQ
                           </div>
                         )}
+                        {streaming && message.role === 'assistant' && index === data.messages.length - 1 && webStatus && <div className="mb-2 text-xs text-slate-500" role="status">{webStatus}</div>}
                         {message.content ? <MessageContent role={message.role} content={message.content} attachments={message.attachments} /> : <span className="inline-flex gap-1 py-1"><i className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-300" /><i className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-300 [animation-delay:120ms]" /><i className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-300 [animation-delay:240ms]" /></span>}
                       </MessageBubbleFrame>
 
@@ -1966,7 +1967,7 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
                   )}
                   <ComposerShell
                     rowClassName="gap-2"
-                    toolbar={(webEnabled || ollamaAvailable || pendingAttachment || activeMessageCount > 0) ? (
+                    toolbar={(ollamaAvailable || pendingAttachment || activeMessageCount > 0) ? (
                       <div className="flex flex-wrap items-center gap-1.5 pb-1 pt-0.5">
                         {ollamaAvailable && (
                           <div className="inline-flex h-7 items-center rounded-lg bg-slate-100 p-0.5 text-[11px] font-black" role="group" aria-label="模型来源">
@@ -1985,7 +1986,6 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
                               type="button"
                               onClick={() => {
                                 setModelSource('OLLAMA');
-                                setWebEnabled(false);
                               }}
                               aria-pressed={modelSource === 'OLLAMA'}
                               className={cn('inline-flex h-6 items-center gap-1 rounded-md px-2 transition', modelSource === 'OLLAMA' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-500 hover:text-slate-950')}
@@ -2013,20 +2013,7 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
                             <span>{activeMessageCount} 条活跃 · ~{estimatedTokensText} Tokens</span>
                           </button>
                         )}
-                        {webEnabled && (
-                          <div className="inline-flex h-7 items-center gap-1.5 rounded-lg bg-emerald-50 px-2 text-xs font-black text-emerald-700 shadow-xs">
-                            <Globe2 size={12} className="shrink-0" />
-                            <span>联网搜索</span>
-                            <button
-                              type="button"
-                              onClick={() => setWebEnabled(false)}
-                              aria-label="关闭联网"
-                              className="flex h-4 w-4 shrink-0 items-center justify-center rounded text-emerald-500 hover:bg-emerald-100 hover:text-emerald-900"
-                            >
-                              <X size={11} />
-                            </button>
-                          </div>
-                        )}
+
                       </div>
                     ) : undefined}
                   >
@@ -2052,24 +2039,7 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
                             {uploadingImage ? <Loader2 size={16} className="animate-spin" /> : <ImagePlus size={16} />}
                             <span className="min-w-0 flex-1">上传图片</span>
                           </button>
-                          <button
-                            type="button"
-                            role="switch"
-                            aria-checked={webEnabled}
-                            onClick={() => {
-                              setWebEnabled((v) => !v);
-                              setToolsOpen(false);
-                            }}
-                            disabled={streaming}
-                            className={cn(
-                              'flex min-h-10 w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-xs font-black transition disabled:opacity-40',
-                              webEnabled ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-950'
-                            )}
-                          >
-                            <Globe2 size={16} />
-                            <span className="min-w-0 flex-1">联网搜索</span>
-                            {webEnabled && <Check size={14} />}
-                          </button>
+
                           <div className="my-1 h-[1px] bg-black/[0.06]" />
                           <button
                             type="button"
@@ -2098,9 +2068,7 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
                         )}
                       >
                         <Plus size={18} className={cn('transition-transform duration-200', toolsOpen && 'rotate-45')} />
-                        {webEnabled && (
-                          <span className="absolute right-2 top-2 h-2 w-2 rounded-full ring-2 ring-white bg-emerald-500" />
-                        )}
+
                       </button>
                     </div>
 

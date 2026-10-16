@@ -1,5 +1,8 @@
 'use client';
 
+import WeatherLocationPicker from '@/components/shared/WeatherLocationPicker';
+import type { WeatherLocation } from '@/types/weather';
+import { useWeatherLocation } from '@/lib/use-weather-location';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ArrowUpRight,
@@ -8,10 +11,8 @@ import {
   CloudRain,
   CloudSnow,
   Droplets,
-  MapPin,
   Moon,
   RefreshCw,
-  Search,
   Sparkles,
   Sun,
   Sunrise,
@@ -22,17 +23,6 @@ import {
 } from 'lucide-react';
 import AlmarenIslandScene, { Season, TimePhase, WeatherType } from './AlmarenIslandScene';
 import styles from './TrendingWeather.module.css';
-
-const STORAGE_KEY = 'almaren_trending_weather_location';
-
-interface WeatherLocation {
-  id: string;
-  name: string;
-  city?: string;
-  province?: string;
-  country?: string;
-  timezone?: string;
-}
 
 interface WeatherData {
   source: string;
@@ -177,24 +167,16 @@ async function weatherRequest(params: Record<string, string>, signal: AbortSigna
 }
 
 export default function TrendingWeather() {
-  const [location, setLocation] = useState<WeatherLocation | null>(null);
+  const { location, loading: locationLoading, error: locationError, save: saveLocation } = useWeatherLocation();
   const [weather, setWeather] = useState<WeatherData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [open, setOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const [search, setSearch] = useState('');
-  const [locations, setLocations] = useState<WeatherLocation[]>([]);
-  const [searching, setSearching] = useState(false);
-  const [searchError, setSearchError] = useState('');
   const [previewPhase, setPreviewPhase] = useState<'auto' | TimePhase>('auto');
 
   const container = useRef<HTMLDivElement>(null);
-  const trigger = useRef<HTMLButtonElement>(null);
   const detailsTrigger = useRef<HTMLButtonElement>(null);
-  const input = useRef<HTMLInputElement>(null);
   const weatherController = useRef<AbortController | null>(null);
-  const searchController = useRef<AbortController | null>(null);
 
   const loadWeather = useCallback(async (target: WeatherLocation, clear = false) => {
     weatherController.current?.abort();
@@ -218,26 +200,24 @@ export default function TrendingWeather() {
   }, []);
 
   useEffect(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
-      if (saved && typeof saved.id === 'string' && saved.id.length <= 100 && typeof saved.name === 'string') {
-        setLocation(saved);
-        void loadWeather(saved);
-      }
-    } catch { /* A missing or unavailable local preference does not block the page. */ }
-    return () => { weatherController.current?.abort(); searchController.current?.abort(); };
-  }, [loadWeather]);
+    weatherController.current?.abort();
+    setDetailsOpen(false);
+    setWeather(null);
+    setError('');
+    setLoading(false);
+    if (location) void loadWeather(location, true);
+    return () => { weatherController.current?.abort(); };
+  }, [location, loadWeather]);
 
   useEffect(() => {
-    if (!open && !detailsOpen) return;
-    if (open) input.current?.focus();
+    if (!detailsOpen) return;
     const outside = (event: PointerEvent) => {
-      if (!container.current?.contains(event.target as Node)) { setOpen(false); setDetailsOpen(false); }
+      if (!container.current?.contains(event.target as Node)) setDetailsOpen(false);
     };
     const escape = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
-        setOpen(false); setDetailsOpen(false);
-        (open ? trigger : detailsTrigger).current?.focus();
+        setDetailsOpen(false);
+        detailsTrigger.current?.focus();
       }
     };
     document.addEventListener('pointerdown', outside);
@@ -246,35 +226,7 @@ export default function TrendingWeather() {
       document.removeEventListener('pointerdown', outside);
       document.removeEventListener('keydown', escape);
     };
-  }, [open, detailsOpen]);
-
-  const findLocations = async () => {
-    if (!search.trim() || searching) return;
-    searchController.current?.abort();
-    const controller = new AbortController();
-    searchController.current = controller;
-    setSearching(true);
-    setSearchError('');
-    setLocations([]);
-    try {
-      const result = await weatherRequest({ location: search.trim(), kind: 'locations' }, controller.signal);
-      if (controller.signal.aborted) return;
-      setLocations(result.locations || []);
-      if (!result.locations?.length) setSearchError('未找到地区，请补充城市或区县名称');
-    } catch (reason) {
-      if (!controller.signal.aborted) setSearchError(reason instanceof Error ? reason.message : '地区查询失败');
-    } finally {
-      if (!controller.signal.aborted) setSearching(false);
-    }
-  };
-
-  const selectLocation = (next: WeatherLocation) => {
-    setLocation(next);
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); } catch { /* Selection still works without persistent storage. */ }
-    setOpen(false);
-    trigger.current?.focus();
-    void loadWeather(next, true);
-  };
+  }, [detailsOpen]);
 
   // 天气与时段参数解析
   const condition = weather?.observations.text || '';
@@ -309,23 +261,12 @@ export default function TrendingWeather() {
     <div ref={container} className="relative min-w-0 text-xs text-slate-600 dark:text-slate-300">
       {/* 顶部触发栏按钮 */}
       <div className="flex min-h-8 flex-wrap items-center justify-end gap-x-2 gap-y-1">
-        <button
-          ref={trigger}
-          type="button"
-          onClick={() => { setOpen(!open); setDetailsOpen(false); }}
-          aria-expanded={open}
-          aria-controls="trending-weather-regions"
-          title={location ? `${regionLabel(location)}，切换地区` : '选择天气地区'}
-          className="flex min-w-0 max-w-40 items-center gap-1 rounded-xl px-2 py-1.5 font-semibold transition hover:bg-slate-100 dark:hover:bg-slate-800"
-        >
-          <MapPin size={13} className="shrink-0 text-sky-500" />
-          <span className="truncate">{location?.name || '选择地区'}</span>
-        </button>
+        <WeatherLocationPicker value={location} loading={locationLoading} error={locationError} onOpen={() => setDetailsOpen(false)} onChange={saveLocation} />
         {location && (
           <button
             ref={detailsTrigger}
             type="button"
-            onClick={() => { setDetailsOpen(!detailsOpen); setOpen(false); }}
+            onClick={() => setDetailsOpen(!detailsOpen)}
             aria-label="查看天气详情"
             aria-expanded={detailsOpen}
             aria-controls="trending-weather-details"
@@ -554,76 +495,7 @@ export default function TrendingWeather() {
         </div>
       )}
 
-      {/* 地区切换弹出面板 */}
-      {open && (
-        <div
-          id="trending-weather-regions"
-          role="dialog"
-          aria-label="选择天气地区"
-          className="absolute right-0 top-full z-40 mt-2 w-80 max-w-[calc(100vw-3rem)] rounded-2xl border border-slate-200 bg-white/95 p-3.5 shadow-xl backdrop-blur-md dark:border-slate-700 dark:bg-slate-900/95"
-        >
-          <div className="mb-2.5 flex items-center justify-between">
-            <span className="font-bold text-slate-900 dark:text-white">天气地区</span>
-            <button
-              type="button"
-              onClick={() => { setOpen(false); trigger.current?.focus(); }}
-              title="关闭地区选择"
-              aria-label="关闭地区选择"
-              className="flex h-7 w-7 items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
-            >
-              <X size={14} />
-            </button>
-          </div>
-          <form
-            className="flex gap-2"
-            onSubmit={(event) => { event.preventDefault(); void findLocations(); }}
-          >
-            <input
-              ref={input}
-              type="search"
-              aria-label="城市或区县"
-              placeholder="城市或区县名称"
-              maxLength={100}
-              value={search}
-              onChange={(event) => {
-                searchController.current?.abort();
-                setSearching(false);
-                setSearch(event.target.value);
-                setLocations([]);
-                setSearchError('');
-              }}
-              className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-transparent px-3 py-2 text-xs outline-none focus:border-sky-500 dark:border-slate-700"
-            />
-            <button
-              type="submit"
-              disabled={searching || !search.trim()}
-              title="搜索地区"
-              aria-label="搜索地区"
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-sky-600 text-white transition hover:bg-sky-700 disabled:opacity-40"
-            >
-              {searching ? <RefreshCw size={14} className="animate-spin" /> : <Search size={14} />}
-            </button>
-          </form>
-          {searchError && (
-            <p role="alert" className="mt-2 text-rose-600 dark:text-rose-400">
-              {searchError}
-            </p>
-          )}
-          <div className="mt-2 max-h-60 overflow-y-auto">
-            {locations.map((place) => (
-              <button
-                type="button"
-                key={place.id}
-                onClick={() => selectLocation(place)}
-                className="block w-full rounded-xl px-2.5 py-2 text-left transition hover:bg-sky-50 dark:hover:bg-slate-800"
-              >
-                <span className="block font-semibold text-slate-900 dark:text-white">{place.name}</span>
-                <span className="mt-0.5 block break-words text-[11px] text-slate-400">{regionLabel(place)}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
+
     </div>
   );
 }

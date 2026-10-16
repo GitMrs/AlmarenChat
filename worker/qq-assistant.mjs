@@ -14,7 +14,6 @@ import {
   classifyQQCommand,
   qqImageAttachments,
   qqReminderRetryDelayMs,
-  qqWebSearchEnabled,
   sqliteDate,
 } from '../lib/qq-assistant/policy.mjs';
 import { resolveWorkerDatabasePath } from './runtime/worker-config.mjs';
@@ -116,14 +115,14 @@ function applyReminderCommand(userId, command, refMsgIdx, eventId) {
   return `好，${command.minutes} 分钟后再提醒你「${reminder.content}」。`;
 }
 
-async function requestAssistant(binding, message, eventId, webSearchEnabled, attachments, onProgress) {
+async function requestAssistant(binding, message, eventId, attachments, onProgress) {
   const response = await fetch(internalUrl, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
       'x-qq-assistant-secret': secret,
     },
-    body: JSON.stringify({ userId: binding.userId, message, eventId, webSearchEnabled, attachments, stream: true }),
+    body: JSON.stringify({ userId: binding.userId, message, eventId, attachments, stream: true }),
     signal: AbortSignal.timeout(180_000),
   });
   if (!response.ok) {
@@ -147,6 +146,13 @@ async function requestAssistant(binding, message, eventId, webSearchEnabled, att
     if (!line.trim()) return;
     const event = JSON.parse(line);
     if (event.type === 'error') throw new Error(event.error || 'QQ 小伴回复失败');
+    if (event.type === 'status') {
+      const nextContent = event.label ? `${content}\n\n_${event.label}_`.trimStart() : content;
+      if (nextContent && nextContent !== displayedContent) {
+        displayedContent = nextContent;
+        await onProgress?.(nextContent);
+      }
+    }
     if (event.type === 'delta' && typeof event.content === 'string') {
       content += event.content;
       const nextContent = content.trimStart();
@@ -248,7 +254,6 @@ async function handleMessage(entry, msg) {
       binding,
       content,
       msg.messageId,
-      qqWebSearchEnabled(msg.messageScene?.ext),
       attachments,
       async (fullContent) => {
         if (streamError || !fullContent) return;

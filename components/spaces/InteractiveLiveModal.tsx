@@ -63,7 +63,7 @@ interface InteractiveLiveModalProps {
   onShareToSpace?: (content: string) => void;
 }
 
-async function readStream(stream: ReadableStream<Uint8Array>) {
+async function readStream(stream: ReadableStream<Uint8Array>, format?: 'pi-ndjson') {
   const reader = stream.getReader();
   const decoder = new TextDecoder();
   let content = '';
@@ -71,6 +71,17 @@ async function readStream(stream: ReadableStream<Uint8Array>) {
     const { done, value } = await reader.read();
     if (done) break;
     content += decoder.decode(value, { stream: true });
+  }
+  content += decoder.decode();
+  if (format === 'pi-ndjson') {
+    let text = '';
+    for (const line of content.split('\n').filter((value) => value.trim())) {
+      const event = JSON.parse(line);
+      if (event.type === 'error') throw new Error(event.message || '互动回复失败');
+      if (event.type === 'text_reset') text = '';
+      if (event.type === 'text_delta' && typeof event.delta === 'string') text += event.delta;
+    }
+    return text.trim();
   }
   return content.trim();
 }
@@ -172,13 +183,12 @@ export default function InteractiveLiveModal({
         targetAgentId: agent.id,
         interactionMode: 'multi_reply',
         skipPersistUserMessage: !persistUserMessage,
-        webSearchEnabled: false,
         imageGenerationRequested: false,
         persistMessages: false,
         isolatedContext: true,
         contextAgentIds: [hosts.lulu.id, hosts.keke.id],
       });
-      const content = await readStream(result.stream);
+      const content = await readStream(result.stream, result.streamFormat);
       if (!content) throw new Error('聊天室成员没有返回内容');
       const nextTurn: LiveEvent = { type: 'agent', id: `agent-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, agent, content, replyTo };
       setEvents((current) => {

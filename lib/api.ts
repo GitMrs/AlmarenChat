@@ -1,3 +1,4 @@
+import { decodeChatBody } from './chat-stream.mjs';
 import type { AgentGrowthProfile, AgentRun, AssistantContextStats, AssistantConversationSummary, AssistantExperience, AssistantExperienceMessage, AssistantMemoryItem, AssistantQQBinding, AssistantReminder, AssistantReminderCandidate, Message, MessageAttachment, PersonalAssistantBootstrap, PersonalAssistantProfile, SpaceActionRequest, SpaceAutomation, SpaceConnector, SpaceDiscussion, SpaceDiscussionSettings, SpaceFileShare, SpaceOperationOutcome, SpaceOperationsSummary, SpaceRelay, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal, SpaceWork, SpaceWorkVersion, SpaceMcpServer, SpaceWebhook, AssistantMcpServer, McpProbeResult } from '@/types';
 
 const API_BASE = '/api';
@@ -215,12 +216,12 @@ export const assistant = {
     conversationId: string;
     userMessageId: string;
     assistantMessageId: string;
-    webSearchEnabled: boolean;
+    onStatus?: (label: string) => void;
     attachments?: MessageAttachment[];
     signal?: AbortSignal;
   }) => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-    return fetch(`${API_BASE}/assistant/messages`, {
+    const response = await fetch(`${API_BASE}/assistant/messages`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
       body: JSON.stringify({
@@ -228,11 +229,11 @@ export const assistant = {
         conversationId: data.conversationId,
         userMessageId: data.userMessageId,
         assistantMessageId: data.assistantMessageId,
-        webSearchEnabled: data.webSearchEnabled,
         attachments: data.attachments,
       }),
       signal: data.signal,
     });
+    return new Response(decodeChatBody(response, data.onStatus), { status: response.status, statusText: response.statusText, headers: response.headers });
   },
   prepareLocalMessage: (data: {
     message: string;
@@ -253,7 +254,6 @@ export const assistant = {
         conversationId: data.conversationId,
         userMessageId: data.userMessageId,
         attachments: data.attachments,
-        webSearchEnabled: false,
       }),
       signal: data.signal,
     }),
@@ -1001,7 +1001,7 @@ export async function streamChat(data: {
   agentId?: string;
   contextMessageLimit?: number;
   skipPersistUserMessage?: boolean;
-  webSearchEnabled?: boolean;
+  onStatus?: (label: string) => void;
   knowledgeEnabled?: boolean;
   signal?: AbortSignal;
 }): Promise<{ stream: ReadableStream<Uint8Array>; conversationId?: string }> {
@@ -1023,7 +1023,7 @@ export async function streamChat(data: {
   }
 
   const conversationId = res.headers.get('x-conversation-id') || undefined;
-  return { stream: res.body!, conversationId };
+  return { stream: decodeChatBody(res, data.onStatus)!, conversationId };
 }
 
 export async function generateConversationImage(data: {
@@ -1067,7 +1067,6 @@ export async function streamSpaceMessage(data: {
     participantIds: string[];
   };
   multiReplyIndex?: number;
-  webSearchEnabled?: boolean;
   imageGenerationRequested?: boolean;
   skipPersistUserMessage?: boolean;
   persistMessages?: boolean;
@@ -1097,7 +1096,6 @@ export async function streamSpaceMessage(data: {
       interactionMode: data.interactionMode,
       coordinationScope: data.coordinationScope,
       multiReplyIndex: data.multiReplyIndex,
-      webSearchEnabled: data.webSearchEnabled,
       imageGenerationRequested: data.imageGenerationRequested,
       skipPersistUserMessage: data.skipPersistUserMessage,
       persistMessages: data.persistMessages,
@@ -1125,6 +1123,10 @@ export async function streamSpaceMessage(data: {
 }
 
 // User
+export const weather = {
+  locations: (location: string) => request<{ locations: Array<{ id: string; name: string; city?: string; province?: string; country?: string }> }>(`/weather?kind=locations&location=${encodeURIComponent(location)}`),
+};
+
 export const user = {
   get: () => request<{ user: any }>('/user'),
   update: (data: {
@@ -1142,6 +1144,7 @@ export const user = {
     imageApiBaseUrl?: string | null;
     imageApiKey?: string | null;
     tavilyApiKey?: string | null;
+    defaultWeatherLocation?: { id: string; name: string } | null;
     assistantMcpServers?: AssistantMcpServer[];
     defaultStyle?: string | null;
     contextMessageLimit?: number;

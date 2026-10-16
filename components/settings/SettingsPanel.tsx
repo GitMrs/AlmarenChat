@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import LoginRequired from '@/components/auth/LoginRequired';
 import ModelPicker from '@/components/shared/ModelPicker';
+import WeatherLocationSettings from './WeatherLocationSettings';
 import { auth, user as userApi } from '@/lib/api';
 import {
   DEFAULT_BROWSER_MODEL_CONFIG,
@@ -423,6 +424,7 @@ export default function SettingsPanel() {
                 />
               </label>
             </div>
+            <WeatherLocationSettings />
           </section>
 
           <section className="rounded-[28px] border border-black/[0.06] bg-white p-5 shadow-sm sm:p-6">
