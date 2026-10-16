@@ -17,7 +17,8 @@ import { buildCryptoMarketContext } from '@/lib/crypto/market-query.mjs';
 import { queryCryptoMarket } from '@/lib/crypto/market-tools';
 import { explicitMemoryPrompt, parseExplicitMemory } from '@/lib/personal-assistant/memory-intent.mjs';
 import { handleQQMemoryRequest } from '@/lib/personal-assistant/qq-memory';
-import { buildRetrievalNotice } from '@/lib/personal-assistant/retrieval-notice.mjs';
+import { loadUserMemoryItems } from '@/lib/personal-assistant/user-memory';
+import { buildRetrievalNotice, stripRetrievalNotices } from '@/lib/personal-assistant/retrieval-notice.mjs';
 import { isValidInternalQQSecret } from '@/lib/qq-assistant/credentials.mjs';
 import { classifyQQCommand, qqImageAttachments } from '@/lib/qq-assistant/policy.mjs';
 import { compressConversationContext } from '@/lib/context-compression';
@@ -155,12 +156,7 @@ export async function POST(request: Request) {
         historyLimit: contextLimit,
         includeExperiences: true,
       }),
-      prisma.assistantMemoryItem.findMany({
-        where: { userId, status: 'ACTIVE' },
-        orderBy: { updatedAt: 'desc' },
-        take: 30,
-        select: { category: true, content: true },
-      }),
+      loadUserMemoryItems(userId, null, 30),
       buildAssistantPlatformContext(userId, contextSources),
       buildAssistantActivityContext(userId, message, contextSources),
     ]);
@@ -240,14 +236,14 @@ export async function POST(request: Request) {
       { role: 'system', content: systemPrompt },
       ...compressedHistory.map((item) => ({
         role: item.role as 'user' | 'assistant',
-        content: item.content,
+        content: item.role === 'assistant' ? stripRetrievalNotices(item.content) : item.content,
       })),
       { role: 'user', content: userContent },
     ];
 
     const userMessageId = eventMessageId('user', binding.appId, eventId);
     const finalizeResponse = async (modelContent: string) => {
-      const normalizedModelContent = modelContent.trim();
+      const normalizedModelContent = stripRetrievalNotices(modelContent).trim();
       if (!normalizedModelContent) throw new Error('模型没有返回可展示的正文');
 
       let reminderCandidates: Array<{ content: string; dueTime: Date | null }> = [];
@@ -318,7 +314,7 @@ export async function POST(request: Request) {
 
       return {
         content,
-        streamContent: `${modelContent.trimStart()}${reminderSummary}${notice}`,
+        streamContent: content,
       };
     };
 
