@@ -69,7 +69,7 @@
 }
 
 .moonGlow {
-  transform-origin: 290px 45px;
+  transform-origin: 290px 44px;
   animation: moonFloat 7s ease-in-out infinite alternate;
 }
 
@@ -143,27 +143,23 @@
 }
 
 @keyframes cloudBob1 {
-  0% { transform: translateY(0px) rotate(0deg); }
-  50% { transform: translateY(-1.8px) rotate(0.2deg); }
-  100% { transform: translateY(1.0px) rotate(-0.15deg); }
+  0% { transform: translateY(-0.8px); }
+  100% { transform: translateY(0.8px); }
 }
 
 @keyframes cloudBob2 {
-  0% { transform: translateY(0.8px) rotate(-0.15deg); }
-  50% { transform: translateY(-2.2px) rotate(0.2deg); }
-  100% { transform: translateY(0.4px) rotate(0deg); }
+  0% { transform: translateY(1.2px); }
+  100% { transform: translateY(-1.2px); }
 }
 
 @keyframes cloudBob3 {
-  0% { transform: translateY(-0.6px) rotate(0.12deg); }
-  50% { transform: translateY(1.5px) rotate(-0.15deg); }
-  100% { transform: translateY(-1.2px) rotate(0.1deg); }
+  0% { transform: translateY(-1px); }
+  100% { transform: translateY(1px); }
 }
 
 @keyframes cloudBob4 {
-  0% { transform: translateY(0.4px) rotate(0deg); }
-  50% { transform: translateY(1.8px) rotate(-0.2deg); }
-  100% { transform: translateY(-1.0px) rotate(0.15deg); }
+  0% { transform: translateY(0.6px); }
+  100% { transform: translateY(-0.6px); }
 }
 
 .cloudInteractive {
@@ -363,6 +359,10 @@
   pointer-events: none;
 }
 
+.windLayerLeft {
+  transform: scaleX(-1);
+}
+
 .windStreak {
   position: absolute;
   height: 1.5px;
@@ -398,26 +398,43 @@
   left: 10%;
   width: 70px;
   height: 1.5px;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.95) 60%, transparent);
+  background: linear-gradient(90deg, transparent, rgba(219, 234, 254, 0.15) 35%, rgba(219, 234, 254, 0.65) 85%, #f8fafc);
   border-radius: 999px;
-  filter: drop-shadow(0 0 3px #ffffff);
+  filter: drop-shadow(0 0 2px rgba(219, 234, 254, 0.5));
   opacity: 0;
-  animation: meteorStreak 18s ease-in-out infinite;
+  transform-origin: right center;
+  animation: meteorStreak 18s linear infinite;
   pointer-events: none;
 }
 
+.shootingStar::after {
+  content: '';
+  position: absolute;
+  right: -1px;
+  top: 50%;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: #f8fafc;
+  transform: translateY(-50%);
+}
+
 @keyframes meteorStreak {
-  0%, 93%, 100% {
+  0%, 93% {
     opacity: 0;
-    transform: translate(0, 0) rotate(-35deg) scaleX(0);
+    transform: translate(0, 0) rotate(35deg);
   }
-  94.5% {
-    opacity: 0.95;
-    transform: translate(35px, 25px) rotate(-35deg) scaleX(1);
+  93.5% {
+    opacity: 0.85;
+    transform: translate(20px, 14px) rotate(35deg);
   }
-  96.5% {
+  95% {
+    opacity: 0.85;
+    transform: translate(80px, 56px) rotate(35deg);
+  }
+  96%, 100% {
     opacity: 0;
-    transform: translate(95px, 70px) rotate(-35deg) scaleX(0.2);
+    transform: translate(120px, 84px) rotate(35deg);
   }
 }
 

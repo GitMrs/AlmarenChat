@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useId, useState } from 'react';
+import { moonPhase } from '@/lib/moon-phase.mjs';
 import styles from './AlmarenIslandScene.module.css';
 
 export type TimePhase = 'dawn' | 'day' | 'dusk' | 'night';
@@ -27,6 +28,16 @@ export default function AlmarenIslandScene({
   className = '',
 }: AlmarenIslandSceneProps) {
   const [treeShake, setTreeShake] = useState(false);
+  const [moonTimestamp, setMoonTimestamp] = useState<number | null>(null);
+  const moonGlowId = useId();
+  const moon = moonTimestamp === null ? null : moonPhase(moonTimestamp);
+
+  useEffect(() => {
+    const updateMoon = () => setMoonTimestamp(Date.now());
+    updateMoon();
+    const timer = window.setInterval(updateMoon, 3_600_000);
+    return () => window.clearInterval(timer);
+  }, []);
   const [isTreeHovered, setIsTreeHovered] = useState(false);
   const [petals, setPetals] = useState<Array<{ id: number; cx: number; cy: number; delay: number }>>([]);
 
@@ -36,7 +47,7 @@ export default function AlmarenIslandScene({
   const isDarkSky = isNight || isDusk;
 
   // 根据气象风向确定飘落航向：西风由西吹向东(右)，东风由东吹向西(左)
-  const isBlowingRight = /西/.test(windDir);
+  const isBlowingRight = !/东/.test(windDir);
   const driftAnimationClass = isBlowingRight
     ? isWindy
       ? styles.petalDriftRightWindy
@@ -121,8 +132,7 @@ export default function AlmarenIslandScene({
   const hasSnow = weatherType === 'snow' || season === 'winter';
 
   // 气象流云系统：航向、航速因子与色彩调配（微缩卡片调速：宁静悠缓，不喧宾夺主）
-  const isEastWind = /东/.test(windDir);
-  const cloudDriftClass = isEastWind ? styles.cloudDriftLeft : styles.cloudDriftRight;
+  const cloudDriftClass = isBlowingRight ? styles.cloudDriftRight : styles.cloudDriftLeft;
   const cloudSpeedMultiplier = isWindy ? (windScale >= 5 ? 0.8 : 0.88) : 1;
 
   // 云彩色彩配合昼夜流转与气象调色
@@ -248,12 +258,9 @@ export default function AlmarenIslandScene({
     },
   ];
 
-  // 气象动态丰富度：
-  // 晴天：3朵流云纵跨高、中、拂日空域，开阔舒朗
-  // 多云与阴雨：4层流云全空域覆盖，高低错落，气势盎然
   const activeClouds =
     weatherType === 'clear'
-      ? [cloudConfigs[0], cloudConfigs[1], cloudConfigs[2]]
+      ? [cloudConfigs[0], cloudConfigs[2]]
       : cloudConfigs;
 
   return (
@@ -305,9 +312,9 @@ export default function AlmarenIslandScene({
           </radialGradient>
 
           {/* 月光清辉 */}
-          <radialGradient id="moonGlowGrad" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor="#ffffff" stopOpacity="0.9" />
-            <stop offset="50%" stopColor="#93c5fd" stopOpacity="0.35" />
+          <radialGradient id={moonGlowId} cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#dbeafe" stopOpacity="0.18" />
+            <stop offset="50%" stopColor="#bfdbfe" stopOpacity="0.07" />
             <stop offset="100%" stopColor="#93c5fd" stopOpacity="0" />
           </radialGradient>
 
@@ -372,14 +379,15 @@ export default function AlmarenIslandScene({
         )}
 
         {/* 月牙与清辉（夜晚） */}
-        {isNight && (
+        {isNight && moon && (
           <g className={styles.moonGlow}>
-            <circle cx="290" cy="42" r="32" fill="url(#moonGlowGrad)" />
+            <title>{moon.name}</title>
+            <circle cx="290" cy="44" r="28" fill={`url(#${moonGlowId})`} opacity={moon.illumination} />
             {/* 月牙裁切 */}
             <path
-              d="M 296,28 C 304,33 306,44 301,52 C 296,60 286,63 277,58 C 288,61 298,54 299,42 C 300,34 296,29 296,28 Z"
-              fill="#fef08a"
-              filter="drop-shadow(0 0 5px rgba(254, 240, 138, 0.8))"
+              d={moon.path}
+              transform="translate(290 44)"
+              fill="#e2e8f0"
             />
           </g>
         )}
@@ -398,16 +406,15 @@ export default function AlmarenIslandScene({
                 }}
               >
                 <title>漫天流云 · 随风缓行</title>
-                <g
-                  className={c.bobClass}
-                  transform={`translate(0, ${c.y}) scale(${c.scale})`}
-                >
-                  <path
-                    d={c.path}
-                    fill={cloudFill}
-                    opacity={c.opacity}
-                    filter={isDarkSky ? undefined : 'drop-shadow(0 1px 3px rgba(0, 0, 0, 0.05))'}
-                  />
+                <g transform={`translate(0, ${c.y}) scale(${c.scale})`}>
+                  <g className={c.bobClass} style={{ animationDelay: `${c.delay}s` }}>
+                    <path
+                      d={c.path}
+                      fill={cloudFill}
+                      opacity={c.opacity}
+                      filter={isDarkSky ? undefined : 'drop-shadow(0 1px 3px rgba(0, 0, 0, 0.05))'}
+                    />
+                  </g>
                 </g>
               </g>
             );
@@ -729,7 +736,7 @@ export default function AlmarenIslandScene({
 
       {/* 大风天流线 */}
       {isWindy && (
-        <div className={styles.windLayer} aria-hidden="true">
+        <div className={`${styles.windLayer} ${isBlowingRight ? '' : styles.windLayerLeft}`} aria-hidden="true">
           {[
             { top: '35%', width: '120px', delay: '0s', duration: '2.4s' },
             { top: '55%', width: '160px', delay: '0.8s', duration: '2.1s' },
@@ -750,7 +757,7 @@ export default function AlmarenIslandScene({
       )}
 
       {/* 夜间偶遇孤舟流星彩蛋 */}
-      {isNight && weatherType !== 'rain' && weatherType !== 'snow' && (
+      {isNight && (weatherType === 'clear' || weatherType === 'cloudy') && (
         <div className={styles.shootingStar} aria-hidden="true" />
       )}
     </div>
