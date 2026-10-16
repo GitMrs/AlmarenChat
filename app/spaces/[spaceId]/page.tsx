@@ -577,7 +577,7 @@ export default function SpaceDetailPage() {
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [mode, setMode] = useState<'chat' | 'task'>('chat');
   const [workspaceView, setWorkspaceView] = useState<'chat' | 'files' | 'operations' | 'games' | 'crypto'>('chat');
-  const [gameCenterInitialGame, setGameCenterInitialGame] = useState<'gomoku' | 'undercover' | 'trpg' | 'live' | null>(null);
+  const [gameCenterInitialGame, setGameCenterInitialGame] = useState<'gomoku' | 'undercover' | 'trpg' | 'live' | 'turtlesoup' | null>(null);
   const [gameCenterInitialGomokuMode, setGameCenterInitialGomokuMode] = useState<'pve' | 'eve'>('pve');
   const [gameCenterInitialBlackId, setGameCenterInitialBlackId] = useState<string | undefined>(undefined);
   const [gameCenterInitialWhiteId, setGameCenterInitialWhiteId] = useState<string | undefined>(undefined);
@@ -1668,13 +1668,15 @@ export default function SpaceDetailPage() {
       return;
     }
 
-    if (space?.templateId === 'gaming-room' && !options?.reuseLastUserMessage && (content.includes('谁是卧底') || content.includes('卧底') || content.includes('跑团') || content.includes('骰子') || content.includes('TRPG') || content.includes('直播') || content.includes('虚拟主播') || content.includes('游戏中心') || content.includes('玩游戏') || content.includes('来一盘') || content.includes('开一局'))) {
+    if (space?.templateId === 'gaming-room' && !options?.reuseLastUserMessage && (content.includes('谁是卧底') || content.includes('卧底') || content.includes('跑团') || content.includes('骰子') || content.includes('TRPG') || content.includes('直播') || content.includes('虚拟主播') || content.includes('海龟汤') || content.includes('喝汤') || content.includes('探案') || content.includes('游戏中心') || content.includes('玩游戏') || content.includes('来一盘') || content.includes('开一局'))) {
       if (content.includes('谁是卧底') || content.includes('卧底')) {
         setGameCenterInitialGame('undercover');
       } else if (content.includes('跑团') || content.includes('骰子') || content.includes('TRPG')) {
         setGameCenterInitialGame('trpg');
       } else if (content.includes('直播') || content.includes('虚拟主播')) {
         setGameCenterInitialGame('live');
+      } else if (content.includes('海龟汤') || content.includes('喝汤') || content.includes('探案')) {
+        setGameCenterInitialGame('turtlesoup');
       } else {
         setGameCenterInitialGame(null);
       }
@@ -4250,10 +4252,10 @@ export default function SpaceDetailPage() {
                       <div>
                         <div className="flex items-center gap-2">
                           <h3 className="text-sm font-black text-slate-900">开黑游戏中心</h3>
-                          <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-black text-amber-800">1 款游戏就绪</span>
+                          <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-black text-amber-800">5 款精选游戏就绪</span>
                         </div>
                         <p className="mt-0.5 text-xs font-semibold text-amber-900/80">
-                          现已上线五子棋 AI 人机对弈与语音观战，与璐璐、诺克斯、可可边玩边聊！
+                          现已上线五子棋、谁是卧底、沉浸跑团、虚拟直播间与海龟汤探案，与搭子们边玩边聊！
                         </p>
                       </div>
                     </div>

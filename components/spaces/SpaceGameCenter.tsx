@@ -12,13 +12,14 @@ import InteractiveGomokuModal from '@/components/spaces/InteractiveGomokuModal';
 import InteractiveUndercoverModal from '@/components/spaces/InteractiveUndercoverModal';
 import InteractiveTrpgModal from '@/components/spaces/InteractiveTrpgModal';
 import InteractiveLiveModal from '@/components/spaces/InteractiveLiveModal';
+import InteractiveTurtleSoupModal from '@/components/spaces/InteractiveTurtleSoupModal';
 import type { Agent } from '@/types';
 
 export interface SpaceGameCenterProps {
   spaceAgents?: Agent[];
   onShareToSpace?: (content: string) => void;
   onBackToChat?: () => void;
-  initialGame?: 'gomoku' | 'undercover' | 'trpg' | 'live' | null;
+  initialGame?: 'gomoku' | 'undercover' | 'trpg' | 'live' | 'turtlesoup' | null;
   initialGomokuMode?: 'pve' | 'eve';
   initialGomokuBlackId?: string;
   initialGomokuWhiteId?: string;
@@ -45,6 +46,7 @@ export default function SpaceGameCenter({
   const [isUndercoverModalOpen, setIsUndercoverModalOpen] = useState(Boolean(initialGame === 'undercover'));
   const [isTrpgModalOpen, setIsTrpgModalOpen] = useState(Boolean(initialGame === 'trpg'));
   const [isLiveModalOpen, setIsLiveModalOpen] = useState(Boolean(initialGame === 'live'));
+  const [isTurtleSoupModalOpen, setIsTurtleSoupModalOpen] = useState(Boolean(initialGame === 'turtlesoup'));
   const [gomokuMode, setGomokuMode] = useState<'pve' | 'eve'>(initialGomokuMode || 'pve');
   const [gomokuBlackId, setGomokuBlackId] = useState<string | undefined>(initialGomokuBlackId);
   const [gomokuWhiteId, setGomokuWhiteId] = useState<string | undefined>(initialGomokuWhiteId);
@@ -68,6 +70,8 @@ export default function SpaceGameCenter({
       setIsTrpgModalOpen(true);
     } else if (initialGame === 'live') {
       setIsLiveModalOpen(true);
+    } else if (initialGame === 'turtlesoup') {
+      setIsTurtleSoupModalOpen(true);
     }
   }, [initialGame, initialGomokuMode, initialGomokuBlackId, initialGomokuWhiteId, initialGomokuOpponentId, initialGomokuAutoPlay, initialGomokuAutoVoice]);
 
@@ -106,6 +110,14 @@ export default function SpaceGameCenter({
             )}
             <button
               type="button"
+              onClick={() => setIsTurtleSoupModalOpen(true)}
+              className="inline-flex h-10 items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 text-xs font-black text-amber-900 shadow-sm transition hover:bg-amber-100 cursor-pointer"
+            >
+              <span className="text-sm">🐢</span>
+              探案海龟汤
+            </button>
+            <button
+              type="button"
               onClick={() => setIsTrpgModalOpen(true)}
               className="inline-flex h-10 items-center gap-2 rounded-xl bg-amber-600 px-4 text-xs font-black text-white shadow-md transition hover:bg-amber-700 cursor-pointer"
             >
@@ -132,10 +144,10 @@ export default function SpaceGameCenter({
             <div className="flex items-center gap-2">
                 <h3 className="text-base font-black text-slate-900">精选玩法</h3>
               <span className="rounded-md bg-amber-500/10 border border-amber-200 px-2 py-0.5 text-xs font-black text-amber-800">
-                当前开放 4 款
+                当前开放 5 款
               </span>
             </div>
-            <span className="text-xs text-slate-400 font-semibold">类型：棋盘博弈 · 语言推理 · TRPG · AI 主题聊天室</span>
+            <span className="text-xs text-slate-400 font-semibold">类型：棋盘博弈 · 语言推理 · TRPG · AI 互动直播 · 海龟汤探案</span>
           </div>
 
           {/* 游戏卡片 1：五子棋 */}
@@ -334,6 +346,51 @@ export default function SpaceGameCenter({
               </button>
             </div>
           </div>
+
+          {/* 游戏卡片 5：海龟汤 · 迷雾探案包厢 */}
+          <div className="relative overflow-hidden rounded-2xl border-2 border-amber-500/80 bg-white p-6 shadow-sm transition hover:shadow-md hover:border-amber-600">
+            <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex items-start gap-4">
+                <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-600 to-yellow-500 text-3xl text-white shadow-lg ring-4 ring-amber-100">
+                  🐢
+                </div>
+                <div>
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    <h4 className="text-lg font-black text-slate-900 font-serif">海龟汤 · 迷雾探案包厢</h4>
+                    <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-black text-emerald-700">
+                      350 精选神汤
+                    </span>
+                    <span className="rounded-full bg-rose-100 px-2.5 py-0.5 text-xs font-black text-rose-700">
+                      空间搭子自由组队
+                    </span>
+                    <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-black text-amber-800">
+                      3 重递进锦囊
+                    </span>
+                    <span className="rounded-full bg-purple-100 px-2.5 py-0.5 text-xs font-black text-purple-700">
+                      铁面 DM 敲钟
+                    </span>
+                  </div>
+                  <p className="mt-2 max-w-2xl text-xs leading-relaxed text-slate-600 font-serif">
+                    350 道精品硬核与脑洞海龟汤，由守秘人 DM 铁面敲钟判定！可自由挑选空间内的任意 2 位 AI 搭子（如璐璐、可可、诺克斯等）入座侦探席，实时语音陪聊、支招与脑洞启发。支持单输入框官方提问、盲盒抽汤、题库书架自由选题与一键复盘战报！
+                  </p>
+                  <div className="mt-3.5 flex flex-wrap gap-2 text-xs font-semibold text-slate-500">
+                    <span className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1">📜 迷雾汤面羊皮卷</span>
+                    <span className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1">💡 3 级渐进线索锦囊</span>
+                    <span className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1">👥 左右双搭子自由切换</span>
+                    <span className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1">🎙️ 专属音色 TTS 语音连麦</span>
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsTurtleSoupModalOpen(true)}
+                className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-amber-600 px-6 text-xs font-black text-white shadow-md transition hover:bg-amber-700 cursor-pointer"
+              >
+                <Gamepad2 size={16} className="text-amber-200" />
+                进入探案包厢
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* 筹备中游戏企划卡片 */}
@@ -429,6 +486,17 @@ export default function SpaceGameCenter({
         onClose={() => setIsLiveModalOpen(false)}
         onShareToSpace={(text) => {
           setIsLiveModalOpen(false);
+          onShareToSpace?.(text);
+        }}
+      />
+
+      <InteractiveTurtleSoupModal
+        isOpen={isTurtleSoupModalOpen}
+        spaceId={spaceId}
+        spaceAgents={spaceAgents}
+        onClose={() => setIsTurtleSoupModalOpen(false)}
+        onShareToSpace={(text) => {
+          setIsTurtleSoupModalOpen(false);
           onShareToSpace?.(text);
         }}
       />
