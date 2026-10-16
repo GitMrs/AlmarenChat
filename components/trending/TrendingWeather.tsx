@@ -273,14 +273,16 @@ export default function TrendingWeather() {
             className="flex min-h-8 items-center gap-1.5 rounded-xl px-2 py-1 transition hover:bg-slate-100 dark:hover:bg-slate-800"
             title={weather ? `查看天气详情${observationTime ? ` · ${observationTime} 观测` : ''}` : '查看天气详情'}
           >
-            <TriggerIcon size={16} className={`text-sky-500 transition-transform ${loading ? 'animate-spin' : ''}`} />
-            {weather ? (
+            {loading ? (
+              <span role="status">加载中</span>
+            ) : weather ? (
               <>
+                <TriggerIcon size={16} className="text-sky-500" />
                 <span>{condition}</span>
                 <span className="font-semibold text-slate-900 dark:text-white">{weather.observations.temp}℃</span>
               </>
             ) : (
-              <span>{loading ? '查询中' : '暂无数据'}</span>
+              <span>暂无数据</span>
             )}
           </button>
         )}
@@ -453,7 +455,7 @@ export default function TrendingWeather() {
               </>
             ) : (
               <p role="status" className="py-8 text-sm">
-                {loading ? '正在查询天气…' : '暂时没有天气数据'}
+                {loading ? '加载中' : '暂时没有天气数据'}
               </p>
             )}
 
@@ -484,11 +486,11 @@ export default function TrendingWeather() {
                 disabled={loading}
                 aria-label="刷新天气"
                 title={observationTime ? `${observationTime} 观测 · 点击刷新（5 分钟缓存）` : '刷新天气'}
-                className={`flex h-7 w-7 items-center justify-center rounded-xl transition disabled:opacity-50 ${
+                className={`flex h-7 min-w-7 items-center justify-center rounded-xl px-1 transition disabled:opacity-50 ${
                   isDarkSky ? 'text-white hover:bg-white/20' : 'text-slate-700 hover:bg-black/10'
                 }`}
               >
-                <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+                {loading ? <span role="status">加载中</span> : <RefreshCw size={14} />}
               </button>
             </div>
           </div>
