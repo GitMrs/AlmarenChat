@@ -226,11 +226,11 @@
 }
 
 .companion-scene-backdrop--cherry {
-  background-image: url('/companion/backgrounds/cherry_room.png');
+  background-image: url('/companion/backgrounds/cherry_room.webp');
 }
 
 .companion-scene-backdrop--ocean {
-  background-image: url('/companion/backgrounds/ocean_room.png');
+  background-image: url('/companion/backgrounds/ocean_room.webp');
 }
 
 /* 柔和景深微光与微暗角，增强纵深感与前景立绘立体感 */
@@ -748,6 +748,28 @@
 }
 
 /* 伴侣粉色糖果气泡 (对齐 NariYume 界面截图) */
+.companion-chat-voice-retry {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 6px 10px;
+  border: 1px solid currentColor;
+  border-radius: 12px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.companion-chat-voice-notice {
+  display: block;
+  margin-top: 8px;
+  font-size: 12px;
+  opacity: 0.75;
+}
+
 .companion-bubble--companion {
   background: #ffffff;
   border: 2px solid #f472b6;
@@ -1446,7 +1468,7 @@
 
   /* PC 桌面端专属：使用 16:9 横屏定制精修花房实景背景 */
   .companion-scene-backdrop--cherry {
-    background-image: url('/companion/backgrounds/cherry_room_desktop.png');
+    background-image: url('/companion/backgrounds/cherry_room_desktop.webp');
     background-position: center bottom;
   }
 

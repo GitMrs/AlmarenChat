@@ -7,6 +7,7 @@ import { Eye, LayoutGrid, Loader2, MessageCircle, Pause, Play, RotateCcw, SendHo
 import CompanionStage, { type FramingMode, type StageHandle, type StageSnapshot } from './CompanionStage';
 import { companionCharacters, type CompanionCharacter } from '@/lib/companion/catalog';
 import { getRandomTapLine, getRapidTapLine, getRandomStartupLine, getRandomDragLine, type VoiceLine } from '@/lib/companion/voice';
+import { primeChatAudio } from '@/lib/companion/chat-audio';
 
 const quickPrompts = [
   {
@@ -184,6 +185,7 @@ function getRandomIdleMotion(charId: string, currentMotionId: string): string {
 
 function releaseAudio(audio: HTMLAudioElement) {
   audio.onplay = null;
+  audio.onplaying = null;
   audio.onended = null;
   audio.onpause = null;
   audio.onerror = null;
@@ -268,6 +270,7 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
   const [tapBubble, setTapBubble] = useState<{ text: string; id: number; combo?: number } | null>(null);
   const [tapParticles, setTapParticles] = useState<{ id: number; x: number; y: number; symbol: string }[]>([]);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [chatVoiceNotice, setChatVoiceNotice] = useState<{ messageId: string; audioUrl?: string } | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState<boolean>(() => {
     if (typeof window === 'undefined') return true;
@@ -282,6 +285,12 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
 
   const toggleVoice = (enabled: boolean) => {
     setVoiceEnabled(enabled);
+    voiceEnabledRef.current = enabled;
+    if (!enabled) {
+      chatPlaybackRef.current++;
+      setChatVoiceNotice(null);
+      if (chatAudioRef.current && chatAudioRef.current !== currentAudioRef.current) releaseAudio(chatAudioRef.current);
+    }
     if (typeof window !== 'undefined') {
       localStorage.setItem('almaren_companion_voice_enabled', String(enabled));
     }
@@ -289,6 +298,8 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
       releaseAudio(currentAudioRef.current);
       currentAudioRef.current = null;
       isPlayingVoiceRef.current = false;
+      if (tapBubbleTimerRef.current) clearSessionTimeout(tapBubbleTimerRef.current);
+      setTapBubble(null);
       setIsSpeaking(false);
       stage.current?.stopSpeaking();
     }
@@ -303,6 +314,8 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
       releaseAudio(currentAudioRef.current);
       currentAudioRef.current = null;
       isPlayingVoiceRef.current = false;
+      if (tapBubbleTimerRef.current) clearSessionTimeout(tapBubbleTimerRef.current);
+      setTapBubble(null);
       setIsSpeaking(false);
       stage.current?.stopSpeaking();
     }
@@ -315,6 +328,10 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
   const exhaustedUntilRef = useRef<number>(0);
   const expressionResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
+  const chatAudioRef = useRef<HTMLAudioElement | null>(null);
+  const chatPlaybackRef = useRef(0);
+  const voiceEnabledRef = useRef(voiceEnabled);
+  const preparedTapVoicesRef = useRef(new Map<'tap' | 'rapid', { line: VoiceLine; audio: HTMLAudioElement }>());
   const dragStartRef = useRef<{ x: number; y: number } | null>(null);
   const isDraggingGazeRef = useRef(false);
   const lastDragEndRef = useRef(0);
@@ -346,6 +363,27 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
     sessionTimersRef.current.delete(timer);
   };
 
+  const prepareTapVoice = (kind: 'tap' | 'rapid') => {
+    if (!voiceEnabled || !sfxEnabled || preparedTapVoicesRef.current.has(kind)) return;
+    const line = kind === 'tap' ? getRandomTapLine(character.id) : getRapidTapLine(character.id);
+    if (!line.audioUrl) return;
+    const audio = new Audio(line.audioUrl);
+    audio.preload = 'auto';
+    preparedTapVoicesRef.current.set(kind, { line, audio });
+    audio.load();
+  };
+
+  useEffect(() => {
+    if (ready) {
+      prepareTapVoice('tap');
+      prepareTapVoice('rapid');
+    }
+    return () => {
+      preparedTapVoicesRef.current.forEach(({ audio }) => releaseAudio(audio));
+      preparedTapVoicesRef.current.clear();
+    };
+  }, [ready, character.id, voiceEnabled, sfxEnabled]);
+
   useEffect(() => {
     sessionActiveRef.current = true;
     const timers = sessionTimersRef.current;
@@ -359,6 +397,9 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
       const audio = currentAudioRef.current;
       currentAudioRef.current = null;
       if (audio) releaseAudio(audio);
+      if (chatAudioRef.current && chatAudioRef.current !== audio) releaseAudio(chatAudioRef.current);
+      chatAudioRef.current = null;
+      chatPlaybackRef.current++;
       isPlayingVoiceRef.current = false;
     };
   }, []);
@@ -472,9 +513,11 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
 
     // 弹出舞台台词字幕并联动发音（保持独立互动，不污染正常聊天流）
     if (tapBubbleTimerRef.current) clearSessionTimeout(tapBubbleTimerRef.current);
-    setTapBubble({ text: line.text, id: now, combo: options?.combo });
+    setTapBubble(null);
+    const showBubble = () => setTapBubble({ text: line.text, id: now, combo: options?.combo });
 
     if (!voiceEnabled || !sfxEnabled || !line.audioUrl) {
+      showBubble();
       setIsSpeaking(true);
       stage.current?.speak(fallbackDuration);
       if (tapBubbleTimerRef.current) clearSessionTimeout(tapBubbleTimerRef.current);
@@ -489,17 +532,43 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
     if (line.audioUrl) {
       try {
         if (currentAudioRef.current) {
+          chatPlaybackRef.current++;
           releaseAudio(currentAudioRef.current);
         }
-        const audio = new Audio(line.audioUrl);
+        const prepared = [...preparedTapVoicesRef.current.entries()].find(([, entry]) => entry.line === line);
+        const audio = prepared ? prepared[1].audio : new Audio(line.audioUrl);
+        if (prepared) preparedTapVoicesRef.current.delete(prepared[0]);
         currentAudioRef.current = audio;
+        isPlayingVoiceRef.current = true;
+        let failed = false;
+        const loadingTimer = setSessionTimeout(() => fallback(), 10000);
+        const fallback = () => {
+          if (failed || !sessionActiveRef.current || currentAudioRef.current !== audio) return;
+          failed = true;
+          clearSessionTimeout(loadingTimer);
+          releaseAudio(audio);
+          isPlayingVoiceRef.current = false;
+          showBubble();
+          setIsSpeaking(true);
+          stage.current?.speak(fallbackDuration);
+          if (tapBubbleTimerRef.current) clearSessionTimeout(tapBubbleTimerRef.current);
+          tapBubbleTimerRef.current = setSessionTimeout(() => {
+            setTapBubble(null);
+            setIsSpeaking(false);
+            stage.current?.stopSpeaking();
+          }, fallbackDuration);
+        };
 
         // 真实音频驱动口型与播放锁
-        audio.onplay = () => {
+        audio.onplaying = () => {
+          if (!sessionActiveRef.current || currentAudioRef.current !== audio) return;
+          clearSessionTimeout(loadingTimer);
+          showBubble();
           isPlayingVoiceRef.current = true;
           setIsSpeaking(true);
         };
         audio.onended = () => {
+          clearSessionTimeout(loadingTimer);
           isPlayingVoiceRef.current = false;
           setIsSpeaking(false);
           stage.current?.stopSpeaking();
@@ -519,37 +588,17 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
           }, 500);
         };
         audio.onpause = () => {
+          clearSessionTimeout(loadingTimer);
           isPlayingVoiceRef.current = false;
           setIsSpeaking(false);
           stage.current?.stopSpeaking();
         };
-        audio.onerror = () => {
-          isPlayingVoiceRef.current = false;
-          setIsSpeaking(true);
-          stage.current?.speak(fallbackDuration);
-          tapBubbleTimerRef.current = setSessionTimeout(() => {
-            setTapBubble(null);
-            setIsSpeaking(false);
-          }, fallbackDuration);
-        };
-
-        tapBubbleTimerRef.current = setSessionTimeout(() => {
-          setTapBubble(null);
-          setIsSpeaking(false);
-        }, fallbackDuration + 600);
-
-        audio.play().catch(() => {
-          if (!sessionActiveRef.current || currentAudioRef.current !== audio) return;
-          isPlayingVoiceRef.current = false;
-          setIsSpeaking(true);
-          stage.current?.speak(fallbackDuration);
-          tapBubbleTimerRef.current = setSessionTimeout(() => {
-            setTapBubble(null);
-            setIsSpeaking(false);
-          }, fallbackDuration);
-        });
+        audio.onerror = fallback;
+        audio.play().catch(fallback);
+        if (prepared) prepareTapVoice(prepared[0]);
       } catch {
         isPlayingVoiceRef.current = false;
+        showBubble();
         setIsSpeaking(true);
         stage.current?.speak(fallbackDuration);
         tapBubbleTimerRef.current = setSessionTimeout(() => {
@@ -693,7 +742,7 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
       comboCountRef.current = 0;
     } else if (combo >= 3) {
       // 🌟 Level 2: 连点 3~4 次，触发【慌乱/连击专属台词】！
-      line = getRapidTapLine(character.id);
+      line = preparedTapVoicesRef.current.get('rapid')?.line ?? getRapidTapLine(character.id);
       targetExpression = tapExpression;
       if (character.id === 'lafei') {
         const rapidMotion = character.motions.find(m => m.id === 'TapBody_0');
@@ -713,7 +762,7 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
       }
     } else {
       // 🌟 Level 1: 正常单次轻戳日常问候
-      line = getRandomTapLine(character.id);
+      line = preparedTapVoicesRef.current.get('tap')?.line ?? getRandomTapLine(character.id);
       if (character.id === 'lafei') {
         const tapPool = ['TapHead', 'TapBody_0', 'Special_2', 'Idle'];
         const chosen = tapPool[Math.floor(Math.random() * tapPool.length)];
@@ -845,9 +894,61 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
     setPlaying(true);
   };
 
+  const playChatVoice = (audioUrl: string, messageId: string) => {
+    if (!sessionActiveRef.current || !voiceEnabledRef.current) return;
+    const playback = ++chatPlaybackRef.current;
+    const audio = chatAudioRef.current ?? new Audio();
+    chatAudioRef.current = audio;
+    if (currentAudioRef.current) releaseAudio(currentAudioRef.current);
+    currentAudioRef.current = audio;
+    const isCurrent = () => sessionActiveRef.current && voiceEnabledRef.current
+      && chatPlaybackRef.current === playback && currentAudioRef.current === audio;
+    let failed = false;
+    const stopSpeaking = () => {
+      isPlayingVoiceRef.current = false;
+      setIsSpeaking(false);
+      stage.current?.stopSpeaking();
+    };
+    const onFailure = () => {
+      if (failed || !isCurrent()) return;
+      failed = true;
+      releaseAudio(audio);
+      stopSpeaking();
+      setChatVoiceNotice({ messageId, audioUrl });
+    };
+    setChatVoiceNotice(null);
+    isPlayingVoiceRef.current = true;
+    audio.onplaying = () => {
+      if (!isCurrent()) return;
+      isPlayingVoiceRef.current = true;
+      setIsSpeaking(true);
+    };
+    audio.onended = audio.onpause = () => {
+      if (isCurrent()) stopSpeaking();
+    };
+    audio.onerror = onFailure;
+    try {
+      audio.src = audioUrl;
+      audio.load();
+      audio.play().catch(onFailure);
+    } catch {
+      onFailure();
+    }
+  };
+
+  const chatVoiceFeedback = (messageId: string) => chatVoiceNotice?.messageId === messageId && (
+    chatVoiceNotice.audioUrl ? (
+      <button type="button" className="companion-chat-voice-retry" onClick={() => playChatVoice(chatVoiceNotice.audioUrl!, messageId)}>
+        <Volume2 size={14} /> 点击播放语音
+      </button>
+    ) : <small className="companion-chat-voice-notice">本次回复暂时没有语音</small>
+  );
+
   const sendCompanionMessage = async (text: string, preferredMotion?: string) => {
     const trimmed = text.trim();
     if (!trimmed || !usable || isReplying) return;
+    chatPlaybackRef.current++;
+    setChatVoiceNotice(null);
 
     // 清空输入框并收起快捷表情面板
     setMessageText('');
@@ -857,6 +958,17 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
     if (currentAudioRef.current) {
       releaseAudio(currentAudioRef.current);
     }
+    currentAudioRef.current = null;
+    if (voiceEnabledRef.current) {
+      try {
+        const audio = chatAudioRef.current ?? new Audio();
+        chatAudioRef.current = audio;
+        releaseAudio(audio);
+        primeChatAudio(audio);
+      } catch {}
+    }
+    if (tapBubbleTimerRef.current) clearSessionTimeout(tapBubbleTimerRef.current);
+    setTapBubble(null);
     isPlayingVoiceRef.current = false;
     setIsSpeaking(false);
     stage.current?.stopSpeaking();
@@ -936,6 +1048,7 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
       }
 
       const data = await response.json().catch(() => ({}));
+      if (!sessionActiveRef.current || abortController.signal.aborted) return;
 
       const replyText = typeof data.reply === 'string' && data.reply.trim()
         ? data.reply.trim()
@@ -966,68 +1079,12 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
       }
 
       // 声音与口型同步
-      if (voiceEnabled && data.audioDataUrl && typeof data.audioDataUrl === 'string') {
-        try {
-          if (currentAudioRef.current) {
-            releaseAudio(currentAudioRef.current);
-          }
-          const audio = new Audio(data.audioDataUrl);
-          currentAudioRef.current = audio;
-
-          audio.onplay = () => {
-            isPlayingVoiceRef.current = true;
-            setIsSpeaking(true);
-          };
-          audio.onended = () => {
-            isPlayingVoiceRef.current = false;
-            setIsSpeaking(false);
-            stage.current?.stopSpeaking();
-          };
-          audio.onpause = () => {
-            isPlayingVoiceRef.current = false;
-            setIsSpeaking(false);
-            stage.current?.stopSpeaking();
-          };
-          audio.onerror = () => {
-            isPlayingVoiceRef.current = false;
-            const dur = Math.max(1800, replyText.length * 200);
-            stage.current?.speak(dur);
-            setIsSpeaking(true);
-            setSessionTimeout(() => {
-              setIsSpeaking(false);
-              stage.current?.stopSpeaking();
-            }, dur);
-          };
-          audio.play().catch(() => {
-            isPlayingVoiceRef.current = false;
-            const dur = Math.max(1800, replyText.length * 200);
-            stage.current?.speak(dur);
-            setIsSpeaking(true);
-            setSessionTimeout(() => {
-              setIsSpeaking(false);
-              stage.current?.stopSpeaking();
-            }, dur);
-          });
-        } catch {
-          isPlayingVoiceRef.current = false;
-          const dur = Math.max(1800, replyText.length * 200);
-          stage.current?.speak(dur);
-          setIsSpeaking(true);
-          setSessionTimeout(() => {
-            setIsSpeaking(false);
-            stage.current?.stopSpeaking();
-          }, dur);
+      if (voiceEnabledRef.current) {
+        if (typeof data.audioDataUrl === 'string' && data.audioDataUrl) {
+          playChatVoice(data.audioDataUrl, compMsg.id);
+        } else {
+          setChatVoiceNotice({ messageId: compMsg.id });
         }
-      } else {
-        // 未开启语音或无音频：仅执行程序化口型摆动与动作
-        isPlayingVoiceRef.current = false;
-        const dur = Math.max(1800, replyText.length * 200);
-        stage.current?.speak(dur);
-        setIsSpeaking(true);
-        setSessionTimeout(() => {
-          setIsSpeaking(false);
-          stage.current?.stopSpeaking();
-        }, dur);
       }
     } catch (err: any) {
       if (err.name === 'AbortError') return;
@@ -1325,6 +1382,7 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
                     role="status"
                   >
                     <span>{msg.text}</span>
+                    {chatVoiceFeedback(msg.id)}
                   </div>
                 </div>
               ))}
@@ -1485,6 +1543,7 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
                   <div key={msg.id} className={`companion-bubble-row companion-bubble-row--${msg.sender}`}>
                     <div className={`companion-bubble companion-bubble--${msg.sender} ${msg.isSticker ? 'companion-bubble--sticker' : ''}`}>
                       <span>{msg.text}</span>
+                      {chatVoiceFeedback(msg.id)}
                     </div>
                   </div>
                 ))}

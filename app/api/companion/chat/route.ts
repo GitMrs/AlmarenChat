@@ -143,7 +143,7 @@ async function trySynthesizeVoice(text: string, characterId: string): Promise<st
     });
 
     if (!audioBuffer || audioBuffer.length < 500) return null;
-    return `data:audio/mp3;base64,${audioBuffer.toString('base64')}`;
+    return `data:audio/mpeg;base64,${audioBuffer.toString('base64')}`;
   } catch (err) {
     console.warn(`[Companion TTS Warning for ${characterId}]:`, err);
     return null;
