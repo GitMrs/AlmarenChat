@@ -311,57 +311,64 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
     return val !== null ? val === 'true' : true;
   });
 
-  // 移动端软键盘动态避让与防挤压偏移
-  const [keyboardOffset, setKeyboardOffset] = useState(0);
+
+
+  // 移动端视口动态适配（精准兼容 iOS Safari 顶底栏、Chrome、微信 Webview 与软键盘弹起）
+  const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    const updateKeyboardOffset = () => {
-      if (!window.visualViewport) return;
+    const updateViewport = () => {
       const vv = window.visualViewport;
+      // visualViewport 动态反映扣除 iOS Safari 底栏/顶栏以及软键盘后的真实可视高度
+      const height = vv ? vv.height : window.innerHeight;
+      const isInputActive = Boolean(
+        document.activeElement &&
+        (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA')
+      );
+      const keyboardOpen = Boolean(isInputActive && vv && (window.innerHeight - vv.height > 60));
 
-      // 在移动端，vv.height 为软键盘展开后实际可见高度，vv.offsetTop 为潜在视口滚动偏移
-      const diff = Math.max(0, window.innerHeight - (vv.height + vv.offsetTop));
+      setIsKeyboardOpen(keyboardOpen);
+      document.documentElement.style.setProperty('--companion-vh', `${height}px`);
 
-      // 超过 60px 视为软键盘弹起
-      if (diff > 60) {
-        setKeyboardOffset(diff);
-      } else {
-        setKeyboardOffset(0);
+      if (keyboardOpen && window.scrollY !== 0) {
+        window.scrollTo(0, 0);
+        document.body.scrollTop = 0;
       }
     };
+
+    updateViewport();
 
     const vv = window.visualViewport;
     if (vv) {
-      vv.addEventListener('resize', updateKeyboardOffset);
-      vv.addEventListener('scroll', updateKeyboardOffset);
+      vv.addEventListener('resize', updateViewport);
+      vv.addEventListener('scroll', updateViewport);
     }
+    window.addEventListener('resize', updateViewport);
+    window.addEventListener('orientationchange', updateViewport);
 
-    const handleFocus = () => {
-      // 保持页面顶部锚定，防止 iOS Safari 自动把整个 body 向上顶
-      window.scrollTo(0, 0);
-      document.body.scrollTop = 0;
-      setTimeout(updateKeyboardOffset, 150);
-      setTimeout(updateKeyboardOffset, 300);
+    const handleFocusIn = () => {
+      setTimeout(updateViewport, 100);
+      setTimeout(updateViewport, 300);
     };
 
-    const handleBlur = () => {
-      setKeyboardOffset(0);
-      window.scrollTo(0, 0);
-      document.body.scrollTop = 0;
+    const handleFocusOut = () => {
+      setTimeout(updateViewport, 100);
     };
 
-    window.addEventListener('focusin', handleFocus);
-    window.addEventListener('focusout', handleBlur);
+    window.addEventListener('focusin', handleFocusIn);
+    window.addEventListener('focusout', handleFocusOut);
 
     return () => {
       if (vv) {
-        vv.removeEventListener('resize', updateKeyboardOffset);
-        vv.removeEventListener('scroll', updateKeyboardOffset);
+        vv.removeEventListener('resize', updateViewport);
+        vv.removeEventListener('scroll', updateViewport);
       }
-      window.removeEventListener('focusin', handleFocus);
-      window.removeEventListener('focusout', handleBlur);
+      window.removeEventListener('resize', updateViewport);
+      window.removeEventListener('orientationchange', updateViewport);
+      window.removeEventListener('focusin', handleFocusIn);
+      window.removeEventListener('focusout', handleFocusOut);
     };
   }, []);
 
@@ -1261,7 +1268,10 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
         </div>
       </header>
 
-      <div className={`companion-workspace ${panelCollapsed ? 'is-collapsed' : ''}`}>
+      <div
+        className={`companion-workspace ${panelCollapsed ? 'is-collapsed' : ''}`}
+        data-keyboard-open={isKeyboardOpen ? 'true' : 'false'}
+      >
         <section
           className={`companion-scene ${sceneBg !== 'none' ? `has-custom-bg companion-scene--${sceneBg}` : ''}`}
           aria-label="角色预览"
@@ -1454,7 +1464,6 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
             role="log"
             aria-live="polite"
             aria-label="最近对话"
-            style={keyboardOffset > 0 ? { transform: `translateY(-${keyboardOffset}px)` } : undefined}
           >
             <div className="companion-chat-stream" ref={chatStreamRef}>
               {messages.map(msg => (
@@ -1491,12 +1500,7 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
                 onClick={() => setShowStickers(false)}
                 aria-hidden="true"
               />
-              <div
-                className="companion-quick-reactions"
-                role="region"
-                aria-label="快捷互动"
-                style={keyboardOffset > 0 ? { transform: `translateY(-${keyboardOffset}px)` } : undefined}
-              >
+              <div className="companion-quick-reactions" role="region" aria-label="快捷互动">
                 <div className="companion-quick-scroll">
                   {quickPrompts.map(item => (
                   <button
@@ -1516,12 +1520,7 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
           )}
 
           {/* 灵动胶囊底栏 (Candy Dockbar: 表情互动 + 消息输入 + 发送) */}
-          <div
-            className="companion-dockbar"
-            role="toolbar"
-            aria-label="伴侣快捷交互栏"
-            style={keyboardOffset > 0 ? { transform: `translateX(-50%) translateY(-${keyboardOffset}px)` } : undefined}
-          >
+          <div className="companion-dockbar" role="toolbar" aria-label="伴侣快捷交互栏">
             <div className="companion-dock" data-character={character.id}>
               {/* 1. 表情/快捷互动切换按钮 */}
               <button

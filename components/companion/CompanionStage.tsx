@@ -160,6 +160,7 @@ interface StageRuntime {
   mouthOpen: number;
   manualSpeakUntil: number;
   endedFired: boolean;
+  uncompressedHeight?: number;
 }
 
 const resourceJsonCache = new Map<string, any>();
@@ -461,15 +462,6 @@ const KoroStage = forwardRef<StageHandle, StageProps>(function KoroStage(props, 
       const width = Math.max(1, Math.round(canvas.clientWidth * pixelRatio));
       const height = Math.max(1, Math.round(canvas.clientHeight * pixelRatio));
 
-      // 移动端软键盘防挤压保护：输入框获得焦点且仅高度缩小（宽度一致）时，保留原舞台渲染高度，防止角色忽然变小
-      const isInputActive = typeof document !== 'undefined' && document.activeElement && (
-        document.activeElement.tagName === 'INPUT' ||
-        document.activeElement.tagName === 'TEXTAREA'
-      );
-      if (isInputActive && canvas.width > 0 && Math.abs(width - canvas.width) < 6 && height < canvas.height) {
-        return;
-      }
-
       if (canvas.width !== width || canvas.height !== height) {
         canvas.width = width;
         canvas.height = height;
@@ -645,19 +637,39 @@ const KoroStage = forwardRef<StageHandle, StageProps>(function KoroStage(props, 
             state.settlePhysics = false;
           }
           model.update();
-          const aspect = canvas.width / canvas.height;
+
+          const isInputActive = typeof document !== 'undefined' && Boolean(
+            document.activeElement &&
+            (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA')
+          );
+
+          // 记录未被移动端软键盘挤压时的真实完整画布高度
+          if (!isInputActive || !state.uncompressedHeight) {
+            if (!state.uncompressedHeight || canvas.height >= state.uncompressedHeight * 0.85) {
+              state.uncompressedHeight = canvas.height;
+            }
+          }
+
+          const effectiveNormalHeight = Math.max(canvas.height, state.uncompressedHeight || canvas.height);
+          const compressionRatio = Math.max(0.4, Math.min(1, canvas.height / effectiveNormalHeight));
+          const isCompressed = compressionRatio < 0.95;
+
+          // 构图与特写判定使用未挤压的基础高宽比，防止软键盘弹起时角色从近景特写突变/退化为全身远景
+          const layoutAspect = canvas.width / effectiveNormalHeight;
+          const currentAspect = canvas.width / canvas.height;
+
           const modelHeight = bounds.maximumY - bounds.minimumY;
           const modelWidth = bounds.maximumX - bounds.minimumX;
 
           // 构图基准模式与参数调节
           const defaultCenterY = (bounds.maximumY + bounds.minimumY) / 2;
-          const defaultHalfHeight = Math.max(modelHeight / 2, modelWidth / (2 * aspect)) * 1.08;
+          const defaultHalfHeight = Math.max(modelHeight / 2, modelWidth / (2 * layoutAspect)) * 1.08;
 
-          const closeupCenterY = bounds.minimumY + modelHeight * 0.175;
-          const closeupHalfHeight = modelHeight * 0.21;
+          const closeupCenterY = bounds.minimumY + modelHeight * 0.20;
+          const closeupHalfHeight = modelHeight * 0.25;
 
           const halfBodyCenterY = bounds.minimumY + modelHeight * 0.27;
-          const halfBodyHalfHeight = modelHeight * 0.33;
+          const halfBodyHalfHeight = modelHeight * 0.34;
 
           let baseCenterY: number;
           let baseHalfHeight: number;
@@ -673,10 +685,10 @@ const KoroStage = forwardRef<StageHandle, StageProps>(function KoroStage(props, 
             baseCenterY = defaultCenterY;
             baseHalfHeight = defaultHalfHeight;
           } else {
-            // 'auto': PC 端适中居中，移动端自动切为近景大特写
-            const portraitFactor = Math.max(0, Math.min(1, (0.85 - aspect) / 0.35));
-            const portraitHalfHeight = character.id === 'yume' ? modelHeight * 0.25 : closeupHalfHeight;
-            const portraitCenterY = character.id === 'yume' ? bounds.minimumY + modelHeight * 0.2 : closeupCenterY;
+            // 'auto': PC 端适中居中，移动端自动切为舒适半身中景（告别过度突脸与过大问题）
+            const portraitFactor = Math.max(0, Math.min(1, (0.85 - layoutAspect) / 0.35));
+            const portraitHalfHeight = character.id === 'yume' ? modelHeight * 0.35 : halfBodyHalfHeight;
+            const portraitCenterY = character.id === 'yume' ? bounds.minimumY + modelHeight * 0.28 : halfBodyCenterY;
             baseHalfHeight = defaultHalfHeight * (1 - portraitFactor) + portraitHalfHeight * portraitFactor;
             baseCenterY = defaultCenterY * (1 - portraitFactor) + portraitCenterY * portraitFactor;
           }
@@ -684,10 +696,17 @@ const KoroStage = forwardRef<StageHandle, StageProps>(function KoroStage(props, 
           // 用户垂直镜头位置微调 (focusOffsetY: -1.0 ~ +1.0)
           const focusOffset = (settings.focusOffsetY ?? 0) * baseHalfHeight * 0.75;
 
-          const halfHeight = baseHalfHeight / settings.zoom;
-          const halfWidth = halfHeight * aspect;
+          // 核心防缩放算法：利用 compressionRatio 补偿 halfHeight，保证像素级渲染尺度 100% 恒定，键盘挤压绝不缩水
+          const halfHeight = (baseHalfHeight / settings.zoom) * compressionRatio;
+          const halfWidth = halfHeight * currentAspect;
           const centerX = (bounds.maximumX + bounds.minimumX) / 2;
-          const centerY = baseCenterY + focusOffset;
+
+          let centerY = baseCenterY + focusOffset;
+          if (isCompressed) {
+            // 软键盘弹起时焦点平滑保持在面部与眼神区域，保证眼神对视自然留在剩余视口中
+            const faceY = bounds.minimumY + modelHeight * 0.16;
+            centerY = faceY + (baseCenterY - faceY) * compressionRatio + focusOffset;
+          }
 
           projection[0] = 1 / halfWidth;
           projection[5] = -1 / halfHeight;

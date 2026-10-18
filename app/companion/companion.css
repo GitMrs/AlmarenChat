@@ -499,7 +499,7 @@
 /* ==================== 屏幕悬浮 HUD 标签 (Floating Stage HUD) ==================== */
 .companion-floating-hud {
   position: absolute;
-  top: 18px;
+  top: max(16px, env(safe-area-inset-top));
   z-index: 25;
   display: flex;
   flex-direction: column;
@@ -1272,13 +1272,14 @@
   .companion-page {
     padding: 0;
     min-height: 100vh;
-    min-height: 100lvh;
+    min-height: 100dvh;
+    min-height: var(--companion-vh, 100dvh);
     height: 100vh;
-    height: 100lvh;
+    height: 100dvh;
+    height: var(--companion-vh, 100dvh);
     overflow: hidden;
     background: #f7f3ec;
-    position: fixed;
-    inset: 0;
+    position: relative;
     width: 100%;
   }
   .companion-header {
@@ -1287,25 +1288,31 @@
   .companion-workspace {
     width: 100%;
     max-width: 100%;
-    min-height: 100%;
-    height: 100%;
+    min-height: 100vh;
+    min-height: 100dvh;
+    min-height: var(--companion-vh, 100dvh);
+    height: 100vh;
+    height: 100dvh;
+    height: var(--companion-vh, 100dvh);
     display: flex;
     flex-direction: column;
     overflow: hidden;
     position: relative;
   }
   .companion-scene {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    min-height: 100%;
+    height: 100vh;
+    height: 100dvh;
+    height: var(--companion-vh, 100dvh);
     max-height: none;
+    min-height: 100vh;
+    min-height: 100dvh;
+    min-height: var(--companion-vh, 100dvh);
     border-radius: 0;
     border: none;
     box-shadow: none;
     flex-shrink: 0;
     overflow: hidden;
+    position: relative;
   }
   .companion-canvas {
     width: 100%;
@@ -1313,11 +1320,22 @@
     position: absolute;
     inset: 0;
   }
+  .companion-floating-hud {
+    top: max(14px, env(safe-area-inset-top));
+  }
   .companion-dockbar {
+    position: absolute;
     bottom: max(16px, env(safe-area-inset-bottom));
     width: calc(100% - 24px);
     max-width: none;
-    transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 20;
+    pointer-events: none;
+    transition: bottom 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .companion-workspace[data-keyboard-open="true"] .companion-dockbar {
+    bottom: 10px;
   }
   .companion-chat-layer {
     left: 0;
@@ -1326,11 +1344,20 @@
     box-sizing: border-box;
     padding: 0 14px;
     bottom: calc(74px + max(16px, env(safe-area-inset-bottom)));
-    transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: bottom 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .companion-workspace[data-keyboard-open="true"] .companion-chat-layer {
+    bottom: 68px;
   }
   .companion-quick-reactions {
     bottom: calc(max(16px, env(safe-area-inset-bottom)) + 58px);
-    transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: bottom 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .companion-workspace[data-keyboard-open="true"] .companion-quick-reactions {
+    bottom: 58px;
+  }
+  .companion-composer-input {
+    font-size: 16px; /* 防止 iOS Safari 在输入时强制整体页面放大致元素出界 */
   }
 
   /* 移动端与平板端：现代化底部抽屉 (Bottom Sheet Drawer / Modal) */

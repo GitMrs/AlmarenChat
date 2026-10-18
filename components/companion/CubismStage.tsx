@@ -17,6 +17,7 @@ export const CubismStage = forwardRef<StageHandle, StageProps>(function CubismSt
   const speakingTimeRef = useRef<number>(0);
   const manualSpeakUntilRef = useRef<number>(-Infinity);
   const snapshotTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const normalHeightRef = useRef<number>(0);
 
   const [runtimeReady, setRuntimeReady] = useState(false);
 
@@ -222,30 +223,43 @@ export const CubismStage = forwardRef<StageHandle, StageProps>(function CubismSt
       const h = canvas.clientHeight;
       if (w <= 0 || h <= 0) return;
 
-      // 移动端软键盘防挤压保护：输入框激活且仅高度缩小（宽度一致）时不重新计算立绘比例
-      const isInputActive = typeof document !== 'undefined' && document.activeElement && (
-        document.activeElement.tagName === 'INPUT' ||
-        document.activeElement.tagName === 'TEXTAREA'
+      const isInputActive = typeof document !== 'undefined' && Boolean(
+        document.activeElement &&
+        (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA')
       );
-      if (isInputActive && app.renderer.width > 0 && Math.abs(w - app.renderer.width) < 6 && h < app.renderer.height) {
-        return;
+
+      // 记录未被移动端软键盘挤压时的真实完整画布高度
+      if (!isInputActive || normalHeightRef.current === 0) {
+        if (normalHeightRef.current === 0 || h >= normalHeightRef.current * 0.85) {
+          normalHeightRef.current = h;
+        }
       }
 
+      const effectiveNormalHeight = Math.max(h, normalHeightRef.current || h);
+      const isCompressed = h < effectiveNormalHeight * 0.95;
+
+      // 保持渲染器像素大小与 DOM 画布严格 1:1，杜绝形变
       app.renderer.resize(w, h);
 
-      // 计算角色基准比例与居中
+      // 计算角色基准比例：以未挤压的基础高度为缩放基准，键盘弹出时像素尺寸 100% 恒定
       const bh = model.internalModel.originalHeight || (model.height / model.scale.y) || 1200;
-      const aspect = w / h;
-      const isCloseup = framingMode === 'closeup' || (framingMode !== 'half' && framingMode !== 'full' && aspect < 0.65);
-      const targetFraction = isCloseup ? 1.35 : framingMode === 'half' ? 0.95 : 0.82;
-      const baseScale = (h * targetFraction) / bh;
+      const layoutAspect = w / effectiveNormalHeight;
+      const isExplicitCloseup = framingMode === 'closeup';
+      const isMobileAuto = framingMode !== 'closeup' && framingMode !== 'half' && framingMode !== 'full' && layoutAspect < 0.65;
+      const targetFraction = isExplicitCloseup ? 1.22 : (framingMode === 'half' || isMobileAuto) ? 0.96 : 0.82;
+      const baseScale = (effectiveNormalHeight * targetFraction) / bh;
       const finalScale = baseScale * (zoom || 1);
       model.scale.set(finalScale);
 
       model.anchor.set(0.5, 0.5);
-      const offsetY = (focusOffsetY ?? 0) * (h * 0.35);
-      const extraCloseupY = isCloseup ? h * 0.22 : 0;
-      model.position.set(w / 2, h / 2 + offsetY + extraCloseupY);
+      const offsetY = (focusOffsetY ?? 0) * (effectiveNormalHeight * 0.35);
+      const extraShiftY = isExplicitCloseup ? effectiveNormalHeight * 0.18 : isMobileAuto ? effectiveNormalHeight * 0.08 : 0;
+
+      const targetY = isCompressed
+        ? (h / 2 + offsetY * (h / effectiveNormalHeight) + (isExplicitCloseup ? h * 0.15 : h * 0.06))
+        : (h / 2 + offsetY + extraShiftY);
+
+      model.position.set(w / 2, targetY);
     };
 
     updateLayout();
