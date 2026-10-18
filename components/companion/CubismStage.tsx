@@ -222,6 +222,15 @@ export const CubismStage = forwardRef<StageHandle, StageProps>(function CubismSt
       const h = canvas.clientHeight;
       if (w <= 0 || h <= 0) return;
 
+      // 移动端软键盘防挤压保护：输入框激活且仅高度缩小（宽度一致）时不重新计算立绘比例
+      const isInputActive = typeof document !== 'undefined' && document.activeElement && (
+        document.activeElement.tagName === 'INPUT' ||
+        document.activeElement.tagName === 'TEXTAREA'
+      );
+      if (isInputActive && app.renderer.width > 0 && Math.abs(w - app.renderer.width) < 6 && h < app.renderer.height) {
+        return;
+      }
+
       app.renderer.resize(w, h);
 
       // 计算角色基准比例与居中

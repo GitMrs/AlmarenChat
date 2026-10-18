@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import PersonalAssistantProvider from '@/components/assistant/PersonalAssistantProvider';
 import GlobalToastContainer from '@/components/shared/GlobalToastContainer';
@@ -6,6 +6,12 @@ import GlobalToastContainer from '@/components/shared/GlobalToastContainer';
 export const metadata: Metadata = {
   title: 'AlmarenChat - 发现你的 AI 搭档',
   description: '发现、创建并聊天你的专属 AI Agent',
+};
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  interactiveWidget: 'overlays-content',
 };
 
 export default function RootLayout({

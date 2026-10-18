@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Eye, LayoutGrid, Loader2, MessageCircle, Pause, Play, RotateCcw, SendHorizonal, Settings, Sliders, Smile, Sparkles, Trash2, Volume2, VolumeX, X } from 'lucide-react';
+import { Check, ChevronRight, Eye, LayoutGrid, Loader2, MessageCircle, Pause, Play, RotateCcw, SendHorizonal, Settings, Sliders, Smile, Sparkles, Trash2, Volume2, VolumeX, X } from 'lucide-react';
 import CompanionStage, { type FramingMode, type StageHandle, type StageSnapshot } from './CompanionStage';
 import { companionCharacters, type CompanionCharacter } from '@/lib/companion/catalog';
 import { getRandomTapLine, getRapidTapLine, getRandomStartupLine, getRandomDragLine, type VoiceLine } from '@/lib/companion/voice';
@@ -254,7 +254,35 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
   const [focusOffsetY, setFocusOffsetY] = useState(0);
   const [speed, setSpeed] = useState(1);
   const [zoom, setZoom] = useState(1);
-  const [sceneBg, setSceneBg] = useState<'cherry_room' | 'ocean_room' | 'none'>(() => (character.id === 'yume' || character.id === 'lafei') ? 'ocean_room' : 'cherry_room');
+  const [isDebugOverride, setIsDebugOverride] = useState(false);
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('debug') === '1' || params.get('dev') === '1') {
+        setIsDebugOverride(true);
+      }
+    }
+  }, []);
+  const isDev = process.env.NODE_ENV === 'development' || isDebugOverride;
+
+  const [sceneBg, setSceneBg] = useState<'cherry_room' | 'ocean_room' | 'none'>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('almaren_companion_scene_bg');
+      if (saved === 'cherry_room' || saved === 'ocean_room' || saved === 'none') {
+        return saved;
+      }
+    }
+    return (character.id === 'yume' || character.id === 'lafei') ? 'ocean_room' : 'cherry_room';
+  });
+
+  const handleSceneBgChange = (bg: 'cherry_room' | 'ocean_room' | 'none') => {
+    setSceneBg(bg);
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('almaren_companion_scene_bg', bg);
+      } catch {}
+    }
+  };
   const [ready, setReady] = useState(false);
   const [motionLoading, setMotionLoading] = useState(true);
   const [error, setError] = useState('');
@@ -282,6 +310,60 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
     const val = localStorage.getItem('almaren_companion_sfx_enabled');
     return val !== null ? val === 'true' : true;
   });
+
+  // 移动端软键盘动态避让与防挤压偏移
+  const [keyboardOffset, setKeyboardOffset] = useState(0);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const updateKeyboardOffset = () => {
+      if (!window.visualViewport) return;
+      const vv = window.visualViewport;
+
+      // 在移动端，vv.height 为软键盘展开后实际可见高度，vv.offsetTop 为潜在视口滚动偏移
+      const diff = Math.max(0, window.innerHeight - (vv.height + vv.offsetTop));
+
+      // 超过 60px 视为软键盘弹起
+      if (diff > 60) {
+        setKeyboardOffset(diff);
+      } else {
+        setKeyboardOffset(0);
+      }
+    };
+
+    const vv = window.visualViewport;
+    if (vv) {
+      vv.addEventListener('resize', updateKeyboardOffset);
+      vv.addEventListener('scroll', updateKeyboardOffset);
+    }
+
+    const handleFocus = () => {
+      // 保持页面顶部锚定，防止 iOS Safari 自动把整个 body 向上顶
+      window.scrollTo(0, 0);
+      document.body.scrollTop = 0;
+      setTimeout(updateKeyboardOffset, 150);
+      setTimeout(updateKeyboardOffset, 300);
+    };
+
+    const handleBlur = () => {
+      setKeyboardOffset(0);
+      window.scrollTo(0, 0);
+      document.body.scrollTop = 0;
+    };
+
+    window.addEventListener('focusin', handleFocus);
+    window.addEventListener('focusout', handleBlur);
+
+    return () => {
+      if (vv) {
+        vv.removeEventListener('resize', updateKeyboardOffset);
+        vv.removeEventListener('scroll', updateKeyboardOffset);
+      }
+      window.removeEventListener('focusin', handleFocus);
+      window.removeEventListener('focusout', handleBlur);
+    };
+  }, []);
 
   const toggleVoice = (enabled: boolean) => {
     setVoiceEnabled(enabled);
@@ -1203,7 +1285,7 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
               <span className="companion-stage-badge-avatar">{character.name[0]}</span>
               <div className="companion-stage-badge-text">
                 <strong>{character.name}</strong>
-                <span>{character.id === 'nari' ? '森林少女 · 温暖伴侣' : '深海歌姬 · 蔚蓝治愈'}</span>
+                <span>{character.title || '治愈伴侣'}</span>
               </div>
             </div>
             <div className="companion-stage-desktop-actions">
@@ -1211,7 +1293,7 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
                 <button
                   type="button"
                   className={`companion-stage-pill ${sceneBg === 'cherry_room' ? 'is-active' : ''}`}
-                  onClick={() => setSceneBg('cherry_room')}
+                  onClick={() => handleSceneBgChange('cherry_room')}
                   title="浪漫花房"
                 >
                   🌸 花房
@@ -1219,7 +1301,7 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
                 <button
                   type="button"
                   className={`companion-stage-pill ${sceneBg === 'ocean_room' ? 'is-active' : ''}`}
-                  onClick={() => setSceneBg('ocean_room')}
+                  onClick={() => handleSceneBgChange('ocean_room')}
                   title="蔚蓝海景"
                 >
                   🌊 海景
@@ -1227,7 +1309,7 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
                 <button
                   type="button"
                   className={`companion-stage-pill ${sceneBg === 'none' ? 'is-active' : ''}`}
-                  onClick={() => setSceneBg('none')}
+                  onClick={() => handleSceneBgChange('none')}
                   title="极简纯色"
                 >
                   🎨 极简
@@ -1296,15 +1378,17 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
             >
               <Settings size={16} />
             </button>
-            <button
-              type="button"
-              className="companion-stage-chip companion-stage-chip--icon companion-stage-chip--sub"
-              onClick={() => setPanelCollapsed(false)}
-              title="打开伴侣动作与视角调节抽屉"
-              aria-label="打开伴侣动作与视角调节抽屉"
-            >
-              <LayoutGrid size={16} />
-            </button>
+            {isDev && (
+              <button
+                type="button"
+                className="companion-stage-chip companion-stage-chip--icon companion-stage-chip--sub"
+                onClick={() => setPanelCollapsed(false)}
+                title="打开伴侣动作与视角调节抽屉（开发者）"
+                aria-label="打开伴侣动作与视角调节抽屉"
+              >
+                <LayoutGrid size={16} />
+              </button>
+            )}
           </div>
 
           <div className="companion-floor" aria-hidden="true" />
@@ -1370,6 +1454,7 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
             role="log"
             aria-live="polite"
             aria-label="最近对话"
+            style={keyboardOffset > 0 ? { transform: `translateY(-${keyboardOffset}px)` } : undefined}
           >
             <div className="companion-chat-stream" ref={chatStreamRef}>
               {messages.map(msg => (
@@ -1406,7 +1491,12 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
                 onClick={() => setShowStickers(false)}
                 aria-hidden="true"
               />
-              <div className="companion-quick-reactions" role="region" aria-label="快捷互动">
+              <div
+                className="companion-quick-reactions"
+                role="region"
+                aria-label="快捷互动"
+                style={keyboardOffset > 0 ? { transform: `translateY(-${keyboardOffset}px)` } : undefined}
+              >
                 <div className="companion-quick-scroll">
                   {quickPrompts.map(item => (
                   <button
@@ -1426,7 +1516,12 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
           )}
 
           {/* 灵动胶囊底栏 (Candy Dockbar: 表情互动 + 消息输入 + 发送) */}
-          <div className="companion-dockbar" role="toolbar" aria-label="伴侣快捷交互栏">
+          <div
+            className="companion-dockbar"
+            role="toolbar"
+            aria-label="伴侣快捷交互栏"
+            style={keyboardOffset > 0 ? { transform: `translateX(-50%) translateY(-${keyboardOffset}px)` } : undefined}
+          >
             <div className="companion-dock" data-character={character.id}>
               {/* 1. 表情/快捷互动切换按钮 */}
               <button
@@ -1493,33 +1588,35 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
             </div>
           </div>
 
-          {/* 2. 交互 Tab 选项卡 (💬 对话陪伴 vs 🎭 动作姿态) */}
-          <div className="companion-console-tabs" role="tablist">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={desktopTab === 'chat'}
-              className={`companion-console-tab ${desktopTab === 'chat' ? 'is-active' : ''}`}
-              onClick={() => setDesktopTab('chat')}
-            >
-              <MessageCircle size={15} />
-              <span>交流对话</span>
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={desktopTab === 'motion'}
-              className={`companion-console-tab ${desktopTab === 'motion' ? 'is-active' : ''}`}
-              onClick={() => setDesktopTab('motion')}
-            >
-              <Sparkles size={15} />
-              <span>动作与表情</span>
-              <span className="companion-console-tab-badge">{character.motions.length}</span>
-            </button>
-          </div>
+          {/* 2. 交互 Tab 选项卡 (仅在开发模式显示，生产打包模式默认专属对话陪伴舱) */}
+          {isDev && (
+            <div className="companion-console-tabs" role="tablist">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={desktopTab === 'chat'}
+                className={`companion-console-tab ${desktopTab === 'chat' ? 'is-active' : ''}`}
+                onClick={() => setDesktopTab('chat')}
+              >
+                <MessageCircle size={15} />
+                <span>交流对话</span>
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={desktopTab === 'motion'}
+                className={`companion-console-tab ${desktopTab === 'motion' ? 'is-active' : ''}`}
+                onClick={() => setDesktopTab('motion')}
+              >
+                <Sparkles size={15} />
+                <span>动作与表情</span>
+                <span className="companion-console-tab-badge">{character.motions.length}</span>
+              </button>
+            </div>
+          )}
 
-          {/* 3. Tab 内容区 */}
-          {desktopTab === 'chat' ? (
+          {/* 3. Tab 内容区 (打包模式下纯净沉浸式对话陪伴) */}
+          {(!isDev || desktopTab === 'chat') ? (
             <div className="companion-desktop-chat-pane">
               {/* 本地存储与清空工具栏 */}
               <div className="companion-desktop-chat-toolbar">
@@ -1722,8 +1819,8 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
           )}
         </aside>
 
-        {/* 抽屉毛玻璃遮罩 (Drawer Backdrop) */}
-        {!panelCollapsed && (
+        {/* 抽屉毛玻璃遮罩 (Drawer Backdrop) - 仅在开发调试模式启用 */}
+        {isDev && !panelCollapsed && (
           <div
             className="companion-drawer-backdrop"
             onClick={() => setPanelCollapsed(true)}
@@ -1731,12 +1828,13 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
           />
         )}
 
-        <aside
-          id="companion-controls-section"
-          className={`companion-controls companion-drawer ${panelCollapsed ? '' : 'is-open'}`}
-          aria-label="伴侣控制台"
-        >
-          <div className="companion-drawer-drag-bar" aria-hidden="true" />
+        {isDev && (
+          <aside
+            id="companion-controls-section"
+            className={`companion-controls companion-drawer ${panelCollapsed ? '' : 'is-open'}`}
+            aria-label="伴侣控制台"
+          >
+            <div className="companion-drawer-drag-bar" aria-hidden="true" />
           <div className="companion-drawer-header">
             <div className="companion-drawer-title">
               <span className="companion-avatar">{character.name[0]}</span>
@@ -1918,6 +2016,7 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
 
           <div className="companion-preview-note"><span>角色与动作预览</span><p>心动日常，温暖相伴。随时畅聊倾诉。</p><small>{ready ? `${snapshot.meshes} 个网格 · ${snapshot.fps || '—'} FPS · 本地存储已启用` : '本地资源加载中'}</small></div>
         </aside>
+        )}
 
         {/* 角色切换选择器弹窗 (适用于移动端与桌面端) */}
         {charMenuOpen && (
@@ -1983,7 +2082,7 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
                   <span className="companion-settings-icon-badge"><Settings size={18} /></span>
                   <div>
                     <h4 id="companion-settings-title">伴侣偏好设置</h4>
-                    <p className="companion-settings-subtitle">个性化您的陪伴体验与本地数据偏好</p>
+                    <p className="companion-settings-subtitle">个性化您的陪伴空间与交互体验</p>
                   </div>
                 </div>
                 <button
@@ -1997,9 +2096,77 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
               </div>
 
               <div className="companion-settings-body">
-                {/* 1. 声音与朗读设置 */}
+                {/* 1. 陪伴空间场景 */}
                 <div className="companion-settings-group">
-                  <h5 className="companion-settings-group-title">声音与语音</h5>
+                  <div className="companion-settings-group-header">
+                    <h5 className="companion-settings-group-title">陪伴空间场景</h5>
+                    <span className="companion-settings-group-tag">切换房间氛围</span>
+                  </div>
+                  <div className="companion-settings-scene-grid">
+                    <button
+                      type="button"
+                      className={`companion-settings-scene-card ${sceneBg === 'cherry_room' ? 'is-selected' : ''}`}
+                      onClick={() => handleSceneBgChange('cherry_room')}
+                      title="阳光花房"
+                    >
+                      <div className="companion-settings-scene-preview companion-settings-scene-preview--cherry">
+                        {sceneBg === 'cherry_room' && (
+                          <span className="companion-settings-scene-check">
+                            <Check size={12} strokeWidth={3} />
+                          </span>
+                        )}
+                      </div>
+                      <div className="companion-settings-scene-meta">
+                        <strong>🌸 阳光花房</strong>
+                        <span>春日浪漫花房</span>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      className={`companion-settings-scene-card ${sceneBg === 'ocean_room' ? 'is-selected' : ''}`}
+                      onClick={() => handleSceneBgChange('ocean_room')}
+                      title="蔚蓝海景"
+                    >
+                      <div className="companion-settings-scene-preview companion-settings-scene-preview--ocean">
+                        {sceneBg === 'ocean_room' && (
+                          <span className="companion-settings-scene-check">
+                            <Check size={12} strokeWidth={3} />
+                          </span>
+                        )}
+                      </div>
+                      <div className="companion-settings-scene-meta">
+                        <strong>🌊 蔚蓝海景</strong>
+                        <span>清爽海滨露台</span>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      className={`companion-settings-scene-card ${sceneBg === 'none' ? 'is-selected' : ''}`}
+                      onClick={() => handleSceneBgChange('none')}
+                      title="极简纯色"
+                    >
+                      <div className="companion-settings-scene-preview companion-settings-scene-preview--none">
+                        {sceneBg === 'none' && (
+                          <span className="companion-settings-scene-check">
+                            <Check size={12} strokeWidth={3} />
+                          </span>
+                        )}
+                      </div>
+                      <div className="companion-settings-scene-meta">
+                        <strong>🎨 极简纯色</strong>
+                        <span>纯净专注呼吸</span>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+
+                {/* 2. 声音与语音 */}
+                <div className="companion-settings-group">
+                  <div className="companion-settings-group-header">
+                    <h5 className="companion-settings-group-title">声音与语音</h5>
+                  </div>
 
                   <div className="companion-setting-row">
                     <div className="companion-setting-info">
@@ -2010,7 +2177,7 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
                         </span>
                       </div>
                       <p className="companion-setting-desc">
-                        开启后，全部伴侣角色回复时由专属 AI 配音朗读；关闭时全体角色全局静音，仅保留文字气泡与轻柔口型，免去 TTS 等待并节省流量。
+                        开启后角色回复时由专属 AI 语音轻声朗诵；关闭时保留文字气泡并节省流量。
                       </p>
                     </div>
                     <button
@@ -2034,7 +2201,7 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
                         </span>
                       </div>
                       <p className="companion-setting-desc">
-                        控制全部伴侣角色在点击触摸或拖拽时的互动音效与娇嗔语音反馈。
+                        触摸、点击或拖拽伴侣时的动作音效与轻柔娇嗔语音反馈。
                       </p>
                     </div>
                     <button
@@ -2050,140 +2217,70 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
                   </div>
                 </div>
 
-                {/* 2. 拟真动效与交互表现 */}
+                {/* 3. 对话数据管理 */}
                 <div className="companion-settings-group">
-                  <h5 className="companion-settings-group-title">拟真表现与交互</h5>
-
-                  <div className="companion-setting-row">
-                    <div className="companion-setting-info">
+                  <div className="companion-settings-group-header">
+                    <h5 className="companion-settings-group-title">对话数据管理</h5>
+                  </div>
+                  <div className="companion-setting-storage-row">
+                    <div className="companion-setting-storage-info">
                       <div className="companion-setting-label-wrap">
-                        <span className="companion-setting-label">目光与视线跟随</span>
-                        <span className={`companion-setting-badge ${lookAt ? 'is-active' : 'is-muted'}`}>
-                          {lookAt ? '开启' : '关闭'}
+                        <span className="companion-setting-label">本地对话缓存</span>
+                        <span className="companion-setting-badge is-active">
+                          {messages.length} 条已存
                         </span>
                       </div>
                       <p className="companion-setting-desc">
-                        伴侣眼神与头部自然跟随光标或触控点移动。
+                        当前与 {character.name} 的记录仅保存在本地设备，不上传云端，充分保护个人隐私。
                       </p>
                     </div>
                     <button
                       type="button"
-                      className={`companion-switch ${lookAt ? 'is-on' : ''}`}
-                      onClick={() => setLookAt(v => !v)}
-                      role="switch"
-                      aria-checked={lookAt}
-                      aria-label="切换视线跟随"
+                      className="companion-setting-clean-btn"
+                      onClick={handleClearHistory}
+                      title="清空当前角色记录"
                     >
-                      <span className="companion-switch-thumb" />
+                      <Trash2 size={13} />
+                      <span>清空记录</span>
                     </button>
                   </div>
-
-                  <div className="companion-setting-row">
-                    <div className="companion-setting-info">
-                      <div className="companion-setting-label-wrap">
-                        <span className="companion-setting-label">待机微动作巡航</span>
-                        <span className={`companion-setting-badge ${autoIdle ? 'is-active' : 'is-muted'}`}>
-                          {autoIdle ? '开启' : '关闭'}
-                        </span>
-                      </div>
-                      <p className="companion-setting-desc">
-                        空闲无交互时自动切换呼吸与自然待机微动作，保持生动感。
-                      </p>
-                    </div>
+                  <div className="companion-settings-sub-action">
                     <button
                       type="button"
-                      className={`companion-switch ${autoIdle ? 'is-on' : ''}`}
-                      onClick={() => setAutoIdle(v => !v)}
-                      role="switch"
-                      aria-checked={autoIdle}
-                      aria-label="切换待机微动作巡航"
+                      className="companion-settings-sublink"
+                      onClick={() => {
+                        if (typeof window !== 'undefined') {
+                          const ok = window.confirm('确定要清空全部角色的本地对话记录吗？清空后无法找回。');
+                          if (!ok) return;
+                          try {
+                            companionCharacters.forEach(c => {
+                              localStorage.removeItem(`${COMPANION_STORAGE_PREFIX}${c.id}`);
+                            });
+                          } catch {}
+                          setMessages(getDefaultMessages(character.id));
+                        }
+                      }}
                     >
-                      <span className="companion-switch-thumb" />
+                      清空全部角色本地记录
                     </button>
-                  </div>
-
-                  <div className="companion-setting-row">
-                    <div className="companion-setting-info">
-                      <div className="companion-setting-label-wrap">
-                        <span className="companion-setting-label">自然自主眨眼</span>
-                        <span className={`companion-setting-badge ${autoBlink ? 'is-active' : 'is-muted'}`}>
-                          {autoBlink ? '开启' : '关闭'}
-                        </span>
-                      </div>
-                      <p className="companion-setting-desc">
-                        伴侣双眼周期性自然眨动。
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      className={`companion-switch ${autoBlink ? 'is-on' : ''}`}
-                      onClick={() => setAutoBlink(v => !v)}
-                      role="switch"
-                      aria-checked={autoBlink}
-                      aria-label="切换自然自主眨眼"
-                    >
-                      <span className="companion-switch-thumb" />
-                    </button>
-                  </div>
-                </div>
-
-                {/* 3. 存储与隐私（本地缓存） */}
-                <div className="companion-settings-group">
-                  <h5 className="companion-settings-group-title">数据存储与隐私</h5>
-                  <div className="companion-setting-storage-card">
-                    <div className="companion-setting-storage-header">
-                      <strong>浏览器本地缓存 (localStorage)</strong>
-                      <p>
-                        当前角色 ({character.name}) 记录：共 {messages.length} 条。所有聊天数据仅保存在当前浏览器的本地存储中，断网可用，不会上报服务器，充分保护个人隐私。
-                      </p>
-                    </div>
-                    <div className="companion-setting-storage-actions">
-                      <button
-                        type="button"
-                        className="companion-setting-danger-btn"
-                        onClick={handleClearHistory}
-                      >
-                        <Trash2 size={14} />
-                        <span>清空当前伴侣本地记录</span>
-                      </button>
-                      <button
-                        type="button"
-                        className="companion-setting-secondary-btn"
-                        onClick={() => {
-                          if (typeof window !== 'undefined') {
-                            const ok = window.confirm('确定要清空全部角色的本地对话记录吗？清空后无法找回。');
-                            if (!ok) return;
-                            try {
-                              companionCharacters.forEach(c => {
-                                localStorage.removeItem(`${COMPANION_STORAGE_PREFIX}${c.id}`);
-                              });
-                            } catch {}
-                            setMessages(getDefaultMessages(character.id));
-                          }
-                        }}
-                      >
-                        <span>清空全部角色本地记录</span>
-                      </button>
-                    </div>
                   </div>
                 </div>
 
                 {/* 4. 模型与系统配置 */}
-                <div className="companion-settings-group">
-                  <h5 className="companion-settings-group-title">模型与系统配置</h5>
-                  <div className="companion-setting-link-card">
-                    <div className="companion-setting-link-text">
-                      <strong>大模型与 API 配置</strong>
-                      <p>伴侣对话直接使用您在系统设置中保存的专属 LLM API Key、端点及模型类型。</p>
+                <div className="companion-settings-footer-card">
+                  <Link
+                    href="/settings"
+                    className="companion-settings-footer-link"
+                    onClick={() => setSettingsOpen(false)}
+                  >
+                    <div className="companion-settings-footer-info">
+                      <strong>系统大模型与 API 配置</strong>
+                      <span>伴侣回复直接使用您在全局设置保存的专属模型与密钥</span>
                     </div>
-                    <Link
-                      href="/settings"
-                      className="companion-setting-link-btn"
-                      onClick={() => setSettingsOpen(false)}
-                    >
-                      前往配置
-                    </Link>
-                  </div>
+                    <span className="companion-settings-footer-arrow">
+                      <ChevronRight size={16} />
+                    </span>
+                  </Link>
                 </div>
               </div>
             </div>

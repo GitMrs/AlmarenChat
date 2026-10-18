@@ -460,6 +460,16 @@ const KoroStage = forwardRef<StageHandle, StageProps>(function KoroStage(props, 
       const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
       const width = Math.max(1, Math.round(canvas.clientWidth * pixelRatio));
       const height = Math.max(1, Math.round(canvas.clientHeight * pixelRatio));
+
+      // 移动端软键盘防挤压保护：输入框获得焦点且仅高度缩小（宽度一致）时，保留原舞台渲染高度，防止角色忽然变小
+      const isInputActive = typeof document !== 'undefined' && document.activeElement && (
+        document.activeElement.tagName === 'INPUT' ||
+        document.activeElement.tagName === 'TEXTAREA'
+      );
+      if (isInputActive && canvas.width > 0 && Math.abs(width - canvas.width) < 6 && height < canvas.height) {
+        return;
+      }
+
       if (canvas.width !== width || canvas.height !== height) {
         canvas.width = width;
         canvas.height = height;
