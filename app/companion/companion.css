@@ -1347,11 +1347,11 @@
     transition: bottom 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   }
   .companion-workspace[data-keyboard-open="true"] .companion-chat-layer {
-    bottom: 58px;
+    bottom: 68px;
     padding: 0 10px;
   }
   .companion-workspace[data-keyboard-open="true"] .companion-chat-stream {
-    max-height: 88px; /* 软键盘开启时自动压缩气泡视窗，仅保留最近1~2条对话，彻底让出面部视野 */
+    max-height: 160px; /* 软键盘开启时自动压缩气泡视窗，仅保留最近1~2条对话，彻底让出面部视野 */
     padding-top: 4px;
     -webkit-mask-image: linear-gradient(
       to bottom,
