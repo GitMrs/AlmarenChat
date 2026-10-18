@@ -1347,7 +1347,32 @@
     transition: bottom 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   }
   .companion-workspace[data-keyboard-open="true"] .companion-chat-layer {
-    bottom: 68px;
+    bottom: 58px;
+    padding: 0 10px;
+  }
+  .companion-workspace[data-keyboard-open="true"] .companion-chat-stream {
+    max-height: 88px; /* 软键盘开启时自动压缩气泡视窗，仅保留最近1~2条对话，彻底让出面部视野 */
+    padding-top: 4px;
+    -webkit-mask-image: linear-gradient(
+      to bottom,
+      transparent 0%,
+      rgba(0, 0, 0, 0.4) 6px,
+      #000000 16px,
+      #000000 100%
+    );
+    mask-image: linear-gradient(
+      to bottom,
+      transparent 0%,
+      rgba(0, 0, 0, 0.4) 6px,
+      #000000 16px,
+      #000000 100%
+    );
+  }
+  .companion-workspace[data-keyboard-open="true"] .companion-bubble {
+    font-size: 12px;
+    padding: 6px 10px;
+    border-radius: 14px;
+    box-shadow: 0 3px 10px rgba(60, 30, 20, 0.08);
   }
   .companion-quick-reactions {
     bottom: calc(max(16px, env(safe-area-inset-bottom)) + 58px);

@@ -332,9 +332,14 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
       setIsKeyboardOpen(keyboardOpen);
       document.documentElement.style.setProperty('--companion-vh', `${height}px`);
 
-      if (keyboardOpen && window.scrollY !== 0) {
-        window.scrollTo(0, 0);
-        document.body.scrollTop = 0;
+      if (keyboardOpen) {
+        setTimeout(() => {
+          chatStreamRef.current?.scrollTo({ top: chatStreamRef.current.scrollHeight, behavior: 'smooth' });
+        }, 80);
+        if (window.scrollY !== 0) {
+          window.scrollTo(0, 0);
+          document.body.scrollTop = 0;
+        }
       }
     };
 
@@ -427,7 +432,8 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
   const dragStartTimeRef = useRef(0);
   const dragDistanceRef = useRef(0);
   const lastDragVoiceTimeRef = useRef(0);
-  const hasTriggeredStartupRef = useRef(false);
+  const pendingStartupLineRef = useRef<{ line: VoiceLine; options?: any } | null>(null);
+  const lastStartupCharIdRef = useRef<string | null>(null);
   const isTransitioningMotionRef = useRef(false);
   const chatAbortControllerRef = useRef<AbortController | null>(null);
   const sessionActiveRef = useRef(true);
@@ -581,6 +587,7 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
       targetExpression?: string;
       combo?: number;
       isTap?: boolean;
+      isStartup?: boolean;
     }
   ) => {
     const now = Date.now();
@@ -683,7 +690,17 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
           stage.current?.stopSpeaking();
         };
         audio.onerror = fallback;
-        audio.play().catch(fallback);
+        audio.play().then(() => {
+          if (options?.isStartup) {
+            pendingStartupLineRef.current = null;
+          }
+        }).catch(() => {
+          if (options?.isStartup) {
+            // 浏览器因自动播放策略拦截出声，保留待用户首次触摸屏幕时立即触发
+            pendingStartupLineRef.current = { line, options };
+          }
+          fallback();
+        });
         if (prepared) prepareTapVoice(prepared[0]);
       } catch {
         isPlayingVoiceRef.current = false;
@@ -738,7 +755,7 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
       targetExpression = '微笑';
     }
 
-    playVoice(line, { targetMotionId, targetExpression });
+    playVoice(line, { targetMotionId, targetExpression, isStartup: true });
   };
 
   // 播放拖拽反应趣味语音
@@ -778,17 +795,38 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
     playVoice(line, { targetMotionId, targetExpression });
   };
 
-  // 角色模型准备就绪后，播放亲切的进场日常问候
+  // 角色模型准备就绪后，播放亲切的进场日常问候（支持切换伴侣时重新触发）
   useEffect(() => {
-    if (!ready || hasTriggeredStartupRef.current) return;
-    hasTriggeredStartupRef.current = true;
+    if (!ready || lastStartupCharIdRef.current === character.id) return;
+    lastStartupCharIdRef.current = character.id;
 
     const timer = setSessionTimeout(() => {
       playStartupVoice();
-    }, 550);
+    }, 450);
 
     return () => clearSessionTimeout(timer);
   }, [ready, character.id]);
+
+  // 监听用户首次触摸/点击屏幕（解锁浏览器针对刷新页面的自动发声限制，立即补播入场欢迎语音）
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleFirstUserInteraction = () => {
+      if (pendingStartupLineRef.current) {
+        const pending = pendingStartupLineRef.current;
+        pendingStartupLineRef.current = null;
+        playVoice(pending.line, pending.options);
+      }
+    };
+
+    window.addEventListener('pointerdown', handleFirstUserInteraction, { capture: true, passive: true });
+    window.addEventListener('keydown', handleFirstUserInteraction, { capture: true, passive: true });
+
+    return () => {
+      window.removeEventListener('pointerdown', handleFirstUserInteraction, { capture: true });
+      window.removeEventListener('keydown', handleFirstUserInteraction, { capture: true });
+    };
+  }, []);
 
   // 播放触碰反馈语音（支持日常问候、急促连击台词、求饶三种档位）
   const playTapVoice = (combo: number) => {
