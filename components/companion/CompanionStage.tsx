@@ -665,8 +665,10 @@ const KoroStage = forwardRef<StageHandle, StageProps>(function KoroStage(props, 
           } else {
             // 'auto': PC 端适中居中，移动端自动切为近景大特写
             const portraitFactor = Math.max(0, Math.min(1, (0.85 - aspect) / 0.35));
-            baseHalfHeight = defaultHalfHeight * (1 - portraitFactor) + closeupHalfHeight * portraitFactor;
-            baseCenterY = defaultCenterY * (1 - portraitFactor) + closeupCenterY * portraitFactor;
+            const portraitHalfHeight = character.id === 'yume' ? modelHeight * 0.25 : closeupHalfHeight;
+            const portraitCenterY = character.id === 'yume' ? bounds.minimumY + modelHeight * 0.2 : closeupCenterY;
+            baseHalfHeight = defaultHalfHeight * (1 - portraitFactor) + portraitHalfHeight * portraitFactor;
+            baseCenterY = defaultCenterY * (1 - portraitFactor) + portraitCenterY * portraitFactor;
           }
 
           // 用户垂直镜头位置微调 (focusOffsetY: -1.0 ~ +1.0)
