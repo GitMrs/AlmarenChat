@@ -1,0 +1,236 @@
+[
+  {
+    "id": "ios:TapFXReactions:nariTap:0",
+    "text": "哦，你好呀",
+    "file": "/companion/audio/voice/nari/tap_01.mp3",
+    "seconds": 1.425
+  },
+  {
+    "id": "ios:TapFXReactions:nariTap:1",
+    "text": "被你抓到啦",
+    "file": "/companion/audio/voice/nari/tap_02.mp3",
+    "seconds": 1.025
+  },
+  {
+    "id": "ios:TapFXReactions:nariTap:2",
+    "text": "好痒呀，哈哈",
+    "file": "/companion/audio/voice/nari/tap_03.mp3",
+    "seconds": 1.65
+  },
+  {
+    "id": "ios:TapFXReactions:nariTap:3",
+    "text": "刚才那是什么",
+    "file": "/companion/audio/voice/nari/tap_04.mp3",
+    "seconds": 1.425
+  },
+  {
+    "id": "ios:TapFXReactions:nariTap:4",
+    "text": "喂，小心点哦",
+    "file": "/companion/audio/voice/nari/tap_05.mp3",
+    "seconds": 1.575
+  },
+  {
+    "id": "ios:TapFXReactions:nariTap:5",
+    "text": "哎呀，你好呀",
+    "file": "/companion/audio/voice/nari/tap_06.mp3",
+    "seconds": 1.7
+  },
+  {
+    "id": "ios:TapFXReactions:nariTap:6",
+    "text": "我感觉到了",
+    "file": "/companion/audio/voice/nari/tap_07.mp3",
+    "seconds": 1.275
+  },
+  {
+    "id": "ios:TapFXReactions:nariTap:7",
+    "text": "你怎么啦",
+    "file": "/companion/audio/voice/nari/tap_08.mp3",
+    "seconds": 0.95
+  },
+  {
+    "id": "ios:TapFXReactions:nariTap:8",
+    "text": "好啦好啦，手下留情嘛~",
+    "file": "/companion/audio/voice/nari/tap_09.mp3",
+    "seconds": 2.2
+  },
+  {
+    "id": "ios:TapFXReactions:nariTap:9",
+    "text": "见到你真好",
+    "file": "/companion/audio/voice/nari/tap_10.mp3",
+    "seconds": 1.35
+  },
+  {
+    "id": "ios:TapFXReactions:nariTap:10",
+    "text": "又见面啦",
+    "file": "/companion/audio/voice/nari/tap_11.mp3",
+    "seconds": 1
+  },
+  {
+    "id": "ios:TapFXReactions:nariTap:11",
+    "text": "我就在这儿呢",
+    "file": "/companion/audio/voice/nari/tap_12.mp3",
+    "seconds": 1.175
+  },
+  {
+    "id": "ios:TapFXReactions:nariTap:12",
+    "text": "嗯，你好呀",
+    "file": "/companion/audio/voice/nari/tap_13.mp3",
+    "seconds": 1.45
+  },
+  {
+    "id": "ios:TapFXReactions:nariTap:13",
+    "text": "刚才好可爱",
+    "file": "/companion/audio/voice/nari/tap_14.mp3",
+    "seconds": 1.35
+  },
+  {
+    "id": "ios:TapFXReactions:nariTap:14",
+    "text": "需要什么吗",
+    "file": "/companion/audio/voice/nari/tap_15.mp3",
+    "seconds": 1.05
+  },
+  {
+    "id": "ios:TapFXReactions:nariTap:15",
+    "text": "嘿，是你呀",
+    "file": "/companion/audio/voice/nari/tap_16.mp3",
+    "seconds": 1.125
+  },
+  {
+    "id": "ios:TapFXReactions:nariTap:16",
+    "text": "原来你在这儿",
+    "file": "/companion/audio/voice/nari/tap_17.mp3",
+    "seconds": 1.275
+  },
+  {
+    "id": "ios:TapFXReactions:nariTap:17",
+    "text": "哦，是你啊",
+    "file": "/companion/audio/voice/nari/tap_18.mp3",
+    "seconds": 1.375
+  },
+  {
+    "id": "ios:TapFXReactions:nariTap:18",
+    "text": "总是让我猝不及防",
+    "file": "/companion/audio/voice/nari/tap_19.mp3",
+    "seconds": 1.725
+  },
+  {
+    "id": "ios:TapFXReactions:nariTap:19",
+    "text": "你心情不错嘛",
+    "file": "/companion/audio/voice/nari/tap_20.mp3",
+    "seconds": 1.275
+  },
+  {
+    "id": "ios:TapFXReactions:nariTap:20",
+    "text": "嗯，你好呀",
+    "file": "/companion/audio/voice/nari/tap_21.mp3",
+    "seconds": 1.45
+  },
+  {
+    "id": "ios:TapFXReactions:nariTap:21",
+    "text": "好啦，我看到你了",
+    "file": "/companion/audio/voice/nari/tap_22.mp3",
+    "seconds": 1.9
+  },
+  {
+    "id": "ios:TapFXReactions:nariTap:22",
+    "text": "是来看我的吗",
+    "file": "/companion/audio/voice/nari/tap_23.mp3",
+    "seconds": 1.2
+  },
+  {
+    "id": "ios:TapFXReactions:nariTap:23",
+    "text": "我还以为你把我忘了呢",
+    "file": "/companion/audio/voice/nari/tap_24.mp3",
+    "seconds": 1.8
+  },
+  {
+    "id": "ios:TapFXReactions:nariTap:24",
+    "text": "哎呀，你好呀",
+    "file": "/companion/audio/voice/nari/tap_25.mp3",
+    "seconds": 1.7
+  },
+  {
+    "id": "ios:TapFXReactions:nariTap:25",
+    "text": "哟，看看是谁来了",
+    "file": "/companion/audio/voice/nari/tap_26.mp3",
+    "seconds": 1.875
+  },
+  {
+    "id": "ios:TapFXReactions:nariTap:26",
+    "text": "见到你好开心",
+    "file": "/companion/audio/voice/nari/tap_27.mp3",
+    "seconds": 1.475
+  },
+  {
+    "id": "ios:TapFXReactions:nariTap:27",
+    "text": "好啦，你成功引起我的注意了",
+    "file": "/companion/audio/voice/nari/tap_28.mp3",
+    "seconds": 2.45
+  },
+  {
+    "id": "ios:TapFXReactions:nariTap:28",
+    "text": "小心哦，我可能会戳回去",
+    "file": "/companion/audio/voice/nari/tap_29.mp3",
+    "seconds": 2.525
+  },
+  {
+    "id": "ios:TapFXReactions:nariTap:29",
+    "text": "哦，我在这儿",
+    "file": "/companion/audio/voice/nari/tap_30.mp3",
+    "seconds": 1.75
+  },
+  {
+    "id": "ios:TapFXReactions:nariTap:30",
+    "text": "你今天好有趣",
+    "file": "/companion/audio/voice/nari/tap_31.mp3",
+    "seconds": 1.45
+  },
+  {
+    "id": "ios:TapFXReactions:nariTap:31",
+    "text": "哎呀呀，你好",
+    "file": "/companion/audio/voice/nari/tap_32.mp3",
+    "seconds": 1.8
+  },
+  {
+    "id": "ios:TapFXReactions:nariTap:32",
+    "text": "好大胆哦",
+    "file": "/companion/audio/voice/nari/tap_33.mp3",
+    "seconds": 0.925
+  },
+  {
+    "id": "ios:TapFXReactions:nariTap:33",
+    "text": "你总能找到我呢",
+    "file": "/companion/audio/voice/nari/tap_34.mp3",
+    "seconds": 1.4
+  },
+  {
+    "id": "ios:TapFXReactions:nariTap:34",
+    "text": "要聊聊吗",
+    "file": "/companion/audio/voice/nari/tap_35.mp3",
+    "seconds": 1.05
+  },
+  {
+    "id": "ios:TapFXReactions:nariTap:35",
+    "text": "好啦好啦，我在认真听呢",
+    "file": "/companion/audio/voice/nari/tap_36.mp3",
+    "seconds": 2.3
+  },
+  {
+    "id": "ios:TapFXReactions:nariTap:36",
+    "text": "哎呀，好快呀",
+    "file": "/companion/audio/voice/nari/tap_37.mp3",
+    "seconds": 1.625
+  },
+  {
+    "id": "ios:TapFXReactions:nariTap:37",
+    "text": "你需要什么呀",
+    "file": "/companion/audio/voice/nari/tap_38.mp3",
+    "seconds": 1.2
+  },
+  {
+    "id": "ios:TapFXReactions:nariTap:38",
+    "text": "你最棒啦",
+    "file": "/companion/audio/voice/nari/tap_39.mp3",
+    "seconds": 0.875
+  }
+]

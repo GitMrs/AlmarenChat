@@ -1,0 +1,25 @@
+{
+  "_GENERATED" : "from KoroKit\/KoroTunings.swift — EDIT THERE",
+  "format" : "kotune\/1",
+  "param_clamps" : {
+    "ParamCheekPuff" : {
+      "fix" : 0.30000001192092896
+    },
+    "ParamEyeLOpen" : {
+      "max" : 0.80000001192092896
+    },
+    "ParamEyeROpen" : {
+      "max" : 0.80000001192092896
+    },
+    "ParamJawOpen" : {
+      "fix" : 0.80000001192092896
+    },
+    "ParamMouthForm" : {
+      "fix" : 0.60000002384185791
+    },
+    "ParamMouthOpenY" : {
+      "max" : 0.80000001192092896
+    }
+  },
+  "speed" : 1.5
+}

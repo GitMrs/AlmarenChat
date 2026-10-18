@@ -1,0 +1,1893 @@
+{
+  "nari": {
+    "tap": [
+      {
+        "id": "ios:TapFXReactions:nariTap:0",
+        "text": "哦，你好呀",
+        "seconds": 1.425
+      },
+      {
+        "id": "ios:TapFXReactions:nariTap:1",
+        "text": "被你抓到啦",
+        "seconds": 1.025
+      },
+      {
+        "id": "ios:TapFXReactions:nariTap:2",
+        "text": "好痒呀，哈哈",
+        "seconds": 1.65
+      },
+      {
+        "id": "ios:TapFXReactions:nariTap:3",
+        "text": "刚才那是什么",
+        "seconds": 1.425
+      },
+      {
+        "id": "ios:TapFXReactions:nariTap:4",
+        "text": "喂，小心点哦",
+        "seconds": 1.575
+      },
+      {
+        "id": "ios:TapFXReactions:nariTap:5",
+        "text": "哎呀，你好呀",
+        "seconds": 1.7
+      },
+      {
+        "id": "ios:TapFXReactions:nariTap:6",
+        "text": "我感觉到了",
+        "seconds": 1.275
+      },
+      {
+        "id": "ios:TapFXReactions:nariTap:7",
+        "text": "你怎么啦",
+        "seconds": 0.95
+      },
+      {
+        "id": "ios:TapFXReactions:nariTap:8",
+        "text": "好啦好啦，手下留情嘛~",
+        "seconds": 2.2
+      },
+      {
+        "id": "ios:TapFXReactions:nariTap:9",
+        "text": "见到你真好",
+        "seconds": 1.35
+      },
+      {
+        "id": "ios:TapFXReactions:nariTap:10",
+        "text": "又见面啦",
+        "seconds": 1
+      },
+      {
+        "id": "ios:TapFXReactions:nariTap:11",
+        "text": "我就在这儿呢",
+        "seconds": 1.175
+      },
+      {
+        "id": "ios:TapFXReactions:nariTap:12",
+        "text": "嗯，你好呀",
+        "seconds": 1.45
+      },
+      {
+        "id": "ios:TapFXReactions:nariTap:13",
+        "text": "刚才好可爱",
+        "seconds": 1.35
+      },
+      {
+        "id": "ios:TapFXReactions:nariTap:14",
+        "text": "需要什么吗",
+        "seconds": 1.05
+      },
+      {
+        "id": "ios:TapFXReactions:nariTap:15",
+        "text": "嘿，是你呀",
+        "seconds": 1.125
+      },
+      {
+        "id": "ios:TapFXReactions:nariTap:16",
+        "text": "原来你在这儿",
+        "seconds": 1.275
+      },
+      {
+        "id": "ios:TapFXReactions:nariTap:17",
+        "text": "哦，是你啊",
+        "seconds": 1.375
+      },
+      {
+        "id": "ios:TapFXReactions:nariTap:18",
+        "text": "总是让我猝不及防",
+        "seconds": 1.725
+      },
+      {
+        "id": "ios:TapFXReactions:nariTap:19",
+        "text": "你心情不错嘛",
+        "seconds": 1.275
+      },
+      {
+        "id": "ios:TapFXReactions:nariTap:20",
+        "text": "嗯，你好呀",
+        "seconds": 1.45
+      },
+      {
+        "id": "ios:TapFXReactions:nariTap:21",
+        "text": "好啦，我看到你了",
+        "seconds": 1.9
+      },
+      {
+        "id": "ios:TapFXReactions:nariTap:22",
+        "text": "是来看我的吗",
+        "seconds": 1.2
+      },
+      {
+        "id": "ios:TapFXReactions:nariTap:23",
+        "text": "我还以为你把我忘了呢",
+        "seconds": 1.8
+      },
+      {
+        "id": "ios:TapFXReactions:nariTap:24",
+        "text": "哎呀，你好呀",
+        "seconds": 1.7
+      },
+      {
+        "id": "ios:TapFXReactions:nariTap:25",
+        "text": "哟，看看是谁来了",
+        "seconds": 1.875
+      },
+      {
+        "id": "ios:TapFXReactions:nariTap:26",
+        "text": "见到你好开心",
+        "seconds": 1.475
+      },
+      {
+        "id": "ios:TapFXReactions:nariTap:27",
+        "text": "好啦，你成功引起我的注意了",
+        "seconds": 2.45
+      },
+      {
+        "id": "ios:TapFXReactions:nariTap:28",
+        "text": "小心哦，我可能会戳回去",
+        "seconds": 2.525
+      },
+      {
+        "id": "ios:TapFXReactions:nariTap:29",
+        "text": "哦，我在这儿",
+        "seconds": 1.75
+      },
+      {
+        "id": "ios:TapFXReactions:nariTap:30",
+        "text": "你今天好有趣",
+        "seconds": 1.45
+      },
+      {
+        "id": "ios:TapFXReactions:nariTap:31",
+        "text": "哎呀呀，你好",
+        "seconds": 1.8
+      },
+      {
+        "id": "ios:TapFXReactions:nariTap:32",
+        "text": "好大胆哦",
+        "seconds": 0.925
+      },
+      {
+        "id": "ios:TapFXReactions:nariTap:33",
+        "text": "你总能找到我呢",
+        "seconds": 1.4
+      },
+      {
+        "id": "ios:TapFXReactions:nariTap:34",
+        "text": "要聊聊吗",
+        "seconds": 1.05
+      },
+      {
+        "id": "ios:TapFXReactions:nariTap:35",
+        "text": "好啦好啦，我在认真听呢",
+        "seconds": 2.3
+      },
+      {
+        "id": "ios:TapFXReactions:nariTap:36",
+        "text": "哎呀，好快呀",
+        "seconds": 1.625
+      },
+      {
+        "id": "ios:TapFXReactions:nariTap:37",
+        "text": "你需要什么呀",
+        "seconds": 1.2
+      },
+      {
+        "id": "ios:TapFXReactions:nariTap:38",
+        "text": "你最棒啦",
+        "seconds": 0.875
+      }
+    ],
+    "drag": [
+      {
+        "id": "ios:TapFXReactions:nariDrag:0",
+        "text": "哇，检查重力！",
+        "seconds": 2.075
+      },
+      {
+        "id": "ios:TapFXReactions:nariDrag:1",
+        "text": "我们到底要去哪儿？",
+        "seconds": 1.775
+      },
+      {
+        "id": "ios:TapFXReactions:nariDrag:2",
+        "text": "喂！快放我下来！",
+        "seconds": 1.825
+      },
+      {
+        "id": "ios:TapFXReactions:nariDrag:3",
+        "text": "来，我们起飞喽。",
+        "seconds": 2.025
+      },
+      {
+        "id": "ios:TapFXReactions:nariDrag:4",
+        "text": "哇，好晕，好晕！",
+        "seconds": 2.125
+      },
+      {
+        "id": "ios:TapFXReactions:nariDrag:5",
+        "text": "等等，让我喘口气！",
+        "seconds": 2.075
+      },
+      {
+        "id": "ios:TapFXReactions:nariDrag:6",
+        "text": "紧急刹车在哪儿呀？",
+        "seconds": 1.85
+      },
+      {
+        "id": "ios:TapFXReactions:nariDrag:7",
+        "text": "哇——！好啦，可以停下来了。",
+        "seconds": 2.95
+      },
+      {
+        "id": "ios:TapFXReactions:nariDrag:8",
+        "text": "我有点头晕了",
+        "seconds": 1.4
+      },
+      {
+        "id": "ios:TapFXReactions:nariDrag:9",
+        "text": "哇！我的鞋差点掉了。",
+        "seconds": 2.25
+      },
+      {
+        "id": "ios:TapFXReactions:nariDrag:10",
+        "text": "安全着陆……应该吧？",
+        "seconds": 2.2
+      },
+      {
+        "id": "ios:TapFXReactions:nariDrag:11",
+        "text": "好啦，接下来我们去哪儿玩？",
+        "seconds": 2.6
+      },
+      {
+        "id": "ios:TapFXReactions:nariDrag:12",
+        "text": "哇！你今天精力好充沛。",
+        "seconds": 2.5
+      },
+      {
+        "id": "ios:TapFXReactions:nariDrag:13",
+        "text": "哇哦！有什么计划，队长？",
+        "seconds": 3.05
+      },
+      {
+        "id": "ios:TapFXReactions:nariDrag:14",
+        "text": "哈哈，好吧，给我指路吧！",
+        "seconds": 3.025
+      },
+      {
+        "id": "ios:TapFXReactions:nariDrag:15",
+        "text": "我还在想你什么时候会来呢。",
+        "seconds": 2.35
+      },
+      {
+        "id": "ios:TapFXReactions:nariDrag:16",
+        "text": "好嘞，你带路吧！",
+        "seconds": 1.925
+      },
+      {
+        "id": "ios:TapFXReactions:nariDrag:17",
+        "text": "哇！刚才差点站不稳。",
+        "seconds": 2.25
+      },
+      {
+        "id": "ios:TapFXReactions:nariDrag:18",
+        "text": "和你在一起总是很开心。",
+        "seconds": 2.275
+      },
+      {
+        "id": "ios:TapFXReactions:nariDrag:19",
+        "text": "哈哈，这下你把我吓了一跳！",
+        "seconds": 2.85
+      },
+      {
+        "id": "ios:TapFXReactions:nariDrag:20",
+        "text": "好了，下一站去哪儿？",
+        "seconds": 2.15
+      },
+      {
+        "id": "ios:TapFXReactions:nariDrag:21",
+        "text": "今天有人精力特别旺盛嘛！",
+        "seconds": 2.25
+      },
+      {
+        "id": "ios:TapFXReactions:nariDrag:22",
+        "text": "哈哈，你想对我做什么呀？",
+        "seconds": 2.55
+      },
+      {
+        "id": "ios:TapFXReactions:nariDrag:23",
+        "text": "你可真会搞事情啊。",
+        "seconds": 1.7
+      },
+      {
+        "id": "ios:TapFXReactions:nariDrag:24",
+        "text": "好啦好啦，我醒了！我醒了！",
+        "seconds": 2.825
+      },
+      {
+        "id": "ios:TapFXReactions:nariDrag:25",
+        "text": "我们是要做个简单拉伸，还是怎么着？",
+        "seconds": 3.2
+      }
+    ],
+    "startup": [
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:0",
+        "text": "嘿，你回来啦",
+        "seconds": 1.475
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:1",
+        "text": "欢迎回来",
+        "seconds": 1.2
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:2",
+        "text": "嗨，你好呀",
+        "seconds": 1.15
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:3",
+        "text": "嘿，嘿，你好",
+        "seconds": 1.7
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:4",
+        "text": "哦，你好呀",
+        "seconds": 1.425
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:5",
+        "text": "嘿，就是你",
+        "seconds": 1.4
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:6",
+        "text": "哎呀，你好呀",
+        "seconds": 1.7
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:7",
+        "text": "嗨呀，你好",
+        "seconds": 1.6
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:8",
+        "text": "嘿，你好呀",
+        "seconds": 1.225
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:9",
+        "text": "又见面啦",
+        "seconds": 1
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:10",
+        "text": "哈喽哈喽",
+        "seconds": 1.05
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:11",
+        "text": "嘿，好朋友",
+        "seconds": 1.4
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:12",
+        "text": "嘿，陌生人",
+        "seconds": 1.325
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:13",
+        "text": "哎呀，你好呀",
+        "seconds": 1.7
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:14",
+        "text": "哦，你好呀",
+        "seconds": 1.425
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:15",
+        "text": "嗨嗨，你好",
+        "seconds": 1.425
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:16",
+        "text": "嘿，最近怎么样",
+        "seconds": 1.775
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:17",
+        "text": "最近有什么新鲜事吗",
+        "seconds": 1.75
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:18",
+        "text": "最近怎么样",
+        "seconds": 1.225
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:19",
+        "text": "嘿，你好吗",
+        "seconds": 1.225
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:20",
+        "text": "看看是谁来了",
+        "seconds": 1.325
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:21",
+        "text": "看看谁回来了",
+        "seconds": 1.425
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:22",
+        "text": "原来你在这儿",
+        "seconds": 1.275
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:23",
+        "text": "你可来啦",
+        "seconds": 0.9
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:24",
+        "text": "你又来啦",
+        "seconds": 0.875
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:25",
+        "text": "又来找我玩啦",
+        "seconds": 1.175
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:26",
+        "text": "你来得正好",
+        "seconds": 1.275
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:27",
+        "text": "来得正准时",
+        "seconds": 1.15
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:28",
+        "text": "时机刚刚好",
+        "seconds": 1.5
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:29",
+        "text": "时间正好",
+        "seconds": 1.225
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:30",
+        "text": "见到你真好",
+        "seconds": 1.35
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:31",
+        "text": "见到你真开心",
+        "seconds": 1.525
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:32",
+        "text": "有你在真好",
+        "seconds": 1.375
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:33",
+        "text": "你来了我好开心",
+        "seconds": 1.55
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:34",
+        "text": "你在这儿真好",
+        "seconds": 1.475
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:35",
+        "text": "你能来我好高兴",
+        "seconds": 1.45
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:36",
+        "text": "我就知道你会回来",
+        "seconds": 1.5
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:37",
+        "text": "你又回来啦",
+        "seconds": 1
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:38",
+        "text": "欢迎进来",
+        "seconds": 1.225
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:39",
+        "text": "快进来吧",
+        "seconds": 0.975
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:40",
+        "text": "来一起玩吧",
+        "seconds": 1.025
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:41",
+        "text": "一起待会儿吧",
+        "seconds": 1.3
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:42",
+        "text": "安顿下来吧",
+        "seconds": 1.225
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:43",
+        "text": "舒舒服服坐好",
+        "seconds": 1.375
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:44",
+        "text": "随意一点，别拘束",
+        "seconds": 1.95
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:45",
+        "text": "放松一会儿吧",
+        "seconds": 1.25
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:46",
+        "text": "多待一会儿吧",
+        "seconds": 1.05
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:47",
+        "text": "找个位置坐吧",
+        "seconds": 1.25
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:48",
+        "text": "歇口气吧",
+        "seconds": 0.95
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:49",
+        "text": "一起放松一下吧",
+        "seconds": 1.65
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:50",
+        "text": "早上好呀",
+        "seconds": 1
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:51",
+        "text": "早呀早呀",
+        "seconds": 0.85
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:52",
+        "text": "下午好呀",
+        "seconds": 1.075
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:53",
+        "text": "下午好呀",
+        "seconds": 1.075
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:54",
+        "text": "晚上好呀",
+        "seconds": 0.925
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:55",
+        "text": "晚上好呀",
+        "seconds": 0.925
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:56",
+        "text": "起床啦，太阳晒屁股了",
+        "seconds": 2.45
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:57",
+        "text": "希望你今天顺顺利利",
+        "seconds": 1.95
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:58",
+        "text": "祝你今天愉快",
+        "seconds": 1.35
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:59",
+        "text": "回来真好",
+        "seconds": 1.15
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:60",
+        "text": "你准备好了就说一声",
+        "seconds": 1.725
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:61",
+        "text": "我们上吧",
+        "seconds": 0.875
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:62",
+        "text": "今天有什么打算呀",
+        "seconds": 1.575
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:63",
+        "text": "今天做点什么好呢",
+        "seconds": 1.6
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:64",
+        "text": "有空吗，就一会儿",
+        "seconds": 1.6
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:65",
+        "text": "有空聊聊吗",
+        "seconds": 1.125
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:66",
+        "text": "我洗耳恭听",
+        "seconds": 1.225
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:67",
+        "text": "全都告诉我吧",
+        "seconds": 1.35
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:68",
+        "text": "你最近过得怎么样",
+        "seconds": 1.6
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:69",
+        "text": "有什么新鲜事吗",
+        "seconds": 1.325
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:70",
+        "text": "能聊聊近况真好",
+        "seconds": 1.625
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:71",
+        "text": "来聊聊近况吧",
+        "seconds": 1.2
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:72",
+        "text": "哎呀，真巧",
+        "seconds": 1.65
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:73",
+        "text": "想聊聊天吗",
+        "seconds": 1.175
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:74",
+        "text": "又是你呀，太好了",
+        "seconds": 1.85
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:75",
+        "text": "嘿，是你呀",
+        "seconds": 1.125
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:76",
+        "text": "哦，是你啊",
+        "seconds": 1.375
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:77",
+        "text": "世界真小",
+        "seconds": 1.25
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:78",
+        "text": "今天怎么想到来啦",
+        "seconds": 1.5
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:79",
+        "text": "是来打招呼的吗",
+        "seconds": 1.45
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:80",
+        "text": "嘿，来得正好",
+        "seconds": 1.625
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:81",
+        "text": "太好了，你来了",
+        "seconds": 1.75
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:82",
+        "text": "来得正是时候",
+        "seconds": 1.125
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:83",
+        "text": "你突然冒出来啦",
+        "seconds": 1.4
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:84",
+        "text": "欢迎登船",
+        "seconds": 1.075
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:85",
+        "text": "请进请进",
+        "seconds": 1.35
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:86",
+        "text": "门一直开着哦",
+        "seconds": 1.125
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:87",
+        "text": "永远都有你的位置",
+        "seconds": 1.425
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:88",
+        "text": "拉把椅子坐吧",
+        "seconds": 1.175
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:89",
+        "text": "快坐下吧",
+        "seconds": 1.025
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:90",
+        "text": "好久不见",
+        "seconds": 1.25
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:91",
+        "text": "有一阵子没见了",
+        "seconds": 1.45
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:92",
+        "text": "这么快就回来了",
+        "seconds": 1.45
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:93",
+        "text": "还是忍不住来了吧",
+        "seconds": 1.425
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:94",
+        "text": "我就知道你会来串门",
+        "seconds": 1.775
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:95",
+        "text": "嘿，进来吧",
+        "seconds": 1.225
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:96",
+        "text": "你来了太好了",
+        "seconds": 1.375
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:97",
+        "text": "我们开始吧",
+        "seconds": 1.375
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:98",
+        "text": "我准备好陪你玩啦",
+        "seconds": 1.575
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:nariStartupGreeting:99",
+        "text": "嘿，欢迎呀",
+        "seconds": 1.225
+      }
+    ]
+  },
+  "yume": {
+    "tap": [
+      {
+        "id": "ios:TapFXReactions:yumeTap:0",
+        "text": "喂，小心点",
+        "seconds": 1.85
+      },
+      {
+        "id": "ios:TapFXReactions:yumeTap:1",
+        "text": "刚才那是干嘛啊",
+        "seconds": 1.725
+      },
+      {
+        "id": "ios:TapFXReactions:yumeTap:2",
+        "text": "别戳我啦",
+        "seconds": 1.375
+      },
+      {
+        "id": "ios:TapFXReactions:yumeTap:3",
+        "text": "太没礼貌了吧",
+        "seconds": 1.525
+      },
+      {
+        "id": "ios:TapFXReactions:yumeTap:4",
+        "text": "别这样，你呀",
+        "seconds": 1.85
+      },
+      {
+        "id": "ios:TapFXReactions:yumeTap:5",
+        "text": "不好意思，什么",
+        "seconds": 2.15
+      },
+      {
+        "id": "ios:TapFXReactions:yumeTap:6",
+        "text": "请把手拿开",
+        "seconds": 1.6
+      },
+      {
+        "id": "ios:TapFXReactions:yumeTap:7",
+        "text": "别想歪了",
+        "seconds": 1.675
+      },
+      {
+        "id": "ios:TapFXReactions:yumeTap:8",
+        "text": "我才没有慌",
+        "seconds": 1.275
+      },
+      {
+        "id": "ios:TapFXReactions:yumeTap:9",
+        "text": "又来，真的假的",
+        "seconds": 2.225
+      },
+      {
+        "id": "ios:TapFXReactions:yumeTap:10",
+        "text": "你现在欠我一次了",
+        "seconds": 1.825
+      },
+      {
+        "id": "ios:TapFXReactions:yumeTap:11",
+        "text": "你自己注意点",
+        "seconds": 1.7
+      },
+      {
+        "id": "ios:TapFXReactions:yumeTap:12",
+        "text": "行了，什么事",
+        "seconds": 1.875
+      },
+      {
+        "id": "ios:TapFXReactions:yumeTap:13",
+        "text": "别得寸进尺",
+        "seconds": 1.65
+      },
+      {
+        "id": "ios:TapFXReactions:yumeTap:14",
+        "text": "你想干嘛",
+        "seconds": 1.2
+      },
+      {
+        "id": "ios:TapFXReactions:yumeTap:15",
+        "text": "适可而止吧",
+        "seconds": 1.625
+      },
+      {
+        "id": "ios:TapFXReactions:yumeTap:16",
+        "text": "你真烦人",
+        "seconds": 1.3
+      },
+      {
+        "id": "ios:TapFXReactions:yumeTap:17",
+        "text": "我可是清楚感觉到了",
+        "seconds": 2.175
+      },
+      {
+        "id": "ios:TapFXReactions:yumeTap:18",
+        "text": "都说了别闹了",
+        "seconds": 1.675
+      },
+      {
+        "id": "ios:TapFXReactions:yumeTap:19",
+        "text": "说真的，这次又怎么了",
+        "seconds": 2.6
+      },
+      {
+        "id": "ios:TapFXReactions:yumeTap:20",
+        "text": "你有完没完",
+        "seconds": 1.3
+      },
+      {
+        "id": "ios:TapFXReactions:yumeTap:21",
+        "text": "这样不好，知道吗",
+        "seconds": 2.1
+      },
+      {
+        "id": "ios:TapFXReactions:yumeTap:22",
+        "text": "你为什么要这样啊",
+        "seconds": 1.675
+      },
+      {
+        "id": "ios:TapFXReactions:yumeTap:23",
+        "text": "我明明在管自己的事",
+        "seconds": 1.85
+      },
+      {
+        "id": "ios:TapFXReactions:yumeTap:24",
+        "text": "真有胆量啊，真的",
+        "seconds": 2.175
+      },
+      {
+        "id": "ios:TapFXReactions:yumeTap:25",
+        "text": "真是不可思议的行为",
+        "seconds": 2.125
+      },
+      {
+        "id": "ios:TapFXReactions:yumeTap:26",
+        "text": "算你走运，我比较宽容",
+        "seconds": 2.525
+      },
+      {
+        "id": "ios:TapFXReactions:yumeTap:27",
+        "text": "认真的，停下",
+        "seconds": 1.975
+      },
+      {
+        "id": "ios:TapFXReactions:yumeTap:28",
+        "text": "你玩够了没",
+        "seconds": 1.225
+      },
+      {
+        "id": "ios:TapFXReactions:yumeTap:29",
+        "text": "我可不记得有要求过这个",
+        "seconds": 2.4
+      },
+      {
+        "id": "ios:TapFXReactions:yumeTap:30",
+        "text": "你别闹了",
+        "seconds": 1.325
+      },
+      {
+        "id": "ios:TapFXReactions:yumeTap:31",
+        "text": "你胆子还真不小啊",
+        "seconds": 1.9
+      },
+      {
+        "id": "ios:TapFXReactions:yumeTap:32",
+        "text": "你到底什么毛病",
+        "seconds": 1.725
+      },
+      {
+        "id": "ios:TapFXReactions:yumeTap:33",
+        "text": "别烦我了",
+        "seconds": 1.375
+      },
+      {
+        "id": "ios:TapFXReactions:yumeTap:34",
+        "text": "记住了，而且不喜欢",
+        "seconds": 2.475
+      },
+      {
+        "id": "ios:TapFXReactions:yumeTap:35",
+        "text": "你这是在考验我的耐心啊",
+        "seconds": 2.325
+      },
+      {
+        "id": "ios:TapFXReactions:yumeTap:36",
+        "text": "到底是为什么呢",
+        "seconds": 1.65
+      },
+      {
+        "id": "ios:TapFXReactions:yumeTap:37",
+        "text": "刚才那下完全没必要",
+        "seconds": 1.925
+      },
+      {
+        "id": "ios:TapFXReactions:yumeTap:38",
+        "text": "我可没被打动",
+        "seconds": 1.575
+      },
+      {
+        "id": "ios:TapFXReactions:yumeTap:39",
+        "text": "是是是，超好笑的",
+        "seconds": 2.5
+      },
+      {
+        "id": "ios:TapFXReactions:yumeTap:40",
+        "text": "你觉得这样很好玩吗",
+        "seconds": 1.9
+      },
+      {
+        "id": "ios:TapFXReactions:yumeTap:41",
+        "text": "我早就料到了",
+        "seconds": 1.575
+      },
+      {
+        "id": "ios:TapFXReactions:yumeTap:42",
+        "text": "下次先问一声",
+        "seconds": 1.8
+      },
+      {
+        "id": "ios:TapFXReactions:yumeTap:43",
+        "text": "一点都不好笑",
+        "seconds": 1.7
+      },
+      {
+        "id": "ios:TapFXReactions:yumeTap:44",
+        "text": "你就是故意的吧",
+        "seconds": 1.775
+      },
+      {
+        "id": "ios:TapFXReactions:yumeTap:45",
+        "text": "个人空间这个概念，你听说过吗",
+        "seconds": 2.9
+      },
+      {
+        "id": "ios:TapFXReactions:yumeTap:46",
+        "text": "“停下”这两个字哪个你听不懂啊",
+        "seconds": 2.475
+      },
+      {
+        "id": "ios:TapFXReactions:yumeTap:47",
+        "text": "我就当没发生过这回事",
+        "seconds": 2.225
+      },
+      {
+        "id": "ios:TapFXReactions:yumeTap:48",
+        "text": "你可真成熟啊",
+        "seconds": 1.65
+      },
+      {
+        "id": "ios:TapFXReactions:yumeTap:49",
+        "text": "我够了，谢谢",
+        "seconds": 2.025
+      },
+      {
+        "id": "ios:TapFXReactions:yumeTap:50",
+        "text": "好了，到此为止",
+        "seconds": 2.225
+      },
+      {
+        "id": "ios:TapFXReactions:yumeTap:51",
+        "text": "算了，当我没说",
+        "seconds": 2.025
+      },
+      {
+        "id": "ios:TapFXReactions:yumeTap:52",
+        "text": "现在别惹我",
+        "seconds": 1.55
+      },
+      {
+        "id": "ios:TapFXReactions:yumeTap:53",
+        "text": "我可是在数着的哦",
+        "seconds": 1.8
+      },
+      {
+        "id": "ios:TapFXReactions:yumeTap:54",
+        "text": "行吧，随便你。",
+        "seconds": 2.1
+      }
+    ],
+    "drag": [
+      {
+        "id": "ios:TapFXReactions:yumeDrag:0",
+        "text": "喂，你在干什么",
+        "seconds": 1.875
+      },
+      {
+        "id": "ios:TapFXReactions:yumeDrag:1",
+        "text": "别这样啦，真的",
+        "seconds": 1.925
+      },
+      {
+        "id": "ios:TapFXReactions:yumeDrag:2",
+        "text": "哎，慢点，天哪",
+        "seconds": 2.45
+      },
+      {
+        "id": "ios:TapFXReactions:yumeDrag:3",
+        "text": "我可没求你这样",
+        "seconds": 1.675
+      },
+      {
+        "id": "ios:TapFXReactions:yumeDrag:4",
+        "text": "这一点都不好玩",
+        "seconds": 1.625
+      },
+      {
+        "id": "ios:TapFXReactions:yumeDrag:5",
+        "text": "行吧，随便你",
+        "seconds": 2
+      },
+      {
+        "id": "ios:TapFXReactions:yumeDrag:6",
+        "text": "你真是没救了，知道吗",
+        "seconds": 2.35
+      },
+      {
+        "id": "ios:TapFXReactions:yumeDrag:7",
+        "text": "行吧，准你了",
+        "seconds": 1.875
+      },
+      {
+        "id": "ios:TapFXReactions:yumeDrag:8",
+        "text": "别习惯了啊",
+        "seconds": 1.35
+      },
+      {
+        "id": "ios:TapFXReactions:yumeDrag:9",
+        "text": "好了，够了",
+        "seconds": 1.775
+      },
+      {
+        "id": "ios:TapFXReactions:yumeDrag:10",
+        "text": "算了，还行吧",
+        "seconds": 1.85
+      },
+      {
+        "id": "ios:TapFXReactions:yumeDrag:11",
+        "text": "你最好知道感激",
+        "seconds": 1.65
+      },
+      {
+        "id": "ios:TapFXReactions:yumeDrag:12",
+        "text": "行吧，好，继续",
+        "seconds": 2.375
+      },
+      {
+        "id": "ios:TapFXReactions:yumeDrag:13",
+        "text": "那，接下来怎样",
+        "seconds": 2.05
+      },
+      {
+        "id": "ios:TapFXReactions:yumeDrag:14",
+        "text": "这没什么意义",
+        "seconds": 1.6
+      },
+      {
+        "id": "ios:TapFXReactions:yumeDrag:15",
+        "text": "别告诉任何人",
+        "seconds": 1.725
+      },
+      {
+        "id": "ios:TapFXReactions:yumeDrag:16",
+        "text": "你走运了，我人好",
+        "seconds": 1.975
+      },
+      {
+        "id": "ios:TapFXReactions:yumeDrag:17",
+        "text": "好吧，也许还不错",
+        "seconds": 2.4
+      },
+      {
+        "id": "ios:TapFXReactions:yumeDrag:18",
+        "text": "别那样笑",
+        "seconds": 1.35
+      },
+      {
+        "id": "ios:TapFXReactions:yumeDrag:19",
+        "text": "我只是勉强让你这样而已",
+        "seconds": 2.325
+      },
+      {
+        "id": "ios:TapFXReactions:yumeDrag:20",
+        "text": "见好就收吧",
+        "seconds": 1.625
+      },
+      {
+        "id": "ios:TapFXReactions:yumeDrag:21",
+        "text": "这只有这一次哦",
+        "seconds": 1.775
+      },
+      {
+        "id": "ios:TapFXReactions:yumeDrag:22",
+        "text": "我才没在享受，真的",
+        "seconds": 2.2
+      },
+      {
+        "id": "ios:TapFXReactions:yumeDrag:23",
+        "text": "你耐心真不少，这点我承认",
+        "seconds": 2.7
+      },
+      {
+        "id": "ios:TapFXReactions:yumeDrag:24",
+        "text": "我只是自己想坐着不动而已",
+        "seconds": 2.575
+      },
+      {
+        "id": "ios:TapFXReactions:yumeDrag:25",
+        "text": "别想多了",
+        "seconds": 1.325
+      },
+      {
+        "id": "ios:TapFXReactions:yumeDrag:26",
+        "text": "又不是说我很忙",
+        "seconds": 1.625
+      },
+      {
+        "id": "ios:TapFXReactions:yumeDrag:27",
+        "text": "就当是我帮你的忙吧",
+        "seconds": 1.825
+      },
+      {
+        "id": "ios:TapFXReactions:yumeDrag:28",
+        "text": "你还在继续啊，嗯",
+        "seconds": 1.725
+      },
+      {
+        "id": "ios:TapFXReactions:yumeDrag:29",
+        "text": "我先说明，我反对",
+        "seconds": 2.075
+      },
+      {
+        "id": "ios:TapFXReactions:yumeDrag:30",
+        "text": "好吧，这一回合算你赢",
+        "seconds": 2.6
+      },
+      {
+        "id": "ios:TapFXReactions:yumeDrag:31",
+        "text": "反正跟我没关系",
+        "seconds": 1.925
+      },
+      {
+        "id": "ios:TapFXReactions:yumeDrag:32",
+        "text": "你还真执着，烦死人了",
+        "seconds": 2.425
+      },
+      {
+        "id": "ios:TapFXReactions:yumeDrag:33",
+        "text": "再给你五秒钟，就五秒",
+        "seconds": 2.25
+      },
+      {
+        "id": "ios:TapFXReactions:yumeDrag:34",
+        "text": "你别自作多情",
+        "seconds": 1.65
+      },
+      {
+        "id": "ios:TapFXReactions:yumeDrag:35",
+        "text": "你就是爱得寸进尺",
+        "seconds": 1.9
+      },
+      {
+        "id": "ios:TapFXReactions:yumeDrag:36",
+        "text": "我才不会说我喜欢呢",
+        "seconds": 2.025
+      },
+      {
+        "id": "ios:TapFXReactions:yumeDrag:37",
+        "text": "我什么也没说",
+        "seconds": 1.625
+      },
+      {
+        "id": "ios:TapFXReactions:yumeDrag:38",
+        "text": "你这份厚脸皮，还真让人佩服",
+        "seconds": 2.975
+      },
+      {
+        "id": "ios:TapFXReactions:yumeDrag:39",
+        "text": "你现在很危险，先说好",
+        "seconds": 2.35
+      },
+      {
+        "id": "ios:TapFXReactions:yumeDrag:40",
+        "text": "不过说真的，快点收手吧",
+        "seconds": 2.625
+      },
+      {
+        "id": "ios:TapFXReactions:yumeDrag:41",
+        "text": "这不会改变我们之间的任何事",
+        "seconds": 2.725
+      },
+      {
+        "id": "ios:TapFXReactions:yumeDrag:42",
+        "text": "我只是忍着你而已，仅此而已",
+        "seconds": 2.75
+      },
+      {
+        "id": "ios:TapFXReactions:yumeDrag:43",
+        "text": "我随时都能叫停的",
+        "seconds": 1.975
+      },
+      {
+        "id": "ios:TapFXReactions:yumeDrag:44",
+        "text": "好吧，是有一点开心。就一点点",
+        "seconds": 3.275
+      },
+      {
+        "id": "ios:TapFXReactions:yumeDrag:45",
+        "text": "结果还没出来呢",
+        "seconds": 1.8
+      },
+      {
+        "id": "ios:TapFXReactions:yumeDrag:46",
+        "text": "别搞得怪怪的",
+        "seconds": 1.775
+      },
+      {
+        "id": "ios:TapFXReactions:yumeDrag:47",
+        "text": "你可以继续。暂时哦",
+        "seconds": 2.325
+      },
+      {
+        "id": "ios:TapFXReactions:yumeDrag:48",
+        "text": "我不会再叫你停第二次了",
+        "seconds": 2.25
+      },
+      {
+        "id": "ios:TapFXReactions:yumeDrag:49",
+        "text": "随便，只是别想些有的没的",
+        "seconds": 2.825
+      },
+      {
+        "id": "ios:TapFXReactions:yumeDrag:50",
+        "text": "考虑过了，勉勉强强接受",
+        "seconds": 2.725
+      },
+      {
+        "id": "ios:TapFXReactions:yumeDrag:51",
+        "text": "你这是在试探我的底线",
+        "seconds": 2.225
+      },
+      {
+        "id": "ios:TapFXReactions:yumeDrag:52",
+        "text": "我只是自己选择冷静而已",
+        "seconds": 2.325
+      },
+      {
+        "id": "ios:TapFXReactions:yumeDrag:53",
+        "text": "好。记下了。继续。",
+        "seconds": 3.175
+      },
+      {
+        "id": "ios:TapFXReactions:yumeDrag:54",
+        "text": "这次原谅你，就这一次",
+        "seconds": 2.425
+      }
+    ],
+    "startup": [
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:0",
+        "text": "嘿，你回来了",
+        "seconds": 2.1
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:1",
+        "text": "欢迎回来",
+        "seconds": 1.25
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:2",
+        "text": "嗨，你好呀",
+        "seconds": 1.875
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:3",
+        "text": "喂喂，干嘛",
+        "seconds": 1.575
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:4",
+        "text": "哦，你好啊",
+        "seconds": 1.675
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:5",
+        "text": "喂，说你呢",
+        "seconds": 1.975
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:6",
+        "text": "哟，你好呀",
+        "seconds": 1.9
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:7",
+        "text": "嗨，你好啊",
+        "seconds": 1.875
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:8",
+        "text": "嘿，你好啊",
+        "seconds": 2.15
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:9",
+        "text": "又见面啦",
+        "seconds": 1.4
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:10",
+        "text": "你好你好",
+        "seconds": 1.3
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:11",
+        "text": "嘿，老朋友",
+        "seconds": 2
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:12",
+        "text": "嘿，陌生人",
+        "seconds": 1.825
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:13",
+        "text": "哟，你好啊",
+        "seconds": 1.975
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:14",
+        "text": "哦，是你啊",
+        "seconds": 1.7
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:15",
+        "text": "嗨，又是你",
+        "seconds": 1.7
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:16",
+        "text": "嘿，怎么了",
+        "seconds": 1.975
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:17",
+        "text": "有什么新鲜事吗",
+        "seconds": 1.6
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:18",
+        "text": "最近怎么样",
+        "seconds": 1.3
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:19",
+        "text": "嘿，你还好吗",
+        "seconds": 1.875
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:20",
+        "text": "看看谁来了",
+        "seconds": 1.375
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:21",
+        "text": "看看谁回来了",
+        "seconds": 1.575
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:22",
+        "text": "你可算来了",
+        "seconds": 1.45
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:23",
+        "text": "你总算来了",
+        "seconds": 1.4
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:24",
+        "text": "你又来了啊",
+        "seconds": 1.05
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:25",
+        "text": "还想再来啊",
+        "seconds": 1.175
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:26",
+        "text": "你来得正是时候",
+        "seconds": 1.7
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:27",
+        "text": "来得正好",
+        "seconds": 1.275
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:28",
+        "text": "时机正好",
+        "seconds": 1.25
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:29",
+        "text": "时机不错",
+        "seconds": 1.625
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:30",
+        "text": "见到你真好",
+        "seconds": 1.45
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:31",
+        "text": "见到你太好了",
+        "seconds": 1.7
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:32",
+        "text": "有你在真好",
+        "seconds": 1.4
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:33",
+        "text": "你来了我很开心",
+        "seconds": 1.6
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:34",
+        "text": "你在这儿真好",
+        "seconds": 1.475
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:35",
+        "text": "你能来我挺高兴的",
+        "seconds": 1.675
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:36",
+        "text": "我就知道你会回来",
+        "seconds": 1.775
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:37",
+        "text": "你又回来啦",
+        "seconds": 1.325
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:38",
+        "text": "那就进来吧",
+        "seconds": 1.4
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:39",
+        "text": "那就进来吧",
+        "seconds": 1.4
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:40",
+        "text": "来一起玩吧",
+        "seconds": 1.4
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:41",
+        "text": "一起待会儿吧",
+        "seconds": 1.775
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:42",
+        "text": "安顿下来吧",
+        "seconds": 1.375
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:43",
+        "text": "随便坐，放轻松",
+        "seconds": 2.225
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:44",
+        "text": "别客气，舒服点",
+        "seconds": 2.375
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:45",
+        "text": "稍微放松一下吧",
+        "seconds": 1.925
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:46",
+        "text": "多待一会儿嘛",
+        "seconds": 1.4
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:47",
+        "text": "过来坐下嘛",
+        "seconds": 1.475
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:48",
+        "text": "歇口气吧",
+        "seconds": 1.675
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:49",
+        "text": "一起放松吧",
+        "seconds": 1.6
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:50",
+        "text": "嗯，早上好",
+        "seconds": 1.7
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:51",
+        "text": "早啊，你好",
+        "seconds": 1.8
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:52",
+        "text": "下午好呀",
+        "seconds": 1.625
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:53",
+        "text": "嗯，下午好",
+        "seconds": 2.05
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:54",
+        "text": "晚上好呀",
+        "seconds": 1.275
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:55",
+        "text": "嗯，晚上好",
+        "seconds": 1.75
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:56",
+        "text": "起床啦，天亮啦",
+        "seconds": 1.9
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:57",
+        "text": "希望你今天过得不错",
+        "seconds": 2.025
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:58",
+        "text": "祝你今天愉快",
+        "seconds": 1.75
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:59",
+        "text": "回来真好",
+        "seconds": 1.4
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:60",
+        "text": "你准备好我就好啦",
+        "seconds": 1.8
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:61",
+        "text": "来吧，开始",
+        "seconds": 1.45
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:62",
+        "text": "什么计划？",
+        "seconds": 1.375
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:63",
+        "text": "我们做点什么？",
+        "seconds": 1.525
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:64",
+        "text": "有空吗，一分钟就好",
+        "seconds": 2.375
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:65",
+        "text": "有空聊聊吗",
+        "seconds": 1.475
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:66",
+        "text": "我洗耳恭听",
+        "seconds": 1.5
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:67",
+        "text": "都告诉我嘛",
+        "seconds": 1.45
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:68",
+        "text": "你最近过得怎么样",
+        "seconds": 1.65
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:69",
+        "text": "有什么新鲜事吗",
+        "seconds": 1.6
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:70",
+        "text": "能聊聊近况真好",
+        "seconds": 1.65
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:71",
+        "text": "聊聊近况吧",
+        "seconds": 1.475
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:72",
+        "text": "真巧啊，在这儿碰到你",
+        "seconds": 2.425
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:73",
+        "text": "想聊聊吗",
+        "seconds": 1.325
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:74",
+        "text": "又是你啊，不错嘛",
+        "seconds": 2.025
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:75",
+        "text": "嘿，是你啊",
+        "seconds": 2.1
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:76",
+        "text": "哦，是你啊",
+        "seconds": 1.7
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:77",
+        "text": "世界真小啊",
+        "seconds": 1.625
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:78",
+        "text": "今天怎么来啦",
+        "seconds": 1.525
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:79",
+        "text": "是来打招呼的吗",
+        "seconds": 1.575
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:80",
+        "text": "嘿，来得正好",
+        "seconds": 1.9
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:81",
+        "text": "太好了，你来了",
+        "seconds": 1.925
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:82",
+        "text": "刚刚好赶上",
+        "seconds": 1.625
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:83",
+        "text": "你突然冒出来啦",
+        "seconds": 1.55
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:84",
+        "text": "欢迎上船",
+        "seconds": 1.475
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:85",
+        "text": "进来进来",
+        "seconds": 1.25
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:86",
+        "text": "门永远开着",
+        "seconds": 1.45
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:87",
+        "text": "你的位置永远都有",
+        "seconds": 1.7
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:88",
+        "text": "拉把椅子坐吧",
+        "seconds": 1.775
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:89",
+        "text": "随便坐吧",
+        "seconds": 1.575
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:90",
+        "text": "好久不见",
+        "seconds": 1.475
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:91",
+        "text": "有一阵子没见啦",
+        "seconds": 1.675
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:92",
+        "text": "这么快就回来了",
+        "seconds": 1.7
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:93",
+        "text": "忍不住又来了吧",
+        "seconds": 1.65
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:94",
+        "text": "我就知道你会来逛逛",
+        "seconds": 1.875
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:95",
+        "text": "嘿，进来吧",
+        "seconds": 1.95
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:96",
+        "text": "幸好你在这儿",
+        "seconds": 1.475
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:97",
+        "text": "我们开始吧",
+        "seconds": 1.3
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:98",
+        "text": "准备好陪你混啦",
+        "seconds": 1.825
+      },
+      {
+        "id": "ios:AvatarDisplayViewModel:yumeStartupGreeting:99",
+        "text": "嘿，欢迎啊",
+        "seconds": 1.9
+      }
+    ]
+  }
+}

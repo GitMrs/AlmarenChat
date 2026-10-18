@@ -1,0 +1,25 @@
+{
+  "_GENERATED" : "from KoroKit\/KoroTunings.swift — EDIT THERE",
+  "format" : "kotune\/1",
+  "param_clamps" : {
+    "ParamAngleY" : {
+      "max" : 20,
+      "min" : -20
+    },
+    "ParamAngleZ" : {
+      "max" : 25,
+      "min" : -25
+    },
+    "ParamMouthForm" : {
+      "max" : 0.20000000298023224
+    },
+    "ParamMouthOpenY" : {
+      "max" : 0.80000001192092896
+    }
+  },
+  "speed" : 0.89999997615814209,
+  "stimulus" : {
+    "drag_follow" : 1,
+    "tap_shock" : 0.30000001192092896
+  }
+}

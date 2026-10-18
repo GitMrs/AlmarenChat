@@ -1,0 +1,422 @@
+[
+  {
+    "id": "ios:TapFXReactions:yumeTap:0",
+    "text": "喂，小心点",
+    "file": "/companion/audio/voice/yume/tap_01.mp3",
+    "seconds": 1.85
+  },
+  {
+    "id": "ios:TapFXReactions:yumeTap:1",
+    "text": "刚才那是干嘛啊",
+    "file": "/companion/audio/voice/yume/tap_02.mp3",
+    "seconds": 1.725
+  },
+  {
+    "id": "ios:TapFXReactions:yumeTap:2",
+    "text": "别戳我啦",
+    "file": "/companion/audio/voice/yume/tap_03.mp3",
+    "seconds": 1.375
+  },
+  {
+    "id": "ios:TapFXReactions:yumeTap:3",
+    "text": "太没礼貌了吧",
+    "file": "/companion/audio/voice/yume/tap_04.mp3",
+    "seconds": 1.525
+  },
+  {
+    "id": "ios:TapFXReactions:yumeTap:4",
+    "text": "别这样，你呀",
+    "file": "/companion/audio/voice/yume/tap_05.mp3",
+    "seconds": 1.85
+  },
+  {
+    "id": "ios:TapFXReactions:yumeTap:5",
+    "text": "不好意思，什么",
+    "file": "/companion/audio/voice/yume/tap_06.mp3",
+    "seconds": 2.15
+  },
+  {
+    "id": "ios:TapFXReactions:yumeTap:6",
+    "text": "请把手拿开",
+    "file": "/companion/audio/voice/yume/tap_07.mp3",
+    "seconds": 1.6
+  },
+  {
+    "id": "ios:TapFXReactions:yumeTap:7",
+    "text": "别想歪了",
+    "file": "/companion/audio/voice/yume/tap_08.mp3",
+    "seconds": 1.675
+  },
+  {
+    "id": "ios:TapFXReactions:yumeTap:8",
+    "text": "我才没有慌",
+    "file": "/companion/audio/voice/yume/tap_09.mp3",
+    "seconds": 1.275
+  },
+  {
+    "id": "ios:TapFXReactions:yumeTap:9",
+    "text": "又来，真的假的",
+    "file": "/companion/audio/voice/yume/tap_10.mp3",
+    "seconds": 2.225
+  },
+  {
+    "id": "ios:TapFXReactions:yumeTap:10",
+    "text": "你现在欠我一次了",
+    "file": "/companion/audio/voice/yume/tap_11.mp3",
+    "seconds": 1.825
+  },
+  {
+    "id": "ios:TapFXReactions:yumeTap:11",
+    "text": "你自己注意点",
+    "file": "/companion/audio/voice/yume/tap_12.mp3",
+    "seconds": 1.7
+  },
+  {
+    "id": "ios:TapFXReactions:yumeTap:12",
+    "text": "行了，什么事",
+    "file": "/companion/audio/voice/yume/tap_13.mp3",
+    "seconds": 1.875
+  },
+  {
+    "id": "ios:TapFXReactions:yumeTap:13",
+    "text": "别得寸进尺",
+    "file": "/companion/audio/voice/yume/tap_14.mp3",
+    "seconds": 1.65
+  },
+  {
+    "id": "ios:TapFXReactions:yumeTap:14",
+    "text": "你想干嘛",
+    "file": "/companion/audio/voice/yume/tap_15.mp3",
+    "seconds": 1.2
+  },
+  {
+    "id": "ios:TapFXReactions:yumeTap:15",
+    "text": "适可而止吧",
+    "file": "/companion/audio/voice/yume/tap_16.mp3",
+    "seconds": 1.625
+  },
+  {
+    "id": "ios:TapFXReactions:yumeTap:16",
+    "text": "你真烦人",
+    "file": "/companion/audio/voice/yume/tap_17.mp3",
+    "seconds": 1.3
+  },
+  {
+    "id": "ios:TapFXReactions:yumeTap:17",
+    "text": "我可是清楚感觉到了",
+    "file": "/companion/audio/voice/yume/tap_18.mp3",
+    "seconds": 2.175
+  },
+  {
+    "id": "ios:TapFXReactions:yumeTap:18",
+    "text": "都说了别闹了",
+    "file": "/companion/audio/voice/yume/tap_19.mp3",
+    "seconds": 1.675
+  },
+  {
+    "id": "ios:TapFXReactions:yumeTap:19",
+    "text": "说真的，这次又怎么了",
+    "file": "/companion/audio/voice/yume/tap_20.mp3",
+    "seconds": 2.6
+  },
+  {
+    "id": "ios:TapFXReactions:yumeTap:20",
+    "text": "你有完没完",
+    "file": "/companion/audio/voice/yume/tap_21.mp3",
+    "seconds": 1.3
+  },
+  {
+    "id": "ios:TapFXReactions:yumeTap:21",
+    "text": "这样不好，知道吗",
+    "file": "/companion/audio/voice/yume/tap_22.mp3",
+    "seconds": 2.1
+  },
+  {
+    "id": "ios:TapFXReactions:yumeTap:22",
+    "text": "你为什么要这样啊",
+    "file": "/companion/audio/voice/yume/tap_23.mp3",
+    "seconds": 1.675
+  },
+  {
+    "id": "ios:TapFXReactions:yumeTap:23",
+    "text": "我明明在管自己的事",
+    "file": "/companion/audio/voice/yume/tap_24.mp3",
+    "seconds": 1.85
+  },
+  {
+    "id": "ios:TapFXReactions:yumeTap:24",
+    "text": "真有胆量啊，真的",
+    "file": "/companion/audio/voice/yume/tap_25.mp3",
+    "seconds": 2.175
+  },
+  {
+    "id": "ios:TapFXReactions:yumeTap:25",
+    "text": "真是不可思议的行为",
+    "file": "/companion/audio/voice/yume/tap_26.mp3",
+    "seconds": 2.125
+  },
+  {
+    "id": "ios:TapFXReactions:yumeTap:26",
+    "text": "算你走运，我比较宽容",
+    "file": "/companion/audio/voice/yume/tap_27.mp3",
+    "seconds": 2.525
+  },
+  {
+    "id": "ios:TapFXReactions:yumeTap:27",
+    "text": "认真的，停下",
+    "file": "/companion/audio/voice/yume/tap_28.mp3",
+    "seconds": 1.975
+  },
+  {
+    "id": "ios:TapFXReactions:yumeTap:28",
+    "text": "你玩够了没",
+    "file": "/companion/audio/voice/yume/tap_29.mp3",
+    "seconds": 1.225
+  },
+  {
+    "id": "ios:TapFXReactions:yumeTap:29",
+    "text": "我可不记得有要求过这个",
+    "file": "/companion/audio/voice/yume/tap_30.mp3",
+    "seconds": 2.4
+  },
+  {
+    "id": "ios:TapFXReactions:yumeTap:30",
+    "text": "你别闹了",
+    "file": "/companion/audio/voice/yume/tap_31.mp3",
+    "seconds": 1.325
+  },
+  {
+    "id": "ios:TapFXReactions:yumeTap:31",
+    "text": "你胆子还真不小啊",
+    "file": "/companion/audio/voice/yume/tap_32.mp3",
+    "seconds": 1.9
+  },
+  {
+    "id": "ios:TapFXReactions:yumeTap:32",
+    "text": "你到底什么毛病",
+    "file": "/companion/audio/voice/yume/tap_33.mp3",
+    "seconds": 1.725
+  },
+  {
+    "id": "ios:TapFXReactions:yumeTap:33",
+    "text": "别烦我了",
+    "file": "/companion/audio/voice/yume/tap_34.mp3",
+    "seconds": 1.375
+  },
+  {
+    "id": "ios:TapFXReactions:yumeTap:34",
+    "text": "记住了，而且不喜欢",
+    "file": "/companion/audio/voice/yume/tap_35.mp3",
+    "seconds": 2.475
+  },
+  {
+    "id": "ios:TapFXReactions:yumeTap:35",
+    "text": "你这是在考验我的耐心啊",
+    "file": "/companion/audio/voice/yume/tap_36.mp3",
+    "seconds": 2.325
+  },
+  {
+    "id": "ios:TapFXReactions:yumeTap:36",
+    "text": "到底是为什么呢",
+    "file": "/companion/audio/voice/yume/tap_37.mp3",
+    "seconds": 1.65
+  },
+  {
+    "id": "ios:TapFXReactions:yumeTap:37",
+    "text": "刚才那下完全没必要",
+    "file": "/companion/audio/voice/yume/tap_38.mp3",
+    "seconds": 1.925
+  },
+  {
+    "id": "ios:TapFXReactions:yumeTap:38",
+    "text": "我可没被打动",
+    "file": "/companion/audio/voice/yume/tap_39.mp3",
+    "seconds": 1.575
+  },
+  {
+    "id": "ios:TapFXReactions:yumeTap:39",
+    "text": "是是是，超好笑的",
+    "file": "/companion/audio/voice/yume/tap_40.mp3",
+    "seconds": 2.5
+  },
+  {
+    "id": "ios:TapFXReactions:yumeTap:40",
+    "text": "你觉得这样很好玩吗",
+    "file": "/companion/audio/voice/yume/tap_41.mp3",
+    "seconds": 1.9
+  },
+  {
+    "id": "ios:TapFXReactions:yumeTap:41",
+    "text": "我早就料到了",
+    "file": "/companion/audio/voice/yume/tap_42.mp3",
+    "seconds": 1.575
+  },
+  {
+    "id": "ios:TapFXReactions:yumeTap:42",
+    "text": "下次先问一声",
+    "file": "/companion/audio/voice/yume/tap_43.mp3",
+    "seconds": 1.8
+  },
+  {
+    "id": "ios:TapFXReactions:yumeTap:43",
+    "text": "一点都不好笑",
+    "file": "/companion/audio/voice/yume/tap_44.mp3",
+    "seconds": 1.7
+  },
+  {
+    "id": "ios:TapFXReactions:yumeTap:44",
+    "text": "你就是故意的吧",
+    "file": "/companion/audio/voice/yume/tap_45.mp3",
+    "seconds": 1.775
+  },
+  {
+    "id": "ios:TapFXReactions:yumeTap:45",
+    "text": "个人空间这个概念，你听说过吗",
+    "file": "/companion/audio/voice/yume/tap_46.mp3",
+    "seconds": 2.9
+  },
+  {
+    "id": "ios:TapFXReactions:yumeTap:46",
+    "text": "“停下”这两个字哪个你听不懂啊",
+    "file": "/companion/audio/voice/yume/tap_47.mp3",
+    "seconds": 2.475
+  },
+  {
+    "id": "ios:TapFXReactions:yumeTap:47",
+    "text": "我就当没发生过这回事",
+    "file": "/companion/audio/voice/yume/tap_48.mp3",
+    "seconds": 2.225
+  },
+  {
+    "id": "ios:TapFXReactions:yumeTap:48",
+    "text": "你可真成熟啊",
+    "file": "/companion/audio/voice/yume/tap_49.mp3",
+    "seconds": 1.65
+  },
+  {
+    "id": "ios:TapFXReactions:yumeTap:49",
+    "text": "我够了，谢谢",
+    "file": "/companion/audio/voice/yume/tap_50.mp3",
+    "seconds": 2.025
+  },
+  {
+    "id": "ios:TapFXReactions:yumeTap:50",
+    "text": "好了，到此为止",
+    "file": "/companion/audio/voice/yume/tap_51.mp3",
+    "seconds": 2.225
+  },
+  {
+    "id": "ios:TapFXReactions:yumeTap:51",
+    "text": "算了，当我没说",
+    "file": "/companion/audio/voice/yume/tap_52.mp3",
+    "seconds": 2.025
+  },
+  {
+    "id": "ios:TapFXReactions:yumeTap:52",
+    "text": "现在别惹我",
+    "file": "/companion/audio/voice/yume/tap_53.mp3",
+    "seconds": 1.55
+  },
+  {
+    "id": "ios:TapFXReactions:yumeTap:53",
+    "text": "我可是在数着的哦",
+    "file": "/companion/audio/voice/yume/tap_54.mp3",
+    "seconds": 1.8
+  },
+  {
+    "id": "ios:TapFXReactions:yumeTap:54",
+    "text": "行吧，随便你。",
+    "file": "/companion/audio/voice/yume/tap_55.mp3",
+    "seconds": 2.1
+  },
+  {
+    "id": "yume_startup_01",
+    "text": "嘿，你回来了。",
+    "file": "/companion/audio/voice/yume/startup_01.mp3"
+  },
+  {
+    "id": "yume_startup_02",
+    "text": "欢迎回来~ 哼，我可没一直等你哦！",
+    "file": "/companion/audio/voice/yume/startup_02.mp3"
+  },
+  {
+    "id": "yume_startup_03",
+    "text": "喂喂，干嘛？又来找我啦？",
+    "file": "/companion/audio/voice/yume/startup_03.mp3"
+  },
+  {
+    "id": "yume_startup_04",
+    "text": "哟，看看是谁来了~",
+    "file": "/companion/audio/voice/yume/startup_04.mp3"
+  },
+  {
+    "id": "yume_startup_05",
+    "text": "你总算来了，等你半天了！",
+    "file": "/companion/audio/voice/yume/startup_05.mp3"
+  },
+  {
+    "id": "yume_startup_06",
+    "text": "你又来啦，今天有什么打算？",
+    "file": "/companion/audio/voice/yume/startup_06.mp3"
+  },
+  {
+    "id": "yume_startup_07",
+    "text": "快进来吧，今天也要打起精神来哦！",
+    "file": "/companion/audio/voice/yume/startup_07.mp3"
+  },
+  {
+    "id": "yume_startup_08",
+    "text": "有什么新鲜事吗？快跟我讲讲~",
+    "file": "/companion/audio/voice/yume/startup_08.mp3"
+  },
+  {
+    "id": "yume_startup_09",
+    "text": "想找我聊天？那本小姐就勉为其难听听吧~",
+    "file": "/companion/audio/voice/yume/startup_09.mp3"
+  },
+  {
+    "id": "yume_startup_10",
+    "text": "早啊！起床啦，今天可不许偷懒哦！",
+    "file": "/companion/audio/voice/yume/startup_10.mp3"
+  },
+  {
+    "id": "yume_startup_11",
+    "text": "下午好呀！今天过得还顺利吗？",
+    "file": "/companion/audio/voice/yume/startup_11.mp3"
+  },
+  {
+    "id": "yume_startup_12",
+    "text": "晚上好呀！今天辛苦啦，早点休息别熬夜哦。",
+    "file": "/companion/audio/voice/yume/startup_12.mp3"
+  },
+  {
+    "id": "yume_drag_01",
+    "text": "喂，你在干什么！快放我下来啦！",
+    "file": "/companion/audio/voice/yume/drag_01.mp3"
+  },
+  {
+    "id": "yume_drag_02",
+    "text": "别这样晃来晃去啦，头都要被你转晕了！💫",
+    "file": "/companion/audio/voice/yume/drag_02.mp3"
+  },
+  {
+    "id": "yume_drag_03",
+    "text": "哎，慢点慢点，天哪！",
+    "file": "/companion/audio/voice/yume/drag_03.mp3"
+  },
+  {
+    "id": "yume_drag_04",
+    "text": "我可没求你这样转我，晕死啦！",
+    "file": "/companion/audio/voice/yume/drag_04.mp3"
+  },
+  {
+    "id": "yume_drag_05",
+    "text": "这一点都不好玩！...好吧，其实有一点点？",
+    "file": "/companion/audio/voice/yume/drag_05.mp3"
+  },
+  {
+    "id": "yume_drag_06",
+    "text": "哼，不管你把视线移到哪儿，我都一直看着你呢！✨",
+    "file": "/companion/audio/voice/yume/drag_06.mp3"
+  }
+]

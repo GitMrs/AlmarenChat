@@ -1,0 +1,660 @@
+/* =========================================================================
+   Almaren Motion Studio · 动作调校工坊专属样式
+   ========================================================================= */
+
+:root {
+  --studio-bg: #131418;
+  --studio-surface: #1a1c23;
+  --studio-surface-elevated: #242731;
+  --studio-border: rgba(255, 255, 255, 0.08);
+  --studio-border-strong: rgba(255, 255, 255, 0.16);
+  --studio-text: #f3f4f6;
+  --studio-muted: #9ca3af;
+  --studio-accent-nari: #f472b6;
+  --studio-accent-yume: #38bdf8;
+  --studio-accent: var(--studio-accent-nari);
+  --studio-playhead: #f43f5e;
+}
+
+.studio-page[data-character="yume"] {
+  --studio-accent: var(--studio-accent-yume);
+  --studio-playhead: #0ea5e9;
+}
+
+html, body {
+  background-color: var(--studio-bg);
+  color: var(--studio-text);
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  user-select: none;
+}
+
+.studio-page {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  background: var(--studio-bg);
+  box-sizing: border-box;
+}
+
+/* ==================== 顶部导航工具栏 (Top Navbar) ==================== */
+.studio-navbar {
+  height: 52px;
+  background: var(--studio-surface);
+  border-bottom: 1px solid var(--studio-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 18px;
+  flex-shrink: 0;
+  z-index: 30;
+}
+
+.studio-nav-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.studio-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--studio-border);
+  border-radius: 10px;
+  color: var(--studio-text);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+  transition: all 0.15s ease;
+}
+
+.studio-back-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: var(--studio-border-strong);
+}
+
+.studio-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
+  font-weight: 700;
+  letter-spacing: -0.2px;
+  color: #ffffff;
+}
+
+.studio-brand-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: rgba(244, 114, 182, 0.18);
+  color: var(--studio-accent);
+  border: 1px solid rgba(244, 114, 182, 0.3);
+}
+
+.studio-page[data-character="yume"] .studio-brand-badge {
+  background: rgba(56, 189, 248, 0.18);
+  border-color: rgba(56, 189, 248, 0.3);
+}
+
+.studio-nav-mid {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.studio-char-toggle {
+  display: flex;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--studio-border);
+  border-radius: 20px;
+  padding: 3px;
+  gap: 3px;
+}
+
+.studio-char-btn {
+  border: none;
+  background: transparent;
+  padding: 4px 12px;
+  border-radius: 16px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--studio-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.studio-char-btn.is-active {
+  background: var(--studio-surface-elevated);
+  color: #ffffff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+.studio-motion-select {
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--studio-border);
+  color: #ffffff;
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 10px;
+  outline: none;
+  cursor: pointer;
+  max-width: 200px;
+}
+
+.studio-motion-select:focus {
+  border-color: var(--studio-accent);
+}
+
+.studio-nav-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.studio-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid var(--studio-border);
+  background: var(--studio-surface-elevated);
+  color: #ffffff;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.studio-action-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: var(--studio-border-strong);
+}
+
+.studio-action-btn.is-primary {
+  background: var(--studio-accent);
+  color: #000000;
+  border-color: transparent;
+  font-weight: 700;
+}
+
+.studio-action-btn.is-primary:hover {
+  filter: brightness(1.1);
+  transform: translateY(-1px);
+}
+
+/* ==================== 中央主体工作区 (Center Workspace) ==================== */
+.studio-body {
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 380px;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+/* 左侧舞台预览区 (Viewport) */
+.studio-viewport {
+  position: relative;
+  background: #0d0e12;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-right: 1px solid var(--studio-border);
+}
+
+.studio-stage-wrapper {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.studio-viewport-hud {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  right: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.studio-viewport-pill {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(20, 22, 28, 0.75);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--studio-border);
+  border-radius: 18px;
+  padding: 4px 10px;
+  font-size: 11px;
+  color: var(--studio-muted);
+}
+
+.studio-viewport-btn {
+  background: transparent;
+  border: none;
+  color: var(--studio-muted);
+  padding: 3px 7px;
+  border-radius: 6px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.studio-viewport-btn:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.studio-viewport-btn.is-active {
+  color: var(--studio-accent);
+  background: rgba(255, 255, 255, 0.14);
+  font-weight: 700;
+}
+
+/* 右侧参数与关键帧检查器 (Inspector) */
+.studio-inspector {
+  background: var(--studio-surface);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.studio-inspector-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--studio-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+
+.studio-inspector-header h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.studio-group-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 8px 14px;
+  background: rgba(0, 0, 0, 0.2);
+  border-bottom: 1px solid var(--studio-border);
+  overflow-x: auto;
+  scrollbar-width: none;
+  flex-shrink: 0;
+}
+
+.studio-group-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.studio-group-tab {
+  border: none;
+  background: transparent;
+  padding: 5px 10px;
+  border-radius: 8px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--studio-muted);
+  cursor: pointer;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  transition: all 0.15s ease;
+}
+
+.studio-group-tab:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.studio-group-tab.is-active {
+  color: #ffffff;
+  background: var(--studio-surface-elevated);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+}
+
+.studio-param-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+}
+
+.studio-param-list::-webkit-scrollbar {
+  width: 5px;
+}
+
+.studio-param-list::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
+}
+
+.studio-param-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: rgba(0, 0, 0, 0.15);
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.studio-param-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.studio-param-label {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--studio-muted);
+}
+
+.studio-param-val-badge {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--studio-accent);
+  background: rgba(0, 0, 0, 0.35);
+  padding: 2px 6px;
+  border-radius: 6px;
+  border: 1px solid var(--studio-border);
+}
+
+.studio-param-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.studio-param-slider {
+  flex: 1;
+  appearance: none;
+  -webkit-appearance: none;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.15);
+  outline: none;
+}
+
+.studio-param-slider::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #ffffff;
+  cursor: ew-resize;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+  transition: transform 0.1s ease;
+}
+
+.studio-param-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+}
+
+.studio-param-reset-btn {
+  background: transparent;
+  border: none;
+  color: var(--studio-muted);
+  cursor: pointer;
+  padding: 2px;
+  font-size: 11px;
+  opacity: 0.6;
+  transition: opacity 0.15s ease;
+}
+
+.studio-param-reset-btn:hover {
+  opacity: 1;
+  color: #ffffff;
+}
+
+/* ==================== 底部宽幅时间轴 (Bottom Timeline) ==================== */
+.studio-timeline {
+  height: 148px;
+  background: var(--studio-surface);
+  border-top: 1px solid var(--studio-border);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  z-index: 20;
+}
+
+.studio-timeline-toolbar {
+  height: 38px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--studio-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.studio-timeline-playback {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.studio-play-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: none;
+  background: var(--studio-accent);
+  color: #000000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.studio-play-btn:hover {
+  filter: brightness(1.1);
+  transform: scale(1.05);
+}
+
+.studio-time-btn {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  border: 1px solid var(--studio-border);
+  background: transparent;
+  color: var(--studio-text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.studio-time-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.studio-time-counter {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #ffffff;
+  margin: 0 6px;
+}
+
+.studio-time-counter span {
+  color: var(--studio-muted);
+}
+
+.studio-timeline-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.studio-kf-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-size: 11.5px;
+  font-weight: 600;
+  border: 1px solid var(--studio-border);
+  background: var(--studio-surface-elevated);
+  color: #ffffff;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.studio-kf-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.studio-kf-btn.is-add {
+  border-color: rgba(244, 114, 182, 0.4);
+  color: var(--studio-accent);
+}
+
+/* 时间轴标尺与轨道容器 (Track Container) */
+.studio-track-area {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding: 0 20px;
+  cursor: pointer;
+  background: #111216;
+}
+
+.studio-ruler {
+  height: 24px;
+  position: relative;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.studio-ruler-tick {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.studio-ruler-tick-mark {
+  width: 1px;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.studio-ruler-tick-label {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 9.5px;
+  color: var(--studio-muted);
+  margin-top: 3px;
+}
+
+/* 轨道主体 (Track Body) */
+.studio-track-body {
+  flex: 1;
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.studio-track-bar {
+  width: 100%;
+  height: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 6px;
+  position: relative;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* 关键帧菱形标记 (Keyframe Diamond) */
+.studio-kf-marker {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%) rotate(45deg);
+  width: 11px;
+  height: 11px;
+  background: #fbcfe8;
+  border: 1.5px solid #db2777;
+  border-radius: 2px;
+  cursor: pointer;
+  z-index: 10;
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.studio-kf-marker:hover {
+  transform: translate(-50%, -50%) rotate(45deg) scale(1.35);
+  background: #ffffff;
+  box-shadow: 0 0 10px var(--studio-accent);
+}
+
+.studio-kf-marker.is-active {
+  background: var(--studio-accent);
+  border-color: #ffffff;
+  box-shadow: 0 0 12px var(--studio-accent);
+  transform: translate(-50%, -50%) rotate(45deg) scale(1.25);
+}
+
+/* 播放指针 (Playhead Scrubber) */
+.studio-playhead-needle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--studio-playhead);
+  transform: translateX(-50%);
+  pointer-events: none;
+  z-index: 15;
+  box-shadow: 0 0 8px var(--studio-playhead);
+}
+
+.studio-playhead-cap {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 10px;
+  height: 12px;
+  background: var(--studio-playhead);
+  clip-path: polygon(0% 0%, 100% 0%, 100% 65%, 50% 100%, 0% 65%);
+}

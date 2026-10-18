@@ -7,6 +7,8 @@ export interface TTSVoice {
   tags: string[];
   isDefault?: boolean;
   defaultRate?: string;
+  engine?: 'edge' | 'fish-audio';
+  referenceId?: string;
 }
 
 export interface TTSOptions {
@@ -15,7 +17,9 @@ export interface TTSOptions {
   pitch?: string; // e.g. '+0Hz', '+5Hz'
   volume?: string; // e.g. '+0%'
   timeoutMs?: number;
-  cacheNamespace?: 'gomoku';
+  cacheNamespace?: 'gomoku' | 'companion' | string;
+  engine?: 'edge' | 'fish-audio';
+  referenceId?: string;
 }
 
 export interface TTSResult {
