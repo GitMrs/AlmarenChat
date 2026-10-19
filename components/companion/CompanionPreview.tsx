@@ -286,6 +286,7 @@ function CompanionSession({
 
   const tapBubbleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastTapTimeRef = useRef<number>(0);
+  const lastTapLineTextRef = useRef<string | undefined>(undefined);
   const isPlayingVoiceRef = useRef<boolean>(false);
   const comboCountRef = useRef<number>(0);
   const exhaustedUntilRef = useRef<number>(0);
@@ -435,9 +436,13 @@ function CompanionSession({
     void playChatReply(reply);
   }, [reply, ready]);
 
+  const selectTapLine = (kind: 'tap' | 'rapid') => kind === 'tap'
+    ? getRandomTapLine(character.id, lastTapLineTextRef.current)
+    : getRapidTapLine(character.id, lastTapLineTextRef.current);
+
   const prepareTapVoice = (kind: 'tap' | 'rapid') => {
     if (!voiceEnabled || !sfxEnabled || preparedTapVoicesRef.current.has(kind)) return;
-    const line = kind === 'tap' ? getRandomTapLine(character.id) : getRapidTapLine(character.id);
+    const line = selectTapLine(kind);
     if (!line.audioUrl) return;
     const audio = new Audio(line.audioUrl);
     audio.preload = 'auto';
@@ -620,16 +625,35 @@ function CompanionSession({
     setTapBubble(null);
     const showBubble = () => setTapBubble({ text: line.text, id: now, combo: options?.combo });
 
-    if (!voiceEnabled || !sfxEnabled || !line.audioUrl) {
+    const finishVoice = (bubbleDelay = 0) => {
+      isPlayingVoiceRef.current = false;
+      setIsSpeaking(false);
+      stage.current?.stopSpeaking();
+      if (options?.isTap) {
+        const combo = comboCountRef.current;
+        comboCountRef.current = 0;
+        if (Date.now() - lastTapTimeRef.current < 1200 && combo >= 3) {
+          playTapVoice(combo);
+          return;
+        }
+      }
+      if (bubbleDelay) {
+        tapBubbleTimerRef.current = setSessionTimeout(() => setTapBubble(null), bubbleDelay);
+      } else {
+        setTapBubble(null);
+      }
+    };
+    const playFallback = () => {
+      isPlayingVoiceRef.current = true;
       showBubble();
       setIsSpeaking(true);
       stage.current?.speak(fallbackDuration);
       if (tapBubbleTimerRef.current) clearSessionTimeout(tapBubbleTimerRef.current);
-      tapBubbleTimerRef.current = setSessionTimeout(() => {
-        setTapBubble(null);
-        setIsSpeaking(false);
-        stage.current?.stopSpeaking();
-      }, fallbackDuration);
+      tapBubbleTimerRef.current = setSessionTimeout(() => finishVoice(), fallbackDuration);
+    };
+
+    if (!voiceEnabled || !sfxEnabled || !line.audioUrl) {
+      playFallback();
       return;
     }
 
@@ -651,16 +675,7 @@ function CompanionSession({
           failed = true;
           clearSessionTimeout(loadingTimer);
           releaseAudio(audio);
-          isPlayingVoiceRef.current = false;
-          showBubble();
-          setIsSpeaking(true);
-          stage.current?.speak(fallbackDuration);
-          if (tapBubbleTimerRef.current) clearSessionTimeout(tapBubbleTimerRef.current);
-          tapBubbleTimerRef.current = setSessionTimeout(() => {
-            setTapBubble(null);
-            setIsSpeaking(false);
-            stage.current?.stopSpeaking();
-          }, fallbackDuration);
+          playFallback();
         };
 
         // 真实音频驱动口型与播放锁
@@ -673,23 +688,8 @@ function CompanionSession({
         };
         audio.onended = () => {
           clearSessionTimeout(loadingTimer);
-          isPlayingVoiceRef.current = false;
-          setIsSpeaking(false);
-          stage.current?.stopSpeaking();
-
-          // 若来自点击且在连击中（1.2s 内有点击且 combo >= 3），紧接着播放连击语音！
-          if (options?.isTap) {
-            const finishedAt = Date.now();
-            if (finishedAt - lastTapTimeRef.current < 1200 && comboCountRef.current >= 3) {
-              const nextCombo = comboCountRef.current;
-              playTapVoice(nextCombo);
-              return;
-            }
-          }
           if (tapBubbleTimerRef.current) clearSessionTimeout(tapBubbleTimerRef.current);
-          tapBubbleTimerRef.current = setSessionTimeout(() => {
-            setTapBubble(null);
-          }, 500);
+          finishVoice(500);
         };
         audio.onpause = () => {
           clearSessionTimeout(loadingTimer);
@@ -698,44 +698,26 @@ function CompanionSession({
           stage.current?.stopSpeaking();
         };
         audio.onerror = fallback;
-        audio.play().then(() => {
-          if (options?.isStartup) {
-            pendingStartupLineRef.current = null;
-          }
-        }).catch(() => {
-          if (options?.isStartup) {
-            // 浏览器因自动播放策略拦截出声，保留待用户首次触摸屏幕时立即触发
-            pendingStartupLineRef.current = { line, options };
-          }
+        try {
+          audio.play().then(() => {
+            if (options?.isStartup) {
+              pendingStartupLineRef.current = null;
+            }
+          }).catch(() => {
+            if (options?.isStartup) {
+              // 浏览器因自动播放策略拦截出声，保留待用户首次触摸屏幕时立即触发
+              pendingStartupLineRef.current = { line, options };
+            }
+            fallback();
+          });
+        } catch {
           fallback();
-        });
-        if (prepared) prepareTapVoice(prepared[0]);
+        }
       } catch {
-        isPlayingVoiceRef.current = false;
-        showBubble();
-        setIsSpeaking(true);
-        stage.current?.speak(fallbackDuration);
-        tapBubbleTimerRef.current = setSessionTimeout(() => {
-          setTapBubble(null);
-          setIsSpeaking(false);
-        }, fallbackDuration);
+        playFallback();
       }
     } else {
-      isPlayingVoiceRef.current = true;
-      setIsSpeaking(true);
-      stage.current?.speak(fallbackDuration);
-      tapBubbleTimerRef.current = setSessionTimeout(() => {
-        isPlayingVoiceRef.current = false;
-        setIsSpeaking(false);
-        if (options?.isTap) {
-          const finishedAt = Date.now();
-          if (finishedAt - lastTapTimeRef.current < 1200 && comboCountRef.current >= 3) {
-            playTapVoice(comboCountRef.current);
-            return;
-          }
-        }
-        setTapBubble(null);
-      }, fallbackDuration);
+      playFallback();
     }
   };
 
@@ -791,6 +773,12 @@ function CompanionSession({
   // 播放触碰反馈语音（支持日常问候、急促连击台词、求饶三种档位）
   const playTapVoice = (combo: number) => {
     const now = Date.now();
+    const kind = combo >= 3 ? 'rapid' : 'tap';
+    const prepared = preparedTapVoicesRef.current.get(kind);
+    if (combo < 5 && prepared && prepared.line.text === lastTapLineTextRef.current) {
+      releaseAudio(prepared.audio);
+      preparedTapVoicesRef.current.delete(kind);
+    }
     let line: VoiceLine;
     let targetExpression = '';
     let targetMotionId = '';
@@ -807,19 +795,21 @@ function CompanionSession({
       comboCountRef.current = 0;
     } else if (combo >= 3) {
       // 🌟 Level 2: 连点 3~4 次，触发【慌乱/连击专属台词】！
-      line = preparedTapVoicesRef.current.get('rapid')?.line ?? getRapidTapLine(character.id);
+      line = preparedTapVoicesRef.current.get('rapid')?.line ?? selectTapLine('rapid');
       const reaction = behavior.getRapidTapReaction(character, tapExpression);
       targetExpression = reaction.targetExpression || tapExpression;
       targetMotionId = reaction.targetMotionId || '';
     } else {
       // 🌟 Level 1: 正常单次轻戳日常问候
-      line = preparedTapVoicesRef.current.get('tap')?.line ?? getRandomTapLine(character.id);
+      line = preparedTapVoicesRef.current.get('tap')?.line ?? selectTapLine('tap');
       const reaction = behavior.getRandomTapReaction(character, tapExpression);
       targetExpression = reaction.targetExpression || '';
       targetMotionId = reaction.targetMotionId || '';
     }
 
+    lastTapLineTextRef.current = line.text;
     playVoice(line, { targetMotionId, targetExpression, combo, isTap: true });
+    if (combo < 5) prepareTapVoice(kind);
   };
 
   // 角色点击触碰交互：

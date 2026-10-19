@@ -1,6 +1,13 @@
 export async function register() {
   if (process.env.NEXT_RUNTIME === 'nodejs') {
-    // 默认保持本地直连优先；当且仅当直连异常时，由底层调度器在单次请求级别自动切换本地代理
+    const isDev = process.env.NODE_ENV === 'development';
+    const enableSchedulers = process.env.ENABLE_SCHEDULERS === 'true';
+
+    // 本地开发环境默认关闭后台高频定时扫描与爬虫，避免不必要的外网轮询与报错刷屏
+    if (isDev && !enableSchedulers) {
+      console.log('[instrumentation] 本地开发环境已关闭后台定时扫描与爬虫（如需开启可配置 ENABLE_SCHEDULERS=true）');
+      return;
+    }
 
     try {
       const { startTrendingScheduler } = await import('./lib/trending/scheduler');

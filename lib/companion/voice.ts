@@ -41,17 +41,23 @@ const maoRapidLines: VoiceLine[] = [
   { id: 'mao_rapid_4', text: '再戳一下真央就要炸毛了喵！是真的喵！', seconds: 2.0 },
 ];
 
-export function getRandomTapLine(characterId: string): VoiceLine {
+function pickLineIndex(pool: readonly { text: string }[], previousText?: string): number {
+  const candidates = pool.map((_, index) => index).filter(index => pool[index].text !== previousText);
+  if (!candidates.length) return Math.floor(Math.random() * pool.length);
+  return candidates[Math.floor(Math.random() * candidates.length)];
+}
+
+export function getRandomTapLine(characterId: string, previousText?: string): VoiceLine {
   if (characterId === 'lafei') {
-    return lafeiTapLines[Math.floor(Math.random() * lafeiTapLines.length)];
+    return lafeiTapLines[pickLineIndex(lafeiTapLines, previousText)];
   }
   if (characterId === 'mao') {
-    return maoTapLines[Math.floor(Math.random() * maoTapLines.length)];
+    return maoTapLines[pickLineIndex(maoTapLines, previousText)];
   }
 
   const isYume = characterId === 'yume';
   const pool = isYume ? dataset.yume.tap : dataset.nari.tap;
-  const index = Math.floor(Math.random() * pool.length);
+  const index = pickLineIndex(pool, previousText);
   const item = pool[index] || { id: 'fallback', text: '你好呀！', seconds: 1.5 };
   const filename = `tap_${String(index + 1).padStart(2, '0')}.mp3`;
   const folder = isYume ? 'yume' : 'nari';
@@ -61,12 +67,12 @@ export function getRandomTapLine(characterId: string): VoiceLine {
   };
 }
 
-export function getRapidTapLine(characterId: string): VoiceLine {
+export function getRapidTapLine(characterId: string, previousText?: string): VoiceLine {
   if (characterId === 'lafei') {
-    return lafeiRapidLines[Math.floor(Math.random() * lafeiRapidLines.length)];
+    return lafeiRapidLines[pickLineIndex(lafeiRapidLines, previousText)];
   }
   if (characterId === 'mao') {
-    return maoRapidLines[Math.floor(Math.random() * maoRapidLines.length)];
+    return maoRapidLines[pickLineIndex(maoRapidLines, previousText)];
   }
 
   const isYume = characterId === 'yume';
@@ -75,7 +81,7 @@ export function getRapidTapLine(characterId: string): VoiceLine {
   const rapidIndexes = isYume
     ? [2, 1, 6, 8, 13] // 别戳我啦、刚才那是干嘛啊、请把手拿开、我才没有慌、别得寸进尺
     : [36, 2, 28, 18, 32]; // 哎呀好快呀(37)、好痒呀哈哈(3)、小心哦我可能会戳回去(29)、总是让我猝不及防(19)、好大胆哦(33)
-  const pickedIndex = rapidIndexes[Math.floor(Math.random() * rapidIndexes.length)];
+  const pickedIndex = rapidIndexes[pickLineIndex(rapidIndexes.map(index => pool[index]), previousText)];
   const item = pool[pickedIndex] || pool[0];
   const filename = `tap_${String(pickedIndex + 1).padStart(2, '0')}.mp3`;
   const folder = isYume ? 'yume' : 'nari';
