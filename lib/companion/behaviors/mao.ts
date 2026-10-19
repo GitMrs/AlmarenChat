@@ -83,14 +83,14 @@ export const maoBehavior: CompanionBehavior = {
 
   getRapidTapReaction: (character: CompanionCharacter, _defaultExpression: string) => {
     const rapidMotion = character.motions.find(m => m.id === 'TapBody_0');
-    return { targetMotionId: rapidMotion?.id, targetExpression: '晕' };
+    return { targetMotionId: rapidMotion?.id, targetExpression: '生气' };
   },
 
   getRandomTapReaction: (character: CompanionCharacter, _defaultExpression: string) => {
     const tapPool = ['TapBody_0', 'TapBody_1', 'TapBody_2', 'Idle'];
     const chosen = tapPool[Math.floor(Math.random() * tapPool.length)];
     const motion = character.motions.find(m => m.id === chosen);
-    const expPool = ['开心', '害羞', '惊喜', ''];
+    const expPool = ['开心', '害羞', '惊讶', ''];
     const targetExpression = expPool[Math.floor(Math.random() * expPool.length)];
     return { targetMotionId: motion?.id, targetExpression };
   },

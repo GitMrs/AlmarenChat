@@ -19,6 +19,8 @@ import MemorySuggestionDialog, { type MemorySuggestion } from '@/components/chat
 import { useTTS } from '@/hooks/useTTS';
 import { getBuiltInAgents } from '@/lib/agents-data';
 import { getCompanionCharacterId } from '@/lib/companion/agents';
+import { companionReplyInstruction, createCompanionReplyParser } from '@/lib/companion/reply-protocol.mjs';
+import type { CompanionReply } from '@/lib/companion/reply';
 import { assistant as assistantApi, generateConversationImage, streamChat, conversations as conversationsApi, agents as agentsApi, user as userApi, uploads } from '@/lib/api';
 import {
   DEFAULT_BROWSER_MODEL_CONFIG,
@@ -98,6 +100,13 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingContent, setStreamingContent] = useState('');
+  const [draft, setDraft] = useState('');
+  const [companionReply, setCompanionReply] = useState<CompanionReply | null>(null);
+  const activeViewRef = useRef(viewMode);
+  activeViewRef.current = viewMode;
+  const activeChatRef = useRef('');
+  activeChatRef.current = `${agentId}:${existingConversationId || ''}`;
+  const replyRequestRef = useRef(0);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [mobileDetailsOpen, setMobileDetailsOpen] = useState(false);
@@ -191,9 +200,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
   const messagesRef = useRef<ChatMessage[]>([]);
   const forceScrollToBottomRef = useRef(false);
   const pendingLargeTextRef = useRef<string | null>(null);
-  const largeTextPasteGuardRef = useRef(false);
-  const skipNextEmptyInputRef = useRef(false);
-  const ignoreInputUntilRef = useRef(0);
+  const isComposingRef = useRef(false);
 
   useEffect(() => {
     messagesRef.current = messages;
@@ -483,6 +490,15 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
   const displayAgent = conversationAgent || agent;
   const companionCharacterId = displayAgent?.companionCharacterId || agent?.companionCharacterId || getCompanionCharacterId(displayAgent?.id || agentId);
 
+  useEffect(() => {
+    setCompanionReply(null);
+    stopTTS();
+  }, [viewMode, agentId, existingConversationId, stopTTS]);
+
+  useEffect(() => {
+    setDraft('');
+  }, [agentId, existingConversationId]);
+
   const toggleCompanionView = () => {
     const nextView = viewMode === 'companion' ? 'chat' : 'companion';
     const params = new URLSearchParams(searchParams.toString());
@@ -626,18 +642,14 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
   const handlePaste = async (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const file = Array.from(event.clipboardData.files).find((item) => item.type.startsWith('image/'));
     if (!file) {
+      if (isComposingRef.current) return;
       const text = event.clipboardData.getData('text');
       if (text.length <= LARGE_PASTE_TEXT_LIMIT && text.split('\n').length <= LARGE_PASTE_LINES_LIMIT) return;
 
       event.preventDefault();
       pendingLargeTextRef.current = text;
-      largeTextPasteGuardRef.current = true;
-      ignoreInputUntilRef.current = Date.now() + 1000;
       setPendingLargeTextMeta({ chars: text.length, kind: getLargeTextKind(text) });
-      if (inputRef.current) {
-        skipNextEmptyInputRef.current = true;
-        inputRef.current.value = '';
-      }
+      setDraft('');
       return;
     }
 
@@ -676,16 +688,20 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
       modeOverride?: 'chat' | 'image';
     } = {}
   ) => {
+    if (isComposingRef.current) return;
     if (!isLoggedIn) {
       router.push('/login');
       return;
     }
 
-    const content = text ?? pendingLargeTextRef.current ?? inputRef.current?.value.trim() ?? '';
-    const outgoingAttachments = options.attachmentsOverride || (pendingAttachment ? [pendingAttachment] : []);
-    const requestMode = options.modeOverride || chatMode;
+    const isCompanionSend = viewMode === 'companion' && Boolean(companionCharacterId);
+    const content = text ?? pendingLargeTextRef.current ?? draft.trim();
+    const outgoingAttachments = options.attachmentsOverride || (isCompanionSend ? [] : pendingAttachment ? [pendingAttachment] : []);
+    const requestMode = isCompanionSend ? 'chat' : options.modeOverride || chatMode;
     if (requestMode === 'image' && outgoingAttachments.length > 0) return;
     if ((!content && outgoingAttachments.length === 0) || isStreaming || uploadingImage) return;
+    const replyRequest = ++replyRequestRef.current;
+    const requestChat = activeChatRef.current;
 
     setShouldStickToBottom(true);
     setShowJumpToBottom(false);
@@ -704,14 +720,18 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
       nextLocalMessages = [...messagesRef.current, userMessage];
       messagesRef.current = nextLocalMessages;
       setMessages(nextLocalMessages);
-      if (inputRef.current && text === undefined) {
-        inputRef.current.value = '';
+      if (text === undefined || (isCompanionSend && text === draft.trim())) {
+        setDraft('');
       }
-      pendingLargeTextRef.current = null;
-      setPendingLargeTextMeta(null);
-      setPendingAttachment(null);
-      setUploadError('');
+      if (!isCompanionSend) {
+        pendingLargeTextRef.current = null;
+        setPendingLargeTextMeta(null);
+        setPendingAttachment(null);
+        setUploadError('');
+      }
     }
+    setCompanionReply(null);
+    stopTTS();
     setIsStreaming(true);
     setStreamingContent('');
     setWebStatus('');
@@ -738,6 +758,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
           }
         : undefined;
       const usesBrowserModel = modelSource === 'OLLAMA';
+      let replyEmotion = 'calm';
       const activeBrowserModelConfig = { ...browserModelConfig, source: modelSource };
       let result: { stream: ReadableStream<Uint8Array>; conversationId?: string };
 
@@ -811,8 +832,9 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
             ...imageContent,
           ];
         }
-        if (displayAgent?.systemPrompt) {
-          modelMessages.unshift({ role: 'system', content: displayAgent.systemPrompt });
+        const systemPrompt = [displayAgent?.systemPrompt, isCompanionSend ? companionReplyInstruction : ''].filter(Boolean).join('\n\n');
+        if (systemPrompt) {
+          modelMessages.unshift({ role: 'system', content: systemPrompt });
         }
 
         result = {
@@ -835,6 +857,8 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
           skipPersistUserMessage: options.reuseLastUserMessage,
           onStatus: setWebStatus,
           knowledgeEnabled: true,
+          companionMode: isCompanionSend,
+          onCompanionCue: (emotion) => { replyEmotion = emotion; },
           agentSnapshot,
           ...(userSettings?.apiBaseUrl && userSettings.apiKey && userSettings.modelName
             ? {
@@ -853,6 +877,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
 
       const reader = result.stream.getReader();
       const decoder = new TextDecoder();
+      const replyParser = usesBrowserModel && isCompanionSend ? createCompanionReplyParser() : null;
       let fullContent = '';
 
       while (true) {
@@ -860,9 +885,12 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
         if (done) break;
 
         const chunk = decoder.decode(value, { stream: true });
-        fullContent += chunk;
+        fullContent += replyParser ? replyParser.push(chunk) : chunk;
         setStreamingContent(fullContent);
       }
+      const tail = decoder.decode();
+      fullContent += replyParser ? replyParser.push(tail) + replyParser.finish() : tail;
+      if (replyParser) replyEmotion = replyParser.emotion;
 
       const assistantMessage: ChatMessage = {
         id: `assistant-${Date.now()}`,
@@ -880,6 +908,9 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
       if (result.conversationId) {
         if (usesBrowserModel && fullContent) {
           await conversationsApi.sendMessage(result.conversationId, fullContent, { role: 'assistant' });
+        }
+        if (isCompanionSend && activeViewRef.current === 'companion' && requestChat === activeChatRef.current && replyRequest === replyRequestRef.current && !controller.signal.aborted && fullContent.trim()) {
+          setCompanionReply({ id: assistantMessage.id, content: fullContent, emotion: replyEmotion });
         }
         await syncConversationMessages(result.conversationId, messagesWithAssistant);
         if (fullContent && content) {
@@ -1001,6 +1032,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
   };
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (isComposingRef.current || event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
       handleSend();
@@ -1015,48 +1047,30 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
     });
     window.setTimeout(() => {
       messagesScrollRef.current?.scrollTo({ top: messagesScrollRef.current.scrollHeight });
-      const value = inputRef.current?.value || '';
-      if (value.length > LARGE_PASTE_TEXT_LIMIT) {
-        pendingLargeTextRef.current = value;
-        ignoreInputUntilRef.current = Date.now() + 1000;
-        setPendingLargeTextMeta({ chars: value.length, kind: getLargeTextKind(value) });
-        if (inputRef.current) {
-          inputRef.current.value = '';
-        }
-      }
     }, 260);
   };
 
-  const handleComposerInput = (event: React.FormEvent<HTMLTextAreaElement>) => {
-    if (largeTextPasteGuardRef.current) {
-      largeTextPasteGuardRef.current = false;
-      if (inputRef.current) {
-        skipNextEmptyInputRef.current = true;
-        inputRef.current.value = '';
-      }
-      return;
-    }
-    const value = event.currentTarget.value;
-    if (Date.now() < ignoreInputUntilRef.current) {
-      event.currentTarget.value = '';
-      return;
-    }
-    if (skipNextEmptyInputRef.current && value === '') {
-      skipNextEmptyInputRef.current = false;
-      return;
-    }
+  const updateComposerValue = (value: string) => {
     if (value.length > LARGE_PASTE_TEXT_LIMIT) {
       pendingLargeTextRef.current = value;
-      ignoreInputUntilRef.current = Date.now() + 1000;
       setPendingLargeTextMeta({ chars: value.length, kind: getLargeTextKind(value) });
-      skipNextEmptyInputRef.current = true;
-      event.currentTarget.value = '';
+      setDraft('');
       return;
     }
+    setDraft(value);
     if (!pendingLargeTextRef.current) return;
     if (value.trim() === '') return;
     pendingLargeTextRef.current = null;
     setPendingLargeTextMeta(null);
+  };
+
+  const handleComposerInput = (event: React.FormEvent<HTMLTextAreaElement>) => {
+    const value = event.currentTarget.value;
+    if (isComposingRef.current || (event.nativeEvent as InputEvent).isComposing) {
+      setDraft(value);
+      return;
+    }
+    updateComposerValue(value);
   };
 
   if (loading) {
@@ -1142,6 +1156,12 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
 
       {viewMode === 'companion' && companionCharacterId ? (
         <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+          {(pendingAttachment || pendingLargeTextMeta || uploadingImage) && (
+            <div className="shrink-0 bg-amber-50 px-4 py-2 text-xs text-amber-900" role="status">
+              文字模式中的待发送附件或长文本已保留。
+              <button type="button" className="ml-2 underline" onClick={toggleCompanionView}>返回处理</button>
+            </div>
+          )}
           <CompanionPreview
             characterId={companionCharacterId}
             embedded
@@ -1152,6 +1172,10 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
             }}
             isStreaming={isStreaming}
             streamingContent={streamingContent}
+            draftValue={draft}
+            onDraftChange={setDraft}
+            reply={companionReply}
+            voice={displayAgent?.voice}
           />
         </div>
       ) : (
@@ -1283,10 +1307,16 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
             uploadingImage={uploadingImage}
             isStreaming={isStreaming}
             inputRef={inputRef}
+            draftValue={draft}
             fileInputRef={fileInputRef}
             onImageSelect={handleImageSelect}
             onPaste={handlePaste}
             onInput={handleComposerInput}
+            onCompositionStart={() => { isComposingRef.current = true; }}
+            onCompositionEnd={event => {
+              isComposingRef.current = false;
+              updateComposerValue(event.currentTarget.value);
+            }}
             onKeyDown={handleKeyDown}
             onFocus={handleComposerFocus}
             onClearAttachment={() => {

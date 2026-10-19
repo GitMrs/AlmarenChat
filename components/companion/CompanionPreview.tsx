@@ -10,6 +10,10 @@ import { getRandomTapLine, getRapidTapLine, getRandomStartupLine, getRandomDragL
 import '@/app/companion/companion.css';
 
 import { getCompanionBehavior, type QuickPromptItem } from '@/lib/companion/behaviors';
+import { getCompanionReplyReaction, type CompanionReply } from '@/lib/companion/reply';
+import { primeChatAudio } from '@/lib/companion/chat-audio';
+import { tts } from '@/lib/api';
+import { cleanMarkdownForTTS } from '@/lib/tts/markdown-cleaner';
 
 interface CompanionDisplayMessage {
   id: string;
@@ -47,6 +51,10 @@ export interface CompanionPreviewProps {
   onSendMessage?: (content: string) => Promise<void>;
   isStreaming?: boolean;
   streamingContent?: string;
+  draftValue?: string;
+  onDraftChange?: (value: string) => void;
+  reply?: CompanionReply | null;
+  voice?: string;
 }
 
 export default function CompanionPreview({
@@ -56,6 +64,10 @@ export default function CompanionPreview({
   onSendMessage,
   isStreaming = false,
   streamingContent = '',
+  draftValue = '',
+  onDraftChange,
+  reply,
+  voice,
 }: CompanionPreviewProps = {}) {
   const character = companionCharacters.find(candidate => candidate.id === initialCharId) ?? companionCharacters[0];
   return (
@@ -67,6 +79,10 @@ export default function CompanionPreview({
       onSendMessage={onSendMessage}
       isStreaming={isStreaming}
       streamingContent={streamingContent}
+      draftValue={draftValue}
+      onDraftChange={onDraftChange}
+      reply={reply}
+      voice={voice}
     />
   );
 }
@@ -78,6 +94,10 @@ interface CompanionSessionProps {
   onSendMessage?: (content: string) => Promise<void>;
   isStreaming?: boolean;
   streamingContent?: string;
+  draftValue?: string;
+  onDraftChange?: (value: string) => void;
+  reply?: CompanionReply | null;
+  voice?: string;
 }
 
 function CompanionSession({
@@ -87,6 +107,10 @@ function CompanionSession({
   onSendMessage,
   isStreaming = false,
   streamingContent = '',
+  draftValue: messageText = '',
+  onDraftChange,
+  reply,
+  voice,
 }: CompanionSessionProps) {
   const router = useRouter();
   const stage = useRef<StageHandle>(null);
@@ -94,7 +118,6 @@ function CompanionSession({
   const bubbleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [motionId, setMotionId] = useState(() => getInitialMotion(character.id));
   const [expressionId, setExpressionId] = useState('');
-  const [messageText, setMessageText] = useState('');
   const [showStickers, setShowStickers] = useState(false);
 
   const activeMessages = useMemo(() => {
@@ -155,7 +178,7 @@ function CompanionSession({
   const [tapBubble, setTapBubble] = useState<{ text: string; id: number; combo?: number } | null>(null);
   const [tapParticles, setTapParticles] = useState<{ id: number; x: number; y: number; symbol: string }[]>([]);
   const [isSpeaking, setIsSpeaking] = useState(false);
-  const [chatVoiceNotice, setChatVoiceNotice] = useState<{ messageId: string; audioUrl?: string } | null>(null);
+  const [chatVoiceNotice, setChatVoiceNotice] = useState<{ messageId: string; status: 'preparing' | 'blocked' | 'failed' } | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState<boolean>(() => {
     if (typeof window === 'undefined') return true;
@@ -238,21 +261,10 @@ function CompanionSession({
     setVoiceEnabled(enabled);
     voiceEnabledRef.current = enabled;
     if (!enabled) {
-      chatPlaybackRef.current++;
-      setChatVoiceNotice(null);
-      if (chatAudioRef.current && chatAudioRef.current !== currentAudioRef.current) releaseAudio(chatAudioRef.current);
+      stopPlayback();
     }
     if (typeof window !== 'undefined') {
       localStorage.setItem('almaren_companion_voice_enabled', String(enabled));
-    }
-    if (!enabled && currentAudioRef.current) {
-      releaseAudio(currentAudioRef.current);
-      currentAudioRef.current = null;
-      isPlayingVoiceRef.current = false;
-      if (tapBubbleTimerRef.current) clearSessionTimeout(tapBubbleTimerRef.current);
-      setTapBubble(null);
-      setIsSpeaking(false);
-      stage.current?.stopSpeaking();
     }
   };
 
@@ -261,7 +273,7 @@ function CompanionSession({
     if (typeof window !== 'undefined') {
       localStorage.setItem('almaren_companion_sfx_enabled', String(enabled));
     }
-    if (!enabled && currentAudioRef.current) {
+    if (!enabled && currentAudioRef.current && currentAudioRef.current !== chatAudioRef.current) {
       releaseAudio(currentAudioRef.current);
       currentAudioRef.current = null;
       isPlayingVoiceRef.current = false;
@@ -281,6 +293,9 @@ function CompanionSession({
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
   const chatAudioRef = useRef<HTMLAudioElement | null>(null);
   const chatPlaybackRef = useRef(0);
+  const chatObjectUrlRef = useRef<string | null>(null);
+  const isComposingRef = useRef(false);
+  const lastReplyIdRef = useRef(reply?.id);
   const voiceEnabledRef = useRef(voiceEnabled);
   const preparedTapVoicesRef = useRef(new Map<'tap' | 'rapid', { line: VoiceLine; audio: HTMLAudioElement }>());
   const dragStartRef = useRef<{ x: number; y: number } | null>(null);
@@ -310,6 +325,114 @@ function CompanionSession({
     clearTimeout(timer);
     sessionTimersRef.current.delete(timer);
   };
+
+  const stopPlayback = () => {
+    chatPlaybackRef.current++;
+    chatAbortControllerRef.current?.abort();
+    chatAbortControllerRef.current = null;
+    const audio = currentAudioRef.current;
+    currentAudioRef.current = null;
+    if (audio) releaseAudio(audio);
+    if (chatObjectUrlRef.current) URL.revokeObjectURL(chatObjectUrlRef.current);
+    chatObjectUrlRef.current = null;
+    isPlayingVoiceRef.current = false;
+    pendingStartupLineRef.current = null;
+    if (tapBubbleTimerRef.current) clearSessionTimeout(tapBubbleTimerRef.current);
+    setTapBubble(null);
+    setChatVoiceNotice(null);
+    setIsSpeaking(false);
+    stage.current?.stopSpeaking();
+  };
+
+  const primeReplyAudio = () => {
+    stopPlayback();
+    if (!voiceEnabledRef.current) return;
+    const audio = chatAudioRef.current || new Audio();
+    chatAudioRef.current = audio;
+    primeChatAudio(audio);
+  };
+
+  const playPreparedReply = async (messageId: string) => {
+    const audio = chatAudioRef.current;
+    if (!audio || !chatObjectUrlRef.current || !voiceEnabledRef.current) return;
+    const playback = chatPlaybackRef.current;
+    isPlayingVoiceRef.current = true;
+    setChatVoiceNotice({ messageId, status: 'preparing' });
+    try {
+      await audio.play();
+    } catch {
+      if (!sessionActiveRef.current || playback !== chatPlaybackRef.current) return;
+      isPlayingVoiceRef.current = false;
+      setIsSpeaking(false);
+      stage.current?.stopSpeaking();
+      setChatVoiceNotice({ messageId, status: 'blocked' });
+    }
+  };
+
+  const playChatReply = async (message: CompanionReply) => {
+    const text = cleanMarkdownForTTS(message.content);
+    if (!voiceEnabledRef.current || !text) return;
+    stopPlayback();
+    const playback = chatPlaybackRef.current;
+    const controller = new AbortController();
+    chatAbortControllerRef.current = controller;
+    isPlayingVoiceRef.current = true;
+    setChatVoiceNotice({ messageId: message.id, status: 'preparing' });
+    const isCurrent = () => sessionActiveRef.current && playback === chatPlaybackRef.current && voiceEnabledRef.current;
+    const failed = () => {
+      if (!isCurrent()) return;
+      stopPlayback();
+      setChatVoiceNotice({ messageId: message.id, status: 'failed' });
+    };
+    try {
+      const blob = await tts.synthesizeBlob(text, { voice }, controller.signal);
+      if (!isCurrent()) return;
+      const audio = chatAudioRef.current || new Audio();
+      chatAudioRef.current = audio;
+      currentAudioRef.current = audio;
+      const url = URL.createObjectURL(blob);
+      chatObjectUrlRef.current = url;
+      audio.src = url;
+      audio.onplaying = () => {
+        if (!isCurrent()) return;
+        isPlayingVoiceRef.current = true;
+        setChatVoiceNotice(null);
+        setIsSpeaking(true);
+        stage.current?.speak(Number.isFinite(audio.duration) ? audio.duration * 1000 : Math.max(2000, text.length * 180));
+      };
+      audio.onended = () => { if (isCurrent()) stopPlayback(); };
+      audio.onpause = () => {
+        if (!isCurrent()) return;
+        setIsSpeaking(false);
+        stage.current?.stopSpeaking();
+      };
+      audio.onerror = failed;
+      await playPreparedReply(message.id);
+    } catch {
+      failed();
+    } finally {
+      if (chatAbortControllerRef.current === controller) chatAbortControllerRef.current = null;
+    }
+  };
+
+  useEffect(() => {
+    if (isStreaming && (currentAudioRef.current || chatAbortControllerRef.current)) stopPlayback();
+  }, [isStreaming]);
+
+  useEffect(() => {
+    if (!ready || !reply || reply.id === lastReplyIdRef.current) return;
+    lastReplyIdRef.current = reply.id;
+    const reaction = getCompanionReplyReaction(character, reply.emotion);
+    if (reaction.motionId) {
+      if (motionId === reaction.motionId) stage.current?.restart();
+      setMotionId(reaction.motionId);
+      setPlaying(true);
+    }
+    setExpressionId(reaction.expressionId);
+    if (expressionResetTimerRef.current) clearSessionTimeout(expressionResetTimerRef.current);
+    expressionResetTimerRef.current = setSessionTimeout(() => setExpressionId(''), 4000);
+    void playChatReply(reply);
+  }, [reply, ready]);
 
   const prepareTapVoice = (kind: 'tap' | 'rapid') => {
     if (!voiceEnabled || !sfxEnabled || preparedTapVoicesRef.current.has(kind)) return;
@@ -347,6 +470,8 @@ function CompanionSession({
       if (audio) releaseAudio(audio);
       if (chatAudioRef.current && chatAudioRef.current !== audio) releaseAudio(chatAudioRef.current);
       chatAudioRef.current = null;
+      if (chatObjectUrlRef.current) URL.revokeObjectURL(chatObjectUrlRef.current);
+      chatObjectUrlRef.current = null;
       chatPlaybackRef.current++;
       isPlayingVoiceRef.current = false;
     };
@@ -443,6 +568,7 @@ function CompanionSession({
       isStartup?: boolean;
     }
   ) => {
+    if (chatAbortControllerRef.current || currentAudioRef.current === chatAudioRef.current && currentAudioRef.current) stopPlayback();
     const now = Date.now();
     const fallbackDuration = (line.seconds ?? Math.max(1.8, line.text.length * 0.16)) * 1000;
 
@@ -603,7 +729,7 @@ function CompanionSession({
 
   // 角色模型准备就绪后，播放亲切的进场日常问候（支持切换伴侣时重新触发）
   useEffect(() => {
-    if (!ready || lastStartupCharIdRef.current === character.id) return;
+    if (!ready || isStreaming || reply || externalMessages?.some(message => message.id !== 'greeting') || lastStartupCharIdRef.current === character.id) return;
     lastStartupCharIdRef.current = character.id;
 
     const timer = setSessionTimeout(() => {
@@ -611,7 +737,7 @@ function CompanionSession({
     }, 450);
 
     return () => clearSessionTimeout(timer);
-  }, [ready, character.id]);
+  }, [ready, character.id, isStreaming, reply, externalMessages]);
 
   // 监听用户首次触摸/点击屏幕（解锁浏览器针对刷新页面的自动发声限制，立即补播入场欢迎语音）
   useEffect(() => {
@@ -761,15 +887,24 @@ function CompanionSession({
 
   const handleSendMessage = (e?: React.FormEvent) => {
     e?.preventDefault();
+    if (isComposingRef.current) return;
     const text = messageText.trim();
     if (!text || isStreaming) return;
-    setMessageText('');
+    primeReplyAudio();
     setShowStickers(false);
     triggerListeningMotion();
     onSendMessage?.(text).catch(console.error);
   };
 
+  const handleComposerKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'Enter' && (isComposingRef.current || event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229)) {
+      event.preventDefault();
+    }
+  };
+
   const handleQuickPrompt = (item: QuickPromptItem) => {
+    if (isStreaming) return;
+    primeReplyAudio();
     setShowStickers(false);
     triggerListeningMotion(item.motion);
     onSendMessage?.(item.userText).catch(console.error);
@@ -789,6 +924,23 @@ function CompanionSession({
       el.scrollIntoView({ behavior: 'smooth' });
     }
   };
+
+  const voiceReplayButton = chatVoiceNotice && reply?.id === chatVoiceNotice.messageId ? (
+    chatVoiceNotice.status === 'preparing' ? (
+      <button type="button" className="companion-hud-chip companion-hud-chip--btn" onClick={stopPlayback}>
+        <Volume2 size={14} /><span role="status">正在准备语音…</span>取消
+      </button>
+    ) : (
+      <button type="button" className="companion-hud-chip companion-hud-chip--btn" onClick={() => {
+        if (chatVoiceNotice.status === 'blocked') {
+          void playPreparedReply(reply.id);
+        } else {
+          primeReplyAudio();
+          void playChatReply(reply);
+        }
+      }}><Volume2 size={14} />{chatVoiceNotice.status === 'blocked' ? '语音未播放，点此重试' : '语音生成失败，点此重试'}</button>
+    )
+  ) : null;
 
   return (
     <main
@@ -814,6 +966,7 @@ function CompanionSession({
           </div>
 
           <div className="companion-hud-capsules">
+            {voiceReplayButton}
             <button
               type="button"
               className={`companion-hud-chip companion-hud-chip--btn ${!voiceEnabled ? 'is-muted' : ''}`}
@@ -913,6 +1066,7 @@ function CompanionSession({
           </div>
 
           <div className="companion-floating-hud companion-floating-hud--right">
+            {voiceReplayButton}
             <button
               type="button"
               className={`companion-stage-chip companion-stage-chip--icon ${!voiceEnabled ? 'is-muted' : ''}`}
@@ -963,7 +1117,7 @@ function CompanionSession({
             framingMode={framingMode}
             autoBlink={autoBlink}
             lookAt={lookAt}
-            speaking={isSpeaking || isStreaming}
+            speaking={isSpeaking}
             onReady={() => setReady(true)}
             onError={setError}
             onEnded={handleMotionEnded}
@@ -1087,7 +1241,10 @@ function CompanionSession({
                   className="companion-composer-input"
                   placeholder={effectiveIsReplying ? `${character.name} 正在认真回复中…` : `和${character.name}聊聊...`}
                   value={messageText}
-                  onChange={e => setMessageText(e.target.value)}
+                  onChange={e => onDraftChange?.(e.target.value)}
+                  onCompositionStart={() => { isComposingRef.current = true; }}
+                  onCompositionEnd={() => { isComposingRef.current = false; }}
+                  onKeyDown={handleComposerKeyDown}
                   disabled={!usable || effectiveIsReplying}
                 />
               </form>
@@ -1201,7 +1358,10 @@ function CompanionSession({
                     className="companion-desktop-composer-input"
                     placeholder={effectiveIsReplying ? `${character.name} 正在认真回复中…` : `和${character.name}聊聊... (按 Enter 发送)`}
                     value={messageText}
-                    onChange={e => setMessageText(e.target.value)}
+                    onChange={e => onDraftChange?.(e.target.value)}
+                    onCompositionStart={() => { isComposingRef.current = true; }}
+                    onCompositionEnd={() => { isComposingRef.current = false; }}
+                    onKeyDown={handleComposerKeyDown}
                     disabled={!usable || effectiveIsReplying}
                   />
                   <button

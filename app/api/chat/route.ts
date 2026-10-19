@@ -4,6 +4,7 @@ import path from 'node:path';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { findCompanionAgent } from '@/lib/companion/agents';
+import { companionReplyInstruction, createCompanionReplyParser } from '@/lib/companion/reply-protocol.mjs';
 import { createChatWebTools, runAutoWebChat } from '@/lib/auto-web';
 import { formatKnowledgeContext, getKnowledgeHits } from '@/lib/knowledge';
 import { createModelClient, resolveModelName } from '@/lib/model-client';
@@ -51,6 +52,7 @@ export async function POST(request: Request) {
       skipPersistUserMessage,
       attachments,
       knowledgeEnabled,
+      companionMode,
     } = await request.json();
     const imageAttachments: ChatAttachment[] = Array.isArray(attachments)
       ? attachments.filter((attachment: ChatAttachment) => attachment?.type === 'image' && attachment.url)
@@ -141,13 +143,14 @@ export async function POST(request: Request) {
     const conversationSettings = resolvedConversationId
       ? await prisma.conversation.findFirst({
           where: { id: resolvedConversationId, userId, kind: 'AGENT' },
-          select: { contextMessageLimit: true },
+          select: { contextMessageLimit: true, agentId: true },
         })
       : null;
     if (resolvedConversationId && !conversationSettings) {
       return NextResponse.json({ error: 'Conversation not found' }, { status: 404 });
     }
     const contextLimit = requestedContextLimit || conversationSettings?.contextMessageLimit || userSettings?.contextMessageLimit || 40;
+    const companionReply = companionMode === true && Boolean(findCompanionAgent(conversationSettings?.agentId || agentId));
 
     const persistedHistory =
       resolvedConversationId
@@ -207,6 +210,7 @@ export async function POST(request: Request) {
       }
     }
 
+    if (companionReply) finalContext = [finalContext, companionReplyInstruction].filter(Boolean).join('\n\n');
     if (finalContext) openaiMessages.unshift({ role: 'system', content: finalContext });
 
     const lastMessage = openaiMessages[openaiMessages.length - 1];
@@ -247,8 +251,14 @@ export async function POST(request: Request) {
         const emit = (event: Record<string, unknown>) => controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
         const web = createChatWebTools({ apiKey: userSettings.tavilyApiKey, defaultWeatherLocation: userSettings.defaultWeatherLocation, history: sourceHistory, signal: abortController.signal, onStatus: (label: string) => emit({ type: 'status', label }) });
         try {
-          fullContent = await runAutoWebChat({ client, model, messages: openaiMessages, web, signal: abortController.signal, onText: (text: string) => emit({ type: 'text_delta', text }) });
-          if (!fullContent) throw new Error('模型没有返回正文');
+          const parser = companionReply ? createCompanionReplyParser() : null;
+          const emitText = (text: string) => {
+            fullContent += text;
+            if (text) emit({ type: 'text_delta', text });
+          };
+          await runAutoWebChat({ client, model, messages: openaiMessages, web, signal: abortController.signal, onText: (text: string) => emitText(parser ? parser.push(text) : text) });
+          if (parser) emitText(parser.finish());
+          if (!fullContent.trim()) throw new Error('模型没有返回正文');
 
           // Persist assistant message after stream completes
           if (resolvedConversationId && fullContent) {
@@ -260,6 +270,7 @@ export async function POST(request: Request) {
               data: { updatedAt: new Date() },
             });
           }
+          if (parser) emit({ type: 'companion_cue', emotion: parser.emotion });
           controller.close();
         } catch (error) {
           if (!abortController.signal.aborted) {

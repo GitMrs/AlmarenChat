@@ -1003,6 +1003,8 @@ export async function streamChat(data: {
   skipPersistUserMessage?: boolean;
   onStatus?: (label: string) => void;
   knowledgeEnabled?: boolean;
+  companionMode?: boolean;
+  onCompanionCue?: (emotion: string) => void;
   signal?: AbortSignal;
 }): Promise<{ stream: ReadableStream<Uint8Array>; conversationId?: string }> {
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
@@ -1023,7 +1025,7 @@ export async function streamChat(data: {
   }
 
   const conversationId = res.headers.get('x-conversation-id') || undefined;
-  return { stream: decodeChatBody(res, data.onStatus)!, conversationId };
+  return { stream: decodeChatBody(res, data.onStatus, data.onCompanionCue)!, conversationId };
 }
 
 export async function generateConversationImage(data: {
@@ -1201,7 +1203,7 @@ export const uploads = {
 // TTS
 export const tts = {
   getVoices: () => request<{ ok: boolean; voices: any[] }>('/tts'),
-  synthesizeBlob: async (text: string, options?: { voice?: string; rate?: string; pitch?: string; cacheNamespace?: 'gomoku' }) => {
+  synthesizeBlob: async (text: string, options?: { voice?: string; rate?: string; pitch?: string; cacheNamespace?: 'gomoku' }, signal?: AbortSignal) => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
     const res = await fetch(`${API_BASE}/tts`, {
       method: 'POST',
@@ -1210,6 +1212,7 @@ export const tts = {
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       body: JSON.stringify({ text, ...options }),
+      signal,
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: 'TTS request failed' }));

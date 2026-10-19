@@ -16,10 +16,13 @@ type ChatComposerProps = {
   uploadingImage: boolean;
   isStreaming: boolean;
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
+  draftValue: string;
   fileInputRef: React.RefObject<HTMLInputElement | null>;
   onImageSelect: (event: React.ChangeEvent<HTMLInputElement>) => void;
   onPaste: (event: React.ClipboardEvent<HTMLTextAreaElement>) => void;
   onInput: (event: React.FormEvent<HTMLTextAreaElement>) => void;
+  onCompositionStart: (event: React.CompositionEvent<HTMLTextAreaElement>) => void;
+  onCompositionEnd: (event: React.CompositionEvent<HTMLTextAreaElement>) => void;
   onKeyDown: (event: React.KeyboardEvent<HTMLTextAreaElement>) => void;
   onFocus: () => void;
   onClearAttachment: () => void;
@@ -45,10 +48,13 @@ export default function ChatComposer({
   uploadingImage,
   isStreaming,
   inputRef,
+  draftValue,
   fileInputRef,
   onImageSelect,
   onPaste,
   onInput,
+  onCompositionStart,
+  onCompositionEnd,
   onKeyDown,
   onFocus,
   onClearAttachment,
@@ -258,8 +264,11 @@ export default function ChatComposer({
           </div>
           <textarea
             ref={inputRef}
+            value={draftValue}
             onPaste={onPaste}
-            onInput={onInput}
+            onChange={onInput}
+            onCompositionStart={onCompositionStart}
+            onCompositionEnd={onCompositionEnd}
             onKeyDown={onKeyDown}
             onFocus={onFocus}
             placeholder={mode === 'image' ? '描述你想生成的图片...' : `向 ${agentName} 说点什么...`}
