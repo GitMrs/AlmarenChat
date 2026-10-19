@@ -1096,6 +1096,23 @@
   }
 }
 
+.companion-drag-particle {
+  font-size: 16px;
+  color: #df8fa9;
+  text-shadow: 0 0 8px rgba(255, 222, 234, 0.9);
+  animation: companion-particle-trail 0.7s ease-out forwards;
+}
+
+@keyframes companion-particle-trail {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.4); }
+  20% { opacity: 0.85; transform: translate(-50%, -50%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, calc(-50% - 18px)) scale(0.5); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .companion-drag-particle { animation: none; opacity: 0.6; }
+}
+
 /* ==================== 灵动胶囊底栏 (Candy Dockbar - 对齐 NariYume) ==================== */
 .companion-composer {
   flex: 1;

@@ -176,7 +176,7 @@ function CompanionSession({
   const desktopChatStreamRef = useRef<HTMLDivElement>(null);
   const [desktopTab, setDesktopTab] = useState<'chat' | 'motion'>('chat');
   const [tapBubble, setTapBubble] = useState<{ text: string; id: number; combo?: number } | null>(null);
-  const [tapParticles, setTapParticles] = useState<{ id: number; x: number; y: number; symbol: string }[]>([]);
+  const [tapParticles, setTapParticles] = useState<{ id: number; x: number; y: number; symbol: string; trail?: boolean }[]>([]);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [chatVoiceNotice, setChatVoiceNotice] = useState<{ messageId: string; status: 'preparing' | 'blocked' | 'failed' } | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -298,7 +298,8 @@ function CompanionSession({
   const lastReplyIdRef = useRef(reply?.id);
   const voiceEnabledRef = useRef(voiceEnabled);
   const preparedTapVoicesRef = useRef(new Map<'tap' | 'rapid', { line: VoiceLine; audio: HTMLAudioElement }>());
-  const dragStartRef = useRef<{ x: number; y: number } | null>(null);
+  const dragStartRef = useRef<{ x: number; y: number; pointerId: number } | null>(null);
+  const lastDragParticleRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const isDraggingGazeRef = useRef(false);
   const lastDragEndRef = useRef(0);
   const dragStartTimeRef = useRef(0);
@@ -485,6 +486,7 @@ function CompanionSession({
   };
 
   const handleScenePointerDown = (e: React.PointerEvent) => {
+    if (!usable || dragStartRef.current || e.isPrimary === false || (e.pointerType === 'mouse' && e.button !== 0)) return;
     const target = e.target as HTMLElement;
     if (target.closest('button, form, input, .companion-floating-hud, .companion-dockbar, .companion-quick-reactions, .companion-controls, .companion-drawer-backdrop')) {
       return;
@@ -494,22 +496,44 @@ function CompanionSession({
     } catch {
       // 容错处理
     }
-    dragStartRef.current = { x: e.clientX, y: e.clientY };
+    dragStartRef.current = { x: e.clientX, y: e.clientY, pointerId: e.pointerId };
+    lastDragParticleRef.current = null;
     dragStartTimeRef.current = Date.now();
     dragDistanceRef.current = 0;
     isDraggingGazeRef.current = false;
   };
 
   const handleScenePointerMove = (e: React.PointerEvent) => {
-    if (!dragStartRef.current) return;
+    if (!dragStartRef.current || dragStartRef.current.pointerId !== e.pointerId) return;
     const dist = Math.hypot(e.clientX - dragStartRef.current.x, e.clientY - dragStartRef.current.y);
     dragDistanceRef.current = Math.max(dragDistanceRef.current, dist);
-    if (dist >= 6) {
-      isDraggingGazeRef.current = true;
-    }
+    if (dist < 6 && !isDraggingGazeRef.current) return;
+    isDraggingGazeRef.current = true;
+
+    const now = Date.now();
+    const last = lastDragParticleRef.current;
+    if (last && (now - last.time < 60 || Math.hypot(e.clientX - last.x, e.clientY - last.y) < 10)) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    if (x < 0 || y < 0 || x > rect.width || y > rect.height) return;
+    lastDragParticleRef.current = { x: e.clientX, y: e.clientY, time: now };
+    const id = now + Math.random();
+    const symbol = Math.random() < 0.3 ? '♡' : '✦';
+    setTapParticles(prev => [...prev.slice(-11), { id, x, y, symbol, trail: true }]);
+    setSessionTimeout(() => setTapParticles(prev => prev.filter(p => p.id !== id)), 700);
   };
 
   const handleScenePointerUp = (e?: React.PointerEvent) => {
+    if (!dragStartRef.current || (e && dragStartRef.current.pointerId !== e.pointerId)) return;
+    const now = Date.now();
+    const wasDragging = isDraggingGazeRef.current;
+    const dragDuration = now - dragStartTimeRef.current;
+    const dragDist = dragDistanceRef.current;
+    dragStartRef.current = null;
+    lastDragParticleRef.current = null;
+    isDraggingGazeRef.current = false;
+
     if (e && e.currentTarget) {
       try {
         if (e.currentTarget.hasPointerCapture(e.pointerId)) {
@@ -519,19 +543,11 @@ function CompanionSession({
         // 容错处理
       }
     }
-    const now = Date.now();
-    const wasDragging = isDraggingGazeRef.current;
-    const dragDuration = now - dragStartTimeRef.current;
-    const dragDist = dragDistanceRef.current;
-
-    dragStartRef.current = null;
-    isDraggingGazeRef.current = false;
-
     if (wasDragging) {
       lastDragEndRef.current = now;
 
       // 拖拽趣味互动判定：按住拖动时长 >= 350ms 且总位移 >= 30px
-      if (dragDuration >= 350 && dragDist >= 30) {
+      if (e?.type === 'pointerup' && dragDuration >= 350 && dragDist >= 30) {
         // 拖拽语音保护防连刷：至少间隔 3.5 秒且当前未在播放语音
         if (now - lastDragVoiceTimeRef.current > 3500 && !isPlayingVoiceRef.current) {
           lastDragVoiceTimeRef.current = now;
@@ -540,6 +556,17 @@ function CompanionSession({
       }
     }
   };
+
+  useEffect(() => {
+    const cancelDrag = () => {
+      dragStartRef.current = null;
+      lastDragParticleRef.current = null;
+      isDraggingGazeRef.current = false;
+      lastDragEndRef.current = Date.now();
+    };
+    window.addEventListener('blur', cancelDrag);
+    return () => window.removeEventListener('blur', cancelDrag);
+  }, []);
 
   // 待机动作自然轮巡：当一个待机动作结束时，平滑过渡到下一个自然待机动作
   const handleMotionEnded = () => {
@@ -1011,6 +1038,7 @@ function CompanionSession({
           onPointerMove={handleScenePointerMove}
           onPointerUp={handleScenePointerUp}
           onPointerCancel={handleScenePointerUp}
+          onLostPointerCapture={handleScenePointerUp}
           onClick={handleCharacterTap}
         >
           {/* 实景场景背景图 (温暖樱花阳光书房 / 蔚蓝海景天台书房) */}
@@ -1136,7 +1164,7 @@ function CompanionSession({
           {tapParticles.map(p => (
             <span
               key={p.id}
-              className="companion-tap-particle"
+              className={`companion-tap-particle${p.trail ? ' companion-drag-particle' : ''}`}
               style={{ left: `${p.x}px`, top: `${p.y}px` }}
               aria-hidden="true"
             >
