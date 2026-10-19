@@ -598,13 +598,16 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
       setMotionId(options.targetMotionId);
       setPlaying(true);
     }
-    if (options?.targetExpression) {
-      setExpressionId(options.targetExpression);
+    if (typeof options?.targetExpression === 'string') {
+      const expression = character.expressions.some(item => item.id === options.targetExpression) ? options.targetExpression : '';
+      setExpressionId(expression);
       if (expressionResetTimerRef.current) clearSessionTimeout(expressionResetTimerRef.current);
       // 3.2 秒后表情平滑回归自然
-      expressionResetTimerRef.current = setSessionTimeout(() => {
-        setExpressionId('');
-      }, 3200);
+      if (expression) {
+        expressionResetTimerRef.current = setSessionTimeout(() => {
+          setExpressionId('');
+        }, 3200);
+      }
     }
 
     // 弹出舞台台词字幕并联动发音（保持独立互动，不污染正常聊天流）
@@ -752,7 +755,7 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
     } else if (character.id === 'mao') {
       const m = character.motions.find(candidate => candidate.id === 'Idle');
       if (m) targetMotionId = m.id;
-      targetExpression = '微笑';
+      targetExpression = '开心';
     }
 
     playVoice(line, { targetMotionId, targetExpression, isStartup: true });
@@ -782,7 +785,7 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
       const dragMotions = ['Yume_mood_surprised_wait_what', 'Yume_idle_01_hmph_look_away'];
       const m = character.motions.find(candidate => dragMotions.includes(candidate.id));
       if (m) targetMotionId = m.id;
-      targetExpression = '吃惊';
+      targetExpression = '';
     } else if (character.id === 'lafei') {
       const m = character.motions.find(candidate => candidate.id === 'TapBody_0');
       if (m) targetMotionId = m.id;
@@ -1197,12 +1200,15 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
         setMotionId(data.motion);
         setPlaying(true);
       }
-      if (data.expression && typeof data.expression === 'string') {
-        setExpressionId(data.expression);
+      if (typeof data.expression === 'string') {
+        const expression = character.expressions.some(item => item.id === data.expression) ? data.expression : '';
+        setExpressionId(expression);
         if (expressionResetTimerRef.current) clearSessionTimeout(expressionResetTimerRef.current);
-        expressionResetTimerRef.current = setSessionTimeout(() => {
-          setExpressionId('');
-        }, 4000);
+        if (expression) {
+          expressionResetTimerRef.current = setSessionTimeout(() => {
+            setExpressionId('');
+          }, 4000);
+        }
       }
 
       // 声音与口型同步

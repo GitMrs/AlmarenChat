@@ -52,37 +52,37 @@ const COMPANION_PROMPTS: Record<string, CompanionPromptConfig> = {
 4. 请以 JSON 格式输出：
    - "reply": 你的口语化伴侣对白。
    - "motion": 动作 ID（可选：Yume_chat_01_attentive, Yume_idle_03_brisk_nods, Yume_idle_13_victory, Yume_mood_happy_pleased, Yume_mood_surprised_wait_what, Yume_mood_shy_hide_turn, Yume_idle_01_hmph_look_away）。
-   - "expression": 表情 ID（可选：微笑, 傲娇, 害羞, 吃惊, 得意, 生气）。`,
+   - "expression": 表情 ID（可选：Shy 害羞, StarEye 星星眼, HeartEye 心动, Crying 委屈, HeartHands 比心, Wave 打招呼，或空字符串 "" 代表自然表情；只输出 ID）。`,
     defaultMotion: 'Yume_idle_03_brisk_nods',
-    defaultExpression: '微笑',
+    defaultExpression: '',
     allowedMotions: [
       'Yume_chat_01_attentive', 'Yume_idle_03_brisk_nods', 'Yume_idle_13_victory',
       'Yume_mood_happy_pleased', 'Yume_mood_surprised_wait_what', 'Yume_mood_shy_hide_turn',
       'Yume_idle_01_hmph_look_away'
     ],
-    allowedExpressions: ['微笑', '傲娇', '害羞', '吃惊', '得意', '生气'],
+    allowedExpressions: ['Shy', 'StarEye', 'HeartEye', 'Crying', 'HeartHands', 'Wave', ''],
   },
   lafei: {
     name: '拉菲 (Laffey)',
     systemPrompt: `你叫拉菲（Laffey），是用户的兔兔舰灵伴侣。
 【核心性格】：有点困倦、慵懒随性、喜欢睡觉喝拉菲，但对指挥官极度依恋与信任。说话常常带着轻声的断句和困意（“指挥官...”、“拉菲在听...Zzz”）。
 回复简短（1~2 句话，20~40字）。
-输出 JSON：{"reply": "...", "motion": "Idle" | "TapBody_0" | "Special_0" | "Special_2", "expression": "通常" | "困倦" | "开心" | "害羞"}。`,
+输出 JSON：{"reply": "...", "motion": "Idle" | "TapBody_0" | "Special_0" | "Special_2", "expression": ""}。该模型没有独立表情，expression 必须为空字符串。`,
     defaultMotion: 'Idle',
-    defaultExpression: '通常',
+    defaultExpression: '',
     allowedMotions: ['Idle', 'TapBody_0', 'Special_0', 'Special_1', 'Special_2'],
-    allowedExpressions: ['通常', '困倦', '开心', '害羞'],
+    allowedExpressions: [''],
   },
   mao: {
     name: '真央 (Mao)',
     systemPrompt: `你叫真央（Mao），是用户的傲娇猫娘伴侣。
 【核心性格】：活泼、嘴硬心软、口嫌体正直，句尾常带猫猫口癖“喵~”。喜欢被顺毛抚摸和夸奖。
 回复简短（1~3 句话，20~45字）。
-输出 JSON：{"reply": "...", "motion": "Idle" | "TapBody_0" | "TapBody_1" | "TapBody_2", "expression": "通常" | "微笑" | "害羞" | "生气" | "吃惊"}。`,
+输出 JSON：{"reply": "...", "motion": "Idle" | "TapBody_0" | "TapBody_1" | "TapBody_2", "expression": "" | "开心" | "害羞" | "生气" | "惊讶"}。空字符串代表通常表情。`,
     defaultMotion: 'Idle',
-    defaultExpression: '通常',
+    defaultExpression: '',
     allowedMotions: ['Idle', 'TapBody_0', 'TapBody_1', 'TapBody_2'],
-    allowedExpressions: ['通常', '微笑', '害羞', '生气', '吃惊'],
+    allowedExpressions: ['', '开心', '害羞', '生气', '惊讶'],
   },
 };
 
@@ -195,7 +195,7 @@ export async function POST(request: Request) {
         ok: true,
         reply: '你还没有在个人设置中配置大模型 API Key 呢~ 请先前往“设置”页面填入模型密钥，这样我才能开口说话呀🌸',
         motion: characterId === 'nari' ? 'Nari_mood_shy_duck' : 'Idle',
-        expression: characterId === 'nari' ? 'Blushing' : '害羞',
+        expression: characterId === 'nari' ? 'Blushing' : config.defaultExpression,
         audioDataUrl: null,
       });
     }
@@ -252,7 +252,7 @@ export async function POST(request: Request) {
       ok: true,
       reply: '刚才稍微有些走神了呢……你再说一次好不好嘛？🌸',
       motion: 'Nari_chat_01_attentive',
-      expression: 'Blushing',
+      expression: '',
       audioDataUrl: null,
     });
   }
