@@ -101,6 +101,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingContent, setStreamingContent] = useState('');
   const [draft, setDraft] = useState('');
+  const [companionDraft, setCompanionDraft] = useState('');
   const [companionReply, setCompanionReply] = useState<CompanionReply | null>(null);
   const activeViewRef = useRef(viewMode);
   activeViewRef.current = viewMode;
@@ -491,12 +492,15 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
   const companionCharacterId = displayAgent?.companionCharacterId || agent?.companionCharacterId || getCompanionCharacterId(displayAgent?.id || agentId);
 
   useEffect(() => {
+    replyRequestRef.current++;
+    isComposingRef.current = false;
     setCompanionReply(null);
     stopTTS();
   }, [viewMode, agentId, existingConversationId, stopTTS]);
 
   useEffect(() => {
     setDraft('');
+    setCompanionDraft('');
   }, [agentId, existingConversationId]);
 
   const toggleCompanionView = () => {
@@ -688,18 +692,18 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
       modeOverride?: 'chat' | 'image';
     } = {}
   ) => {
-    if (isComposingRef.current) return;
+    const isCompanionSend = viewMode === 'companion' && Boolean(companionCharacterId);
+    if (!isCompanionSend && isComposingRef.current) return;
     if (!isLoggedIn) {
       router.push('/login');
       return;
     }
 
-    const isCompanionSend = viewMode === 'companion' && Boolean(companionCharacterId);
-    const content = text ?? pendingLargeTextRef.current ?? draft.trim();
-    const outgoingAttachments = options.attachmentsOverride || (isCompanionSend ? [] : pendingAttachment ? [pendingAttachment] : []);
+    const content = text ?? (isCompanionSend ? companionDraft.trim() : pendingLargeTextRef.current ?? draft.trim());
+    const outgoingAttachments = isCompanionSend ? [] : options.attachmentsOverride || (pendingAttachment ? [pendingAttachment] : []);
     const requestMode = isCompanionSend ? 'chat' : options.modeOverride || chatMode;
     if (requestMode === 'image' && outgoingAttachments.length > 0) return;
-    if ((!content && outgoingAttachments.length === 0) || isStreaming || uploadingImage) return;
+    if ((!content && outgoingAttachments.length === 0) || isStreaming || (!isCompanionSend && uploadingImage)) return;
     const replyRequest = ++replyRequestRef.current;
     const requestChat = activeChatRef.current;
 
@@ -720,7 +724,9 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
       nextLocalMessages = [...messagesRef.current, userMessage];
       messagesRef.current = nextLocalMessages;
       setMessages(nextLocalMessages);
-      if (text === undefined || (isCompanionSend && text === draft.trim())) {
+      if (isCompanionSend) {
+        if (text === undefined || text === companionDraft.trim()) setCompanionDraft('');
+      } else if (text === undefined) {
         setDraft('');
       }
       if (!isCompanionSend) {
@@ -1172,8 +1178,8 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
             }}
             isStreaming={isStreaming}
             streamingContent={streamingContent}
-            draftValue={draft}
-            onDraftChange={setDraft}
+            draftValue={companionDraft}
+            onDraftChange={setCompanionDraft}
             reply={companionReply}
             voice={displayAgent?.voice}
           />
