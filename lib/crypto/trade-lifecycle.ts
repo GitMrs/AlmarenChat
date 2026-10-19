@@ -1,3 +1,10 @@
+import {
+  evaluateEventPhase,
+  filterEventsForSpace,
+  loadGlobalCryptoEvents,
+  type CryptoEvent,
+} from './event-temporal.ts';
+
 export type TradePlanStatus = 'PENDING' | 'TRIGGERED' | 'BREAKEVEN' | 'COMPLETED' | 'EXPIRED';
 
 export interface PlanItem {
@@ -390,3 +397,41 @@ ${statusLines}${alertLines}
 ---
 `.trim();
 }
+
+/**
+ * 校验开单方案或标的是否与即将公布的重大事件发生时间碰撞
+ */
+export function checkPlanEventConflict(
+  symbol: string,
+  now = new Date(),
+  customEvents: CryptoEvent[] = []
+): { hasConflict: boolean; alertMessage?: string; eventTitle?: string } {
+  const events = filterEventsForSpace(loadGlobalCryptoEvents(), customEvents, [symbol]);
+
+  for (const event of events) {
+    if (event.volatilityTier < 2) continue;
+    const { phase, countdownText } = evaluateEventPhase(event, now);
+
+    if (phase === 'IN_THE_STORM') {
+      return {
+        hasConflict: true,
+        eventTitle: event.title,
+        alertMessage: `❌【风控戒尺拦截】：当前正处于【${event.title}】暴风雨剧变期，全网流动性脆弱，极易双向插针，严禁建立或执行新开单计划！`,
+      };
+    }
+
+    if (phase === 'IMPENDING') {
+      const deltaMinutes = (new Date(event.timestamp).getTime() - now.getTime()) / (60 * 1000);
+      if (deltaMinutes <= 60) {
+        return {
+          hasConflict: true,
+          eventTitle: event.title,
+          alertMessage: `⚠️【重大事件临近预警】：距离 3 星重磅事件【${event.title}】发布仅剩 ${countdownText}！开单周期覆盖数据发布时刻，建议等待数据落地后再行进场，或将杠杆严控在 3x 以内！`,
+        };
+      }
+    }
+  }
+
+  return { hasConflict: false };
+}
+

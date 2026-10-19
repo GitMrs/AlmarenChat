@@ -3,6 +3,13 @@ import { getCryptoMarketData } from './okx-service';
 import { randomUUID } from 'node:crypto';
 import { createScheduler } from '../runtime/scheduler.mjs';
 import { isPlanExpired } from './trade-lifecycle';
+import {
+  evaluateEventPhase,
+  filterEventsForSpace,
+  loadGlobalCryptoEvents,
+  type EventImpactRecord,
+} from './event-temporal.ts';
+import { persistEventImpact, syncMacroEvents } from './event-sync.ts';
 
 export interface AmbushPlanItem {
   id: string;
@@ -220,7 +227,7 @@ export async function saveSentinelState(
 }
 
 export interface CheckAlert {
-  type: 'INVALIDATION' | 'ENTRY_ZONE' | 'TP_HIT' | 'SL_HIT';
+  type: 'INVALIDATION' | 'ENTRY_ZONE' | 'TP_HIT' | 'SL_HIT' | 'MACRO_EVENT';
   symbol: string;
   title: string;
   content: string;
@@ -380,6 +387,89 @@ export async function checkSentinelForSpace(
     }
   }
 
+  // 3. 检查临近的重大事件（事前 T-35m 决战倒计时预警 & 事后 T+15m 落地复盘）
+  try {
+    const nowObj = new Date();
+    const globalEvents = filterEventsForSpace(loadGlobalCryptoEvents(), [], allSymbols);
+    for (const event of globalEvents) {
+      if (event.volatilityTier < 2) continue;
+      const { phase, deltaMinutes, countdownText } = evaluateEventPhase(event, nowObj);
+
+      // ① 事前倒计时告警 (T-35m ~ T-10m) 且冷却防刷屏 60 分钟
+      if (phase === 'IMPENDING' && deltaMinutes <= 35 && deltaMinutes >= 10) {
+        const alertKey = `${spaceId}:event:${event.id}:T30M`;
+        if (!isAlertInCooldown(alertKey, 60 * 60 * 1000)) {
+          recordAlertCooldown(alertKey);
+          alerts.push({
+            type: 'MACRO_EVENT',
+            symbol: event.impactCoins[0] || 'BTC',
+            title: `⏳【决战倒计时】${event.title} 仅剩 ${countdownText}！`,
+            content: `【鹰眼·宏观暴风雨预警】：重磅大事件【${event.title}】将于 ${countdownText} 后出炉！\n• 战备铁律：${event.guidance?.riskInstruction || '严禁追涨杀跌，持仓严格上移防守损！'}\n• 历史参考：过往同类事件双向插针概率极高，请持仓者做好防插针准备！`,
+            level: 'CRITICAL',
+            notifyQQ: true,
+          });
+        }
+      }
+      // ② 事后 T+15m 落地复盘速报 (deltaMinutes 在 -45m 至 -15m 之间) 且冷却防刷屏 2 小时
+      else if (phase === 'DIGESTING' && deltaMinutes <= -15 && deltaMinutes >= -45) {
+        const alertKey = `${spaceId}:event:${event.id}:DIGEST`;
+        if (!isAlertInCooldown(alertKey, 2 * 60 * 60 * 1000)) {
+          recordAlertCooldown(alertKey);
+          const btcSnap = marketMap['BTC'];
+          const btcPrice = btcSnap?.price;
+          const delta15m = typeof btcSnap?.priceDelta15mPercent === 'number'
+            ? btcSnap.priceDelta15mPercent
+            : 0;
+          const priceInfo = btcPrice
+            ? `（当前 BTC 现价约 $${btcPrice.toLocaleString()}，15m 波动 ${delta15m >= 0 ? '+' : ''}${delta15m.toFixed(2)}%）`
+            : '';
+
+          // 【数据闭环核心】：若该事件尚未归档 impact，自动沉淀并持久化写回 crypto-events.json
+          if (!event.impact) {
+            const resultPattern: 'V_REVERSAL' | 'DUMP' | 'PUMP' | 'CHOPPY' =
+              delta15m > 1.2
+                ? 'PUMP'
+                : delta15m < -1.5
+                ? 'DUMP'
+                : Math.abs(delta15m) < 0.5
+                ? 'CHOPPY'
+                : 'V_REVERSAL';
+
+            const autoImpact: EventImpactRecord = {
+              actualValue: '已公布（见官方快讯）',
+              surpriseFactor: 'IN_LINE',
+              marketReaction: {
+                fiveMinSpikePct: delta15m,
+                oneHourTrendPct: delta15m,
+                twentyFourHourResult: resultPattern,
+              },
+              playbookTakeaway: `${event.title} 发布后 15 分钟内盘面波动 ${delta15m >= 0 ? '+' : ''}${delta15m.toFixed(2)}%，分时呈现 ${resultPattern} 形态。`,
+              optimalAction:
+                delta15m < -1.5
+                  ? '谨防结构破位，切勿盲目接飞刀，等待长下影线企稳'
+                  : '第一波急剧波动已消化，以既有支撑阻力结构顺势推演',
+            };
+
+            await persistEventImpact(event.id, autoImpact).catch((e: any) => {
+              console.warn('[CryptoSentinel] persistEventImpact failed:', e?.message);
+            });
+          }
+
+          alerts.push({
+            type: 'MACRO_EVENT',
+            symbol: event.impactCoins[0] || 'BTC',
+            title: `🌊【事件落地复盘】${event.title} 落地 15 分钟走势速报`,
+            content: `【鹰眼·战后速报】：${event.title} 发布已过去 15 分钟${priceInfo}。\n• 当前盘面第一波急剧插针基本释放完毕，洗盘高潮暂告一段落。\n• 战术建议：观察 15 分钟 K 线是否出现放量下影线或企稳形态，等待突破确认再行建仓。`,
+            level: 'INFO',
+            notifyQQ: state.activePositions.length > 0,
+          });
+        }
+      }
+    }
+  } catch (err: any) {
+    console.warn(`[CryptoSentinel] macro event check for space ${spaceId} failed:`, err?.message);
+  }
+
   const now = new Date().toISOString();
 
   // 更新最后巡检时间
@@ -523,6 +613,15 @@ export function startCryptoSentinelScheduler() {
       const activeSpaces: Array<{ id: string; userId: string; plans: AmbushPlanItem[]; positions: ActivePositionItem[] }> = [];
       const globalActiveSymbols = new Set<string>(['BTC']);
 
+      // 检查是否有 3 星重大事件正处于前后约 2 小时的活跃时间窗口（T-35m 至 T+45m）
+      const nowTime = new Date();
+      const globalEvents = loadGlobalCryptoEvents();
+      const hasActiveEventWindow = globalEvents.some((e) => {
+        if (e.volatilityTier < 2) return false;
+        const delta = (new Date(e.timestamp).getTime() - nowTime.getTime()) / (60 * 1000);
+        return delta >= -45 && delta <= 35;
+      });
+
       for (const sp of cryptoSpaces) {
         const snap = sp.templateSnapshot && typeof sp.templateSnapshot === 'object'
           ? (sp.templateSnapshot as Record<string, unknown>)
@@ -540,7 +639,7 @@ export function startCryptoSentinelScheduler() {
         const activePlans = rawPlans.filter((p) => p.watchEnabled !== false && !isPlanExpired(p));
         const activeEscorts = activePositions.filter((p) => p.watchEnabled !== false);
 
-        if (activePlans.length > 0 || activeEscorts.length > 0) {
+        if (activePlans.length > 0 || activeEscorts.length > 0 || hasActiveEventWindow) {
           activeSpaces.push({ id: sp.id, userId: sp.userId, plans: activePlans, positions: activeEscorts });
           for (const p of activePlans) globalActiveSymbols.add(p.symbol);
           for (const pos of activeEscorts) globalActiveSymbols.add(pos.symbol);
@@ -574,5 +673,32 @@ export function startCryptoSentinelScheduler() {
       schedulerState.isChecking = false;
     }
   });
+
+  // 注册宏观财经日历全自动动态采集任务：生产环境每 12 小时自动增量比对全球官方日历
+  // ⚠️ 关键判断：本地启动开发环境 (development / local) 默认不自动联网获取外部数据，直接使用本地已持久化的 crypto-events.json
+  // 仅在生产环境 (NODE_ENV === 'production') 或显式声明 ENABLE_MACRO_AUTO_SYNC='true' 时才自动增量巡检
+  let lastMacroSyncAt = 0;
+  const MACRO_SYNC_INTERVAL_MS = 12 * 60 * 60 * 1000;
+
+  scheduler.register('sync-macro-calendar', async () => {
+    // 本地开发启动默认跳过自动拉取，防止本地热重载打外网及触发频控；用户仍可在界面手动点击同步
+    const isLocalDev = process.env.NODE_ENV === 'development' || !process.env.NODE_ENV;
+    if (isLocalDev && process.env.ENABLE_MACRO_AUTO_SYNC !== 'true') {
+      return;
+    }
+
+    const now = Date.now();
+    if (now - lastMacroSyncAt < MACRO_SYNC_INTERVAL_MS) return;
+    lastMacroSyncAt = now;
+    try {
+      const syncResult = await syncMacroEvents();
+      console.log(
+        `[crypto-sentinel-scheduler] 🌐 宏观大事件日历后台全自动同步成功: 库内共计 ${syncResult.total} 项 (新增 ${syncResult.addedCount}, 刷新 ${syncResult.updatedCount})`
+      );
+    } catch (err: any) {
+      console.warn('[crypto-sentinel-scheduler] 宏观大事件日历后台同步告警:', err?.message || err);
+    }
+  });
+
   scheduler.start();
 }

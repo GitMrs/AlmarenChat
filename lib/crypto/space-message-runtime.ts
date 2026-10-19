@@ -8,6 +8,7 @@ import {
 } from './trade-lifecycle';
 import { extractCryptoSymbolFromText, formatCryptoContextForPrompt, getCryptoMarketData } from './okx-service';
 import { getSentinelState, type ActivePositionItem, type AmbushPlanItem } from './sentinel-service';
+import { buildEventRadarContext } from './event-temporal';
 
 export interface RuntimeHistoryMessage {
   role?: string;
@@ -141,6 +142,7 @@ function cryptoAgentPolicy(hasOpenPositions: boolean, input: CryptoAgentPolicyIn
 
   return [
     '本空间为加密合约实战作战室。当分析行情与开单时，按需调用 crypto_quote 或 crypto_market_snapshot，严格依托本轮取得的 OKX 盘面数据进行技术和筹码推演，严禁脱离实盘数据胡编价格；严格遵守轻重双轨制，日常看盘快问快答短平快，开单把关必须核验盈亏比 ≥ 1:2 与 2% 风控线。',
+    '【重大事件防御纪律】：若当前处于重大事件倒计时或暴风雨窗口期，必须主动提醒用户防范双向插针风险，禁止盲目开高杠杆，优先等待数据落地形态确认。',
     rolePolicy,
   ].join('\n');
 }
@@ -160,6 +162,23 @@ export async function prepareCryptoSpaceMessageRuntime(
   } catch (error: any) {
     console.warn('[spaces/crypto] Confirmed trading state retrieval failed:', error?.message);
     promptContext = '【交易状态】读取失败，当前无法确认是否存在已开仓仓位或有效观察计划。不要根据历史聊天自行认定计划已经生效。';
+  }
+
+  // 注入宏观与币圈大事件时态雷达及历史对策剧本
+  try {
+    const symbols = Array.from(
+      new Set([
+        ...observationPlans.map((p) => p.symbol),
+        ...openPositions.map((p) => p.symbol),
+        extractCryptoSymbolFromText(input.textMessage) || 'BTC',
+      ])
+    );
+    const eventRadarContext = buildEventRadarContext({ activeSymbols: symbols });
+    if (eventRadarContext) {
+      promptContext = promptContext ? `${eventRadarContext}\n\n${promptContext}` : eventRadarContext;
+    }
+  } catch (err: any) {
+    console.warn('[spaces/crypto] Event radar context build failed:', err?.message);
   }
 
   if (!input.deferMarketQuery && input.textMessage.trim()) {

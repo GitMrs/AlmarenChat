@@ -17,6 +17,7 @@
     "worker:qq": "node worker/qq-assistant.mjs",
     "lint": "next lint",
     "precache:fish": "node scripts/precache-fish-audio.mjs",
+    "sync:macro": "node scripts/sync-crypto-events.mjs",
     "postinstall": "node scripts/postinstall.mjs"
   },
   "dependencies": {

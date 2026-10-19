@@ -23,11 +23,14 @@ import {
   FileText,
   DollarSign,
   Percent,
+  Calendar,
 } from 'lucide-react';
 import type { Agent, SpaceMessage } from '@/types';
 import { calculatePlanRiskReward, isPlanExpired, type CryptoPlanDecision } from '@/lib/crypto/trade-lifecycle';
+import { loadGlobalCryptoEvents, evaluateEventPhase } from '@/lib/crypto/event-temporal.ts';
 import { assistant as assistantApi, cryptoSentinel as cryptoSentinelApi, spaces as spacesApi } from '@/lib/api';
 import { toast } from '@/lib/toast';
+import SpaceCryptoEventRadar from './SpaceCryptoEventRadar';
 
 function getCleanPlanTitle(plan: { symbol: string; name?: string; direction?: string }): string {
   const dir = plan.direction === 'SHORT' ? '做空' : '做多';
@@ -182,6 +185,23 @@ export default function SpaceCryptoCenter({
 
   // 历史复盘折叠展开开关
   const [historyExpanded, setHistoryExpanded] = useState<boolean>(false);
+
+  // 顶层 3 大工作台 Tab 切换: 'battle' (实战盯盘) | 'events' (宏观大事件雷达) | 'reviews' (战绩与历史复盘)
+  const [cockpitTab, setCockpitTab] = useState<'battle' | 'events' | 'reviews'>('battle');
+
+  // 全局客观宏观事件与临近暴风雨紧急预警感知
+  const globalEvents = useMemo(() => loadGlobalCryptoEvents(), []);
+  const impendingEvent = useMemo(() => {
+    const now = new Date();
+    for (const e of globalEvents) {
+      if (e.volatilityTier < 2) continue;
+      const res = evaluateEventPhase(e, now);
+      if (res.phase === 'IN_THE_STORM' || (res.deltaMinutes >= -15 && res.deltaMinutes <= 120)) {
+        return { event: e, ...res };
+      }
+    }
+    return null;
+  }, [globalEvents]);
 
   const [autoSyncChatPlans] = useState(false);
   const [pendingDecision, setPendingDecision] = useState<PendingCryptoDecision | null>(null);
@@ -823,7 +843,113 @@ export default function SpaceCryptoCenter({
           </div>
         </div>
 
-        {/* ==================== 清算密集区与价格磁铁雷达 ==================== */}
+        {/* ==================== 作战室 3 大核心工作台 Tab 切换 ==================== */}
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-black/[0.08] pb-1">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setCockpitTab('battle')}
+              className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs sm:text-sm font-black transition cursor-pointer ${
+                cockpitTab === 'battle'
+                  ? 'bg-slate-950 text-white shadow-sm'
+                  : 'bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-black/[0.06]'
+              }`}
+            >
+              <Crosshair size={14} />
+              <span>实战盯盘</span>
+              {(activePositions.length + ambushPlans.length) > 0 && (
+                <span
+                  className={`rounded-full px-1.5 py-0.2 text-[10px] font-bold ${
+                    cockpitTab === 'battle' ? 'bg-slate-800 text-slate-200' : 'bg-slate-100 text-slate-600'
+                  }`}
+                >
+                  {activePositions.length + ambushPlans.length}
+                </span>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setCockpitTab('events')}
+              className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs sm:text-sm font-black transition cursor-pointer relative ${
+                cockpitTab === 'events'
+                  ? 'bg-slate-950 text-white shadow-sm'
+                  : 'bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-black/[0.06]'
+              }`}
+            >
+              <Calendar size={14} />
+              <span>宏观大事件雷达</span>
+              {impendingEvent ? (
+                <span className="flex h-2 w-2 rounded-full bg-rose-500 animate-ping" />
+              ) : (
+                <span
+                  className={`rounded-full px-1.5 py-0.2 text-[10px] font-bold ${
+                    cockpitTab === 'events' ? 'bg-slate-800 text-slate-200' : 'bg-slate-100 text-slate-600'
+                  }`}
+                >
+                  {globalEvents.length}
+                </span>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setCockpitTab('reviews')}
+              className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs sm:text-sm font-black transition cursor-pointer ${
+                cockpitTab === 'reviews'
+                  ? 'bg-slate-950 text-white shadow-sm'
+                  : 'bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-black/[0.06]'
+              }`}
+            >
+              <TrendingUp size={14} />
+              <span>战绩与历史复盘</span>
+              {reviews.length > 0 && (
+                <span
+                  className={`rounded-full px-1.5 py-0.2 text-[10px] font-bold ${
+                    cockpitTab === 'reviews' ? 'bg-slate-800 text-slate-200' : 'bg-slate-100 text-slate-600'
+                  }`}
+                >
+                  {reviews.length}
+                </span>
+              )}
+            </button>
+          </div>
+
+          {impendingEvent && cockpitTab !== 'events' && (
+            <button
+              type="button"
+              onClick={() => setCockpitTab('events')}
+              className="flex items-center gap-2 text-xs font-bold text-rose-600 hover:text-rose-700 bg-rose-50 px-3 py-1.5 rounded-lg border border-rose-200/60 cursor-pointer animate-pulse"
+            >
+              <span className="h-2 w-2 rounded-full bg-rose-500" />
+              <span>临近: {impendingEvent.event.title.split(' ')[0]} ({impendingEvent.countdownText}后) →</span>
+            </button>
+          )}
+        </div>
+
+        {/* ==================== TAB 1: ⚔️ 实战盯盘 ==================== */}
+        {cockpitTab === 'battle' && (
+          <div className="space-y-5">
+            {/* 顶置重大事件临近预警条（若处于 2 小时窗口期） */}
+            {impendingEvent && (
+              <div className="flex flex-wrap items-center justify-between gap-2.5 rounded-xl border border-rose-300 bg-rose-50/90 px-4 py-2.5 text-xs text-rose-950 shadow-xs">
+                <div className="flex items-center gap-2 font-black">
+                  <span className="flex h-2.5 w-2.5 rounded-full bg-rose-600 animate-ping shrink-0" />
+                  <span>
+                    🚨 【重大事件临近预警】：{impendingEvent.event.title} 即将在 {impendingEvent.countdownText} 后公布！
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setCockpitTab('events')}
+                  className="inline-flex items-center gap-1 font-black text-rose-700 hover:text-rose-900 underline underline-offset-2 cursor-pointer"
+                >
+                  前往宏观雷达查看避险战术与历史剧本 →
+                </button>
+              </div>
+            )}
+
+            {/* 清算密集区与价格磁铁雷达 */}
         {magnet && (
           <div className="rounded-2xl border border-black/[0.08] bg-white p-4 sm:p-5 shadow-sm space-y-3.5">
             <div className="flex flex-wrap items-center justify-between gap-2.5">
@@ -1727,102 +1853,135 @@ export default function SpaceCryptoCenter({
             )}
           </div>
         </div>
+      </div>
+    )}
 
-        {/* ==================== 底部：战绩与对局复盘 (历史已平仓，不常用收纳于此) ==================== */}
-        <div className="rounded-2xl border border-black/[0.08] bg-white p-4 sm:p-5 shadow-sm space-y-3.5">
-          <div className="flex items-center justify-between border-b border-black/[0.06] pb-3">
-            <div className="flex flex-wrap items-center gap-3">
-              <button
-                type="button"
-                onClick={() => setHistoryExpanded(!historyExpanded)}
-                className="flex items-center gap-1.5 text-sm font-black text-slate-950 hover:text-blue-600 cursor-pointer"
-              >
-                <span>📋 模拟交易复盘（历史已结束）</span>
-                {historyExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-              </button>
+    {/* ==================== TAB 2: ⚡ 宏观大事件雷达 ==================== */}
+    {cockpitTab === 'events' && (
+      <SpaceCryptoEventRadar
+        currentSymbol={symbol}
+        onShareToSpace={onShareToSpace}
+        onBackToChat={onBackToChat}
+      />
+    )}
 
-              {reviews.length > 0 && (
-                <div className="flex items-center gap-2 text-xs font-black">
-                  <span
-                    className={`rounded-full px-2 py-0.5 ${
-                      reviewStats.totalPnl >= 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
-                    }`}
-                  >
-                    累计净盈亏: {reviewStats.totalPnl >= 0 ? '+' : ''}${reviewStats.totalPnl} U
-                  </span>
-                  <span className="rounded-full bg-blue-100 text-blue-800 px-2 py-0.5">
-                    胜率: {reviewStats.winRate}% ({reviewStats.winCount}/{reviewStats.totalCount})
-                  </span>
-                </div>
-              )}
-            </div>
-
-            {reviews.length > 0 && (
-              <button
-                type="button"
-                onClick={() => {
-                  if (confirm('确定要清空历史复盘记录吗？')) {
-                    setReviews([]);
-                  }
-                }}
-                className="text-slate-400 hover:text-rose-600 text-[11px] font-bold cursor-pointer"
-              >
-                清空记录
-              </button>
-            )}
+    {/* ==================== TAB 3: 📋 战绩与历史复盘 ==================== */}
+    {cockpitTab === 'reviews' && (
+      <div className="rounded-2xl border border-black/[0.08] bg-white p-4 sm:p-5 shadow-sm space-y-4">
+        {/* 顶栏与核心统计卡片 */}
+        <div className="flex flex-wrap items-center justify-between border-b border-black/[0.06] pb-3 gap-3">
+          <div>
+            <h3 className="text-sm font-black text-slate-950 flex items-center gap-1.5">
+              <TrendingUp size={16} className="text-blue-600" />
+              模拟交易战绩复盘
+            </h3>
+            <p className="text-[11px] font-semibold text-slate-400 mt-0.5">
+              全流程胜率统计 · 止盈止损执行度评估 · 特战队实战深度复盘
+            </p>
           </div>
 
-          {historyExpanded && (
-            <div>
-              {reviews.length > 0 ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {reviews.map((r) => (
-                    <div
-                      key={r.id}
-                      className="rounded-xl border border-black/[0.06] bg-slate-50/80 p-3 space-y-2 text-xs"
+          {reviews.length > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                if (confirm('确定要清空历史复盘记录吗？')) {
+                  setReviews([]);
+                }
+              }}
+              className="rounded-lg border border-black/[0.08] px-2.5 py-1 text-slate-500 hover:text-rose-600 hover:bg-rose-50 text-[11px] font-bold cursor-pointer transition"
+            >
+              清空复盘记录
+            </button>
+          )}
+        </div>
+
+        {/* 4 大核心指标数据展板 */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+          <div className="rounded-xl border border-black/[0.06] bg-[#fbfaf7] p-3 space-y-1">
+            <div className="text-[10px] font-bold text-slate-400">累计模拟净盈亏</div>
+            <div className={`text-base sm:text-lg font-black ${reviewStats.totalPnl >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+              {reviewStats.totalPnl >= 0 ? '+' : ''}${reviewStats.totalPnl} U
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-black/[0.06] bg-[#fbfaf7] p-3 space-y-1">
+            <div className="text-[10px] font-bold text-slate-400">对局胜率</div>
+            <div className="text-base sm:text-lg font-black text-blue-600">
+              {reviewStats.winRate}%
+            </div>
+            <div className="text-[10px] font-semibold text-slate-400">
+              盈利 {reviewStats.winCount} 笔 / 累计 {reviewStats.totalCount} 笔
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-black/[0.06] bg-[#fbfaf7] p-3 space-y-1">
+            <div className="text-[10px] font-bold text-slate-400">平仓总单数</div>
+            <div className="text-base sm:text-lg font-black text-slate-900">
+              {reviewStats.totalCount} 笔
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-black/[0.06] bg-[#fbfaf7] p-3 space-y-1">
+            <div className="text-[10px] font-bold text-slate-400">当前在监标的</div>
+            <div className="text-base sm:text-lg font-black text-indigo-600">
+              {totalWatchedCount} 项
+            </div>
+            <div className="text-[10px] font-semibold text-slate-400">
+              {activePositions.length} 仓位 · {ambushPlans.length} 观察
+            </div>
+          </div>
+        </div>
+
+        {/* 结算明细网格 */}
+        {reviews.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 pt-2">
+            {reviews.map((r) => (
+              <div
+                key={r.id}
+                className="rounded-xl border border-black/[0.06] bg-slate-50/80 p-3 space-y-2 text-xs"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <span
+                      className={`rounded px-1.5 py-0.5 text-[10px] font-black ${
+                        r.pnlUsd >= 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
+                      }`}
                     >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-1.5">
-                          <span
-                            className={`rounded px-1.5 py-0.5 text-[10px] font-black ${
-                              r.pnlUsd >= 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
-                            }`}
-                          >
-                            {r.reason === 'TP_HIT'
-                              ? '🎯 止盈达成'
-                              : r.reason === 'SL_HIT'
-                              ? '🛑 止损出局'
-                              : r.reason === 'BREAKEVEN'
-                              ? '⚪ 保本出局'
-                              : '⚠️ 手动出局'}
-                          </span>
-                          <span className="font-black text-slate-900">{r.symbol} {r.planName}</span>
-                        </div>
-                        <span
-                          className={`font-black text-xs ${
-                            r.pnlUsd >= 0 ? 'text-emerald-600' : 'text-rose-600'
-                          }`}
-                        >
-                          {r.pnlUsd >= 0 ? '+' : ''}${r.pnlUsd} U ({r.pnlPercent.toFixed(1)}%)
-                        </span>
-                      </div>
+                      {r.reason === 'TP_HIT'
+                        ? '🎯 止盈达成'
+                        : r.reason === 'SL_HIT'
+                        ? '🛑 止损出局'
+                        : r.reason === 'BREAKEVEN'
+                        ? '⚪ 保本出局'
+                        : '⚠️ 手动出局'}
+                    </span>
+                    <span className="font-black text-slate-900">{r.symbol} {r.planName}</span>
+                  </div>
+                  <span
+                    className={`font-black text-xs ${
+                      r.pnlUsd >= 0 ? 'text-emerald-600' : 'text-rose-600'
+                    }`}
+                  >
+                    {r.pnlUsd >= 0 ? '+' : ''}${r.pnlUsd} U ({r.pnlPercent.toFixed(1)}%)
+                  </span>
+                </div>
 
-                      <div className="text-[11px] text-slate-500 font-semibold flex items-center justify-between">
-                        <span>
-                          入场: ${r.entryPrice.toLocaleString()} ➔ 平仓: ${r.exitPrice.toLocaleString()}
-                        </span>
-                        <span>{r.date}</span>
-                      </div>
+                <div className="text-[11px] text-slate-500 font-semibold flex items-center justify-between">
+                  <span>
+                    入场: ${r.entryPrice.toLocaleString()} ➔ 平仓: ${r.exitPrice.toLocaleString()}
+                  </span>
+                  <span>{r.date}</span>
+                </div>
 
-                      <p className="text-[11px] text-slate-600 font-semibold bg-white p-2 rounded-lg border border-black/[0.04]">
-                        {r.summary}
-                      </p>
+                <p className="text-[11px] text-slate-600 font-semibold bg-white p-2 rounded-lg border border-black/[0.04]">
+                  {r.summary}
+                </p>
 
-                      <div className="flex items-center justify-end pt-1">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const prompt = `📋 【专项模拟交易复盘请求】
+                <div className="flex items-center justify-end pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const prompt = `📋 【专项模拟交易复盘请求】
 - 订单名称：${r.planName} (${r.symbol} ${r.direction}单)
 - 入场价：$${r.entryPrice.toLocaleString()} ➔ 出局价: $${r.exitPrice.toLocaleString()}
 - 最终盈亏：${r.pnlUsd >= 0 ? '+' : ''}${r.pnlUsd} USDT (${r.pnlPercent.toFixed(2)}%)
@@ -1832,26 +1991,26 @@ export default function SpaceCryptoCenter({
 请特战队对该单进行战术复盘：
 1. @凌风 · 盘面K线先锋：评估当时入场与离场收线是否合理？
 2. @雷震 · 铁面风控官：评估盈亏比与风控执行度，给出复盘改进建议！`;
-                            onShareToSpace?.(prompt);
-                            onBackToChat?.();
-                          }}
-                          className="inline-flex items-center gap-1 text-[11px] font-black text-blue-600 hover:text-blue-800 cursor-pointer"
-                        >
-                          <MessagesSquare size={12} />
-                          呼叫特战队复盘此单
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                      onShareToSpace?.(prompt);
+                      onBackToChat?.();
+                    }}
+                    className="inline-flex items-center gap-1 text-[11px] font-black text-blue-600 hover:text-blue-800 cursor-pointer"
+                  >
+                    <MessagesSquare size={12} />
+                    呼叫特战队复盘此单
+                  </button>
                 </div>
-              ) : (
-                <div className="py-6 text-center text-xs text-slate-400 font-semibold">
-                  暂无历史平仓记录。持仓单在上方平仓后，将自动归档于此。
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="py-12 text-center text-xs text-slate-400 font-semibold space-y-1">
+            <p>当前暂无历史平仓记录</p>
+            <p className="text-[11px] text-slate-400">在「实战盯盘」中对模拟持仓执行平仓后，将自动归档沉淀在此</p>
+          </div>
+        )}
+      </div>
+    )}
       </div>
 
       {simulationDraft && (

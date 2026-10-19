@@ -891,6 +891,27 @@ export const cryptoSentinel = {
     }),
 };
 
+export interface CryptoEventsData {
+  upcoming: any[];
+  historical: any[];
+  activeAlerts: any[];
+  total: number;
+}
+
+export const cryptoEvents = {
+  list: (params?: { category?: string; symbol?: string }) => {
+    const q = new URLSearchParams();
+    if (params?.category) q.set('category', params.category);
+    if (params?.symbol) q.set('symbol', params.symbol);
+    const qs = q.toString();
+    return request<{ success: boolean; data: CryptoEventsData }>(`/crypto/events${qs ? `?${qs}` : ''}`);
+  },
+  sync: () =>
+    request<{ success: boolean; message: string; data: any }>('/crypto/events', {
+      method: 'POST',
+    }),
+};
+
 export const spaceShares = {
   list: () => request<{ shares: SpaceFileShare[] }>('/shares'),
 };
