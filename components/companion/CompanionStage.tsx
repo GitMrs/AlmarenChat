@@ -403,10 +403,6 @@ const KoroStage = forwardRef<StageHandle, StageProps>(function KoroStage(props, 
     const onPointerDown = (event: PointerEvent) => {
       if (!canvas || !active) return;
       if (event.button !== 0 && event.pointerType === 'mouse') return;
-      const target = event.target as HTMLElement | null;
-      if (target?.closest('button, form, input, .companion-floating-hud, .companion-dockbar, .companion-quick-reactions, .companion-controls, .companion-drawer-backdrop')) {
-        return;
-      }
       isPointerDown = true;
       isDragging = false;
       dragStartX = event.clientX;
@@ -451,7 +447,7 @@ const KoroStage = forwardRef<StageHandle, StageProps>(function KoroStage(props, 
       }
     };
 
-    window.addEventListener('pointerdown', onPointerDown, { passive: true });
+    canvas.addEventListener('pointerdown', onPointerDown, { passive: true });
     window.addEventListener('pointermove', onPointerMove, { passive: true });
     window.addEventListener('pointerup', onPointerUp, { passive: true });
     window.addEventListener('pointercancel', onPointerUp, { passive: true });
@@ -749,7 +745,7 @@ const KoroStage = forwardRef<StageHandle, StageProps>(function KoroStage(props, 
       cancelAnimationFrame(animationFrame);
       observer.disconnect();
       canvas.removeEventListener('webglcontextlost', contextLost);
-      window.removeEventListener('pointerdown', onPointerDown);
+      canvas.removeEventListener('pointerdown', onPointerDown);
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
       window.removeEventListener('pointercancel', onPointerUp);

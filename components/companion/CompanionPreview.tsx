@@ -487,12 +487,10 @@ function CompanionSession({
 
   const handleScenePointerDown = (e: React.PointerEvent) => {
     if (!usable || dragStartRef.current || e.isPrimary === false || (e.pointerType === 'mouse' && e.button !== 0)) return;
-    const target = e.target as HTMLElement;
-    if (target.closest('button, form, input, .companion-floating-hud, .companion-dockbar, .companion-quick-reactions, .companion-controls, .companion-drawer-backdrop')) {
-      return;
-    }
+    const target = e.target as HTMLCanvasElement;
+    if (!target.matches('canvas.companion-canvas')) return;
     try {
-      e.currentTarget.setPointerCapture(e.pointerId);
+      target.setPointerCapture(e.pointerId);
     } catch {
       // 容错处理
     }
@@ -536,8 +534,9 @@ function CompanionSession({
 
     if (e && e.currentTarget) {
       try {
-        if (e.currentTarget.hasPointerCapture(e.pointerId)) {
-          e.currentTarget.releasePointerCapture(e.pointerId);
+        const canvas = e.currentTarget.querySelector('canvas.companion-canvas');
+        if (canvas?.hasPointerCapture(e.pointerId)) {
+          canvas.releasePointerCapture(e.pointerId);
         }
       } catch {
         // 容错处理
@@ -766,11 +765,13 @@ function CompanionSession({
     return () => clearSessionTimeout(timer);
   }, [ready, character.id, isStreaming, reply, externalMessages]);
 
-  // 监听用户首次触摸/点击屏幕（解锁浏览器针对刷新页面的自动发声限制，立即补播入场欢迎语音）
+  // 用户与模型交互时，补播被浏览器自动播放限制拦截的入场语音。
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    const handleFirstUserInteraction = () => {
+    const handleFirstUserInteraction = (event: Event) => {
+      const target = event.target as Element | null;
+      if (!target?.matches?.('canvas.companion-canvas')) return;
       if (pendingStartupLineRef.current) {
         const pending = pendingStartupLineRef.current;
         pendingStartupLineRef.current = null;
@@ -827,10 +828,8 @@ function CompanionSession({
   // 3. 播放语音中做禁用不要覆盖，只累计点击次数
   // 4. 语音播放完了，若仍在连击，紧接着播放连击语音
   const handleCharacterTap = (e: React.MouseEvent) => {
-    const target = e.target as HTMLElement;
-    if (target.closest('button, form, input, .companion-floating-hud, .companion-dockbar, .companion-quick-reactions, .companion-controls, .companion-drawer-backdrop')) {
-      return;
-    }
+    const target = e.target as Element;
+    if (!usable || !target.matches('canvas.companion-canvas')) return;
 
     // 若刚才是在按住拖拽视线引导（释放后 400ms 内），不误触发角色轻点对白与粒子
     if (Date.now() - lastDragEndRef.current < 400) {
