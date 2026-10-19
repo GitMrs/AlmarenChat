@@ -502,6 +502,7 @@ globalForSentinel.__cryptoSentinelScheduler = schedulerState;
  */
 export function startCryptoSentinelScheduler() {
   if (schedulerState.started) return;
+  if (process.env.NODE_ENV === 'development' && process.env.ENABLE_SCHEDULERS !== 'true') return;
   schedulerState.started = true;
   console.log('[crypto-sentinel-scheduler] Started 7×24H crypto sentinel background scheduler (interval: 30s)');
   const scheduler = createScheduler({

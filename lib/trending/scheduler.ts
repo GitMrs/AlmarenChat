@@ -214,6 +214,10 @@ export function startTrendingScheduler() {
     return;
   }
 
+  if (process.env.NODE_ENV === 'development' && process.env.ENABLE_SCHEDULERS !== 'true') {
+    return;
+  }
+
   state.started = true;
   console.log('[trending-scheduler] 🚀 Trending Auto-Scheduler initialized with anti-ban stealth randomizer.');
 
