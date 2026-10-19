@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
+import { findCompanionAgent } from '@/lib/companion/agents';
 import { createChatWebTools, runAutoWebChat } from '@/lib/auto-web';
 import { formatKnowledgeContext, getKnowledgeHits } from '@/lib/knowledge';
 import { createModelClient, resolveModelName } from '@/lib/model-client';
@@ -109,7 +110,7 @@ export async function POST(request: Request) {
     let resolvedConversationId: string | null = conversationId || null;
 
     if (userId && !resolvedConversationId && agentId) {
-      const agent = await prisma.agent.findUnique({ where: { id: agentId } });
+      const agent = (await prisma.agent.findUnique({ where: { id: agentId } })) || findCompanionAgent(agentId);
       const snapshot = agent || agentSnapshot || {};
       const existingMain = await prisma.conversation.findFirst({
         where: { userId, agentId, kind: 'AGENT', agentMode: 'MAIN' },

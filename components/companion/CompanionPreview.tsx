@@ -1,186 +1,31 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Check, ChevronRight, Eye, LayoutGrid, Loader2, MessageCircle, Pause, Play, RotateCcw, SendHorizonal, Settings, Sliders, Smile, Sparkles, Trash2, Volume2, VolumeX, X } from 'lucide-react';
+import { Check, ChevronRight, Eye, LayoutGrid, Loader2, MessageCircle, Pause, Play, RotateCcw, SendHorizonal, Settings, Sliders, Smile, Sparkles, Volume2, VolumeX, X } from 'lucide-react';
 import CompanionStage, { type FramingMode, type StageHandle, type StageSnapshot } from './CompanionStage';
 import { companionCharacters, type CompanionCharacter } from '@/lib/companion/catalog';
 import { getRandomTapLine, getRapidTapLine, getRandomStartupLine, getRandomDragLine, type VoiceLine } from '@/lib/companion/voice';
-import { primeChatAudio } from '@/lib/companion/chat-audio';
+import '@/app/companion/companion.css';
 
-const quickPrompts = [
-  {
-    emoji: '👋',
-    label: '拍拍头',
-    userText: '（轻轻拍了拍你的头）',
-    motion: 'happy',
-    replyNari: '嘻嘻，被摸头发感觉好安心呀… (*´▽`*)',
-    replyYume: '哇！突然摸头，心跳都漏了一拍呢！(*>ω<*)'
-  },
-  {
-    emoji: '✨',
-    label: '夸夸我',
-    userText: '今天我很努力，快夸夸我！',
-    motion: 'greeting',
-    replyNari: '你一直都超级棒的！今天也是满分的一天，给你一朵小红花 🌸',
-    replyYume: '太厉害啦！我就知道你最行了，为你超级骄傲！🎉'
-  },
-  {
-    emoji: '🍵',
-    label: '有点累',
-    userText: '今天感觉有点累了…',
-    motion: 'talk',
-    replyNari: '辛苦啦…快靠着放松一会儿吧，我会一直安安静静陪着你。',
-    replyYume: '给你递上一杯温温的奶茶~ 别硬撑，有我陪你放空休息！'
-  },
-  {
-    emoji: '💭',
-    label: '在想什么',
-    userText: '你现在在想什么呢？',
-    motion: 'talk',
-    replyNari: '在想…此刻有你陪在身边，时光都变得很温柔。',
-    replyYume: '在想等会儿咱们要不要一起放首歌听听呢！'
-  },
-  {
-    emoji: '🌙',
-    label: '晚安啦',
-    userText: '今天先到这里啦，晚安！',
-    motion: 'greeting',
-    replyNari: '晚安好梦~ 盖好被子，愿你有甜甜的梦，明天见。🌙',
-    replyYume: '晚安晚安！好好睡一觉，明天也要元气满满哦！✨'
-  },
-];
+import { getCompanionBehavior, type QuickPromptItem } from '@/lib/companion/behaviors';
 
-interface CompanionChatMessage {
+interface CompanionDisplayMessage {
   id: string;
   sender: 'user' | 'companion';
   text: string;
   isSticker?: boolean;
 }
 
-function getDefaultMessages(charId: string): CompanionChatMessage[] {
-  if (charId === 'lafei') {
-    return [
-      { id: 'm1', sender: 'companion', text: '指挥官，欢迎回来。莱菲一直在等你。' },
-      { id: 'm2', sender: 'user', text: '辛苦了拉菲，今天港区一切都好吗？' },
-      { id: 'm3', sender: 'companion', text: '一切正常哦。今天的任务也已经完成了，指挥官。' },
-      { id: 'm4', sender: 'companion', text: '莱菲有点困了...要靠在指挥官身边休息一下吗？' },
-      { id: 'm5', sender: 'companion', text: '💤', isSticker: true },
-    ];
-  }
-  if (charId === 'mao') {
-    return [
-      { id: 'm1', sender: 'companion', text: '喵~ 主人你回来啦！真央一直在这里等你喵~(ฅ´ω`ฅ)' },
-      { id: 'm2', sender: 'user', text: '真央今天有没有乖乖看家？' },
-      { id: 'm3', sender: 'companion', text: '真央今天也很努力在工作喵！(*^▽^*)' },
-      { id: 'm4', sender: 'companion', text: '肚子饿了喵，主人是不是该上贡小鱼干了喵？' },
-      { id: 'm5', sender: 'companion', text: '🐾', isSticker: true },
-    ];
-  }
-  if (charId === 'yume') {
-    return [
-      { id: 'm1', sender: 'companion', text: '嗨！今天也是元气满满的一天哦！' },
-      { id: 'm2', sender: 'user', text: '哈哈，看到你我也精神了！' },
-      { id: 'm3', sender: 'companion', text: '嘿嘿，有你陪着超开心！' },
-      { id: 'm4', sender: 'companion', text: '我是Yume！快跟我聊聊今天遇到什么好玩的事了吧？' },
-      { id: 'm5', sender: 'companion', text: '✨', isSticker: true },
-    ];
-  }
-  return [
-    { id: 'm1', sender: 'companion', text: '你好呀，今天过得开心吗？' },
-    { id: 'm2', sender: 'user', text: '还可以，你今天在做什么呢？' },
-    { id: 'm3', sender: 'companion', text: '嘿，你好可爱呀！' },
-    { id: 'm4', sender: 'companion', text: '初次见面，你能来我好开心，我是Nari。今天想做点什么呢？' },
-    { id: 'm5', sender: 'companion', text: '☺️', isSticker: true },
-  ];
-}
-
-const COMPANION_STORAGE_PREFIX = 'almaren_companion_chat_';
-
-function getStoredMessages(charId: string): CompanionChatMessage[] {
-  if (typeof window === 'undefined') return getDefaultMessages(charId);
-  try {
-    const raw = localStorage.getItem(`${COMPANION_STORAGE_PREFIX}${charId}`);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
-      }
-    }
-  } catch (e) {
-    console.warn('[Companion Storage] Failed to load cached messages:', e);
-  }
-  return getDefaultMessages(charId);
-}
-
-function saveStoredMessages(charId: string, messages: CompanionChatMessage[]) {
-  if (typeof window === 'undefined') return;
-  try {
-    localStorage.setItem(`${COMPANION_STORAGE_PREFIX}${charId}`, JSON.stringify(messages.slice(-50)));
-  } catch (e) {
-    console.warn('[Companion Storage] Failed to save messages to localStorage:', e);
-  }
-}
-
-const NARI_IDLE_POOL = [
-  'Nari_idle_02_double_bounce', // 轻轻晃一晃 (5.58s - 少女元气轻晃与飘带摆动)
-  'Nari_idle_08_look_around',   // 四处看看 (6.84s - 好奇环顾)
-  'Nari_idle_06_giggle',        // 偷偷笑 (5.40s - 掩嘴轻笑)
-  'Nari_idle_04_flirty_lashes', // 轻眨睫毛 (6.30s - 眨动睫毛)
-  'Nari_idle_13_tease_peek',    // 调皮偷看 (6.48s - 探头偷看)
-  'Nari_chat_02_listen_tilt',   // 侧头倾听 (8.46s - 温柔侧头)
-  'Nari_chat_03_warm_breath',   // 轻柔呼吸 (9.00s - 舒缓呼吸)
-  'Nari_chat_05_readjust',      // 调整站姿 (7.92s - 换重心站立)
-  'Nari_mood_happy_sway',       // 开心摇摆 (5.22s - 轻快摇晃)
-  'Nari_cheeky_swing_wink',     // 俏皮眨眼 (7.50s - 俏皮眨眼)
-];
-
-const YUME_IDLE_POOL = [
-  'Yume_idle_03_brisk_nods',     // 轻快点头 (6.98s - 元气活泼点头)
-  'Yume_chat_03_shy_glance',     // 悄悄看你 (9.45s - 偷偷瞄你一眼)
-  'Yume_idle_10_smug_wink',      // 得意眨眼 (10.80s - 骄傲小眨眼)
-  'Yume_idle_11_double_take',    // 回头再看 (10.20s - 惊喜再看)
-  'Yume_idle_13_victory',        // 小小得意 (9.90s - 胜利姿态)
-  'Yume_mood_happy_pleased',     // 心情不错 (9.00s - 心情愉悦摇动)
-  'Yume_chat_02_listen_tilt',    // 侧头倾听 (12.68s - 侧头倾听)
-  'Yume_chat_05_readjust',       // 调整站姿 (12.08s - 整理姿态)
-  'Yume_cheeky_swing_wink',      // 俏皮眨眼 (8.40s - 俏皮眨眼)
-  'Yume_mood_loving_soft',       // 温柔心动 (10.50s - 温柔心动)
-];
-
-const LAFEI_IDLE_POOL = [
-  'Idle',
-  'Special_0',
-  'Special_1',
-  'Special_3',
-  'Special_4',
-];
-
-const MAO_IDLE_POOL = [
-  'Idle',
-  'TapBody_1',
-  'TapBody_2',
-];
-
 function getInitialMotion(charId: string): string {
-  if (charId === 'yume') return 'Yume_idle_03_brisk_nods';
-  if (charId === 'lafei') return 'Idle';
-  if (charId === 'mao') return 'Idle';
-  return 'Nari_idle_02_double_bounce';
+  return getCompanionBehavior(charId).initialMotion;
 }
 
 function getRandomIdleMotion(charId: string, currentMotionId: string): string {
-  const pool = charId === 'yume'
-    ? YUME_IDLE_POOL
-    : charId === 'lafei'
-    ? LAFEI_IDLE_POOL
-    : charId === 'mao'
-    ? MAO_IDLE_POOL
-    : NARI_IDLE_POOL;
+  const pool = getCompanionBehavior(charId).idlePool;
   const candidates = pool.filter(id => id !== currentMotionId);
-  const choice = candidates[Math.floor(Math.random() * candidates.length)] || pool[0];
-  return choice;
+  return candidates[Math.floor(Math.random() * candidates.length)] || pool[0];
 }
 
 function releaseAudio(audio: HTMLAudioElement) {
@@ -194,46 +39,55 @@ function releaseAudio(audio: HTMLAudioElement) {
   audio.load();
 }
 
-export default function CompanionPreview() {
-  const router = useRouter();
-  const [authed, setAuthed] = useState<boolean | null>(null);
-  const [characterId, setCharacterId] = useState(companionCharacters[0].id);
-
-  useEffect(() => {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-    if (!token) {
-      router.replace('/login?redirect=/companion');
-      return;
-    }
-    setAuthed(true);
-
-    const handleAuthChange = () => {
-      const currentToken = localStorage.getItem('token');
-      if (!currentToken) {
-        router.replace('/login?redirect=/companion');
-      }
-    };
-    window.addEventListener('almaren-auth-change', handleAuthChange);
-    return () => window.removeEventListener('almaren-auth-change', handleAuthChange);
-  }, [router]);
-
-  if (authed !== true) {
-    return (
-      <main className="companion-page" style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fcf8f5' }}>
-        <div className="companion-loading-card" style={{ padding: '36px 48px', textAlign: 'center' }}>
-          <Loader2 size={26} className="companion-spinner" style={{ margin: '0 auto 12px' }} />
-          <p style={{ fontWeight: 600, color: '#4a3427', margin: '0 0 6px' }}>正在验证访问权限…</p>
-          <span style={{ fontSize: '12px', color: '#9e7c64' }}>登录后方可进入伴侣专属空间</span>
-        </div>
-      </main>
-    );
-  }
-
-  const character = companionCharacters.find(candidate => candidate.id === characterId) ?? companionCharacters[0];
-  return <CompanionSession key={character.id} character={character} onCharacterChange={setCharacterId} />;
+export interface CompanionPreviewProps {
+  characterId?: string;
+  embedded?: boolean;
+  onBackToChat?: () => void;
+  externalMessages?: Array<{ id: string; role: 'user' | 'assistant' | 'system' | string; content: string }>;
+  onSendMessage?: (content: string) => Promise<void>;
+  isStreaming?: boolean;
+  streamingContent?: string;
 }
 
-function CompanionSession({ character, onCharacterChange }: { character: CompanionCharacter; onCharacterChange(id: string): void }) {
+export default function CompanionPreview({
+  characterId: initialCharId,
+  onBackToChat,
+  externalMessages,
+  onSendMessage,
+  isStreaming = false,
+  streamingContent = '',
+}: CompanionPreviewProps = {}) {
+  const character = companionCharacters.find(candidate => candidate.id === initialCharId) ?? companionCharacters[0];
+  return (
+    <CompanionSession
+      key={character.id}
+      character={character}
+      onBackToChat={onBackToChat}
+      externalMessages={externalMessages}
+      onSendMessage={onSendMessage}
+      isStreaming={isStreaming}
+      streamingContent={streamingContent}
+    />
+  );
+}
+
+interface CompanionSessionProps {
+  character: CompanionCharacter;
+  onBackToChat?: () => void;
+  externalMessages?: Array<{ id: string; role: 'user' | 'assistant' | 'system' | string; content: string }>;
+  onSendMessage?: (content: string) => Promise<void>;
+  isStreaming?: boolean;
+  streamingContent?: string;
+}
+
+function CompanionSession({
+  character,
+  onBackToChat,
+  externalMessages,
+  onSendMessage,
+  isStreaming = false,
+  streamingContent = '',
+}: CompanionSessionProps) {
   const router = useRouter();
   const stage = useRef<StageHandle>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -241,9 +95,28 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
   const [motionId, setMotionId] = useState(() => getInitialMotion(character.id));
   const [expressionId, setExpressionId] = useState('');
   const [messageText, setMessageText] = useState('');
-  const [messages, setMessages] = useState<CompanionChatMessage[]>(() => getStoredMessages(character.id));
   const [showStickers, setShowStickers] = useState(false);
-  const [isReplying, setIsReplying] = useState(false);
+
+  const activeMessages = useMemo(() => {
+    const base: CompanionDisplayMessage[] = (externalMessages || [])
+      .filter((m) => m.role === 'user' || (m.role === 'assistant' && m.id !== 'greeting'))
+      .slice(-10)
+      .map((m) => ({
+        id: m.id,
+        sender: m.role === 'user' ? 'user' : 'companion',
+        text: m.content,
+      }));
+    if (isStreaming && streamingContent) {
+      base.push({
+        id: 'streaming-assistant',
+        sender: 'companion',
+        text: streamingContent,
+      });
+    }
+    return base;
+  }, [externalMessages, isStreaming, streamingContent]);
+
+  const effectiveIsReplying = isStreaming;
   const [playing, setPlaying] = useState(true);
   const [loop, setLoop] = useState(true);
   const [autoIdle, setAutoIdle] = useState(true);
@@ -265,24 +138,9 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
   }, []);
   const isDev = process.env.NODE_ENV === 'development' || isDebugOverride;
 
-  const [sceneBg, setSceneBg] = useState<'cherry_room' | 'ocean_room' | 'none'>(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('almaren_companion_scene_bg');
-      if (saved === 'cherry_room' || saved === 'ocean_room' || saved === 'none') {
-        return saved;
-      }
-    }
-    return (character.id === 'yume' || character.id === 'lafei') ? 'ocean_room' : 'cherry_room';
-  });
+  const behavior = useMemo(() => getCompanionBehavior(character.id), [character.id]);
 
-  const handleSceneBgChange = (bg: 'cherry_room' | 'ocean_room' | 'none') => {
-    setSceneBg(bg);
-    if (typeof window !== 'undefined') {
-      try {
-        localStorage.setItem('almaren_companion_scene_bg', bg);
-      } catch {}
-    }
-  };
+  const sceneBg = behavior.defaultSceneBg ?? 'cherry_room';
   const [ready, setReady] = useState(false);
   const [motionLoading, setMotionLoading] = useState(true);
   const [error, setError] = useState('');
@@ -291,7 +149,6 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
   const activeMotion = character.motions.find(motion => motion.id === motionId);
   const motionGroups = [...new Set(character.motions.map(motion => motion.group))];
   const usable = ready && !error;
-  const [charMenuOpen, setCharMenuOpen] = useState(false);
   const chatStreamRef = useRef<HTMLDivElement>(null);
   const desktopChatStreamRef = useRef<HTMLDivElement>(null);
   const [desktopTab, setDesktopTab] = useState<'chat' | 'motion'>('chat');
@@ -438,11 +295,7 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
   const chatAbortControllerRef = useRef<AbortController | null>(null);
   const sessionActiveRef = useRef(true);
   const sessionTimersRef = useRef(new Set<ReturnType<typeof setTimeout>>());
-  const tapExpression = character.expressions.find(expression => {
-    if (character.id === 'yume') return expression.id === 'Shy';
-    if (character.id === 'mao') return expression.id === '害羞';
-    return expression.id === 'Blushing';
-  })?.id ?? '';
+  const tapExpression = character.expressions.find(expression => expression.id === behavior.tapExpressionId)?.id ?? '';
 
   const setSessionTimeout = (callback: () => void, delay: number) => {
     const timer = setTimeout(() => {
@@ -737,64 +590,14 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
   // 播放初次载入欢迎问候语音
   const playStartupVoice = () => {
     const line = getRandomStartupLine(character.id);
-    let targetMotionId = '';
-    let targetExpression = '';
-
-    if (character.id === 'nari') {
-      const startupMotions = ['Nari_bright_bounce', 'Nari_chat_01_attentive', 'Nari_mood_happy_sway', 'Nari_idle_02_double_bounce'];
-      const chosen = startupMotions[Math.floor(Math.random() * startupMotions.length)];
-      const m = character.motions.find(candidate => candidate.id === chosen);
-      if (m) targetMotionId = m.id;
-    } else if (character.id === 'yume') {
-      const startupMotions = ['Yume_idle_03_brisk_nods', 'Yume_chat_01_attentive', 'Yume_idle_13_victory'];
-      const m = character.motions.find(candidate => startupMotions.includes(candidate.id));
-      if (m) targetMotionId = m.id;
-    } else if (character.id === 'lafei') {
-      const m = character.motions.find(candidate => candidate.id === 'Idle');
-      if (m) targetMotionId = m.id;
-    } else if (character.id === 'mao') {
-      const m = character.motions.find(candidate => candidate.id === 'Idle');
-      if (m) targetMotionId = m.id;
-      targetExpression = '开心';
-    }
-
+    const { targetMotionId, targetExpression } = behavior.getStartupReaction(character);
     playVoice(line, { targetMotionId, targetExpression, isStartup: true });
   };
 
   // 播放拖拽反应趣味语音
   const playDragVoice = () => {
     const line = getRandomDragLine(character.id);
-    let targetMotionId = '';
-    let targetExpression = '';
-
-    if (character.id === 'nari') {
-      const dragMotions = ['Nari_idle_08_look_around', 'Nari_mood_surprised_lean', 'Nari_cheeky_swing_wink', 'Nari_mood_happy_sway', 'Nari_bright_bounce'];
-      const chosen = dragMotions[Math.floor(Math.random() * dragMotions.length)];
-      const m = character.motions.find(candidate => candidate.id === chosen);
-      if (m) targetMotionId = m.id;
-      if (line.id === 'nari_drag_01' || line.id === 'nari_drag_02') {
-        targetExpression = 'Silly';
-      } else if (line.id === 'nari_drag_05') {
-        targetExpression = 'Mischievous';
-      } else if (line.id === 'nari_drag_06') {
-        targetExpression = 'Love';
-      } else {
-        targetExpression = 'Shocked';
-      }
-    } else if (character.id === 'yume') {
-      const dragMotions = ['Yume_mood_surprised_wait_what', 'Yume_idle_01_hmph_look_away'];
-      const m = character.motions.find(candidate => dragMotions.includes(candidate.id));
-      if (m) targetMotionId = m.id;
-      targetExpression = '';
-    } else if (character.id === 'lafei') {
-      const m = character.motions.find(candidate => candidate.id === 'TapBody_0');
-      if (m) targetMotionId = m.id;
-    } else if (character.id === 'mao') {
-      const m = character.motions.find(candidate => candidate.id === 'TapBody_1');
-      if (m) targetMotionId = m.id;
-      targetExpression = '生气';
-    }
-
+    const { targetMotionId, targetExpression } = behavior.getDragReaction(character, line);
     playVoice(line, { targetMotionId, targetExpression });
   };
 
@@ -840,32 +643,10 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
 
     if (combo >= 5) {
       // 🌟 Level 3: 连击 5 次以上，触发【求饶/娇嗔保护态】！
-      if (character.id === 'lafei') {
-        line = { id: 'surrender', text: '要...要坏掉了...指挥官...！', seconds: 2.2 };
-        const motion = character.motions.find(m => m.id === 'TapBody_1');
-        if (motion) targetMotionId = motion.id;
-      } else if (character.id === 'mao') {
-        line = { id: 'surrender', text: '哇啊啊！主人太热情了喵，真央要坏掉啦喵~~ (///Σ///)', seconds: 2.4 };
-        targetExpression = '害羞';
-        const motion = character.motions.find(m => m.id === 'TapBody_1');
-        if (motion) targetMotionId = motion.id;
-      } else if (character.id === 'nari') {
-        line = { id: 'surrender', text: '好啦好啦，手下留情嘛~ 🌸', audioUrl: '/companion/audio/voice/nari/tap_09.mp3', seconds: 2.2 };
-        targetExpression = tapExpression;
-        const shyMotion = character.motions.find(m =>
-          m.id.toLowerCase().includes('shy_duck') ||
-          m.id.toLowerCase().includes('shy')
-        );
-        if (shyMotion) targetMotionId = shyMotion.id;
-      } else {
-        line = { id: 'surrender', text: '真是的，败给你了！快停下啦~ 😤', seconds: 2.2 };
-        targetExpression = tapExpression;
-        const shyMotion = character.motions.find(m =>
-          m.id.toLowerCase().includes('flustered') ||
-          m.id.toLowerCase().includes('shy')
-        );
-        if (shyMotion) targetMotionId = shyMotion.id;
-      }
+      const reaction = behavior.getSurrenderReaction(character, tapExpression);
+      line = reaction.line || { id: 'surrender', text: '好啦好啦，手下留情嘛~ 🌸', seconds: 2.2 };
+      targetExpression = reaction.targetExpression || tapExpression;
+      targetMotionId = reaction.targetMotionId || '';
 
       // 触发 2.4 秒求饶保护，防连点器刷屏
       exhaustedUntilRef.current = now + 2400;
@@ -873,53 +654,15 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
     } else if (combo >= 3) {
       // 🌟 Level 2: 连点 3~4 次，触发【慌乱/连击专属台词】！
       line = preparedTapVoicesRef.current.get('rapid')?.line ?? getRapidTapLine(character.id);
-      targetExpression = tapExpression;
-      if (character.id === 'lafei') {
-        const rapidMotion = character.motions.find(m => m.id === 'TapBody_0');
-        if (rapidMotion) targetMotionId = rapidMotion.id;
-      } else if (character.id === 'mao') {
-        targetExpression = '生气';
-        const rapidMotion = character.motions.find(m => m.id === 'TapBody_0');
-        if (rapidMotion) targetMotionId = rapidMotion.id;
-      } else {
-        const rapidMotion = character.motions.find(m =>
-          m.id.toLowerCase().includes('surprised_jolt') ||
-          m.id.toLowerCase().includes('giggle') ||
-          m.id.toLowerCase().includes('shy_twist') ||
-          m.id.toLowerCase().includes('bounce')
-        );
-        if (rapidMotion) targetMotionId = rapidMotion.id;
-      }
+      const reaction = behavior.getRapidTapReaction(character, tapExpression);
+      targetExpression = reaction.targetExpression || tapExpression;
+      targetMotionId = reaction.targetMotionId || '';
     } else {
       // 🌟 Level 1: 正常单次轻戳日常问候
       line = preparedTapVoicesRef.current.get('tap')?.line ?? getRandomTapLine(character.id);
-      if (character.id === 'lafei') {
-        const tapPool = ['TapHead', 'TapBody_0', 'Special_2', 'Idle'];
-        const chosen = tapPool[Math.floor(Math.random() * tapPool.length)];
-        const motion = character.motions.find(m => m.id === chosen);
-        if (motion) targetMotionId = motion.id;
-      } else if (character.id === 'mao') {
-        const tapPool = ['TapBody_0', 'TapBody_1', 'TapBody_2', 'Idle'];
-        const chosen = tapPool[Math.floor(Math.random() * tapPool.length)];
-        const motion = character.motions.find(m => m.id === chosen);
-        if (motion) targetMotionId = motion.id;
-        const expPool = ['开心', '微笑', '通常'];
-        const exp = character.expressions.find(e => expPool.includes(e.id));
-        if (exp) targetExpression = exp.id;
-      } else {
-        const tapMotions = character.motions.filter(m =>
-          m.id.toLowerCase().includes('giggle') ||
-          m.id.toLowerCase().includes('shy') ||
-          m.id.toLowerCase().includes('bounce') ||
-          m.id.toLowerCase().includes('wink') ||
-          m.id.toLowerCase().includes('pop') ||
-          m.group === '心情' ||
-          m.group === '互动'
-        );
-        if (tapMotions.length > 0) {
-          targetMotionId = tapMotions[Math.floor(Math.random() * tapMotions.length)].id;
-        }
-      }
+      const reaction = behavior.getRandomTapReaction(character, tapExpression);
+      targetExpression = reaction.targetExpression || '';
+      targetMotionId = reaction.targetMotionId || '';
     }
 
     playVoice(line, { targetMotionId, targetExpression, combo, isTap: true });
@@ -947,13 +690,7 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
     const rect = e.currentTarget.getBoundingClientRect();
     const x = Math.max(20, Math.min(rect.width - 20, e.clientX - rect.left));
     const y = Math.max(20, Math.min(rect.height - 20, e.clientY - rect.top));
-    const symbols = character.id === 'yume'
-      ? ['🌊', '✨', '💙', '⭐']
-      : character.id === 'lafei'
-      ? ['🍷', '🐰', '💤', '✨', '🤍']
-      : character.id === 'mao'
-      ? ['🐾', '🐟', '🐱', '💖', '✨']
-      : ['🌸', '❤️', '✨', '💕'];
+    const symbols = behavior.tapSymbols;
     const symbol = symbols[Math.floor(Math.random() * symbols.length)];
     const pId = now + Math.random();
     setTapParticles(prev => [...prev.slice(-6), { id: pId, x, y, symbol }]);
@@ -993,7 +730,7 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
     if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
     const deskEl = desktopChatStreamRef.current;
     if (deskEl) deskEl.scrollTo({ top: deskEl.scrollHeight, behavior: 'smooth' });
-  }, [messages, isReplying, desktopTab]);
+  }, [activeMessages, effectiveIsReplying, desktopTab]);
 
   // 初次载入时直接触底展示最新气泡
   useEffect(() => {
@@ -1003,255 +740,39 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
     if (deskEl) deskEl.scrollTop = deskEl.scrollHeight;
   }, []);
 
-  // 聊天记录自动保存至本地缓存 (localStorage)
-  useEffect(() => {
-    saveStoredMessages(character.id, messages);
-  }, [messages, character.id]);
-
-  const handleClearHistory = () => {
-    if (typeof window !== 'undefined') {
-      const ok = window.confirm(`确定要清空与 ${character.name} 的本地对话记录吗？清空后将恢复为最初问候。`);
-      if (!ok) return;
-      try {
-        localStorage.removeItem(`${COMPANION_STORAGE_PREFIX}${character.id}`);
-      } catch {}
-    }
-    setMessages(getDefaultMessages(character.id));
-  };
-
   const replay = () => {
     stage.current?.restart();
     setPlaying(true);
   };
 
-  const playChatVoice = (audioUrl: string, messageId: string) => {
-    if (!sessionActiveRef.current || !voiceEnabledRef.current) return;
-    const playback = ++chatPlaybackRef.current;
-    const audio = chatAudioRef.current ?? new Audio();
-    chatAudioRef.current = audio;
-    if (currentAudioRef.current) releaseAudio(currentAudioRef.current);
-    currentAudioRef.current = audio;
-    const isCurrent = () => sessionActiveRef.current && voiceEnabledRef.current
-      && chatPlaybackRef.current === playback && currentAudioRef.current === audio;
-    let failed = false;
-    const stopSpeaking = () => {
-      isPlayingVoiceRef.current = false;
-      setIsSpeaking(false);
-      stage.current?.stopSpeaking();
-    };
-    const onFailure = () => {
-      if (failed || !isCurrent()) return;
-      failed = true;
-      releaseAudio(audio);
-      stopSpeaking();
-      setChatVoiceNotice({ messageId, audioUrl });
-    };
-    setChatVoiceNotice(null);
-    isPlayingVoiceRef.current = true;
-    audio.onplaying = () => {
-      if (!isCurrent()) return;
-      isPlayingVoiceRef.current = true;
-      setIsSpeaking(true);
-    };
-    audio.onended = audio.onpause = () => {
-      if (isCurrent()) stopSpeaking();
-    };
-    audio.onerror = onFailure;
-    try {
-      audio.src = audioUrl;
-      audio.load();
-      audio.play().catch(onFailure);
-    } catch {
-      onFailure();
+  const triggerListeningMotion = (preferredMotion?: string) => {
+    const listening = preferredMotion || behavior.listeningMotion;
+    const matched = character.motions.find(m => m.id === listening || m.id.toLowerCase().includes(listening.toLowerCase()))
+      || character.motions.find(m =>
+        m.id.toLowerCase().includes('attentive') ||
+        m.id.toLowerCase().includes('chat') ||
+        m.id.toLowerCase().includes('idle')
+      );
+    if (matched) {
+      setMotionId(matched.id);
+      setPlaying(true);
     }
   };
 
-  const chatVoiceFeedback = (messageId: string) => chatVoiceNotice?.messageId === messageId && (
-    chatVoiceNotice.audioUrl ? (
-      <button type="button" className="companion-chat-voice-retry" onClick={() => playChatVoice(chatVoiceNotice.audioUrl!, messageId)}>
-        <Volume2 size={14} /> 点击播放语音
-      </button>
-    ) : <small className="companion-chat-voice-notice">本次回复暂时没有语音</small>
-  );
-
-  const sendCompanionMessage = async (text: string, preferredMotion?: string) => {
-    const trimmed = text.trim();
-    if (!trimmed || !usable || isReplying) return;
-    chatPlaybackRef.current++;
-    setChatVoiceNotice(null);
-
-    // 清空输入框并收起快捷表情面板
+  const handleSendMessage = (e?: React.FormEvent) => {
+    e?.preventDefault();
+    const text = messageText.trim();
+    if (!text || isStreaming) return;
     setMessageText('');
     setShowStickers(false);
-
-    // 如果之前有正在播放的语音，立即停止旧语音
-    if (currentAudioRef.current) {
-      releaseAudio(currentAudioRef.current);
-    }
-    currentAudioRef.current = null;
-    if (voiceEnabledRef.current) {
-      try {
-        const audio = chatAudioRef.current ?? new Audio();
-        chatAudioRef.current = audio;
-        releaseAudio(audio);
-        primeChatAudio(audio);
-      } catch {}
-    }
-    if (tapBubbleTimerRef.current) clearSessionTimeout(tapBubbleTimerRef.current);
-    setTapBubble(null);
-    isPlayingVoiceRef.current = false;
-    setIsSpeaking(false);
-    stage.current?.stopSpeaking();
-
-    const userMsg: CompanionChatMessage = {
-      id: `u-${Date.now()}`,
-      sender: 'user',
-      text: trimmed,
-    };
-
-    // 保留历史对话流，配合顶部渐变遮罩支持向上滚动翻看
-    const historySnapshot = messages.slice(-6);
-    setMessages(prev => [...prev.slice(-49), userMsg]);
-    setIsReplying(true);
-
-    if (bubbleTimerRef.current) clearSessionTimeout(bubbleTimerRef.current);
-
-    // 倾听姿态联动：用户发消息时，伴侣切换为专注倾听或互动动作
-    let listeningMotion = preferredMotion;
-    if (!listeningMotion) {
-      if (character.id === 'nari') {
-        listeningMotion = 'Nari_chat_01_attentive';
-      } else if (character.id === 'yume') {
-        listeningMotion = 'Yume_chat_01_attentive';
-      } else {
-        const found = character.motions.find(m =>
-          m.id.toLowerCase().includes('attentive') ||
-          m.id.toLowerCase().includes('chat') ||
-          m.id.toLowerCase().includes('idle')
-        );
-        listeningMotion = found?.id;
-      }
-    }
-    if (listeningMotion) {
-      const matched = character.motions.find(m => m.id === listeningMotion || m.id.toLowerCase().includes(listeningMotion!.toLowerCase()));
-      if (matched) {
-        setMotionId(matched.id);
-        setPlaying(true);
-      }
-    }
-
-    // 中断上一次仍在进行的对话请求，防止快速连续点击并发冲突
-    if (chatAbortControllerRef.current) {
-      chatAbortControllerRef.current.abort();
-    }
-    const abortController = new AbortController();
-    chatAbortControllerRef.current = abortController;
-
-    const currentCharacterId = character.id;
-
-    try {
-      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-      const response = await fetch('/api/companion/chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({
-          characterId: currentCharacterId,
-          message: trimmed,
-          history: historySnapshot.map(m => ({ sender: m.sender, text: m.text })),
-          speakVoice: voiceEnabled,
-        }),
-        signal: abortController.signal,
-      });
-
-      if (!sessionActiveRef.current || abortController.signal.aborted) return;
-
-      if (response.status === 401) {
-        if (typeof window !== 'undefined') {
-          localStorage.removeItem('token');
-          window.dispatchEvent(new Event('almaren-auth-change'));
-        }
-        router.replace('/login?redirect=/companion');
-        return;
-      }
-
-      const data = await response.json().catch(() => ({}));
-      if (!sessionActiveRef.current || abortController.signal.aborted) return;
-
-      const replyText = typeof data.reply === 'string' && data.reply.trim()
-        ? data.reply.trim()
-        : (currentCharacterId === 'nari'
-            ? '收到你的心意啦~ 很高兴此刻能和你在一起。🌸'
-            : '嗨！听到你的声音啦，今天也要一起开心哦！✨');
-
-      const compMsg: CompanionChatMessage = {
-        id: `c-${Date.now()}`,
-        sender: 'companion',
-        text: replyText,
-      };
-
-      setMessages(prev => [...prev.slice(-49), compMsg]);
-      setIsReplying(false);
-
-      // 动作与表情同步联动
-      if (data.motion && character.motions.some(m => m.id === data.motion)) {
-        setMotionId(data.motion);
-        setPlaying(true);
-      }
-      if (typeof data.expression === 'string') {
-        const expression = character.expressions.some(item => item.id === data.expression) ? data.expression : '';
-        setExpressionId(expression);
-        if (expressionResetTimerRef.current) clearSessionTimeout(expressionResetTimerRef.current);
-        if (expression) {
-          expressionResetTimerRef.current = setSessionTimeout(() => {
-            setExpressionId('');
-          }, 4000);
-        }
-      }
-
-      // 声音与口型同步
-      if (voiceEnabledRef.current) {
-        if (typeof data.audioDataUrl === 'string' && data.audioDataUrl) {
-          playChatVoice(data.audioDataUrl, compMsg.id);
-        } else {
-          setChatVoiceNotice({ messageId: compMsg.id });
-        }
-      }
-    } catch (err: any) {
-      if (err.name === 'AbortError') return;
-      if (!sessionActiveRef.current) return;
-
-      const fallbackReply = currentCharacterId === 'nari'
-        ? '刚才稍微有些走神了呢……你再说一次好不好嘛？🌸'
-        : '哎呀，我刚才有点走神啦，能再跟我说一次吗？✨';
-
-      const compMsg: CompanionChatMessage = {
-        id: `c-${Date.now()}`,
-        sender: 'companion',
-        text: fallbackReply,
-      };
-      setMessages(prev => [...prev.slice(-49), compMsg]);
-      setIsReplying(false);
-      stage.current?.speak(2200);
-      setIsSpeaking(true);
-      setSessionTimeout(() => setIsSpeaking(false), 2200);
-    }
+    triggerListeningMotion();
+    onSendMessage?.(text).catch(console.error);
   };
 
-  const handleSendMessage = (e: React.FormEvent) => {
-    e.preventDefault();
-    sendCompanionMessage(messageText);
-  };
-
-  const handleQuickPrompt = (item: typeof quickPrompts[number]) => {
-    const targetMotion = character.motions.find(m =>
-      m.id.toLowerCase().includes(item.motion) ||
-      m.group === '互动' ||
-      m.group === '心情'
-    );
-    sendCompanionMessage(item.userText, targetMotion?.id);
+  const handleQuickPrompt = (item: QuickPromptItem) => {
+    setShowStickers(false);
+    triggerListeningMotion(item.motion);
+    onSendMessage?.(item.userText).catch(console.error);
   };
 
   const retry = () => {
@@ -1270,45 +791,59 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
   };
 
   return (
-    <main className="companion-page" data-character={character.id}>
-      <header className="companion-header" role="banner" aria-label="Almaren 品牌与状态">
-        <Link href="/" className="companion-wordmark" title="返回 Almaren 首页">
-          <span className="companion-logomark"><Sparkles size={15} /></span>
-          <span>Almaren</span>
-          <span className="companion-header-divider" />
-          <span>陪伴</span>
-        </Link>
+    <main
+      className="companion-page companion-page--embedded"
+      data-character={character.id}
+    >
+      <header className="companion-header" role="banner" aria-label="Almaren 品牌与设置">
+        <div className="companion-fused-bar">
+          <div className="companion-fused-brand">
+            <Link href="/" className="companion-wordmark" title="返回 Almaren 首页">
+              <span className="companion-logomark"><Sparkles size={15} /></span>
+              <span>Almaren</span>
+              <span className="companion-header-divider" />
+              <span>陪伴</span>
+            </Link>
+            <div className="companion-brand-agent">
+              <span className="companion-brand-agent-avatar">{character.name[0]}</span>
+              <span className="companion-brand-agent-name">{character.name}</span>
+              {character.title && (
+                <span className="companion-brand-agent-title">· {character.title}</span>
+              )}
+            </div>
+          </div>
 
-        <div className="companion-hud-capsules">
-          <button
-            type="button"
-            className={`companion-hud-chip companion-hud-chip--btn ${!voiceEnabled ? 'is-muted' : ''}`}
-            onClick={() => toggleVoice(!voiceEnabled)}
-            title={voiceEnabled ? '伴侣对话语音已开启（点击静音）' : '伴侣对话语音已静音（点击开启）'}
-            aria-label={voiceEnabled ? '伴侣对话语音已开启，点击静音' : '伴侣对话语音已静音，点击开启'}
-          >
-            {voiceEnabled ? (
-              <>
-                <Volume2 size={15} className="companion-hud-icon--active" />
-                <span className="companion-hud-text">语音开启</span>
-              </>
-            ) : (
-              <>
-                <VolumeX size={15} className="companion-hud-icon--muted" />
-                <span className="companion-hud-text">已静音</span>
-              </>
-            )}
-          </button>
-          <button
-            type="button"
-            className="companion-hud-chip companion-hud-chip--btn"
-            onClick={() => setSettingsOpen(true)}
-            title="伴侣偏好设置"
-            aria-label="伴侣偏好设置"
-          >
-            <Settings size={15} />
-            <span className="companion-hud-text">设置</span>
-          </button>
+          <div className="companion-hud-capsules">
+            <button
+              type="button"
+              className={`companion-hud-chip companion-hud-chip--btn ${!voiceEnabled ? 'is-muted' : ''}`}
+              onClick={() => toggleVoice(!voiceEnabled)}
+              title={voiceEnabled ? '伴侣对话语音已开启（点击静音）' : '伴侣对话语音已静音（点击开启）'}
+              aria-label={voiceEnabled ? '伴侣对话语音已开启，点击静音' : '伴侣对话语音已静音，点击开启'}
+            >
+              {voiceEnabled ? (
+                <>
+                  <Volume2 size={15} className="companion-hud-icon--active" />
+                  <span className="companion-hud-text">语音开启</span>
+                </>
+              ) : (
+                <>
+                  <VolumeX size={15} className="companion-hud-icon--muted" />
+                  <span className="companion-hud-text">已静音</span>
+                </>
+              )}
+            </button>
+            <button
+              type="button"
+              className="companion-hud-chip companion-hud-chip--btn"
+              onClick={() => setSettingsOpen(true)}
+              title="伴侣偏好设置"
+              aria-label="伴侣偏好设置"
+            >
+              <Settings size={15} />
+              <span className="companion-hud-text">设置</span>
+            </button>
+          </div>
         </div>
       </header>
 
@@ -1343,32 +878,6 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
               </div>
             </div>
             <div className="companion-stage-desktop-actions">
-              <div className="companion-stage-pill-group" role="group" aria-label="场景氛围">
-                <button
-                  type="button"
-                  className={`companion-stage-pill ${sceneBg === 'cherry_room' ? 'is-active' : ''}`}
-                  onClick={() => handleSceneBgChange('cherry_room')}
-                  title="浪漫花房"
-                >
-                  🌸 花房
-                </button>
-                <button
-                  type="button"
-                  className={`companion-stage-pill ${sceneBg === 'ocean_room' ? 'is-active' : ''}`}
-                  onClick={() => handleSceneBgChange('ocean_room')}
-                  title="蔚蓝海景"
-                >
-                  🌊 海景
-                </button>
-                <button
-                  type="button"
-                  className={`companion-stage-pill ${sceneBg === 'none' ? 'is-active' : ''}`}
-                  onClick={() => handleSceneBgChange('none')}
-                  title="极简纯色"
-                >
-                  🎨 极简
-                </button>
-              </div>
               <div className="companion-stage-pill-group" role="group" aria-label="镜头模式">
                 <button
                   type="button"
@@ -1395,18 +904,12 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
             </div>
           </div>
 
-          {/* 屏幕悬浮 HUD 标签 (左侧角色切换，右侧视角与动作调节 - 仅移动端显示，纯图标轻量设计) */}
+          {/* 移动端屏幕悬浮 HUD 标签 (左侧 Almaren 陪伴品牌，右侧控制与设置) */}
           <div className="companion-floating-hud companion-floating-hud--left">
-            <button
-              type="button"
-              className="companion-stage-chip companion-stage-chip--swap companion-stage-chip--icon"
-              onClick={() => setCharMenuOpen(true)}
-              title={`切换陪伴角色（当前：${character.name}）`}
-              aria-label={`切换陪伴角色，当前：${character.name}`}
-            >
-              <span className="companion-stage-chip-avatar">{character.name[0]}</span>
-              <span className="companion-stage-chip-dot" />
-            </button>
+            <div className="companion-stage-chip companion-stage-chip--brand">
+              <Sparkles size={13} className="companion-hud-icon--active" />
+              <span>Almaren 陪伴</span>
+            </div>
           </div>
 
           <div className="companion-floating-hud companion-floating-hud--right">
@@ -1460,7 +963,7 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
             framingMode={framingMode}
             autoBlink={autoBlink}
             lookAt={lookAt}
-            speaking={isSpeaking}
+            speaking={isSpeaking || isStreaming}
             onReady={() => setReady(true)}
             onError={setError}
             onEnded={handleMotionEnded}
@@ -1495,7 +998,7 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
               role="status"
             >
               <span className="companion-tap-bubble-speaker" aria-hidden="true">
-                {character.id === 'yume' ? '🌊 Cora' : character.id === 'nari' ? '☀️ Sunny' : character.name}
+                {behavior.speakerTag}
               </span>
               <span className="companion-tap-bubble-text">{tapBubble.text}</span>
             </div>
@@ -1510,7 +1013,7 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
             aria-label="最近对话"
           >
             <div className="companion-chat-stream" ref={chatStreamRef}>
-              {messages.map(msg => (
+              {activeMessages.map(msg => (
                 <div
                   key={msg.id}
                   className={`companion-bubble-row companion-bubble-row--${msg.sender}`}
@@ -1520,11 +1023,10 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
                     role="status"
                   >
                     <span>{msg.text}</span>
-                    {chatVoiceFeedback(msg.id)}
                   </div>
                 </div>
               ))}
-              {isReplying && (
+              {effectiveIsReplying && (
                 <div className="companion-bubble-row companion-bubble-row--companion">
                   <div className="companion-bubble companion-bubble--companion companion-bubble--typing">
                     <span className="companion-typing-dot" />
@@ -1546,13 +1048,13 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
               />
               <div className="companion-quick-reactions" role="region" aria-label="快捷互动">
                 <div className="companion-quick-scroll">
-                  {quickPrompts.map(item => (
+                  {behavior.quickPrompts.map(item => (
                   <button
                     key={item.label}
                     type="button"
                     className="companion-quick-chip"
                     onClick={() => handleQuickPrompt(item)}
-                    disabled={!usable || isReplying}
+                    disabled={!usable || isStreaming}
                   >
                     <span className="companion-quick-emoji">{item.emoji}</span>
                     <span>{item.label}</span>
@@ -1583,18 +1085,18 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
                   ref={inputRef}
                   type="text"
                   className="companion-composer-input"
-                  placeholder={isReplying ? `${character.name} 正在认真回复中…` : `和${character.name}聊聊...`}
+                  placeholder={effectiveIsReplying ? `${character.name} 正在认真回复中…` : `和${character.name}聊聊...`}
                   value={messageText}
                   onChange={e => setMessageText(e.target.value)}
-                  disabled={!usable || isReplying}
+                  disabled={!usable || effectiveIsReplying}
                 />
               </form>
 
               {/* 3. 发送按钮 */}
               <button
                 type="button"
-                className={`companion-dock-btn companion-dock-btn--send ${messageText.trim() && !isReplying ? 'is-ready' : 'is-disabled'}`}
-                disabled={!messageText.trim() || !usable || isReplying}
+                className={`companion-dock-btn companion-dock-btn--send ${messageText.trim() && !effectiveIsReplying ? 'is-ready' : 'is-disabled'}`}
+                disabled={!messageText.trim() || !usable || effectiveIsReplying}
                 aria-label="发送消息"
                 onClick={handleSendMessage}
               >
@@ -1619,15 +1121,7 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
               </div>
             </div>
             <div className="companion-console-header-actions">
-              <button
-                type="button"
-                className="companion-console-swap-btn"
-                onClick={() => setCharMenuOpen(true)}
-                title="切换陪伴角色"
-              >
-                <span className="companion-console-swap-avatar">{character.name[0]}</span>
-                <span>切换角色 ({character.name.split(' ')[0]}) ▾</span>
-              </button>
+              <span className="companion-console-status-pill">{character.title || 'AI 治愈伴侣'}</span>
             </div>
           </div>
 
@@ -1661,33 +1155,16 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
           {/* 3. Tab 内容区 (打包模式下纯净沉浸式对话陪伴) */}
           {(!isDev || desktopTab === 'chat') ? (
             <div className="companion-desktop-chat-pane">
-              {/* 本地存储与清空工具栏 */}
-              <div className="companion-desktop-chat-toolbar">
-                <span className="companion-desktop-chat-count">
-                  {messages.length} 条对话已本地保存
-                </span>
-                <button
-                  type="button"
-                  className="companion-text-button"
-                  onClick={handleClearHistory}
-                  title="清空对话记录并重置为初始问候"
-                >
-                  <Trash2 size={12} />
-                  <span>清空记录</span>
-                </button>
-              </div>
-
               {/* 消息滚动流 */}
               <div className="companion-desktop-chat-stream" ref={desktopChatStreamRef}>
-                {messages.map(msg => (
+                {activeMessages.map(msg => (
                   <div key={msg.id} className={`companion-bubble-row companion-bubble-row--${msg.sender}`}>
                     <div className={`companion-bubble companion-bubble--${msg.sender} ${msg.isSticker ? 'companion-bubble--sticker' : ''}`}>
                       <span>{msg.text}</span>
-                      {chatVoiceFeedback(msg.id)}
                     </div>
                   </div>
                 ))}
-                {isReplying && (
+                {effectiveIsReplying && (
                   <div className="companion-bubble-row companion-bubble-row--companion">
                     <div className="companion-bubble companion-bubble--companion companion-bubble--typing">
                       <span className="companion-typing-dot" />
@@ -1701,13 +1178,13 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
               {/* 灵感互动气泡 */}
               <div className="companion-desktop-quick-prompts">
                 <div className="companion-desktop-quick-scroll">
-                  {quickPrompts.map(item => (
+                  {behavior.quickPrompts.map(item => (
                     <button
                       key={item.label}
                       type="button"
                       className="companion-quick-chip"
                       onClick={() => handleQuickPrompt(item)}
-                      disabled={!usable || isReplying}
+                      disabled={!usable || isStreaming}
                     >
                       <span className="companion-quick-emoji">{item.emoji}</span>
                       <span>{item.label}</span>
@@ -1722,15 +1199,15 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
                   <input
                     type="text"
                     className="companion-desktop-composer-input"
-                    placeholder={isReplying ? `${character.name} 正在认真回复中…` : `和${character.name}聊聊... (按 Enter 发送)`}
+                    placeholder={effectiveIsReplying ? `${character.name} 正在认真回复中…` : `和${character.name}聊聊... (按 Enter 发送)`}
                     value={messageText}
                     onChange={e => setMessageText(e.target.value)}
-                    disabled={!usable || isReplying}
+                    disabled={!usable || effectiveIsReplying}
                   />
                   <button
                     type="submit"
-                    className={`companion-desktop-send-btn ${messageText.trim() && !isReplying ? 'is-ready' : ''}`}
-                    disabled={!messageText.trim() || !usable || isReplying}
+                    className={`companion-desktop-send-btn ${messageText.trim() && !effectiveIsReplying ? 'is-ready' : ''}`}
+                    disabled={!messageText.trim() || !usable || effectiveIsReplying}
                     title="发送消息 (Enter)"
                     aria-label="发送消息"
                   >
@@ -1981,35 +1458,7 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
             </div>
           </section>
 
-          <section className="companion-control-section">
-            <div className="companion-section-heading">
-              <h3>场景氛围</h3>
-              <span>实景环境</span>
-            </div>
-            <div className="companion-framing-switch" role="group" aria-label="场景氛围切换">
-              <button
-                type="button"
-                aria-pressed={sceneBg === 'cherry_room'}
-                onClick={() => setSceneBg('cherry_room')}
-              >
-                🌸 浪漫花房
-              </button>
-              <button
-                type="button"
-                aria-pressed={sceneBg === 'ocean_room'}
-                onClick={() => setSceneBg('ocean_room')}
-              >
-                🌊 蔚蓝海景
-              </button>
-              <button
-                type="button"
-                aria-pressed={sceneBg === 'none'}
-                onClick={() => setSceneBg('none')}
-              >
-                🎨 极简纯色
-              </button>
-            </div>
-          </section>
+
 
           <section className="companion-control-section companion-view-controls">
             <div className="companion-section-heading">
@@ -2042,78 +1491,8 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
             }}><RotateCcw size={14} />重置镜头与姿态</button>
           </section>
 
-          <section className="companion-control-section">
-            <div className="companion-section-heading">
-              <h3>对话与本地缓存</h3>
-              <span>{messages.length} 条已保存</span>
-            </div>
-            <button
-              type="button"
-              className="companion-reset-button"
-              onClick={handleClearHistory}
-              title="清空对话记录并重置为初始问候"
-            >
-              <Trash2 size={14} />清空本角色对话记录
-            </button>
-          </section>
-
-          <div className="companion-preview-note"><span>角色与动作预览</span><p>心动日常，温暖相伴。随时畅聊倾诉。</p><small>{ready ? `${snapshot.meshes} 个网格 · ${snapshot.fps || '—'} FPS · 本地存储已启用` : '本地资源加载中'}</small></div>
+            <div className="companion-preview-note"><span>角色与动作预览</span><p>心动日常，温暖相伴。随时畅聊倾诉。</p><small>{ready ? `${snapshot.meshes} 个网格 · ${snapshot.fps || '—'} FPS` : '本地资源加载中'}</small></div>
         </aside>
-        )}
-
-        {/* 角色切换选择器弹窗 (适用于移动端与桌面端) */}
-        {charMenuOpen && (
-          <div className="companion-char-picker-backdrop" onClick={() => setCharMenuOpen(false)}>
-            <div className="companion-char-picker-card" onClick={e => e.stopPropagation()}>
-              <div className="companion-char-picker-header">
-                <h4>选择陪伴角色</h4>
-                <button
-                  type="button"
-                  className="companion-char-picker-close"
-                  onClick={() => setCharMenuOpen(false)}
-                  aria-label="关闭"
-                >
-                  ✕
-                </button>
-              </div>
-              <div className="companion-char-picker-grid">
-                {companionCharacters.map(c => {
-                  const isCurrent = c.id === character.id;
-                  return (
-                    <button
-                      key={c.id}
-                      type="button"
-                      className={`companion-char-card ${isCurrent ? 'is-active' : ''}`}
-                      onClick={() => {
-                        setCharMenuOpen(false);
-                        if (c.id !== character.id) {
-                          onCharacterChange(c.id);
-                        }
-                      }}
-                    >
-                      <div className="companion-char-card-avatar">
-                        <span>{c.name[0]}</span>
-                        {isCurrent && <span className="companion-char-card-badge">当前</span>}
-                      </div>
-                      <div className="companion-char-card-body">
-                        <div className="companion-char-card-name-row">
-                          <span className="companion-char-card-name">{c.name}</span>
-                          <span className="companion-char-card-engine">
-                            {c.engine === 'cubism' ? 'Live2D' : 'Koro 2D'}
-                          </span>
-                        </div>
-                        <p className="companion-char-card-desc">{c.title ?? c.name}</p>
-                        <div className="companion-char-card-meta">
-                          <span>动作 {c.motions.length} 种</span>
-                          {c.expressions.length > 0 && <span> · 表情 {c.expressions.length} 款</span>}
-                        </div>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
         )}
 
         {/* ==================== 伴侣偏好设置弹窗 (Companion Preferences & Storage Modal) ==================== */}
@@ -2139,73 +1518,7 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
               </div>
 
               <div className="companion-settings-body">
-                {/* 1. 陪伴空间场景 */}
-                <div className="companion-settings-group">
-                  <div className="companion-settings-group-header">
-                    <h5 className="companion-settings-group-title">陪伴空间场景</h5>
-                    <span className="companion-settings-group-tag">切换房间氛围</span>
-                  </div>
-                  <div className="companion-settings-scene-grid">
-                    <button
-                      type="button"
-                      className={`companion-settings-scene-card ${sceneBg === 'cherry_room' ? 'is-selected' : ''}`}
-                      onClick={() => handleSceneBgChange('cherry_room')}
-                      title="阳光花房"
-                    >
-                      <div className="companion-settings-scene-preview companion-settings-scene-preview--cherry">
-                        {sceneBg === 'cherry_room' && (
-                          <span className="companion-settings-scene-check">
-                            <Check size={12} strokeWidth={3} />
-                          </span>
-                        )}
-                      </div>
-                      <div className="companion-settings-scene-meta">
-                        <strong>🌸 阳光花房</strong>
-                        <span>春日浪漫花房</span>
-                      </div>
-                    </button>
-
-                    <button
-                      type="button"
-                      className={`companion-settings-scene-card ${sceneBg === 'ocean_room' ? 'is-selected' : ''}`}
-                      onClick={() => handleSceneBgChange('ocean_room')}
-                      title="蔚蓝海景"
-                    >
-                      <div className="companion-settings-scene-preview companion-settings-scene-preview--ocean">
-                        {sceneBg === 'ocean_room' && (
-                          <span className="companion-settings-scene-check">
-                            <Check size={12} strokeWidth={3} />
-                          </span>
-                        )}
-                      </div>
-                      <div className="companion-settings-scene-meta">
-                        <strong>🌊 蔚蓝海景</strong>
-                        <span>清爽海滨露台</span>
-                      </div>
-                    </button>
-
-                    <button
-                      type="button"
-                      className={`companion-settings-scene-card ${sceneBg === 'none' ? 'is-selected' : ''}`}
-                      onClick={() => handleSceneBgChange('none')}
-                      title="极简纯色"
-                    >
-                      <div className="companion-settings-scene-preview companion-settings-scene-preview--none">
-                        {sceneBg === 'none' && (
-                          <span className="companion-settings-scene-check">
-                            <Check size={12} strokeWidth={3} />
-                          </span>
-                        )}
-                      </div>
-                      <div className="companion-settings-scene-meta">
-                        <strong>🎨 极简纯色</strong>
-                        <span>纯净专注呼吸</span>
-                      </div>
-                    </button>
-                  </div>
-                </div>
-
-                {/* 2. 声音与语音 */}
+                {/* 1. 声音与语音 */}
                 <div className="companion-settings-group">
                   <div className="companion-settings-group-header">
                     <h5 className="companion-settings-group-title">声音与语音</h5>
@@ -2260,56 +1573,7 @@ function CompanionSession({ character, onCharacterChange }: { character: Compani
                   </div>
                 </div>
 
-                {/* 3. 对话数据管理 */}
-                <div className="companion-settings-group">
-                  <div className="companion-settings-group-header">
-                    <h5 className="companion-settings-group-title">对话数据管理</h5>
-                  </div>
-                  <div className="companion-setting-storage-row">
-                    <div className="companion-setting-storage-info">
-                      <div className="companion-setting-label-wrap">
-                        <span className="companion-setting-label">本地对话缓存</span>
-                        <span className="companion-setting-badge is-active">
-                          {messages.length} 条已存
-                        </span>
-                      </div>
-                      <p className="companion-setting-desc">
-                        当前与 {character.name} 的记录仅保存在本地设备，不上传云端，充分保护个人隐私。
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      className="companion-setting-clean-btn"
-                      onClick={handleClearHistory}
-                      title="清空当前角色记录"
-                    >
-                      <Trash2 size={13} />
-                      <span>清空记录</span>
-                    </button>
-                  </div>
-                  <div className="companion-settings-sub-action">
-                    <button
-                      type="button"
-                      className="companion-settings-sublink"
-                      onClick={() => {
-                        if (typeof window !== 'undefined') {
-                          const ok = window.confirm('确定要清空全部角色的本地对话记录吗？清空后无法找回。');
-                          if (!ok) return;
-                          try {
-                            companionCharacters.forEach(c => {
-                              localStorage.removeItem(`${COMPANION_STORAGE_PREFIX}${c.id}`);
-                            });
-                          } catch {}
-                          setMessages(getDefaultMessages(character.id));
-                        }
-                      }}
-                    >
-                      清空全部角色本地记录
-                    </button>
-                  </div>
-                </div>
-
-                {/* 4. 模型与系统配置 */}
+                {/* 3. 模型与系统配置 */}
                 <div className="companion-settings-footer-card">
                   <Link
                     href="/settings"

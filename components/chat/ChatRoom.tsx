@@ -12,11 +12,13 @@ import TextInputDialog from '@/components/shared/TextInputDialog';
 import LoginRequired from '@/components/auth/LoginRequired';
 import LoadingSpinner from '@/components/shared/LoadingSpinner';
 import AgentDetailsPanel from '@/components/chat/AgentDetailsPanel';
+import CompanionPreview from '@/components/companion/CompanionPreview';
 import ChatComposer from '@/components/chat/ChatComposer';
 import { MessageItem } from '@/components/chat/ChatMessageItem';
 import MemorySuggestionDialog, { type MemorySuggestion } from '@/components/chat/MemorySuggestionDialog';
 import { useTTS } from '@/hooks/useTTS';
 import { getBuiltInAgents } from '@/lib/agents-data';
+import { getCompanionCharacterId } from '@/lib/companion/agents';
 import { assistant as assistantApi, generateConversationImage, streamChat, conversations as conversationsApi, agents as agentsApi, user as userApi, uploads } from '@/lib/api';
 import {
   DEFAULT_BROWSER_MODEL_CONFIG,
@@ -87,6 +89,8 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
   const agentId = routeAgentId || '';
   const initialPrompt = searchParams.get('prompt');
   const existingConversationId = routeConversationId || searchParams.get('conversationId');
+  const viewParam = searchParams.get('view');
+  const viewMode = viewParam === 'companion' ? 'companion' : 'chat';
 
   const [agent, setAgent] = useState<Agent | null>(null);
   const [conversationAgent, setConversationAgent] = useState<DisplayAgent | null>(null);
@@ -275,10 +279,12 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
               avatar: conversation.agentAvatar || found?.avatar,
               description: conversation.agentDescription || found?.description,
               category: conversation.agentCategory || found?.category,
+              themeColor: found?.themeColor || (conversation as any).agentThemeColor,
               tone: conversation.agentTone || found?.tone,
               systemPrompt: conversation.agentSystemPrompt || found?.systemPrompt,
               greeting: found?.greeting,
               voice: (conversation as any).agentVoice || found?.voice,
+              companionCharacterId: found?.companionCharacterId || getCompanionCharacterId(conversation.agentId),
             });
             setConversationMode((conversation as any).agentMode === 'TEMPORARY' ? 'TEMPORARY' : 'MAIN');
             const conversationList = await conversationsApi.list({ agentId: conversation.agentId || agentId, limit: 100, includeLastMessage: false, includeArchived: true }).catch(() => ({ conversations: [] }));
@@ -475,7 +481,24 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
   }, [messages.length]);
 
   const displayAgent = conversationAgent || agent;
-  const categoryColor = displayAgent ? CATEGORY_COLORS[displayAgent.category || ''] || '#6366f1' : '#6366f1';
+  const companionCharacterId = displayAgent?.companionCharacterId || agent?.companionCharacterId || getCompanionCharacterId(displayAgent?.id || agentId);
+
+  const toggleCompanionView = () => {
+    const nextView = viewMode === 'companion' ? 'chat' : 'companion';
+    const params = new URLSearchParams(searchParams.toString());
+    if (nextView === 'companion') {
+      params.set('view', 'companion');
+    } else {
+      params.delete('view');
+    }
+    const queryString = params.toString();
+    const basePath = routeConversationId
+      ? `/conversations/${routeConversationId}`
+      : `/chat/${agentId || displayAgent?.id || 'companion-nari'}`;
+    router.replace(queryString ? `${basePath}?${queryString}` : basePath);
+  };
+
+  const categoryColor = displayAgent?.themeColor || agent?.themeColor || (displayAgent ? CATEGORY_COLORS[displayAgent.category || ''] || '#6366f1' : '#6366f1');
   const latestAssistantMessageId = [...messages].reverse().find((message) => message.role === 'assistant' && message.id !== 'greeting')?.id;
 
   useEffect(() => {
@@ -1113,9 +1136,26 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
         onArchiveConversation={archiveConversation}
         onDeleteConversation={deleteConversation}
         onRenameConversation={renameConversation}
+        viewMode={viewMode}
+        onToggleCompanionView={companionCharacterId ? toggleCompanionView : undefined}
       />
 
-      <main className="flex min-h-0 min-w-0 flex-1 flex-col">
+      {viewMode === 'companion' && companionCharacterId ? (
+        <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+          <CompanionPreview
+            characterId={companionCharacterId}
+            embedded
+            onBackToChat={toggleCompanionView}
+            externalMessages={messages}
+            onSendMessage={async (text) => {
+              await handleSend(text);
+            }}
+            isStreaming={isStreaming}
+            streamingContent={streamingContent}
+          />
+        </div>
+      ) : (
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col">
         <div
           ref={messagesScrollRef}
           onScroll={handleMessagesScroll}
@@ -1278,6 +1318,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
           />
         )}
       </main>
+      )}
       <ConfirmDialog
         open={Boolean(pendingArchiveConversation)}
         title="归档这个临时聊天？"

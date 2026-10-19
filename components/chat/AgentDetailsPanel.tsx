@@ -34,6 +34,8 @@ type AgentDetailsPanelProps = {
   onArchiveConversation: (conversationId: string, archived: boolean) => void;
   onDeleteConversation: (conversationId: string) => void;
   onRenameConversation: (conversationId: string) => void;
+  viewMode?: 'chat' | 'companion';
+  onToggleCompanionView?: () => void;
 };
 
 function ContextLimitControl({
@@ -108,6 +110,8 @@ export default function AgentDetailsPanel({
   onArchiveConversation,
   onDeleteConversation,
   onRenameConversation,
+  viewMode = 'chat',
+  onToggleCompanionView,
 }: AgentDetailsPanelProps) {
   const [conversationDrawerOpen, setConversationDrawerOpen] = useState(false);
   const [memoryDrawerOpen, setMemoryDrawerOpen] = useState(false);
@@ -396,6 +400,18 @@ export default function AgentDetailsPanel({
           </div>
         </div>
 
+        {displayAgent.companionCharacterId && onToggleCompanionView && (
+          <button
+            type="button"
+            onClick={onToggleCompanionView}
+            className="mt-3.5 flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-amber-500/15 via-rose-500/15 to-orange-500/15 border border-amber-300/60 p-3 text-xs font-black text-amber-950 transition hover:shadow-xs hover:border-amber-400 hover:scale-[1.01] active:scale-[0.99] cursor-pointer"
+            title={viewMode === 'companion' ? '切换回标准文字聊天界面' : '进入全屏 3D/Live2D 面对面陪伴模式'}
+          >
+            <Sparkles size={14} className="text-amber-600" />
+            <span>{viewMode === 'companion' ? '💬 切换为文字模式' : '🌸 切换至 Live2D 陪伴模式'}</span>
+          </button>
+        )}
+
         <div className="mt-5 rounded-[28px] border border-black/[0.06] bg-white p-5 shadow-sm">
           <div className="mb-5 border-b border-black/[0.06] pb-5">
             {conversationSwitcher}
@@ -438,6 +454,16 @@ export default function AgentDetailsPanel({
           <p className="text-xs font-medium text-slate-400">{displayAgent.category} · {displayAgent.tone}</p>
         </div>
         <div className="flex items-center gap-1.5">
+          {displayAgent.companionCharacterId && onToggleCompanionView && (
+            <button
+              type="button"
+              onClick={onToggleCompanionView}
+              className="inline-flex items-center gap-1 rounded-full border border-rose-300/80 bg-rose-50/90 px-2.5 py-1.5 text-xs font-black text-rose-800 shadow-2xs active:scale-95 cursor-pointer"
+              title={viewMode === 'companion' ? '切换为文字模式' : '切换至陪伴模式'}
+            >
+              <span>{viewMode === 'companion' ? '💬 对话' : '🌸 陪伴'}</span>
+            </button>
+          )}
           <button
             type="button"
             onClick={openMemoryDrawer}

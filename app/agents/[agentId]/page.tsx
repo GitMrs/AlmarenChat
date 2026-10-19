@@ -97,7 +97,7 @@ export default function AgentDetailPage() {
     );
   }
 
-  const categoryColor = CATEGORY_COLORS[agent.category || ''] || '#6366f1';
+  const categoryColor = agent.themeColor || CATEGORY_COLORS[agent.category || ''] || '#6366f1';
   const CapIcon = capabilities?.icon || Zap;
 
   return (

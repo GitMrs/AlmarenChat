@@ -1,12 +1,13 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
+import { findCompanionAgent } from '@/lib/companion/agents';
 
 export async function GET(request: Request, { params }: { params: Promise<{ agentId: string }> }) {
   try {
     const userId = requireAuth(request);
     const { agentId } = await params;
-    const agent = await prisma.agent.findUnique({ where: { id: agentId } });
+    const agent = (await prisma.agent.findUnique({ where: { id: agentId } })) || findCompanionAgent(agentId);
     if (!agent) return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
 
     const existing = await prisma.conversation.findFirst({
@@ -47,7 +48,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ age
     const userId = requireAuth(request);
     const { agentId } = await params;
     const body = await request.json().catch(() => ({}));
-    const agent = await prisma.agent.findUnique({ where: { id: agentId } });
+    const agent = (await prisma.agent.findUnique({ where: { id: agentId } })) || findCompanionAgent(agentId);
     const snapshot = agent || body.agentSnapshot || {};
     if (!snapshot.name) return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
 

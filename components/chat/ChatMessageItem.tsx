@@ -20,10 +20,12 @@ export type DisplayAgent = {
   avatar?: string;
   description?: string;
   category?: string;
+  themeColor?: string | null;
   tone?: string;
   greeting?: string;
   systemPrompt?: string;
   voice?: string;
+  companionCharacterId?: string | null;
 };
 
 type MessageItemProps = {

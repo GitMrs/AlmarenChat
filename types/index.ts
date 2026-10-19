@@ -38,6 +38,7 @@ export interface Agent {
   avatar?: string;
   description?: string;
   category?: string;
+  themeColor?: string | null;
   tone?: string;
   greeting?: string;
   systemPrompt?: string;
@@ -46,6 +47,7 @@ export interface Agent {
   isPublic: boolean;
   createdAt: string;
   updatedAt: string;
+  companionCharacterId?: string | null;
 }
 
 export interface AgentMemoryRule {

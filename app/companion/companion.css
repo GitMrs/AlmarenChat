@@ -18,6 +18,32 @@
   overflow-y: auto;
 }
 
+/* 嵌入伴侣模式通用适配 (高度严格受父级 Flex 容器约束，杜绝 100dvh 导致底栏溢出) */
+.companion-page.companion-page--embedded {
+  min-height: 0 !important;
+  height: 100% !important;
+  max-height: 100% !important;
+  flex: 1 !important;
+  overflow: hidden !important;
+  padding: 0 !important;
+}
+
+.companion-page.companion-page--embedded .companion-workspace {
+  min-height: 0 !important;
+  height: 100% !important;
+  max-height: 100% !important;
+  flex: 1 !important;
+  overflow: hidden !important;
+}
+
+.companion-page.companion-page--embedded .companion-scene {
+  min-height: 0 !important;
+  height: 100% !important;
+  max-height: 100% !important;
+  flex: 1 !important;
+  overflow: hidden !important;
+}
+
 .companion-header {
   position: fixed;
   top: 18px;
@@ -86,6 +112,112 @@
   border-radius: 16px;
   padding: 2px 8px;
   color: #968673;
+}
+
+/* 融合一体化顶部导航栏 (Fused Header Bar) */
+.companion-fused-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  pointer-events: auto;
+}
+
+.companion-fused-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.companion-brand-agent {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 253, 250, 0.88);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1.5px solid rgba(228, 214, 201, 0.75);
+  border-radius: 20px;
+  padding: 4px 12px 4px 6px;
+  box-shadow: 0 4px 12px rgba(92, 67, 45, 0.05);
+  font-size: 13px;
+  color: var(--companion-ink);
+}
+
+.companion-brand-agent-avatar {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #f472b6, #fb7185);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.companion-brand-agent-name {
+  font-weight: 700;
+  color: #4a3427;
+}
+
+.companion-brand-agent-title {
+  font-size: 11px;
+  color: #9c897a;
+  font-weight: 500;
+}
+
+.companion-hud-chip--chat {
+  background: #433e39;
+  color: #ffffff;
+  border-color: #433e39;
+}
+
+.companion-hud-chip--chat:hover {
+  background: #2b1d12;
+  border-color: #2b1d12;
+  color: #ffffff;
+}
+
+.companion-stage-chip--brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 16px;
+  font-size: 12px;
+  font-weight: 700;
+  border: 1.5px solid rgba(255, 255, 255, 0.85);
+  background: rgba(255, 253, 250, 0.94);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 2px 8px rgba(80, 50, 30, 0.08);
+  color: #5d4637;
+  user-select: none;
+}
+
+.companion-stage-chip--chat {
+  background: #433e39;
+  color: #ffffff;
+  border-color: #433e39;
+}
+
+.companion-stage-chip--chat:hover {
+  background: #2b1d12;
+  border-color: #2b1d12;
+  color: #ffffff;
+}
+
+.companion-console-status-pill {
+  font-size: 11px;
+  color: #87674c;
+  background: #fbf5ee;
+  border: 1px solid #ebd9c8;
+  border-radius: 12px;
+  padding: 3px 8px;
+  font-weight: 600;
 }
 
 /* 顶部 HUD 胶囊 */
@@ -1285,6 +1417,31 @@
   .companion-header {
     display: none !important;
   }
+  .companion-page.companion-page--embedded {
+    min-height: 0 !important;
+    height: 100% !important;
+    max-height: 100% !important;
+    flex: 1 !important;
+    overflow: hidden !important;
+    padding: 0 !important;
+  }
+  .companion-page.companion-page--embedded .companion-workspace {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-height: 0 !important;
+    height: 100% !important;
+    max-height: 100% !important;
+    flex: 1 !important;
+    overflow: hidden !important;
+  }
+  .companion-page.companion-page--embedded .companion-scene {
+    width: 100% !important;
+    min-height: 0 !important;
+    height: 100% !important;
+    max-height: 100% !important;
+    flex: 1 !important;
+    overflow: hidden !important;
+  }
   .companion-workspace {
     width: 100%;
     max-width: 100%;
@@ -1508,6 +1665,30 @@
     margin: 0 auto;
     position: relative;
     padding: 0;
+  }
+
+  .companion-page.companion-page--embedded {
+    height: 100% !important;
+    min-height: 0 !important;
+    max-height: 100% !important;
+    padding: 12px 18px !important;
+    overflow: hidden !important;
+  }
+
+  .companion-page.companion-page--embedded .companion-header {
+    margin: 0 auto 10px !important;
+  }
+
+  .companion-page.companion-page--embedded .companion-workspace {
+    height: calc(100% - 56px) !important;
+    min-height: 0 !important;
+    max-height: calc(100% - 56px) !important;
+  }
+
+  .companion-page.companion-page--embedded .companion-scene {
+    height: 100% !important;
+    min-height: 0 !important;
+    max-height: 100% !important;
   }
 
   /* PC 端左侧舞台容器：充满左侧网格，独立圆角与光影 */

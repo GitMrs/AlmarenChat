@@ -336,11 +336,11 @@ export default function ConversationsPage() {
                 {/* 伴侣角色头像与声线特性微展示 */}
                 <div className="mt-4 flex items-center justify-between border-t border-rose-100/70 pt-3.5">
                   <div className="flex -space-x-2">
-                    <div className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-white bg-gradient-to-br from-rose-300 to-rose-400 text-xs font-black text-white shadow-xs" title="娜莉 (Nari)">
-                      娜
+                    <div className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-white bg-gradient-to-br from-rose-300 to-rose-400 text-xs font-black text-white shadow-xs" title="Sunny">
+                      S
                     </div>
-                    <div className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-white bg-gradient-to-br from-sky-300 to-sky-400 text-xs font-black text-white shadow-xs" title="梦 (Yume)">
-                      梦
+                    <div className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-white bg-gradient-to-br from-sky-300 to-sky-400 text-xs font-black text-white shadow-xs" title="Cora">
+                      C
                     </div>
                     <div className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-white bg-gradient-to-br from-amber-300 to-amber-400 text-xs font-black text-white shadow-xs" title="拉菲 (Laffey)">
                       菲
@@ -356,7 +356,7 @@ export default function ConversationsPage() {
 
                 <button
                   type="button"
-                  onClick={() => router.push('/companion')}
+                  onClick={() => router.push('/chat?agent=companion-nari')}
                   className="mt-4 flex w-full items-center justify-between rounded-2xl bg-gradient-to-r from-rose-500 to-pink-600 px-4 py-3 text-xs font-black text-white shadow-sm transition-all duration-200 hover:from-rose-600 hover:to-pink-700 hover:shadow-md cursor-pointer"
                 >
                   <span>进入伴侣空间待一会儿</span>

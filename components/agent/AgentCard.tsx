@@ -41,7 +41,7 @@ export default function AgentCard({
   showFavorite = true,
 }: AgentCardProps) {
   const category = agent.category || '工具';
-  const color = CATEGORY_COLORS[category] || '#2563eb';
+  const color = agent.themeColor || CATEGORY_COLORS[category] || '#2563eb';
   const intent = categoryIntents[category] || '随时准备帮你处理问题';
 
   if (variant === 'compact') {
