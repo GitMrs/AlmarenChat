@@ -802,6 +802,53 @@
   transform: translateY(12px) scale(0.98);
 }
 
+.companion-mobile-voice-notice {
+  align-self: flex-start;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 100%;
+  box-sizing: border-box;
+  margin-top: 6px;
+  padding: 0 4px 0 12px;
+  border: 1px solid rgba(228, 214, 201, 0.85);
+  border-radius: 16px;
+  background: rgba(255, 254, 250, 0.94);
+  box-shadow: 0 3px 12px rgba(60, 30, 20, 0.06);
+  color: #786351;
+  font-size: 12px;
+  white-space: nowrap;
+  pointer-events: auto;
+}
+
+.companion-mobile-voice-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.companion-mobile-voice-status svg {
+  flex-shrink: 0;
+}
+
+.companion-mobile-voice-notice button {
+  flex-shrink: 0;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 12px;
+  background: transparent;
+  color: #84543c;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.companion-mobile-voice-notice button:active {
+  background: rgba(132, 84, 60, 0.08);
+}
+
 .companion-chat-stream {
   pointer-events: auto;
   max-height: 250px;

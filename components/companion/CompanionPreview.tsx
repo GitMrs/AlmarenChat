@@ -941,20 +941,26 @@ function CompanionSession({
     }
   };
 
-  const voiceReplayButton = chatVoiceNotice && reply?.id === chatVoiceNotice.messageId ? (
+  const retryReplyAudio = () => {
+    if (!chatVoiceNotice || !reply) return;
+    if (chatVoiceNotice.status === 'blocked') {
+      void playPreparedReply(reply.id);
+    } else {
+      primeReplyAudio();
+      void playChatReply(reply);
+    }
+  };
+
+  const hasVoiceNotice = chatVoiceNotice && reply?.id === chatVoiceNotice.messageId;
+  const voiceReplayButton = hasVoiceNotice ? (
     chatVoiceNotice.status === 'preparing' ? (
       <button type="button" className="companion-hud-chip companion-hud-chip--btn" onClick={stopPlayback}>
         <Volume2 size={14} /><span role="status">正在准备语音…</span>取消
       </button>
     ) : (
-      <button type="button" className="companion-hud-chip companion-hud-chip--btn" onClick={() => {
-        if (chatVoiceNotice.status === 'blocked') {
-          void playPreparedReply(reply.id);
-        } else {
-          primeReplyAudio();
-          void playChatReply(reply);
-        }
-      }}><Volume2 size={14} />{chatVoiceNotice.status === 'blocked' ? '语音未播放，点此重试' : '语音生成失败，点此重试'}</button>
+      <button type="button" className="companion-hud-chip companion-hud-chip--btn" onClick={retryReplyAudio}>
+        <Volume2 size={14} />{chatVoiceNotice.status === 'blocked' ? '语音未播放，点此重试' : '语音生成失败，点此重试'}
+      </button>
     )
   ) : null;
 
@@ -1083,7 +1089,6 @@ function CompanionSession({
           </div>
 
           <div className="companion-floating-hud companion-floating-hud--right">
-            {voiceReplayButton}
             <button
               type="button"
               className={`companion-stage-chip companion-stage-chip--icon ${!voiceEnabled ? 'is-muted' : ''}`}
@@ -1207,6 +1212,22 @@ function CompanionSession({
                 </div>
               )}
             </div>
+            {hasVoiceNotice && (
+              <div className="companion-mobile-voice-notice" data-state={chatVoiceNotice.status}>
+                <span className="companion-mobile-voice-status" role="status">
+                  {chatVoiceNotice.status === 'preparing'
+                    ? <Loader2 size={14} className="companion-spinner" aria-hidden="true" />
+                    : <Volume2 size={14} aria-hidden="true" />}
+                  {chatVoiceNotice.status === 'preparing' ? '准备语音…' : chatVoiceNotice.status === 'blocked' ? '待播放' : '生成失败'}
+                </span>
+                <button
+                  type="button"
+                  onClick={chatVoiceNotice.status === 'preparing' ? stopPlayback : retryReplyAudio}
+                >
+                  {chatVoiceNotice.status === 'preparing' ? '取消' : chatVoiceNotice.status === 'blocked' ? '播放' : '重试'}
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Quick Reactions 快捷表情/提示浮块 (点击底栏笑脸按钮展开) */}
