@@ -135,6 +135,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
     imageModelSize?: '1024x1024' | '1536x1024' | '1024x1536';
   } | null>(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [needsLogin, setNeedsLogin] = useState(false);
   const [contextMessageLimit, setContextMessageLimit] = useState(DEFAULT_CONTEXT_MESSAGE_LIMIT);
   const [viewportHeight, setViewportHeight] = useState<number | null>(null);
   const [viewportOffsetTop, setViewportOffsetTop] = useState(0);
@@ -238,6 +239,11 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
   useEffect(() => {
     const loadAgent = async () => {
       try {
+        if (!localStorage.getItem('token')) {
+          setNeedsLogin(true);
+          return;
+        }
+
         // Try API first, fall back to built-in
         let found: Agent | undefined;
         if (agentId) {
@@ -266,8 +272,11 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
             imageGenerationAvailable: Boolean(u.imageModelEnabled && (u.imageApiBaseUrl || u.apiBaseUrl) && (u.imageApiKey || u.apiKey) && u.imageModelName),
             imageModelSize: u.imageModelSize || '1024x1024',
           });
-        } catch {
-          // Not logged in or failed, use defaults
+        } catch (err: any) {
+          if (err?.status === 401 || err?.message === 'Unauthorized' || !localStorage.getItem('token')) {
+            setNeedsLogin(true);
+            return;
+          }
         }
 
         // Agent chat uses one persistent main conversation per user and agent.
@@ -1092,6 +1101,28 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
     }
     updateComposerValue(value);
   };
+
+  if (needsLogin) {
+    return (
+      <div className="flex min-h-dvh flex-col items-center justify-center bg-[#fbfaf7] p-4 sm:p-6">
+        <div className="w-full max-w-lg">
+          <LoginRequired
+            title="登录后开启对话"
+            description="聊天与 Agent 记忆需要绑定个人账号。登录后即可开始深度交流，并持久化保存你的对话与专属记忆。"
+          />
+          <div className="mt-4 text-center">
+            <button
+              type="button"
+              onClick={() => router.push('/')}
+              className="text-xs font-bold text-slate-500 underline underline-offset-4 transition hover:text-slate-800"
+            >
+              返回发现页
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (

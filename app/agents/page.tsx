@@ -138,6 +138,10 @@ function AgentsContent() {
   }, []);
 
   const handleChat = (agent: Agent) => {
+    if (!localStorage.getItem('token')) {
+      router.push('/login');
+      return;
+    }
     savePageState();
     router.push(`/chat/${agent.id}`);
   };

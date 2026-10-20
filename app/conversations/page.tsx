@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowRight, Check, Clock3, Edit3, Heart, Loader2, MessageSquare, Search, Sparkles, Trash2, X } from 'lucide-react';
+import { ArrowRight, Check, Clock3, Edit3, Loader2, MessageSquare, Search, Sparkles, Trash2, X } from 'lucide-react';
 import AppShell from '@/components/layout/AppShell';
 import LoginRequired from '@/components/auth/LoginRequired';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
@@ -303,68 +303,6 @@ export default function ConversationsPage() {
           </div>
 
           <aside className="space-y-4">
-            {/* 灵动伴侣空间专属心动推荐卡片 */}
-            <div className="group relative overflow-hidden rounded-[28px] border border-rose-200/80 bg-gradient-to-br from-rose-50/90 via-amber-50/40 to-white p-6 shadow-sm transition-all duration-300 hover:border-rose-300 hover:shadow-lg">
-              {/* 装饰性柔光底晕 */}
-              <div
-                className="pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full bg-rose-200/50 blur-2xl transition-all duration-500 group-hover:scale-125 group-hover:bg-rose-300/60"
-                aria-hidden="true"
-              />
-
-              <div className="relative">
-                <div className="flex items-center justify-between">
-                  <div className="inline-flex items-center gap-1.5 rounded-full bg-rose-100/90 px-3 py-1 text-xs font-black text-rose-800">
-                    <Heart size={12} className="fill-rose-500 text-rose-500 animate-pulse" />
-                    <span>虚拟拟真伴侣</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 rounded-full border border-emerald-200/60 bg-emerald-50 px-2.5 py-0.5 text-[11px] font-bold text-emerald-600">
-                    <span className="relative flex h-2 w-2">
-                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-                      <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
-                    </span>
-                    <span>4位在线</span>
-                  </div>
-                </div>
-
-                <h3 className="mt-3.5 text-xl font-black tracking-tight text-slate-950">
-                  灵动伴侣空间
-                </h3>
-                <p className="mt-2 text-xs leading-5 text-slate-600 font-medium">
-                  不只是文字会话。Live2D 拟真肢体动作、拖拽视线跟随、专属声线朗读与时段关怀随时在线。
-                </p>
-
-                {/* 伴侣角色头像与声线特性微展示 */}
-                <div className="mt-4 flex items-center justify-between border-t border-rose-100/70 pt-3.5">
-                  <div className="flex -space-x-2">
-                    <div className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-white bg-gradient-to-br from-rose-300 to-rose-400 text-xs font-black text-white shadow-xs" title="Sunny">
-                      S
-                    </div>
-                    <div className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-white bg-gradient-to-br from-sky-300 to-sky-400 text-xs font-black text-white shadow-xs" title="Cora">
-                      C
-                    </div>
-                    <div className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-white bg-gradient-to-br from-amber-300 to-amber-400 text-xs font-black text-white shadow-xs" title="拉菲 (Laffey)">
-                      菲
-                    </div>
-                    <div className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-white bg-gradient-to-br from-violet-300 to-violet-400 text-xs font-black text-white shadow-xs" title="真央 (Mao)">
-                      央
-                    </div>
-                  </div>
-                  <span className="text-[11px] font-semibold text-rose-700/80">
-                    专属声线 · 实时张嘴
-                  </span>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => router.push('/chat?agent=companion-nari')}
-                  className="mt-4 flex w-full items-center justify-between rounded-2xl bg-gradient-to-r from-rose-500 to-pink-600 px-4 py-3 text-xs font-black text-white shadow-sm transition-all duration-200 hover:from-rose-600 hover:to-pink-700 hover:shadow-md cursor-pointer"
-                >
-                  <span>进入伴侣空间待一会儿</span>
-                  <ArrowRight size={15} className="transition-transform duration-200 group-hover:translate-x-1" />
-                </button>
-              </div>
-            </div>
-
             <div className="rounded-[28px] border border-black/[0.06] bg-slate-950 p-6 text-white shadow-sm">
               <Sparkles size={22} className="text-amber-300" />
               <h3 className="mt-4 text-xl font-black">让对话变成你的工作记忆。</h3>

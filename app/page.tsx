@@ -94,6 +94,10 @@ export default function HomePage() {
   };
 
   const handleChat = (agent: Agent) => {
+    if (!localStorage.getItem('token')) {
+      router.push('/login');
+      return;
+    }
     router.push(`/chat/${agent.id}`);
   };
 

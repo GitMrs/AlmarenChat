@@ -154,7 +154,13 @@ export default function AgentDetailPage() {
                 {suggestedPrompts.map((prompt) => (
                   <button
                     key={prompt}
-                    onClick={() => router.push(`/chat/${agent.id}?prompt=${encodeURIComponent(prompt)}`)}
+                    onClick={() => {
+                      if (!localStorage.getItem('token')) {
+                        router.push('/login');
+                        return;
+                      }
+                      router.push(`/chat/${agent.id}?prompt=${encodeURIComponent(prompt)}`);
+                    }}
                     className="w-full rounded-2xl bg-white px-4 py-3 text-left text-sm font-bold leading-6 text-slate-600 shadow-sm transition hover:-translate-y-0.5 hover:text-slate-950"
                   >
                     {prompt}
@@ -162,7 +168,13 @@ export default function AgentDetailPage() {
                 ))}
               </div>
               <button
-                onClick={() => router.push(`/chat/${agent.id}`)}
+                onClick={() => {
+                  if (!localStorage.getItem('token')) {
+                    router.push('/login');
+                    return;
+                  }
+                  router.push(`/chat/${agent.id}`);
+                }}
                 className="mt-5 flex h-12 w-full items-center justify-center gap-2 rounded-full bg-slate-950 text-sm font-black text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg"
               >
                 <MessageCircle size={17} />
