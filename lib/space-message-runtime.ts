@@ -6,9 +6,11 @@ import {
   type CryptoMessageRuntimeInput,
   type PreparedCryptoMessageRuntime,
 } from './crypto/space-message-runtime';
+import { loadAgentWorldContext } from './world/context';
 
 export interface SpaceMessageRuntimeInput extends CryptoMessageRuntimeInput {
   templateId?: string | null;
+  agentId?: string;
 }
 
 export interface PreparedSpaceMessageRuntime extends PreparedCryptoMessageRuntime {}
@@ -47,8 +49,9 @@ export async function prepareSpaceMessageRuntime(
   if (registration?.handlesGeneralCryptoQueries) return templateRuntime;
 
   const generalCryptoRuntime = await prepareGeneralCryptoQueryRuntime(input);
+  const worldContext = await loadAgentWorldContext({ agentId: input.agentId, query: input.textMessage, history: input.persistedMessages });
   return {
-    promptContext: [templateRuntime.promptContext, generalCryptoRuntime.promptContext]
+    promptContext: [templateRuntime.promptContext, generalCryptoRuntime.promptContext, worldContext]
       .filter(Boolean)
       .join('\n\n'),
     agentPolicy: (policyInput) => [

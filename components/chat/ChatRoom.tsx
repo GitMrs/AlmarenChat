@@ -34,6 +34,7 @@ import type { Agent, MessageAttachment } from '@/types';
 import type { ChatMessage, DisplayAgent } from '@/components/chat/ChatMessageItem';
 import type { BrowserModelConfig, BrowserModelSource } from '@/lib/browser-model';
 import { shouldExtractMemorySuggestion } from '@/lib/personal-assistant/memory-intent.mjs';
+import { isWorldEventAgent, resolveWorldEventQuery, WORLD_EVENTS_UNAVAILABLE_CONTEXT } from '@/lib/world/agent-policy';
 
 const promptMap: Record<string, string[]> = {
   写作: ['帮我把这段话改得更有吸引力', '生成 5 个标题', '把内容改成小红书风格'],
@@ -838,7 +839,16 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
             ...imageContent,
           ];
         }
-        const systemPrompt = [displayAgent?.systemPrompt, isCompanionSend ? companionReplyInstruction : ''].filter(Boolean).join('\n\n');
+        let worldContext = '';
+        if (isWorldEventAgent(displayAgent?.id || agentId) && resolveWorldEventQuery(content, history)) {
+          try {
+            worldContext = (await conversationsApi.worldContext(localConversationId, content, controller.signal)).context;
+          } catch (error) {
+            if (controller.signal.aborted) throw error;
+            worldContext = WORLD_EVENTS_UNAVAILABLE_CONTEXT;
+          }
+        }
+        const systemPrompt = [displayAgent?.systemPrompt, worldContext, isCompanionSend ? companionReplyInstruction : ''].filter(Boolean).join('\n\n');
         if (systemPrompt) {
           modelMessages.unshift({ role: 'system', content: systemPrompt });
         }

@@ -344,6 +344,10 @@ export const agents = {
 
 // Conversations
 export const conversations = {
+  worldContext: (id: string, query: string, signal?: AbortSignal) =>
+    request<{ context: string }>(`/conversations/${encodeURIComponent(id)}/world-context`, {
+      method: 'POST', body: JSON.stringify({ query }), signal,
+    }),
   list: (options?: { limit?: number; agentId?: string; includeLastMessage?: boolean; includeArchived?: boolean }) => {
     const params = new URLSearchParams();
     if (options?.limit) params.set('limit', String(options.limit));

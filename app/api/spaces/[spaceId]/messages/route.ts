@@ -35,6 +35,7 @@ import { loadAgentMemoryContext } from '@/lib/agent-memory';
 import { currentTimeContext } from '@/lib/current-time-context.mjs';
 import { buildUserMemoryContext, loadUserMemoryItems } from '@/lib/personal-assistant/user-memory';
 import { prepareSpaceMessageRuntime } from '@/lib/space-message-runtime';
+import { loadAgentWorldContext } from '@/lib/world/context';
 
 const MESSAGE_PAGE_SIZE = 40;
 const READ_ONLY_WORKSPACE_TOOLS = new Set(['list_files', 'read_file', 'check_files']);
@@ -315,13 +316,14 @@ async function handlePiMessage(options: {
   allowWebSearch: boolean;
   imageGenerationRequested: boolean;
   agentMemoryContext: string;
+  worldEventContext: string;
   interactionMode?: 'chat' | 'multi_reply' | 'coordinated_turn' | 'coordination_summary';
   coordinationScope?: PiCoordinationScope | null;
   multiReplyIndex: number;
 }) {
   const {
     userId, spaceId, space, targetAgent, memberAgents, selectedSkill, textMessage,
-    skipPersistUserMessage, persistMessages, allowWebSearch, imageGenerationRequested, agentMemoryContext, interactionMode, coordinationScope, multiReplyIndex,
+    skipPersistUserMessage, persistMessages, allowWebSearch, imageGenerationRequested, agentMemoryContext, worldEventContext, interactionMode, coordinationScope, multiReplyIndex,
   } = options;
   let persistedMemory = await prisma.spaceMemory.findUnique({ where: { spaceId } });
   if (!persistedMemory || spaceMemoryNeedsTrustedRebuild(persistedMemory)) {
@@ -385,6 +387,7 @@ async function handlePiMessage(options: {
             space,
             roleAgent: targetAgent,
             agentMemoryContext,
+            worldEventContext,
             availableAgents: memberAgents,
             selectedSkill,
             message: textMessage,
@@ -672,6 +675,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
         allowWebSearch,
         imageGenerationRequested: explicitImageRequest,
         agentMemoryContext: [buildUserMemoryContext(userMemories, textMessage), agentMemory].filter(Boolean).join('\n\n'),
+        worldEventContext: await loadAgentWorldContext({ agentId: targetAgent.id, query: textMessage, history: Array.isArray(history) ? history : [] }),
         interactionMode: normalizedInteractionMode,
         coordinationScope: normalizedCoordinationScope,
         multiReplyIndex: Number.isInteger(multiReplyIndex) && multiReplyIndex > 0
@@ -873,6 +877,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
 
     spaceMessageRuntime = await prepareSpaceMessageRuntime({
       templateId: space.templateId,
+      agentId: targetAgent.id,
       spaceId,
       textMessage,
       persistedMessages,

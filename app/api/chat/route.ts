@@ -14,6 +14,7 @@ import { currentTimeContext } from '@/lib/current-time-context.mjs';
 import { buildUserMemoryContext, loadUserMemoryItems } from '@/lib/personal-assistant/user-memory';
 import { compressConversationContext, estimateMessagesTokens } from '@/lib/context-compression';
 import { conversationContextTargetTokens } from '@/lib/model-limits.mjs';
+import { loadAgentWorldContext } from '@/lib/world/context';
 
 const TEXT_CHAT_COST = 1;
 const IMAGE_CHAT_COST = 3;
@@ -192,11 +193,12 @@ export async function POST(request: Request) {
     const client = createModelClient(apiBaseUrl, apiKey);
     const model = resolveModelName(modelName);
 
-    const [employeeMemory, userMemories] = await Promise.all([
+    const [employeeMemory, userMemories, worldContext] = await Promise.all([
       loadAgentMemoryContext({ userId, agentId, query: textMessage }),
       loadUserMemoryItems(userId, agentId),
+      loadAgentWorldContext({ agentId: conversationSettings?.agentId || agentId, query: textMessage, history: normalizedHistory }),
     ]);
-    let finalContext = [currentTimeContext(), context, buildUserMemoryContext(userMemories, textMessage), employeeMemory].filter(Boolean).join('\n\n');
+    let finalContext = [currentTimeContext(), context, buildUserMemoryContext(userMemories, textMessage), employeeMemory, worldContext].filter(Boolean).join('\n\n');
     if (knowledgeEnabled && agentId && textMessage.trim()) {
       try {
         const hits = await getKnowledgeHits(agentId, textMessage);
