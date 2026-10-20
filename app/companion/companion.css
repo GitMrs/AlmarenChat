@@ -1743,12 +1743,6 @@
     margin: 0 auto 10px !important;
   }
 
-  .companion-page.companion-page--embedded .companion-workspace {
-    height: calc(100% - 56px) !important;
-    min-height: 0 !important;
-    max-height: calc(100% - 56px) !important;
-  }
-
   .companion-page.companion-page--embedded .companion-scene {
     height: 100% !important;
     min-height: 0 !important;

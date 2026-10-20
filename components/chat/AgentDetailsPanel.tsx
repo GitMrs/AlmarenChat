@@ -10,6 +10,7 @@ import TextInputDialog from '@/components/shared/TextInputDialog';
 import KnowledgeManager from '@/components/agent/KnowledgeManager';
 import SpaceMemberModelDialog from '@/components/spaces/SpaceMemberModelDialog';
 import { agentMemories as agentMemoryApi, agents as agentsApi } from '@/lib/api';
+import { cn } from '@/lib/utils';
 import type { DisplayAgent } from '@/components/chat/ChatMessageItem';
 import type { AgentMemoryItem } from '@/types';
 import type { AgentExperience } from '@/types';
@@ -120,6 +121,7 @@ export default function AgentDetailsPanel({
   activeMemoryEnabled.current = memoryEnabled;
   const [conversationDrawerOpen, setConversationDrawerOpen] = useState(false);
   const [memoryDrawerOpen, setMemoryDrawerOpen] = useState(false);
+  const [memoryTab, setMemoryTab] = useState<'memories' | 'experiences'>('memories');
   const [renameMemoryTarget, setRenameMemoryTarget] = useState<AgentMemoryItem | null>(null);
   const [renamingMemory, setRenamingMemory] = useState(false);
   const [deleteMemoryTarget, setDeleteMemoryTarget] = useState<AgentMemoryItem | null>(null);
@@ -156,6 +158,7 @@ export default function AgentDetailsPanel({
     setAgentMemories([]);
     setAgentExperiences([]);
     setMemoryDrawerOpen(false);
+    setMemoryTab('memories');
     setNewMemory('');
     setRenameMemoryTarget(null);
     setDeleteMemoryTarget(null);
@@ -179,6 +182,7 @@ export default function AgentDetailsPanel({
   const openMemoryDrawer = async () => {
     if (!memoryEnabled) return;
     const agentId = displayAgent.id;
+    setMemoryTab('memories');
     setMemoryDrawerOpen(true);
     setMemoryLoading(true);
     try {
@@ -398,26 +402,168 @@ export default function AgentDetailsPanel({
             <X size={18} />
           </button>
         </div>
-        <div className="mt-4 flex gap-2"><input value={newMemory} onChange={(event) => setNewMemory(event.target.value)} placeholder="添加一条长期记忆" className="min-w-0 flex-1 rounded-xl border border-black/[0.08] px-3 py-2 text-sm outline-none" /><button type="button" onClick={addAgentMemory} className="rounded-xl bg-slate-950 px-3 py-2 text-xs font-black text-white">添加</button></div>
-        <div className="mt-4 flex-1 space-y-5 overflow-y-auto">{memoryLoading && <p className="py-8 text-center text-sm font-semibold text-slate-400">加载中...</p>}{!memoryLoading && <><section><h3 className="mb-2 text-xs font-black text-slate-400">专属长期记忆</h3>{agentMemories.length === 0 ? <p className="py-4 text-center text-sm font-semibold text-slate-400">还没有专属长期记忆。</p> : <div className="space-y-2">{agentMemories.map((memory) => <div key={memory.id} className="rounded-xl border border-black/[0.06] bg-[#fbfaf7] p-3"><p className={memory.status === 'ACTIVE' ? 'text-sm leading-6 text-slate-700' : 'text-sm leading-6 text-slate-400 line-through'}>{memory.content}</p><div className="mt-2 flex gap-3 text-xs font-bold text-slate-400"><button type="button" onClick={() => renameAgentMemory(memory)}>修改</button><button type="button" onClick={() => toggleAgentMemory(memory)}>{memory.status === 'ACTIVE' ? '停用' : '启用'}</button><button type="button" onClick={() => deleteAgentMemory(memory)} className="text-red-400">删除</button></div></div>)}</div>}</section><section>
-          <h3 className="mb-2 text-xs font-black text-slate-400">个人经历</h3>
-          {agentExperiences.length === 0 ? <p className="py-4 text-center text-sm font-semibold text-slate-400">还没有已记录的个人经历。</p> : <div className="space-y-2">
-            {agentExperiences.map(experience => <article key={experience.id} className="rounded-xl border border-black/[0.06] bg-[#fbfaf7] p-3">
-              <p className="text-sm font-bold text-slate-700">{experience.title}</p>
-              <p className={experience.status === 'DISABLED' ? 'mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-400 line-through' : 'mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-500'}>{experience.summary}</p>
-              <p className="mt-2 break-all text-[11px] font-semibold text-slate-400">
-                {({ CHAT: '单聊', TASK: '任务', DISCUSSION: '讨论', RELAY: '接力', GAME: '游戏', COORDINATION: '成员协作' } as Record<string, string>)[experience.sourceType || 'TASK'] || '空间活动'}
-                {experience.spaceId ? ' · 来源空间：' + experience.spaceId : ''} · {new Date(experience.createdAt).toLocaleDateString('zh-CN')}
-                {experience.edited ? ' · 已纠正' : ''}
-              </p>
-              <div className="mt-2 flex gap-3 text-xs font-bold text-slate-400">
-                <button type="button" onClick={() => setEditExperience(experience)}>纠正</button>
-                <button type="button" onClick={() => setExperienceAction({ experience, status: experience.status === 'DISABLED' ? 'ACTIVE' : 'DISABLED' })}>{experience.status === 'DISABLED' ? '启用' : '停用'}</button>
-                <button type="button" onClick={() => setExperienceAction({ experience, status: 'DELETED' })} className="text-red-400">遗忘</button>
-              </div>
-            </article>)}
-          </div>}
-        </section></>}</div>
+        {/* Tab 切换 */}
+        <div className="mt-4 flex rounded-2xl bg-slate-100 p-1">
+          <button
+            type="button"
+            onClick={() => setMemoryTab('memories')}
+            className={cn(
+              'flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-black transition-all cursor-pointer',
+              memoryTab === 'memories'
+                ? 'bg-white text-slate-900 shadow-xs'
+                : 'text-slate-500 hover:text-slate-800'
+            )}
+          >
+            <span>我的偏好与约定</span>
+            <span
+              className={cn(
+                'rounded-full px-1.5 py-0.5 text-[10px] font-bold',
+                memoryTab === 'memories' ? 'bg-amber-100 text-amber-800' : 'bg-slate-200/70 text-slate-500'
+              )}
+            >
+              {agentMemories.length}
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setMemoryTab('experiences')}
+            className={cn(
+              'flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-black transition-all cursor-pointer',
+              memoryTab === 'experiences'
+                ? 'bg-white text-slate-900 shadow-xs'
+                : 'text-slate-500 hover:text-slate-800'
+            )}
+          >
+            <span>成长经历流水</span>
+            <span
+              className={cn(
+                'rounded-full px-1.5 py-0.5 text-[10px] font-bold',
+                memoryTab === 'experiences' ? 'bg-indigo-100 text-indigo-800' : 'bg-slate-200/70 text-slate-500'
+              )}
+            >
+              {agentExperiences.length}
+            </span>
+          </button>
+        </div>
+
+        {memoryTab === 'memories' ? (
+          <>
+            <div className="mt-3 flex gap-2">
+              <input
+                value={newMemory}
+                onChange={(event) => setNewMemory(event.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') addAgentMemory();
+                }}
+                placeholder="告诉 Agent 你的称呼、偏好或回答习惯..."
+                className="min-w-0 flex-1 rounded-xl border border-black/[0.08] bg-[#fbfaf7] px-3.5 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-amber-400 focus:bg-white focus:ring-2 focus:ring-amber-200/60"
+              />
+              <button
+                type="button"
+                onClick={addAgentMemory}
+                disabled={!newMemory.trim()}
+                className="rounded-xl bg-slate-950 px-4 py-2 text-xs font-black text-white hover:bg-slate-800 disabled:bg-slate-200 disabled:text-slate-400 transition cursor-pointer"
+              >
+                添加
+              </button>
+            </div>
+            <p className="mt-1.5 text-[11px] font-medium text-slate-400">
+              这些专属记忆只对当前 Agent 生效，主对话中可以随时修改或删除。
+            </p>
+
+            <div className="mt-3 flex-1 space-y-3 overflow-y-auto pr-1">
+              {memoryLoading ? (
+                <p className="py-8 text-center text-sm font-semibold text-slate-400">加载中...</p>
+              ) : agentMemories.length === 0 ? (
+                <div className="py-12 text-center">
+                  <p className="text-sm font-bold text-slate-500">还没有专属偏好与约定</p>
+                  <p className="mt-1 text-xs text-slate-400">在上方输入框或对话中即可随时告诉 Agent 记住你的习惯。</p>
+                </div>
+              ) : (
+                agentMemories.map((memory) => (
+                  <div
+                    key={memory.id}
+                    className={cn(
+                      'group rounded-2xl border p-3.5 transition',
+                      memory.status === 'ACTIVE'
+                        ? 'border-black/[0.06] bg-[#fbfaf7] hover:border-slate-300'
+                        : 'border-dashed border-slate-200 bg-slate-50/60 opacity-60'
+                    )}
+                  >
+                    <p className={memory.status === 'ACTIVE' ? 'text-sm leading-6 text-slate-700' : 'text-sm leading-6 text-slate-400 line-through'}>
+                      {memory.content}
+                    </p>
+                    <div className="mt-2.5 flex items-center justify-between border-t border-black/[0.04] pt-2 text-xs font-bold text-slate-400">
+                      <span className="text-[11px] font-medium text-slate-400">
+                        {new Date(memory.updatedAt || memory.createdAt).toLocaleDateString('zh-CN')}
+                      </span>
+                      <div className="flex gap-3">
+                        <button type="button" onClick={() => renameAgentMemory(memory)} className="hover:text-slate-900 cursor-pointer">修改</button>
+                        <button type="button" onClick={() => toggleAgentMemory(memory)} className="hover:text-slate-900 cursor-pointer">{memory.status === 'ACTIVE' ? '停用' : '启用'}</button>
+                        <button type="button" onClick={() => deleteAgentMemory(memory)} className="text-rose-500 hover:text-rose-700 cursor-pointer">删除</button>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="mt-3 text-[11px] font-medium text-slate-400">
+              Agent 在空间任务、讨论、协作或单聊中沉淀的经历记录，用于背景认知。
+            </p>
+
+            <div className="mt-3 flex-1 space-y-3 overflow-y-auto pr-1">
+              {memoryLoading ? (
+                <p className="py-8 text-center text-sm font-semibold text-slate-400">加载中...</p>
+              ) : agentExperiences.length === 0 ? (
+                <div className="py-12 text-center">
+                  <p className="text-sm font-bold text-slate-500">还没有已记录的成长经历</p>
+                  <p className="mt-1 text-xs text-slate-400">当 Agent 在空间协作或完成任务后，会自动在这里沉淀要点。</p>
+                </div>
+              ) : (
+                agentExperiences.map((experience) => (
+                  <article
+                    key={experience.id}
+                    className={cn(
+                      'rounded-2xl border p-3.5 transition',
+                      experience.status === 'DISABLED'
+                        ? 'border-dashed border-slate-200 bg-slate-50/60 opacity-60'
+                        : 'border-black/[0.06] bg-[#fbfaf7]'
+                    )}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-bold text-slate-800">{experience.title}</p>
+                      <span className="shrink-0 rounded-md bg-slate-200/60 px-2 py-0.5 text-[10px] font-bold text-slate-600">
+                        {({ CHAT: '单聊', TASK: '任务', DISCUSSION: '讨论', RELAY: '接力', GAME: '游戏', COORDINATION: '成员协作' } as Record<string, string>)[experience.sourceType || 'TASK'] || '空间活动'}
+                      </span>
+                    </div>
+                    <p className={experience.status === 'DISABLED' ? 'mt-1.5 whitespace-pre-wrap text-sm leading-6 text-slate-400 line-through' : 'mt-1.5 whitespace-pre-wrap text-sm leading-6 text-slate-600 font-normal'}>
+                      {experience.summary}
+                    </p>
+                    <div className="mt-2.5 flex items-center justify-between border-t border-black/[0.04] pt-2 text-[11px] font-semibold text-slate-400">
+                      <span className="truncate">
+                        {experience.spaceId ? '来源空间：' + experience.spaceId + ' · ' : ''}
+                        {new Date(experience.createdAt).toLocaleDateString('zh-CN')}
+                        {experience.edited ? ' · 已纠正' : ''}
+                      </span>
+                      <div className="flex shrink-0 gap-3 text-xs font-bold text-slate-400">
+                        <button type="button" onClick={() => setEditExperience(experience)} className="hover:text-slate-900 cursor-pointer">纠正</button>
+                        <button type="button" onClick={() => setExperienceAction({ experience, status: experience.status === 'DISABLED' ? 'ACTIVE' : 'DISABLED' })} className="hover:text-slate-900 cursor-pointer">
+                          {experience.status === 'DISABLED' ? '启用' : '停用'}
+                        </button>
+                        <button type="button" onClick={() => setExperienceAction({ experience, status: 'DELETED' })} className="text-rose-500 hover:text-rose-700 cursor-pointer">
+                          遗忘
+                        </button>
+                      </div>
+                    </div>
+                  </article>
+                ))
+              )}
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
@@ -476,15 +622,29 @@ export default function AgentDetailsPanel({
       {conversationDrawer}
       {memoryDrawer}
       <aside className="hidden w-[340px] shrink-0 overflow-y-auto border-r border-black/[0.06] bg-white/80 p-5 backdrop-blur lg:flex lg:flex-col">
-        <button
-          onClick={onBack}
-          className="mb-6 inline-flex w-fit items-center gap-2 rounded-full border border-black/[0.06] bg-white px-4 py-2 text-sm font-bold text-slate-600 shadow-sm hover:text-slate-950"
-        >
-          <ArrowLeft size={16} />
-          返回
-        </button>
+        <div className="mb-6 flex items-center justify-between gap-2">
+          <button
+            onClick={onBack}
+            className="inline-flex w-fit items-center gap-2 rounded-full border border-black/[0.06] bg-white px-4 py-2 text-sm font-bold text-slate-600 shadow-sm hover:text-slate-950"
+          >
+            <ArrowLeft size={16} />
+            返回
+          </button>
 
-        <div className="overflow-hidden rounded-[32px] border border-black/[0.06] bg-[#fbfaf7] shadow-sm">
+          {displayAgent.companionCharacterId && onToggleCompanionView && (
+            <button
+              type="button"
+              onClick={onToggleCompanionView}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-amber-300/60 bg-gradient-to-r from-amber-500/15 via-rose-500/15 to-orange-500/15 px-3 py-2 text-xs font-black text-amber-950 transition hover:shadow-xs hover:border-amber-400 active:scale-[0.99] cursor-pointer"
+              title={viewMode === 'companion' ? '切换回标准文字聊天界面' : '进入全屏 3D/Live2D 面对面陪伴模式'}
+            >
+              <Sparkles size={14} className="text-amber-600" />
+              <span>{viewMode === 'companion' ? '文字模式' : '陪伴模式'}</span>
+            </button>
+          )}
+        </div>
+
+        <div className="shrink-0 overflow-hidden rounded-[32px] border border-black/[0.06] bg-[#fbfaf7] shadow-sm">
           <div className="h-2" style={{ backgroundColor: categoryColor }} />
           <div className="p-5 text-center">
             <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-[24px] bg-white shadow-sm">
@@ -506,18 +666,6 @@ export default function AgentDetailsPanel({
             </p>
           </div>
         </div>
-
-        {displayAgent.companionCharacterId && onToggleCompanionView && (
-          <button
-            type="button"
-            onClick={onToggleCompanionView}
-            className="mt-3.5 flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-amber-500/15 via-rose-500/15 to-orange-500/15 border border-amber-300/60 p-3 text-xs font-black text-amber-950 transition hover:shadow-xs hover:border-amber-400 hover:scale-[1.01] active:scale-[0.99] cursor-pointer"
-            title={viewMode === 'companion' ? '切换回标准文字聊天界面' : '进入全屏 3D/Live2D 面对面陪伴模式'}
-          >
-            <Sparkles size={14} className="text-amber-600" />
-            <span>{viewMode === 'companion' ? '💬 切换为文字模式' : '🌸 切换至 Live2D 陪伴模式'}</span>
-          </button>
-        )}
 
         <div className="mt-5 rounded-[28px] border border-black/[0.06] bg-white p-5 shadow-sm">
           <div className="mb-5 border-b border-black/[0.06] pb-5">

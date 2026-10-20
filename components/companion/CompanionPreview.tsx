@@ -969,59 +969,6 @@ function CompanionSession({
       className="companion-page companion-page--embedded"
       data-character={character.id}
     >
-      <header className="companion-header" role="banner" aria-label="Almaren 品牌与设置">
-        <div className="companion-fused-bar">
-          <div className="companion-fused-brand">
-            <Link href="/" className="companion-wordmark" title="返回 Almaren 首页">
-              <span className="companion-logomark"><Sparkles size={15} /></span>
-              <span>Almaren</span>
-              <span className="companion-header-divider" />
-              <span>陪伴</span>
-            </Link>
-            <div className="companion-brand-agent">
-              <span className="companion-brand-agent-avatar">{character.name[0]}</span>
-              <span className="companion-brand-agent-name">{character.name}</span>
-              {character.title && (
-                <span className="companion-brand-agent-title">· {character.title}</span>
-              )}
-            </div>
-          </div>
-
-          <div className="companion-hud-capsules">
-            {voiceReplayButton}
-            <button
-              type="button"
-              className={`companion-hud-chip companion-hud-chip--btn ${!voiceEnabled ? 'is-muted' : ''}`}
-              onClick={() => toggleVoice(!voiceEnabled)}
-              title={voiceEnabled ? '伴侣对话语音已开启（点击静音）' : '伴侣对话语音已静音（点击开启）'}
-              aria-label={voiceEnabled ? '伴侣对话语音已开启，点击静音' : '伴侣对话语音已静音，点击开启'}
-            >
-              {voiceEnabled ? (
-                <>
-                  <Volume2 size={15} className="companion-hud-icon--active" />
-                  <span className="companion-hud-text">语音开启</span>
-                </>
-              ) : (
-                <>
-                  <VolumeX size={15} className="companion-hud-icon--muted" />
-                  <span className="companion-hud-text">已静音</span>
-                </>
-              )}
-            </button>
-            <button
-              type="button"
-              className="companion-hud-chip companion-hud-chip--btn"
-              onClick={() => setSettingsOpen(true)}
-              title="伴侣偏好设置"
-              aria-label="伴侣偏好设置"
-            >
-              <Settings size={15} />
-              <span className="companion-hud-text">设置</span>
-            </button>
-          </div>
-        </div>
-      </header>
-
       <div
         className={`companion-workspace ${panelCollapsed ? 'is-collapsed' : ''}`}
         data-keyboard-open={isKeyboardOpen ? 'true' : 'false'}
@@ -1046,13 +993,13 @@ function CompanionSession({
 
           {/* PC 桌面端专属顶部舞台工具条 (左侧伴侣身份标，右侧场景氛围与视角模式) */}
           <div className="companion-stage-desktop-hud">
-            <div className="companion-stage-badge">
+            {/* <div className="companion-stage-badge">
               <span className="companion-stage-badge-avatar">{character.name[0]}</span>
               <div className="companion-stage-badge-text">
                 <strong>{character.name}</strong>
                 <span>{character.title || '治愈伴侣'}</span>
               </div>
-            </div>
+            </div> */}
             <div className="companion-stage-desktop-actions">
               <div className="companion-stage-pill-group" role="group" aria-label="镜头模式">
                 <button
@@ -1078,15 +1025,31 @@ function CompanionSession({
                 </button>
               </div>
             </div>
+              <div className="companion-hud-capsules">
+            {voiceReplayButton}
+            <button
+              type="button"
+              className={`companion-hud-chip companion-hud-chip--btn ${!voiceEnabled ? 'is-muted' : ''}`}
+              onClick={() => toggleVoice(!voiceEnabled)}
+              title={voiceEnabled ? '伴侣对话语音已开启（点击静音）' : '伴侣对话语音已静音（点击开启）'}
+              aria-label={voiceEnabled ? '伴侣对话语音已开启，点击静音' : '伴侣对话语音已静音，点击开启'}
+            >
+              {voiceEnabled ? (
+                <>
+                  <Volume2 size={15} className="companion-hud-icon--active" />
+                  <span className="companion-hud-text">语音开启</span>
+                </>
+              ) : (
+                <>
+                  <VolumeX size={15} className="companion-hud-icon--muted" />
+                  <span className="companion-hud-text">已静音</span>
+                </>
+              )}
+            </button>
+          </div>
           </div>
 
-          {/* 移动端屏幕悬浮 HUD 标签 (左侧 Almaren 陪伴品牌，右侧控制与设置) */}
-          <div className="companion-floating-hud companion-floating-hud--left">
-            <div className="companion-stage-chip companion-stage-chip--brand">
-              <Sparkles size={13} className="companion-hud-icon--active" />
-              <span>Almaren 陪伴</span>
-            </div>
-          </div>
+          {/* 移动端屏幕悬浮 HUD 标签 (右侧控制与设置) */}
 
           <div className="companion-floating-hud companion-floating-hud--right">
             <button
@@ -1316,7 +1279,16 @@ function CompanionSession({
               </div>
             </div>
             <div className="companion-console-header-actions">
-              <span className="companion-console-status-pill">{character.title || 'AI 治愈伴侣'}</span>
+              <button
+              type="button"
+              className="companion-hud-chip companion-hud-chip--btn"
+              onClick={() => setSettingsOpen(true)}
+              title="伴侣偏好设置"
+              aria-label="伴侣偏好设置"
+            >
+              <Settings size={15} />
+              <span className="companion-hud-text">设置</span>
+            </button>
             </div>
           </div>
 
