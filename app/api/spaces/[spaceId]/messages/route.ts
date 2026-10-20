@@ -33,7 +33,7 @@ import { createGomokuState } from '@/lib/relay/gomoku.mjs';
 import { relayStagePolicy } from '@/lib/relay/stage-policy.mjs';
 import { loadAgentMemoryContext } from '@/lib/agent-memory';
 import { currentTimeContext } from '@/lib/current-time-context.mjs';
-import { buildUserMemoryContext, loadUserMemoryItems } from '@/lib/personal-assistant/user-memory';
+import { recordSpaceAgentExperiences } from '@/app/api/_lib/agent-personal-memory';
 import { prepareSpaceMessageRuntime } from '@/lib/space-message-runtime';
 import { loadAgentWorldContext } from '@/lib/world/context';
 
@@ -332,7 +332,7 @@ async function handlePiMessage(options: {
   }
   const projectMemoryContext = coordinationScope
     ? selectRelevantProjectMemory(spaceMemoryContext(persistedMemory), coordinationScope.topic)
-    : '';
+    : selectRelevantProjectMemory(spaceMemoryContext(persistedMemory), textMessage);
   let persistedUserMessage: { id: string; createdAt: Date } | null = null;
   if (persistMessages && !skipPersistUserMessage) {
     persistedUserMessage = await prisma.spaceMessage.create({
@@ -468,7 +468,9 @@ async function handlePiMessage(options: {
                 role: 'assistant',
                 speakerAgentId: targetAgent.id,
                 content: result.content,
-                attachments: [result.execution, ...(memoryEpisode ? [memoryEpisode] : []), ...web.attachments()] as Prisma.InputJsonValue,
+                attachments: [result.execution,
+                  ...(interactionMode === 'coordinated_turn' && coordinationScope ? [{ type: 'coordination_turn', scopeId: coordinationScope.scopeId }] : []),
+                  ...(memoryEpisode ? [memoryEpisode] : []), ...web.attachments()] as Prisma.InputJsonValue,
               },
               select: { id: true, createdAt: true },
             }),
@@ -482,6 +484,19 @@ async function handlePiMessage(options: {
             at: assistantMessage.createdAt.toISOString(),
             refId: assistantMessage.id,
           }]);
+          const turns = await prisma.spaceMessage.findMany({
+            where: { spaceId, role: 'assistant', speakerAgentId: { in: coordinationScope.participantIds } },
+            orderBy: { createdAt: 'desc' }, take: 200,
+            select: { speakerAgentId: true, content: true, attachments: true },
+          });
+          const entries = turns.filter(turn => Array.isArray(turn.attachments) && turn.attachments.some(attachment =>
+            attachment && typeof attachment === 'object' && 'type' in attachment && attachment.type === 'coordination_turn'
+            && 'scopeId' in attachment && attachment.scopeId === coordinationScope.scopeId
+          )).reverse().map(turn => ({ agentId: turn.speakerAgentId!, agentName: memberAgents.find(agent => agent.id === turn.speakerAgentId)?.name, content: turn.content }));
+          await recordSpaceAgentExperiences({
+            userId, spaceId, sourceType: 'COORDINATION', sourceId: coordinationScope.scopeId,
+            topic: coordinationScope.topic, summary: result.content, entries,
+          }).catch(error => console.warn('[agent-memory] coordination feedback failed', error));
         }
         send({ type: 'complete', execution: result.execution, ...(coordinationRequest ? { coordination: coordinationRequest } : {}) });
         try { controller.close(); } catch { /* client disconnected */ }
@@ -644,10 +659,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
     const normalizedInteractionMode = ['multi_reply', 'coordinated_turn', 'coordination_summary'].includes(interactionMode)
       ? interactionMode
       : 'chat';
-    const [agentMemory, userMemories] = await Promise.all([
-      loadAgentMemoryContext({ userId, agentId: targetAgent.id, query: textMessage }),
-      loadUserMemoryItems(userId, targetAgent.id),
-    ]);
+    const agentMemory = await loadAgentMemoryContext({ userId, agentId: targetAgent.id, query: textMessage });
     const selectedSkill = skillId
       ? await getSpaceSkill({ projectRoot: process.cwd(), userId, spaceId, skillId: String(skillId) })
       : null;
@@ -674,7 +686,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
         persistMessages: shouldPersistMessages,
         allowWebSearch,
         imageGenerationRequested: explicitImageRequest,
-        agentMemoryContext: [buildUserMemoryContext(userMemories, textMessage), agentMemory].filter(Boolean).join('\n\n'),
+        agentMemoryContext: agentMemory,
         worldEventContext: await loadAgentWorldContext({ agentId: targetAgent.id, query: textMessage, history: Array.isArray(history) ? history : [] }),
         interactionMode: normalizedInteractionMode,
         coordinationScope: normalizedCoordinationScope,

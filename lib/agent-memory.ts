@@ -1,5 +1,6 @@
 import prisma from '@/app/api/_lib/db';
 import { agentMemoryContext } from '@/lib/agent-memory-policy.mjs';
+import { personalMemoryContext } from '@/lib/agent-personal-memory.mjs';
 
 export async function loadAgentMemoryContext(options: {
   userId: string;
@@ -11,9 +12,12 @@ export async function loadAgentMemoryContext(options: {
     where: { id: options.agentId },
     select: { id: true, agentType: true },
   });
-  if (!agent) return '';
-  const [rules, experiences] = await Promise.all([
-    agent.agentType === 'EMPLOYEE'
+  const [memories, rules, experiences] = await Promise.all([
+    prisma.agentMemoryItem.findMany({
+      where: { userId: options.userId, agentId: options.agentId, status: 'ACTIVE' },
+      orderBy: { updatedAt: 'desc' }, take: 60,
+    }),
+    agent?.agentType === 'EMPLOYEE'
       ? prisma.agentMemoryRule.findMany({
           where: { userId: options.userId, agentId: options.agentId, status: 'ACTIVE' },
           orderBy: { updatedAt: 'desc' },
@@ -21,11 +25,11 @@ export async function loadAgentMemoryContext(options: {
         })
       : Promise.resolve([]),
     prisma.agentExperience.findMany({
-      where: { userId: options.userId, agentId: options.agentId, outcome: 'ACCEPTED' },
+      where: { userId: options.userId, agentId: options.agentId, outcome: 'ACCEPTED', status: 'ACTIVE' },
       orderBy: { updatedAt: 'desc' },
       take: 30,
-      select: { title: true, summary: true, outcome: true, createdAt: true },
+      select: { title: true, summary: true, outcome: true, spaceId: true, sourceType: true, createdAt: true },
     }),
   ]);
-  return agentMemoryContext({ rules, experiences, query: options.query });
+  return [personalMemoryContext(memories, options.query), agentMemoryContext({ rules, experiences, query: options.query })].filter(Boolean).join('\n\n');
 }

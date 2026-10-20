@@ -10,6 +10,7 @@ import {
 } from '../../lib/relay/gomoku.mjs';
 import { relayStageDecision } from '../../lib/relay/stage-policy.mjs';
 import { currentTimeContext } from '../../lib/current-time-context.mjs';
+import { recordSpaceAgentExperiences } from './agent-memory-store.mjs';
 
 const RELAY_ACTION_TOOL = {
   type: 'function',
@@ -74,6 +75,7 @@ export function createRelayRuntime({
   projectRoot,
   completeMessage,
   loadRunContext,
+  persistSpaceMemory,
   now = () => new Date().toISOString(),
   runLoop = runToolLoop,
   executeWorkspace = executeWorkspaceTool,
@@ -152,6 +154,20 @@ export function createRelayRuntime({
          VALUES (?, ?, 'assistant', 'space-coordinator', ?, ?, ?)`
       ).run(randomUUID(), relay.spaceId, result, JSON.stringify([{ type: 'relay_summary', relayId: relay.id }]), timestamp);
       db.prepare('UPDATE "Space" SET "updatedAt" = ? WHERE "id" = ?').run(timestamp, relay.spaceId);
+      persistSpaceMemory(relay.spaceId, [{
+        type: 'relay', actor: '空间协调者', summary: `${relay.goal}：${result}`, at: timestamp, refId: relay.id,
+      }], timestamp);
+      recordSpaceAgentExperiences(db, {
+        userId: relay.userId, spaceId: relay.spaceId,
+        sourceType: relay.kind === 'gomoku' ? 'GAME' : 'RELAY', sourceId: relay.id,
+        topic: relay.goal, summary: result,
+        entries: transcript.map(entry => ({
+          agentId: entry.agentId, agentName: entry.agentName,
+          content: relay.kind === 'gomoku'
+            ? `第 ${entry.turn} 手落子 ${entry.action.row},${entry.action.column}。${entry.action.comment || ''}`
+            : entry.action.content,
+        })), timestamp,
+      });
     })();
   }
 
@@ -446,6 +462,7 @@ export function createRelayRuntime({
                 currentTimeContext(),
                 currentAgent.systemPrompt || currentAgent.description || `你是 ${currentAgent.name}。`,
                 currentAgent.memoryContext || '',
+                context.projectMemory || '',
                 `你正在参加一个持久化接力协作，当前只以“${currentAgent.name}”身份完成自己这一轮。`,
                 '当前适配器是 15×15 五子棋。你执子的目标是形成横、竖或斜向连续五子，同时阻止对手。',
                 `你是${relay.currentIndex === 0 ? '黑方（●）' : '白方（○）'}。行列均从 1 开始。`,
@@ -469,6 +486,7 @@ export function createRelayRuntime({
                 currentTimeContext(),
                 currentAgent.systemPrompt || currentAgent.description || `你是 ${currentAgent.name}。`,
                 currentAgent.memoryContext || '',
+                context.projectMemory || '',
                 `你正在参加由空间协调者组织的接力协作。当前只以“${currentAgent.name}”身份完成自己这一轮。`,
                 '可以承接、补充或回应已有成果，也可以从自己的职责提出不同意见；无论采用哪种方式，都必须贡献新内容，避免机械重复或代替其他成员发言。',
                 '完成后必须调用 submit_relay_turn。不得代替其他成员发言，不得读写文件、联网、运行命令或调用 Skill。',

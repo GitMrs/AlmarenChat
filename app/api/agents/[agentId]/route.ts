@@ -64,6 +64,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ a
     await prisma.$transaction([
       prisma.favoriteAgent.deleteMany({ where: { agentId, source: 'custom' } }),
       prisma.agentExperience.deleteMany({ where: { agentId, userId } }),
+      prisma.agentMemoryItem.deleteMany({ where: { agentId } }),
       prisma.agentMemoryRule.deleteMany({ where: { agentId, userId } }),
       prisma.agentModelSetting.deleteMany({ where: { agentId } }),
       prisma.agent.delete({ where: { id: agentId } }),

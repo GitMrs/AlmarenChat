@@ -211,6 +211,7 @@ const { processRelay } = createRelayRuntime({
   projectRoot,
   completeMessage,
   loadRunContext,
+  persistSpaceMemory,
   now,
 });
 
@@ -397,13 +398,11 @@ function loadRunContext(run) {
       return {
         ...agent,
         model: agentModel,
-        memoryContext: agent.agentType === 'EMPLOYEE'
-          ? loadAgentMemoryContextSync(db, {
+        memoryContext: loadAgentMemoryContextSync(db, {
               userId: run.userId,
               agentId: agent.id,
               query: agentMemoryQuery,
-            })
-          : '',
+            }),
       };
     });
   if (agents.length === 0) throw new Error('空间中没有可执行任务的 Agent');
@@ -1020,16 +1019,14 @@ function markAgentWorking(run, task) {
 async function executeTask(run, task, context, previousResults) {
   const assignedAgent = context.agents.find((item) => item.id === task.agentId);
   if (!assignedAgent) throw new Error(`找不到任务成员：${task.agentId}`);
-  const agent = assignedAgent.agentType === 'EMPLOYEE'
-    ? {
+  const agent = {
         ...assignedAgent,
         memoryContext: loadAgentMemoryContextSync(db, {
           userId: run.userId,
           agentId: assignedAgent.id,
           query: `${task.title}\n${task.instruction}\n${task.acceptanceCriteria || ''}`,
         }),
-      }
-      : assignedAgent;
+      };
   if (!context.researchContext && wantsWebResearch(run.input) && taskNeedsResearchContext(task)) {
     context.researchContext = await buildResearchContext(run, context, {
       task,

@@ -84,6 +84,9 @@ export interface AgentExperience {
   title: string;
   summary: string;
   outcome: 'ACCEPTED' | 'NEEDS_IMPROVEMENT' | 'REWORK' | 'FAILED';
+  sourceType?: string;
+  status?: 'ACTIVE' | 'DISABLED' | 'DELETED';
+  edited?: boolean;
   tags?: string[] | null;
   createdAt: string;
   updatedAt: string;
@@ -130,6 +133,16 @@ export interface AssistantMemoryItem {
   content: string;
   status: 'ACTIVE' | 'DISABLED';
   occurrenceCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AgentMemoryItem {
+  id: string;
+  agentId: string;
+  category: string;
+  content: string;
+  status: 'ACTIVE' | 'DISABLED' | 'DELETED';
   createdAt: string;
   updatedAt: string;
 }

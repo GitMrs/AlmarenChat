@@ -1,7 +1,7 @@
 'use client';
 
 import { ArrowLeft, ChevronDown, ChevronUp, Cpu, Database, MessageSquarePlus, SlidersHorizontal, Sparkles, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import Avatar from '@/components/shared/Avatar';
@@ -9,9 +9,9 @@ import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import TextInputDialog from '@/components/shared/TextInputDialog';
 import KnowledgeManager from '@/components/agent/KnowledgeManager';
 import SpaceMemberModelDialog from '@/components/spaces/SpaceMemberModelDialog';
-import { assistant as assistantApi, agents as agentsApi } from '@/lib/api';
+import { agentMemories as agentMemoryApi, agents as agentsApi } from '@/lib/api';
 import type { DisplayAgent } from '@/components/chat/ChatMessageItem';
-import type { AssistantMemoryItem } from '@/types';
+import type { AgentMemoryItem } from '@/types';
 import type { AgentExperience } from '@/types';
 import type { AgentModelSettingsResponse } from '@/types';
 
@@ -53,7 +53,7 @@ function ContextLimitControl({
     <div className="mb-4 flex items-center justify-between gap-3 rounded-2xl bg-[#fbfaf7] px-3 py-2">
       <div className="flex min-w-0 items-center gap-2 text-xs font-black text-slate-500">
         <SlidersHorizontal size={15} />
-        <span>记忆</span>
+        <span>近期上下文</span>
       </div>
       <div className="flex shrink-0 items-center gap-2">
         <input
@@ -115,15 +115,23 @@ export default function AgentDetailsPanel({
   viewMode = 'chat',
   onToggleCompanionView,
 }: AgentDetailsPanelProps) {
+  const memoryEnabled = isLoggedIn && conversationMode === 'MAIN';
+  const activeMemoryEnabled = useRef(memoryEnabled);
+  activeMemoryEnabled.current = memoryEnabled;
   const [conversationDrawerOpen, setConversationDrawerOpen] = useState(false);
   const [memoryDrawerOpen, setMemoryDrawerOpen] = useState(false);
-  const [renameMemoryTarget, setRenameMemoryTarget] = useState<AssistantMemoryItem | null>(null);
+  const [renameMemoryTarget, setRenameMemoryTarget] = useState<AgentMemoryItem | null>(null);
   const [renamingMemory, setRenamingMemory] = useState(false);
-  const [deleteMemoryTarget, setDeleteMemoryTarget] = useState<AssistantMemoryItem | null>(null);
-  const [toggleMemoryTarget, setToggleMemoryTarget] = useState<{ memory: AssistantMemoryItem; nextStatus: 'ACTIVE' | 'DISABLED' } | null>(null);
+  const [deleteMemoryTarget, setDeleteMemoryTarget] = useState<AgentMemoryItem | null>(null);
+  const [toggleMemoryTarget, setToggleMemoryTarget] = useState<{ memory: AgentMemoryItem; nextStatus: 'ACTIVE' | 'DISABLED' } | null>(null);
   const [togglingMemory, setTogglingMemory] = useState(false);
-  const [agentMemories, setAgentMemories] = useState<AssistantMemoryItem[]>([]);
+  const [agentMemories, setAgentMemories] = useState<AgentMemoryItem[]>([]);
   const [agentExperiences, setAgentExperiences] = useState<AgentExperience[]>([]);
+  const [editExperience, setEditExperience] = useState<AgentExperience | null>(null);
+  const [experienceAction, setExperienceAction] = useState<{ experience: AgentExperience; status: 'ACTIVE' | 'DISABLED' | 'DELETED' } | null>(null);
+  const [savingExperience, setSavingExperience] = useState(false);
+  const activeAgentId = useRef(displayAgent.id);
+  activeAgentId.current = displayAgent.id;
   const [memoryLoading, setMemoryLoading] = useState(false);
   const [newMemory, setNewMemory] = useState('');
   const [knowledgeModalOpen, setKnowledgeModalOpen] = useState(false);
@@ -144,41 +152,56 @@ export default function AgentDetailsPanel({
   }, [displayAgent.id, isLoggedIn]);
 
   useEffect(() => {
+    let cancelled = false;
+    setAgentMemories([]);
+    setAgentExperiences([]);
+    setMemoryDrawerOpen(false);
+    setNewMemory('');
+    setRenameMemoryTarget(null);
+    setDeleteMemoryTarget(null);
+    setToggleMemoryTarget(null);
+    setEditExperience(null);
+    setExperienceAction(null);
     if (!displayAgent?.id) return;
-    if (isLoggedIn) {
-      assistantApi.get(displayAgent.id).then((res) => {
+    if (memoryEnabled) {
+      agentMemoryApi.get(displayAgent.id).then((res) => {
+        if (cancelled) return;
         setAgentMemories((res.memories || []).filter((m) => m.agentId === displayAgent.id));
       }).catch(() => {});
     }
     agentsApi.knowledge(displayAgent.id).then((res) => {
+      if (cancelled) return;
       setKnowledgeDocCount(res.documents?.length || 0);
     }).catch(() => {});
-  }, [displayAgent?.id, isLoggedIn]);
+    return () => { cancelled = true; };
+  }, [displayAgent?.id, isLoggedIn, memoryEnabled]);
 
   const openMemoryDrawer = async () => {
+    if (!memoryEnabled) return;
+    const agentId = displayAgent.id;
     setMemoryDrawerOpen(true);
     setMemoryLoading(true);
     try {
-      const [memoryResult, growthResult] = await Promise.all([
-        assistantApi.get(displayAgent.id),
-        agentsApi.growth(displayAgent.id).catch(() => ({ rules: [], experiences: [] })),
-      ]);
+      const memoryResult = await agentMemoryApi.get(displayAgent.id);
+      if (activeAgentId.current !== agentId || !activeMemoryEnabled.current) return;
       setAgentMemories(memoryResult.memories.filter((memory) => memory.agentId === displayAgent.id));
-      setAgentExperiences(growthResult.experiences.filter((experience) => experience.outcome === 'ACCEPTED'));
+      setAgentExperiences(memoryResult.experiences);
     } finally {
       setMemoryLoading(false);
     }
   };
 
   const addAgentMemory = async () => {
+    const agentId = displayAgent.id;
     const content = newMemory.trim();
     if (!content) return;
-    const result = await assistantApi.addMemory({ content, agentId: displayAgent.id });
-    setAgentMemories((items) => [result.memory, ...items]);
+    const result = await agentMemoryApi.add(displayAgent.id, { content });
+    if (activeAgentId.current !== agentId) return;
+    setAgentMemories((items) => [result.memory, ...items.filter(item => item.id !== result.memory.id)]);
     setNewMemory('');
   };
 
-  const renameAgentMemory = async (memory: AssistantMemoryItem) => {
+  const renameAgentMemory = async (memory: AgentMemoryItem) => {
     setRenameMemoryTarget(memory);
   };
 
@@ -192,7 +215,7 @@ export default function AgentDetailsPanel({
     const memory = renameMemoryTarget;
     setRenamingMemory(true);
     try {
-      const result = await assistantApi.updateMemory(memory.id, { content });
+      const result = await agentMemoryApi.update(displayAgent.id, memory.id, { content });
       setAgentMemories((items) => items.map((item) => item.id === memory.id ? result.memory : item));
       setRenameMemoryTarget(null);
     } finally {
@@ -200,7 +223,7 @@ export default function AgentDetailsPanel({
     }
   };
 
-  const toggleAgentMemory = async (memory: AssistantMemoryItem) => {
+  const toggleAgentMemory = async (memory: AgentMemoryItem) => {
     setToggleMemoryTarget({ memory, nextStatus: memory.status === 'ACTIVE' ? 'DISABLED' : 'ACTIVE' });
   };
 
@@ -209,7 +232,7 @@ export default function AgentDetailsPanel({
     setTogglingMemory(true);
     try {
       const { memory, nextStatus } = toggleMemoryTarget;
-      const result = await assistantApi.updateMemory(memory.id, { status: nextStatus });
+      const result = await agentMemoryApi.update(displayAgent.id, memory.id, { status: nextStatus });
       setAgentMemories((items) => items.map((item) => item.id === memory.id ? result.memory : item));
       setToggleMemoryTarget(null);
     } finally {
@@ -217,15 +240,32 @@ export default function AgentDetailsPanel({
     }
   };
 
-  const deleteAgentMemory = async (memory: AssistantMemoryItem) => {
+  const deleteAgentMemory = async (memory: AgentMemoryItem) => {
     setDeleteMemoryTarget(memory);
   };
 
   const confirmDeleteAgentMemory = async () => {
     if (!deleteMemoryTarget) return;
-    await assistantApi.deleteMemory(deleteMemoryTarget.id);
+    await agentMemoryApi.remove(displayAgent.id, deleteMemoryTarget.id);
     setAgentMemories((items) => items.filter((item) => item.id !== deleteMemoryTarget.id));
     setDeleteMemoryTarget(null);
+  };
+
+  const updateExperience = async (experience: AgentExperience, data: { summary?: string; status?: 'ACTIVE' | 'DISABLED' | 'DELETED' }) => {
+    if (savingExperience) return;
+    const agentId = displayAgent.id;
+    setSavingExperience(true);
+    try {
+      const result = await agentMemoryApi.updateExperience(agentId, experience.id, data);
+      if (activeAgentId.current !== agentId) return;
+      setAgentExperiences(items => data.status === 'DELETED'
+        ? items.filter(item => item.id !== experience.id)
+        : items.map(item => item.id === experience.id ? result.experience : item));
+      setEditExperience(null);
+      setExperienceAction(null);
+    } finally {
+      setSavingExperience(false);
+    }
   };
   const conversationSwitcher = (
       <button
@@ -251,7 +291,7 @@ export default function AgentDetailsPanel({
     </button>
   );
 
-  const memoryWidget = (
+  const memoryWidget = memoryEnabled && (
     <button
       type="button"
       onClick={openMemoryDrawer}
@@ -341,7 +381,7 @@ export default function AgentDetailsPanel({
           </div>
         </div>
   );
-  const memoryDrawer = memoryDrawerOpen && (
+  const memoryDrawer = memoryEnabled && memoryDrawerOpen && (
     <div className="fixed inset-0 z-[60] bg-slate-950/25" onClick={() => setMemoryDrawerOpen(false)}>
       <div className="absolute inset-y-0 right-0 flex w-[min(480px,92vw)] flex-col bg-white p-5 shadow-2xl" onClick={(event) => event.stopPropagation()}>
         <div className="flex items-center justify-between border-b border-black/[0.06] pb-4">
@@ -359,12 +399,50 @@ export default function AgentDetailsPanel({
           </button>
         </div>
         <div className="mt-4 flex gap-2"><input value={newMemory} onChange={(event) => setNewMemory(event.target.value)} placeholder="添加一条长期记忆" className="min-w-0 flex-1 rounded-xl border border-black/[0.08] px-3 py-2 text-sm outline-none" /><button type="button" onClick={addAgentMemory} className="rounded-xl bg-slate-950 px-3 py-2 text-xs font-black text-white">添加</button></div>
-        <div className="mt-4 flex-1 space-y-5 overflow-y-auto">{memoryLoading && <p className="py-8 text-center text-sm font-semibold text-slate-400">加载中...</p>}{!memoryLoading && <><section><h3 className="mb-2 text-xs font-black text-slate-400">专属长期记忆</h3>{agentMemories.length === 0 ? <p className="py-4 text-center text-sm font-semibold text-slate-400">还没有专属长期记忆。</p> : <div className="space-y-2">{agentMemories.map((memory) => <div key={memory.id} className="rounded-xl border border-black/[0.06] bg-[#fbfaf7] p-3"><p className={memory.status === 'ACTIVE' ? 'text-sm leading-6 text-slate-700' : 'text-sm leading-6 text-slate-400 line-through'}>{memory.content}</p><div className="mt-2 flex gap-3 text-xs font-bold text-slate-400"><button type="button" onClick={() => renameAgentMemory(memory)}>修改</button><button type="button" onClick={() => toggleAgentMemory(memory)}>{memory.status === 'ACTIVE' ? '停用' : '启用'}</button><button type="button" onClick={() => deleteAgentMemory(memory)} className="text-red-400">删除</button></div></div>)}</div>}</section><section><h3 className="mb-2 text-xs font-black text-slate-400">工作经历</h3>{agentExperiences.length === 0 ? <p className="py-4 text-center text-sm font-semibold text-slate-400">还没有已完成的工作经历。</p> : <div className="space-y-2">{agentExperiences.map((experience) => <article key={experience.id} className="rounded-xl border border-black/[0.06] bg-[#fbfaf7] p-3"><p className="text-sm font-bold text-slate-700">{experience.title}</p><p className="mt-1 text-sm leading-6 text-slate-500">{experience.summary}</p><p className="mt-2 text-[11px] font-semibold text-slate-400">{new Date(experience.createdAt).toLocaleDateString('zh-CN')}</p></article>)}</div>}</section></>}</div>
+        <div className="mt-4 flex-1 space-y-5 overflow-y-auto">{memoryLoading && <p className="py-8 text-center text-sm font-semibold text-slate-400">加载中...</p>}{!memoryLoading && <><section><h3 className="mb-2 text-xs font-black text-slate-400">专属长期记忆</h3>{agentMemories.length === 0 ? <p className="py-4 text-center text-sm font-semibold text-slate-400">还没有专属长期记忆。</p> : <div className="space-y-2">{agentMemories.map((memory) => <div key={memory.id} className="rounded-xl border border-black/[0.06] bg-[#fbfaf7] p-3"><p className={memory.status === 'ACTIVE' ? 'text-sm leading-6 text-slate-700' : 'text-sm leading-6 text-slate-400 line-through'}>{memory.content}</p><div className="mt-2 flex gap-3 text-xs font-bold text-slate-400"><button type="button" onClick={() => renameAgentMemory(memory)}>修改</button><button type="button" onClick={() => toggleAgentMemory(memory)}>{memory.status === 'ACTIVE' ? '停用' : '启用'}</button><button type="button" onClick={() => deleteAgentMemory(memory)} className="text-red-400">删除</button></div></div>)}</div>}</section><section>
+          <h3 className="mb-2 text-xs font-black text-slate-400">个人经历</h3>
+          {agentExperiences.length === 0 ? <p className="py-4 text-center text-sm font-semibold text-slate-400">还没有已记录的个人经历。</p> : <div className="space-y-2">
+            {agentExperiences.map(experience => <article key={experience.id} className="rounded-xl border border-black/[0.06] bg-[#fbfaf7] p-3">
+              <p className="text-sm font-bold text-slate-700">{experience.title}</p>
+              <p className={experience.status === 'DISABLED' ? 'mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-400 line-through' : 'mt-1 whitespace-pre-wrap text-sm leading-6 text-slate-500'}>{experience.summary}</p>
+              <p className="mt-2 break-all text-[11px] font-semibold text-slate-400">
+                {({ CHAT: '单聊', TASK: '任务', DISCUSSION: '讨论', RELAY: '接力', GAME: '游戏', COORDINATION: '成员协作' } as Record<string, string>)[experience.sourceType || 'TASK'] || '空间活动'}
+                {experience.spaceId ? ' · 来源空间：' + experience.spaceId : ''} · {new Date(experience.createdAt).toLocaleDateString('zh-CN')}
+                {experience.edited ? ' · 已纠正' : ''}
+              </p>
+              <div className="mt-2 flex gap-3 text-xs font-bold text-slate-400">
+                <button type="button" onClick={() => setEditExperience(experience)}>纠正</button>
+                <button type="button" onClick={() => setExperienceAction({ experience, status: experience.status === 'DISABLED' ? 'ACTIVE' : 'DISABLED' })}>{experience.status === 'DISABLED' ? '启用' : '停用'}</button>
+                <button type="button" onClick={() => setExperienceAction({ experience, status: 'DELETED' })} className="text-red-400">遗忘</button>
+              </div>
+            </article>)}
+          </div>}
+        </section></>}</div>
       </div>
     </div>
   );
   return (
     <>
+      <TextInputDialog
+        open={Boolean(editExperience)}
+        title="纠正个人经历"
+        label="经历内容（最多 2000 字）"
+        defaultValue={editExperience?.summary || ''}
+        loading={savingExperience}
+        onCancel={() => setEditExperience(null)}
+        onConfirm={summary => editExperience ? updateExperience(editExperience, { summary }) : undefined}
+      />
+      <ConfirmDialog
+        open={Boolean(experienceAction)}
+        title={experienceAction?.status === 'DELETED' ? '遗忘这段经历？' : experienceAction?.status === 'ACTIVE' ? '启用这段经历？' : '停用这段经历？'}
+        description={experienceAction?.status === 'DELETED' ? '此经历将不再被读取，重复同步也不会恢复。原始聊天和空间记录仍然保留。' : '这只影响当前 Agent 后续是否读取这段经历。'}
+        confirmText="确认"
+        cancelText="取消"
+        destructive={experienceAction?.status === 'DELETED'}
+        loading={savingExperience}
+        onCancel={() => setExperienceAction(null)}
+        onConfirm={() => experienceAction ? updateExperience(experienceAction.experience, { status: experienceAction.status }) : undefined}
+      />
       <TextInputDialog
         open={Boolean(renameMemoryTarget)}
         title="修改 Agent 记忆"
@@ -494,7 +572,7 @@ export default function AgentDetailsPanel({
               <span>{viewMode === 'companion' ? '💬 对话' : '🌸 陪伴'}</span>
             </button>
           )}
-          <button
+          {memoryEnabled && <button
             type="button"
             onClick={openMemoryDrawer}
             className="inline-flex items-center gap-1 rounded-full border border-amber-200/80 bg-amber-50/80 px-2.5 py-1.5 text-xs font-black text-amber-800 shadow-2xs cursor-pointer"
@@ -502,7 +580,7 @@ export default function AgentDetailsPanel({
           >
             <Sparkles size={12} className="text-amber-600 fill-amber-600" />
             <span>{agentMemories.length}</span>
-          </button>
+          </button>}
           <button
             onClick={onOpenMobileDetails}
             className="rounded-full border border-black/[0.06] bg-white px-3 py-2 text-xs font-black text-slate-600 shadow-sm cursor-pointer"

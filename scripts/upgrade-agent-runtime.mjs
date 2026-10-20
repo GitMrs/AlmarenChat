@@ -8,6 +8,12 @@ import Database from 'better-sqlite3';
 const BASELINE_MIGRATION = '20260921180000_add_space_automation_execution_mode';
 const MANUAL_MIGRATION_REPAIRS = [
   {
+    migration: '20261020160000_separate_agent_memory',
+    columns: [{ table: 'AgentExperience', names: ['sourceType', 'status', 'edited'] }],
+    tables: [{ name: 'AgentMemoryItem', columns: ['id', 'userId', 'agentId', 'category', 'content', 'status', 'sourceMessageId', 'createdAt', 'updatedAt'] }],
+    indexes: ['AgentMemoryItem_userId_agentId_status_updatedAt_idx'],
+  },
+  {
     migration: '20260902150000_add_image_model_settings',
     columns: [{ table: 'User', names: ['imageModelEnabled', 'imageModelName', 'imageModelSize'] }],
   },
@@ -409,6 +415,30 @@ function preparePrismaMigrationHistory() {
     if (result.status !== 0) throw new Error(`无法将迁移 ${migration} 登记为基线`);
   }
   return { ...inspection, applied: migrations.length, baseline: BASELINE_MIGRATION };
+}
+
+export function upgradeAgentMemories(db) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS "AgentMemoryItem" (
+      "id" TEXT NOT NULL PRIMARY KEY, "userId" TEXT NOT NULL, "agentId" TEXT NOT NULL,
+      "category" TEXT NOT NULL DEFAULT 'preference', "content" TEXT NOT NULL,
+      "status" TEXT NOT NULL DEFAULT 'ACTIVE', "sourceMessageId" TEXT,
+      "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" DATETIME NOT NULL,
+      FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS "AgentMemoryItem_userId_agentId_status_updatedAt_idx" ON "AgentMemoryItem"("userId", "agentId", "status", "updatedAt");
+  `);
+  const columns = table => db.prepare(`PRAGMA table_info("${table}")`).all().map(column => column.name);
+  if (columns('AssistantMemoryItem').includes('agentId')) db.exec(`
+    INSERT OR IGNORE INTO "AgentMemoryItem" ("id", "userId", "agentId", "category", "content", "status", "sourceMessageId", "createdAt", "updatedAt")
+    SELECT "id", "userId", "agentId", "category", "content", "status", "sourceMessageId", "createdAt", "updatedAt"
+    FROM "AssistantMemoryItem" WHERE "agentId" IS NOT NULL AND trim("agentId") <> '';
+  `);
+  if (columns('AgentExperience').length) {
+    if (!columns('AgentExperience').includes('sourceType')) db.exec(`ALTER TABLE "AgentExperience" ADD COLUMN "sourceType" TEXT NOT NULL DEFAULT 'TASK'`);
+    if (!columns('AgentExperience').includes('status')) db.exec(`ALTER TABLE "AgentExperience" ADD COLUMN "status" TEXT NOT NULL DEFAULT 'ACTIVE'`);
+    if (!columns('AgentExperience').includes('edited')) db.exec(`ALTER TABLE "AgentExperience" ADD COLUMN "edited" BOOLEAN NOT NULL DEFAULT false`);
+  }
 }
 
 const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
@@ -1400,6 +1430,7 @@ try {
     `);
   })();
 
+  upgradeAgentMemories(db);
   const migratedWechatStrategies = migrateWechatSharedStrategies();
 
   console.log(`Space and Agent Runtime database upgrade completed. Migrated ${migratedWechatStrategies} WeChat shared strategies.`);

@@ -6,6 +6,12 @@ import { createDiscussionRuntime } from './discussion-runtime.mjs';
 function fixture(overrides = {}) {
   const db = new Database(':memory:');
   db.exec(`
+    CREATE TABLE "AgentExperience" (
+      "id" TEXT PRIMARY KEY, "userId" TEXT, "agentId" TEXT, "spaceId" TEXT, "taskId" TEXT,
+      "title" TEXT, "summary" TEXT, "outcome" TEXT, "sourceType" TEXT,
+      "status" TEXT DEFAULT 'ACTIVE', "edited" INTEGER DEFAULT 0, "createdAt" TEXT, "updatedAt" TEXT,
+      UNIQUE("userId", "agentId", "taskId")
+    );
     CREATE TABLE "Space" ("id" TEXT PRIMARY KEY, "updatedAt" TEXT);
     CREATE TABLE "SpaceMessage" (
       "id" TEXT PRIMARY KEY, "spaceId" TEXT, "role" TEXT, "speakerAgentId" TEXT,
@@ -99,8 +105,8 @@ test('discussion runtime completes with a coordinator summary and project memory
   const discussion = insertDiscussion(current.db, {
     currentRound: 3,
     transcript: JSON.stringify([
-      { round: 1, agentName: '前端', content: '建议 A' },
-      { round: 2, agentName: '产品', content: '同意 A' },
+      { round: 1, agentId: 'frontend', agentName: '前端', content: '建议 A' },
+      { round: 2, agentId: 'product', agentName: '产品', content: '同意 A' },
     ]),
   });
   await current.runtime.processDiscussion(discussion);
@@ -110,6 +116,10 @@ test('discussion runtime completes with a coordinator summary and project memory
   assert.equal(saved.result, '协调者总结');
   assert.equal(current.db.prepare('SELECT "speakerAgentId" FROM "SpaceMessage"').get().speakerAgentId, 'space-coordinator');
   assert.equal(current.memories.length, 1);
+  assert.deepEqual(current.db.prepare('SELECT "agentId" FROM "AgentExperience" ORDER BY "agentId"').all().map(row => row.agentId), ['frontend', 'product']);
+  assert.match(current.db.prepare(`SELECT "summary" FROM "AgentExperience" WHERE "agentId" = 'frontend'`).get().summary, /我的实际参与记录：建议 A/);
+  await current.runtime.processDiscussion(saved);
+  assert.equal(current.db.prepare('SELECT COUNT(*) count FROM "AgentExperience"').get().count, 2);
   current.db.close();
 });
 

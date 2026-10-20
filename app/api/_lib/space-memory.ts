@@ -59,7 +59,7 @@ export async function rebuildSpaceMemory(spaceId: string) {
     const attachments = Array.isArray(message.attachments) ? message.attachments : [];
     const structured = attachments.find((attachment) => (
       attachment && typeof attachment === 'object'
-      && ['task_proposal', 'run_result', 'space_memory_episode'].includes(String((attachment as { type?: unknown }).type || ''))
+      && ['task_proposal', 'run_result', 'space_memory_episode', 'discussion_summary', 'relay_summary'].includes(String((attachment as { type?: unknown }).type || ''))
     ));
     if (!structured || typeof structured !== 'object') return [];
     const type = String((structured as { type?: unknown }).type || '');

@@ -40,6 +40,7 @@ model User {
   chatUsages    DailyChatUsage[]
   agentRuns     AgentRun[]
   agentExperiences AgentExperience[]
+  agentMemories AgentMemoryItem[]
   agentMemoryRules AgentMemoryRule[]
   agentModelSettings AgentModelSetting[]
   discussions   SpaceDiscussion[]
@@ -89,6 +90,21 @@ model AgentModelSetting {
   @@unique([userId, agentId])
 }
 
+model AgentMemoryItem {
+  id              String   @id @default(uuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agentId         String
+  category        String   @default("preference")
+  content         String
+  status          String   @default("ACTIVE")
+  sourceMessageId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([userId, agentId, status, updatedAt])
+}
+
 model AgentExperience {
   id        String   @id @default(uuid())
   userId    String
@@ -100,6 +116,9 @@ model AgentExperience {
   title     String
   summary   String
   outcome   String
+  sourceType String @default("TASK")
+  status    String @default("ACTIVE")
+  edited    Boolean @default(false)
   tags      Json?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

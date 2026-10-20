@@ -8,6 +8,12 @@ import { createRelayRuntime } from './relay-runtime.mjs';
 function fixture({ action = { row: 8, column: 8, comment: '占据中心' }, runLoop, completeMessage } = {}) {
   const db = new Database(':memory:');
   db.exec(`
+    CREATE TABLE "AgentExperience" (
+      "id" TEXT PRIMARY KEY, "userId" TEXT, "agentId" TEXT, "spaceId" TEXT, "taskId" TEXT,
+      "title" TEXT, "summary" TEXT, "outcome" TEXT, "sourceType" TEXT,
+      "status" TEXT DEFAULT 'ACTIVE', "edited" INTEGER DEFAULT 0, "createdAt" TEXT, "updatedAt" TEXT,
+      UNIQUE("userId", "agentId", "taskId")
+    );
     CREATE TABLE "Space" ("id" TEXT PRIMARY KEY, "updatedAt" TEXT);
     CREATE TABLE "SpaceMessage" (
       "id" TEXT PRIMARY KEY, "spaceId" TEXT, "role" TEXT, "speakerAgentId" TEXT,
@@ -36,6 +42,7 @@ function fixture({ action = { row: 8, column: 8, comment: '占据中心' }, runL
     projectRoot: 'C:/workspace',
     completeMessage: completeMessage || (async () => ({ content: '' })),
     loadRunContext: () => ({ agents, model: {} }),
+    persistSpaceMemory: () => {},
     now: () => '2026-09-07T00:00:00.000Z',
     runLoop: runLoop || (async ({ executeTool }) => {
       await executeTool('submit_relay_action', action);
@@ -191,6 +198,11 @@ test('winning action completes the relay and counts the final turn', async () =>
   assert.equal(saved.turnCount, 9);
   assert.match(saved.result, /黑方 获胜/);
   assert.equal(current.db.prepare('SELECT COUNT(*) count FROM "SpaceMessage"').get().count, 1);
+  const experiences = current.db.prepare('SELECT * FROM "AgentExperience"').all();
+  assert.equal(experiences.length, 1);
+  assert.equal(experiences[0].agentId, 'black');
+  assert.equal(experiences[0].sourceType, 'GAME');
+  assert.match(experiences[0].summary, /黑方 获胜/);
   current.db.close();
 });
 
@@ -273,6 +285,7 @@ test('generic collaboration ends with one visible coordinator summary', async ()
   assert.equal(saved.result, '协调者验收：方案已经收敛。');
   const messages = current.db.prepare('SELECT * FROM "SpaceMessage" ORDER BY "createdAt", "rowid"').all();
   assert.deepEqual(messages.map((message) => message.speakerAgentId), ['black', 'space-coordinator']);
+  assert.deepEqual(current.db.prepare('SELECT "agentId" FROM "AgentExperience"').all().map(row => row.agentId), ['black']);
   current.db.close();
 });
 

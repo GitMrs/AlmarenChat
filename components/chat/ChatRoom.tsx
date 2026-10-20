@@ -21,7 +21,7 @@ import { getBuiltInAgents } from '@/lib/agents-data';
 import { getCompanionCharacterId } from '@/lib/companion/agents';
 import { companionReplyInstruction, createCompanionReplyParser } from '@/lib/companion/reply-protocol.mjs';
 import type { CompanionReply } from '@/lib/companion/reply';
-import { assistant as assistantApi, generateConversationImage, streamChat, conversations as conversationsApi, agents as agentsApi, user as userApi, uploads } from '@/lib/api';
+import { agentMemories, generateConversationImage, streamChat, conversations as conversationsApi, agents as agentsApi, user as userApi, uploads } from '@/lib/api';
 import {
   DEFAULT_BROWSER_MODEL_CONFIG,
   readBrowserModelConfigForScope,
@@ -117,7 +117,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
   const [temporaryConversations, setTemporaryConversations] = useState<{ id: string; title?: string | null; archived: boolean }[]>([]);
   const [renameConversationTarget, setRenameConversationTarget] = useState<{ id: string; title: string } | null>(null);
   const [renamingConversation, setRenamingConversation] = useState(false);
-  const [pendingMemorySuggestions, setPendingMemorySuggestions] = useState<{ suggestions: MemorySuggestion[]; selected: Set<number> } | null>(null);
+  const [pendingMemorySuggestions, setPendingMemorySuggestions] = useState<{ agentId: string; conversationId: string; suggestions: MemorySuggestion[]; selected: Set<number> } | null>(null);
   const [savingMemorySuggestions, setSavingMemorySuggestions] = useState(false);
   const [pendingDeleteMessage, setPendingDeleteMessage] = useState<ChatMessage | null>(null);
   const [pendingDeleteConversation, setPendingDeleteConversation] = useState<{ id: string; title: string } | null>(null);
@@ -441,13 +441,14 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
   };
 
   const extractAgentMemorySuggestions = async (userMessage: string, assistantMessage: string, targetConversationId: string) => {
-    if (!displayAgent?.id || !shouldExtractMemorySuggestion(userMessage)) return;
+    if (conversationMode !== 'MAIN' || !displayAgent?.id || !shouldExtractMemorySuggestion(userMessage)) return;
+    const requestChat = activeChatRef.current;
     const payload = { mode: 'single' as const, userMessage, assistantMessage, conversationId: targetConversationId, agentId: displayAgent.id };
     let result;
     if (modelSource !== 'OLLAMA') {
-      result = await assistantApi.extractMemories(payload);
+      result = await agentMemories.extract(displayAgent.id, payload);
     } else {
-      const prepared = await assistantApi.extractMemories({ ...payload, localOnly: true });
+      const prepared = await agentMemories.extract(displayAgent.id, { ...payload, localOnly: true });
       if (!prepared.modelMessages?.length) return;
       const stream = await streamBrowserModel({ config: { ...browserModelConfig, source: modelSource }, messages: prepared.modelMessages });
       const reader = stream.getReader();
@@ -458,20 +459,20 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
         if (done) break;
         localResponse += decoder.decode(value, { stream: true });
       }
-      result = await assistantApi.extractMemories({ ...payload, localResponse });
+      result = await agentMemories.extract(displayAgent.id, { ...payload, localResponse });
     }
-    if (result.suggestions?.length) {
-      setPendingMemorySuggestions({ suggestions: result.suggestions, selected: new Set(result.suggestions.map((_, index) => index)) });
+    if (result.suggestions?.length && requestChat === activeChatRef.current) {
+      setPendingMemorySuggestions({ agentId: displayAgent.id, conversationId: targetConversationId, suggestions: result.suggestions, selected: new Set(result.suggestions.map((_, index) => index)) });
     }
   };
 
   const saveMemorySuggestions = async () => {
-    if (!pendingMemorySuggestions || !displayAgent?.id || savingMemorySuggestions) return;
+    if (conversationMode !== 'MAIN' || !pendingMemorySuggestions || pendingMemorySuggestions.conversationId !== conversationId || !displayAgent?.id || savingMemorySuggestions) return;
     setSavingMemorySuggestions(true);
     try {
       await Promise.all([...pendingMemorySuggestions.selected].map((index) => {
         const suggestion = pendingMemorySuggestions.suggestions[index];
-        return assistantApi.addMemory({ content: suggestion.content, category: suggestion.category, agentId: displayAgent.id });
+        return agentMemories.add(pendingMemorySuggestions.agentId, { content: suggestion.content, category: suggestion.category, conversationId: pendingMemorySuggestions.conversationId });
       }));
       setPendingMemorySuggestions(null);
     } finally {
@@ -848,7 +849,10 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
             worldContext = WORLD_EVENTS_UNAVAILABLE_CONTEXT;
           }
         }
-        const systemPrompt = [displayAgent?.systemPrompt, worldContext, isCompanionSend ? companionReplyInstruction : ''].filter(Boolean).join('\n\n');
+        const memoryContext = conversationMode === 'MAIN'
+          ? (await agentMemories.context(displayAgent?.id || agentId, localConversationId, content, controller.signal)).context
+          : '';
+        const systemPrompt = [displayAgent?.systemPrompt, memoryContext, worldContext, isCompanionSend ? companionReplyInstruction : ''].filter(Boolean).join('\n\n');
         if (systemPrompt) {
           modelMessages.unshift({ role: 'system', content: systemPrompt });
         }
@@ -1119,7 +1123,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
         top: viewportOffsetTop ? `${viewportOffsetTop}px` : 0,
       }}
     >
-      {pendingMemorySuggestions && (
+      {conversationMode === 'MAIN' && pendingMemorySuggestions && pendingMemorySuggestions.agentId === displayAgent?.id && pendingMemorySuggestions.conversationId === conversationId && (
         <MemorySuggestionDialog
           suggestions={pendingMemorySuggestions.suggestions}
           selected={pendingMemorySuggestions.selected}

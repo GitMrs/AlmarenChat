@@ -11,7 +11,7 @@ import { createModelClient, resolveModelName } from '@/lib/model-client';
 import { reserveChatQuota } from '@/lib/chat-quota';
 import { loadAgentMemoryContext } from '@/lib/agent-memory';
 import { currentTimeContext } from '@/lib/current-time-context.mjs';
-import { buildUserMemoryContext, loadUserMemoryItems } from '@/lib/personal-assistant/user-memory';
+import { archiveAgentChat } from '@/app/api/_lib/agent-personal-memory';
 import { compressConversationContext, estimateMessagesTokens } from '@/lib/context-compression';
 import { conversationContextTargetTokens } from '@/lib/model-limits.mjs';
 import { loadAgentWorldContext } from '@/lib/world/context';
@@ -80,7 +80,7 @@ export async function POST(request: Request) {
     let conversationSettings = conversationId
       ? await prisma.conversation.findFirst({
           where: { id: conversationId, userId, kind: 'AGENT' },
-          select: { contextMessageLimit: true, agentId: true },
+          select: { contextMessageLimit: true, agentId: true, agentMode: true },
         })
       : null;
     if (conversationId && !conversationSettings) {
@@ -141,7 +141,7 @@ export async function POST(request: Request) {
     if (!conversationSettings && resolvedConversationId) {
       conversationSettings = await prisma.conversation.findFirst({
           where: { id: resolvedConversationId, userId, kind: 'AGENT' },
-          select: { contextMessageLimit: true, agentId: true },
+          select: { contextMessageLimit: true, agentId: true, agentMode: true },
         });
     }
     if (resolvedConversationId && !conversationSettings) {
@@ -190,12 +190,13 @@ export async function POST(request: Request) {
     const client = createModelClient(modelConfig.apiBaseUrl, modelConfig.apiKey);
     const model = resolveModelName(modelConfig.modelName);
 
-    const [employeeMemory, userMemories, worldContext] = await Promise.all([
-      loadAgentMemoryContext({ userId, agentId, query: textMessage }),
-      loadUserMemoryItems(userId, agentId),
+    const memoryAgentId = conversationSettings?.agentId || agentId;
+    const usesAgentMemory = conversationSettings?.agentMode === 'MAIN';
+    const [employeeMemory, worldContext] = await Promise.all([
+      usesAgentMemory ? loadAgentMemoryContext({ userId, agentId: memoryAgentId, query: textMessage }) : Promise.resolve(''),
       loadAgentWorldContext({ agentId: conversationSettings?.agentId || agentId, query: textMessage, history: normalizedHistory }),
     ]);
-    let finalContext = [currentTimeContext(), context, buildUserMemoryContext(userMemories, textMessage), employeeMemory, worldContext].filter(Boolean).join('\n\n');
+    let finalContext = [currentTimeContext(), context, employeeMemory, worldContext].filter(Boolean).join('\n\n');
     if (knowledgeEnabled && agentId && textMessage.trim()) {
       try {
         const hits = await getKnowledgeHits(agentId, textMessage);
@@ -270,6 +271,9 @@ export async function POST(request: Request) {
             });
           }
           if (parser) emit({ type: 'companion_cue', emotion: parser.emotion });
+          if (usesAgentMemory && resolvedConversationId && memoryAgentId) {
+            await archiveAgentChat(userId, memoryAgentId, resolvedConversationId).catch(error => console.warn('[agent-memory] chat archive failed', error.message));
+          }
           controller.close();
         } catch (error) {
           if (!abortController.signal.aborted) {

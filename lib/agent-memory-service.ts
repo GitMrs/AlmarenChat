@@ -50,13 +50,14 @@ export async function synchronizeAgentMemory(userId: string, agentId: string) {
 
   await prisma.$transaction(async (tx) => {
     for (const task of tasks) {
+      const existing = await tx.agentExperience.findUnique({ where: { userId_agentId_taskId: { userId, agentId, taskId: task.id } } });
       await tx.agentExperience.upsert({
         where: { userId_agentId_taskId: { userId, agentId, taskId: task.id } },
         update: {
           spaceId: task.run.spaceId,
           runId: task.run.id,
           title: cleanText(task.title, 160),
-          summary: cleanText(task.result, 2_000),
+          ...(!existing?.edited ? { summary: cleanText(task.result, 2_000) } : {}),
           outcome: 'ACCEPTED',
           tags: [task.mode, task.skillId].filter(Boolean),
         },

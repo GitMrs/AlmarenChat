@@ -16,12 +16,12 @@ async function isEmployeeAgent(agentId: string) {
 async function responseFor(userId: string, agentId: string) {
   const [rules, experiences] = await Promise.all([
     prisma.agentMemoryRule.findMany({
-      where: { userId, agentId },
+      where: { userId, agentId, status: { not: 'DELETED' } },
       orderBy: { updatedAt: 'desc' },
       take: 100,
     }),
     prisma.agentExperience.findMany({
-      where: { userId, agentId },
+      where: { userId, agentId, status: { not: 'DELETED' } },
       orderBy: { updatedAt: 'desc' },
       take: 50,
     }),
@@ -74,7 +74,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ ag
     const action = String(body.action || '');
     const id = String(body.id || '');
     if (!ACTIONS.has(action) || !id) return NextResponse.json({ error: '不支持的成长操作' }, { status: 400 });
-    const existing = await prisma.agentMemoryRule.findFirst({ where: { id, userId, agentId } });
+    const existing = await prisma.agentMemoryRule.findFirst({ where: { id, userId, agentId, status: { not: 'DELETED' } } });
     if (!existing) return NextResponse.json({ error: '员工经验不存在' }, { status: 404 });
     const editable = ['approve', 'update'].includes(action)
       ? manualAgentMemoryRule({
@@ -109,7 +109,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ a
       return NextResponse.json({ error: '普通 Agent 不支持员工记忆' }, { status: 400 });
     }
     const id = new URL(request.url).searchParams.get('id') || '';
-    const result = await prisma.agentMemoryRule.deleteMany({ where: { id, userId, agentId } });
+    const result = await prisma.agentMemoryRule.updateMany({ where: { id, userId, agentId, status: { not: 'DELETED' } }, data: { status: 'DELETED' } });
     if (result.count !== 1) return NextResponse.json({ error: '员工经验不存在' }, { status: 404 });
     return NextResponse.json(await responseFor(userId, agentId));
   } catch (error: any) {

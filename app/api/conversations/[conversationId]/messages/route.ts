@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
+import { archiveAgentChat } from '@/app/api/_lib/agent-personal-memory';
 
 export async function GET(
   request: Request,
@@ -76,6 +77,10 @@ export async function POST(
       where: { id: conversationId },
       data: { updatedAt: new Date() },
     });
+
+    if (role === 'assistant' && conversation.agentId) {
+      await archiveAgentChat(userId, conversation.agentId, conversationId).catch(error => console.warn('[agent-memory] chat archive failed', error));
+    }
 
     return NextResponse.json({ message });
   } catch (e: any) {

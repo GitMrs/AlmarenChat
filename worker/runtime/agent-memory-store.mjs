@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { agentMemoryContext } from '../../lib/agent-memory-policy.mjs';
+import { personalMemoryContext, buildSpaceExperience } from '../../lib/agent-personal-memory.mjs';
 
 function cleanText(value, limit) {
   return String(value || '').replace(/\s+/g, ' ').trim().slice(0, limit);
@@ -10,35 +11,36 @@ export function loadAgentMemoryContextSync(db, { userId, agentId, query }) {
   const agent = db.prepare(
     `SELECT "agentType" FROM "Agent" WHERE "id" = ? LIMIT 1`
   ).get(agentId);
-  if (!agent) return '';
-  const rules = agent.agentType === 'EMPLOYEE' ? db.prepare(
+  const memories = db.prepare(
+    `SELECT "category", "content" FROM "AgentMemoryItem" WHERE "userId" = ? AND "agentId" = ? AND "status" = 'ACTIVE' ORDER BY "updatedAt" DESC LIMIT 60`
+  ).all(userId, agentId);
+  const rules = agent?.agentType === 'EMPLOYEE' ? db.prepare(
     `SELECT "category", "title", "instruction", "status", "evidenceCount", "updatedAt"
      FROM "AgentMemoryRule"
      WHERE "userId" = ? AND "agentId" = ? AND "status" = 'ACTIVE'
      ORDER BY "updatedAt" DESC LIMIT 60`
   ).all(userId, agentId) : [];
   const experiences = db.prepare(
-    `SELECT "title", "summary", "outcome", "createdAt"
+    `SELECT "title", "summary", "outcome", "spaceId", "sourceType", "createdAt"
      FROM "AgentExperience"
-     WHERE "userId" = ? AND "agentId" = ? AND "outcome" = 'ACCEPTED'
+     WHERE "userId" = ? AND "agentId" = ? AND "outcome" = 'ACCEPTED' AND "status" = 'ACTIVE'
      ORDER BY "updatedAt" DESC LIMIT 30`
   ).all(userId, agentId);
-  return agentMemoryContext({ rules, experiences, query });
+  return [personalMemoryContext(memories, query), agentMemoryContext({ rules, experiences, query })].filter(Boolean).join('\n\n');
 }
 
 export function recordAcceptedAgentExperiences(db, { run, tasks, accepted, timestamp }) {
-  const agentExists = db.prepare(`SELECT 1 FROM "Agent" WHERE "id" = ? LIMIT 1`);
   const statement = db.prepare(
     `INSERT INTO "AgentExperience"
       ("id", "userId", "agentId", "spaceId", "runId", "taskId", "title", "summary", "outcome", "tags", "createdAt", "updatedAt")
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT("userId", "agentId", "taskId") DO UPDATE SET
        "spaceId" = excluded."spaceId", "runId" = excluded."runId", "title" = excluded."title",
-       "summary" = excluded."summary", "outcome" = excluded."outcome", "tags" = excluded."tags",
+       "summary" = CASE WHEN "AgentExperience"."edited" THEN "AgentExperience"."summary" ELSE excluded."summary" END, "outcome" = excluded."outcome", "tags" = excluded."tags",
        "updatedAt" = excluded."updatedAt"`
   );
   for (const task of tasks) {
-    if (!task?.agentId || !agentExists.get(task.agentId) || !cleanText(task.result, 1)) continue;
+    if (!task?.agentId || task.agentId === 'space-coordinator' || !cleanText(task.result, 1)) continue;
     statement.run(
       randomUUID(),
       run.userId,
@@ -53,5 +55,18 @@ export function recordAcceptedAgentExperiences(db, { run, tasks, accepted, times
       timestamp,
       timestamp
     );
+  }
+}
+
+export function recordSpaceAgentExperiences(db, { userId, spaceId, sourceType, sourceId, topic, summary, entries, timestamp }) {
+  const statement = db.prepare(
+    `INSERT INTO "AgentExperience" ("id", "userId", "agentId", "spaceId", "taskId", "title", "summary", "outcome", "sourceType", "createdAt", "updatedAt")
+     VALUES (?, ?, ?, ?, ?, ?, ?, 'ACCEPTED', ?, ?, ?)
+     ON CONFLICT("userId", "agentId", "taskId") DO UPDATE SET "title" = excluded."title", "summary" = CASE WHEN "AgentExperience"."edited" THEN "AgentExperience"."summary" ELSE excluded."summary" END, "updatedAt" = excluded."updatedAt"`
+  );
+  for (const agentId of new Set(entries.map(entry => entry.agentId).filter(id => id && id !== 'space-coordinator'))) {
+    const episode = buildSpaceExperience({ spaceId, sourceType, sourceId, topic, summary, entries, agentId });
+    if (!episode) continue;
+    statement.run(randomUUID(), userId, agentId, spaceId, episode.taskId, episode.title, episode.summary, sourceType, timestamp, timestamp);
   }
 }

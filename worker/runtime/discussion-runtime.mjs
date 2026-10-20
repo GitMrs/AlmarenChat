@@ -8,6 +8,7 @@ import {
 import { runToolLoop } from '../../lib/agent-runtime/tool-loop.mjs';
 import { chooseNextGroupChatSpeaker, groupChatTurnLimit, nextGroupChatPosition } from '../policies/group-chat-scheduler.mjs';
 import { currentTimeContext } from '../../lib/current-time-context.mjs';
+import { recordSpaceAgentExperiences } from './agent-memory-store.mjs';
 
 const DISCUSSION_READ_TOOLS = new Set(['list_files', 'read_file', 'check_files']);
 const DISCUSSION_RESEARCH_TOOL = {
@@ -144,6 +145,7 @@ export function createDiscussionRuntime({
           '必须分别列出：形成的共识、仍存在的分歧、推荐方案、需要用户决定的问题。',
           '只总结讨论，不创建任务方案，不声称已经执行、写入文件或完成联网之外的操作。',
           context.space.instructions ? `当前空间规则：\n${context.space.instructions}` : '',
+          context.projectMemory || '',
         ].filter(Boolean).join('\n\n'),
       },
       { role: 'user', content: `讨论主题：${discussion.topic}\n\n成员讨论：\n${transcriptText}` },
@@ -171,6 +173,13 @@ export function createDiscussionRuntime({
         at: timestamp,
         refId: discussion.id,
       }], timestamp);
+      recordSpaceAgentExperiences(db, {
+        userId: discussion.userId, spaceId: discussion.spaceId,
+        sourceType: 'DISCUSSION', sourceId: discussion.id, topic: discussion.topic,
+        summary: content,
+        entries: transcript.filter(entry => entry.agentId && entry.content && !entry.error),
+        timestamp,
+      });
       return true;
     })();
     if (!saved && isDiscussionCancelRequested(discussion.id)) cancelDiscussion(discussion.id);
@@ -228,6 +237,7 @@ export function createDiscussionRuntime({
                 currentTimeContext(),
                 currentAgent.systemPrompt || currentAgent.description || `你是 ${currentAgent.name}。`,
                 currentAgent.memoryContext || '',
+                context.projectMemory || '',
                 `你正在以“${currentAgent.name}”的身份参加空间多人讨论。${roundInstruction}`,
                 handoffInstruction,
                 '这是轻量多人闲聊，不是长篇评审。请控制在 300～600 字，直接回应前面观点；不要生成大表格、长篇背景复述或重复已经说过的内容。',
