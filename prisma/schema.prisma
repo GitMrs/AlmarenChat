@@ -41,6 +41,7 @@ model User {
   agentRuns     AgentRun[]
   agentExperiences AgentExperience[]
   agentMemoryRules AgentMemoryRule[]
+  agentModelSettings AgentModelSetting[]
   discussions   SpaceDiscussion[]
   relays        SpaceRelay[]
   personalAssistant PersonalAssistantProfile?
@@ -73,6 +74,19 @@ model Agent {
   updatedAt    DateTime       @updatedAt
 
   knowledgeDocuments KnowledgeDocument[]
+}
+
+model AgentModelSetting {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agentId    String
+  modelName  String?
+  apiBaseUrl String?
+  apiKey     String?
+  updatedAt  DateTime @updatedAt
+
+  @@unique([userId, agentId])
 }
 
 model AgentExperience {

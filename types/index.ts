@@ -50,6 +50,18 @@ export interface Agent {
   companionCharacterId?: string | null;
 }
 
+export interface AgentModelFields {
+  modelName: string | null;
+  apiBaseUrl: string | null;
+  apiKey: string | null;
+}
+
+export interface AgentModelSettingsResponse {
+  settings: AgentModelFields | null;
+  inherited: { modelName: string | null; apiBaseUrl: string | null; source: string };
+  effective: { modelName: string | null; apiBaseUrl: string | null; source: string };
+}
+
 export interface AgentMemoryRule {
   id: string;
   agentId: string;

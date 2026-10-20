@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import { randomUUID } from 'node:crypto';
+import { resolveAgentModelConfig } from '../lib/agent-model-config.mjs';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -355,6 +356,9 @@ function loadRunContext(run) {
   const memberships = db.prepare(
     'SELECT "agentId", "roleName", "modelName", "apiBaseUrl", "apiKey" FROM "SpaceMember" WHERE "spaceId" = ? ORDER BY "sortOrder" ASC'
   ).all(run.spaceId);
+  const agentSettings = new Map(db.prepare(
+    'SELECT "agentId", "modelName", "apiBaseUrl", "apiKey" FROM "AgentModelSetting" WHERE "userId" = ?'
+  ).all(run.userId).map(setting => [setting.agentId, setting]));
   const customIds = memberships.map((member) => member.agentId).filter((id) => !builtInAgents.has(id));
   const customAgents = new Map();
   if (customIds.length > 0) {
@@ -382,11 +386,12 @@ function loadRunContext(run) {
     .filter(Boolean)
     .map((agent) => {
       const member = memberByAgentId.get(agent.id);
-      const hasMemberModel = Boolean(member?.modelName?.trim() || member?.apiBaseUrl?.trim() || member?.apiKey?.trim());
-      const agentModel = hasMemberModel ? {
-        apiKey: member?.apiKey?.trim() || defaultModel.apiKey,
-        baseURL: member?.apiBaseUrl?.trim() || defaultModel.baseURL,
-        name: member?.modelName?.trim() || defaultModel.name,
+      const config = resolveAgentModelConfig({ user, agentSetting: agentSettings.get(agent.id), member,
+        defaults: { apiKey: defaultModel.apiKey, apiBaseUrl: defaultModel.baseURL, modelName: defaultModel.name } });
+      const agentModel = ['SPACE', 'AGENT'].includes(config.source) ? {
+        apiKey: config.apiKey,
+        baseURL: config.apiBaseUrl,
+        name: config.modelName,
         contextWindow: defaultModel.contextWindow,
       } : null;
       return {

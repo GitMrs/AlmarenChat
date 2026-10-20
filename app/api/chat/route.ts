@@ -15,6 +15,7 @@ import { buildUserMemoryContext, loadUserMemoryItems } from '@/lib/personal-assi
 import { compressConversationContext, estimateMessagesTokens } from '@/lib/context-compression';
 import { conversationContextTargetTokens } from '@/lib/model-limits.mjs';
 import { loadAgentWorldContext } from '@/lib/world/context';
+import { loadAgentModelSetting, resolveUserModelConfig } from '@/app/api/_lib/agent-model';
 
 const TEXT_CHAT_COST = 1;
 const IMAGE_CHAT_COST = 3;
@@ -43,9 +44,6 @@ export async function POST(request: Request) {
       message,
       history,
       context,
-      apiBaseUrl,
-      apiKey,
-      modelName,
       conversationId,
       agentId,
       agentSnapshot,
@@ -79,23 +77,23 @@ export async function POST(request: Request) {
     if (!userSettings) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-    const usesCustomModel = Boolean(
-      userSettings.customModelEnabled &&
-        userSettings.apiBaseUrl &&
-        userSettings.apiKey &&
-        userSettings.modelName &&
-        apiBaseUrl &&
-        apiKey &&
-        modelName
-    );
-    const quotaCost = imageAttachments.length > 0 ? IMAGE_CHAT_COST : TEXT_CHAT_COST;
-
+    let conversationSettings = conversationId
+      ? await prisma.conversation.findFirst({
+          where: { id: conversationId, userId, kind: 'AGENT' },
+          select: { contextMessageLimit: true, agentId: true },
+        })
+      : null;
+    if (conversationId && !conversationSettings) {
+      return NextResponse.json({ error: 'Conversation not found' }, { status: 404 });
+    }
+    const agentModelSetting = await loadAgentModelSetting(userId, conversationSettings?.agentId || agentId);
+    const modelConfig = resolveUserModelConfig(userSettings, agentModelSetting);
     const quota = await reserveChatQuota({
       userId,
       email: userSettings.email,
       dailyChatLimit: userSettings.dailyChatLimit,
-      usesCustomModel,
-      cost: quotaCost,
+      usesCustomModel: modelConfig.usesCustomModel,
+      cost: imageAttachments.length > 0 ? IMAGE_CHAT_COST : TEXT_CHAT_COST,
     });
     if (quota && !quota.allowed) {
       return NextResponse.json(
@@ -103,7 +101,6 @@ export async function POST(request: Request) {
         { status: 429 }
       );
     }
-
     const requestedContextLimit =
       contextMessageLimit !== undefined && Number.isFinite(Number(contextMessageLimit))
         ? Math.max(1, Math.min(80, Math.round(Number(contextMessageLimit))))
@@ -141,12 +138,12 @@ export async function POST(request: Request) {
       resolvedConversationId = conversation.id;
     }
 
-    const conversationSettings = resolvedConversationId
-      ? await prisma.conversation.findFirst({
+    if (!conversationSettings && resolvedConversationId) {
+      conversationSettings = await prisma.conversation.findFirst({
           where: { id: resolvedConversationId, userId, kind: 'AGENT' },
           select: { contextMessageLimit: true, agentId: true },
-        })
-      : null;
+        });
+    }
     if (resolvedConversationId && !conversationSettings) {
       return NextResponse.json({ error: 'Conversation not found' }, { status: 404 });
     }
@@ -171,7 +168,7 @@ export async function POST(request: Request) {
       content: String(msg.content || ''),
     }));
     const historyTargetTokens = conversationContextTargetTokens(
-      userSettings.customModelEnabled ? userSettings.modelName : '',
+      modelConfig.modelName,
       userSettings.modelContextWindow
     );
     const sourceHistory = estimateMessagesTokens(normalizedHistory) > historyTargetTokens
@@ -190,8 +187,8 @@ export async function POST(request: Request) {
         role: msg.role === 'user' ? ('user' as const) : ('assistant' as const),
         content: msg.content,
       }));
-    const client = createModelClient(apiBaseUrl, apiKey);
-    const model = resolveModelName(modelName);
+    const client = createModelClient(modelConfig.apiBaseUrl, modelConfig.apiKey);
+    const model = resolveModelName(modelConfig.modelName);
 
     const [employeeMemory, userMemories, worldContext] = await Promise.all([
       loadAgentMemoryContext({ userId, agentId, query: textMessage }),

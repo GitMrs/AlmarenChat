@@ -18,13 +18,14 @@ import {
 } from 'lucide-react';
 import Avatar from '@/components/shared/Avatar';
 import ModelPicker from '@/components/shared/ModelPicker';
-import { user as userApi } from '@/lib/api';
-import type { Agent, SpaceMember } from '@/types';
+import { agents as agentsApi, user as userApi } from '@/lib/api';
+import type { Agent, AgentModelSettingsResponse, SpaceMember } from '@/types';
 
 interface SpaceMemberModelDialogProps {
   open: boolean;
   member: SpaceMember | null;
-  agent: Agent | null;
+  agent: Pick<Agent, 'id' | 'name' | 'avatar' | 'category' | 'description'> | null;
+  scope?: 'agent' | 'space';
   onClose: () => void;
   onSave: (data: {
     modelName: string | null;
@@ -46,6 +47,7 @@ export default function SpaceMemberModelDialog({
   open,
   member,
   agent,
+  scope = 'space',
   onClose,
   onSave,
 }: SpaceMemberModelDialogProps) {
@@ -65,23 +67,47 @@ export default function SpaceMemberModelDialog({
   // 保存状态
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [profile, setProfile] = useState<AgentModelSettingsResponse | null>(null);
+  const [loadingSettings, setLoadingSettings] = useState(false);
+  const [settingsReady, setSettingsReady] = useState(false);
+  const targetAgentId = member?.agentId || agent?.id;
 
   useEffect(() => {
-    if (open && member) {
-      setApiBaseUrl(member.apiBaseUrl || '');
-      setApiKey(member.apiKey || '');
-      setModelName(member.modelName || '');
+    if (open && targetAgentId) {
+      let cancelled = false;
+      setApiBaseUrl(scope === 'space' ? member?.apiBaseUrl || '' : '');
+      setApiKey(scope === 'space' ? member?.apiKey || '' : '');
+      setModelName(scope === 'space' ? member?.modelName || '' : '');
       setShowKey(false);
       setTestResult(null);
       setError('');
+      setProfile(null);
+      setSettingsReady(false);
+      setLoadingSettings(true);
+      agentsApi.modelSettings(targetAgentId).then(result => {
+        if (cancelled) return;
+        setProfile(result);
+        if (scope === 'agent') {
+          setApiBaseUrl(result.settings?.apiBaseUrl || '');
+          setApiKey(result.settings?.apiKey || '');
+          setModelName(result.settings?.modelName || '');
+        }
+        setSettingsReady(true);
+      }).catch(err => {
+        if (!cancelled) setError(err.message || '模型配置加载失败，请关闭后重试');
+      }).finally(() => { if (!cancelled) setLoadingSettings(false); });
+      return () => { cancelled = true; };
     }
-  }, [open, member]);
+  }, [open, member, targetAgentId, scope]);
 
-  if (!open || !member) return null;
+  if (!open || !targetAgentId) return null;
+  const inherited = scope === 'space' ? profile?.effective : profile?.inherited;
+  const inheritedLabel = inherited?.source === 'AGENT' ? '角色默认' : inherited?.source === 'GLOBAL' ? '个人全局' : '系统默认';
+  const resetLabel = scope === 'space' ? '恢复继承角色默认' : '恢复继承全局默认';
 
   // 测试模型连接
   const handleTestModel = async () => {
-    if (!modelName.trim() || testingModel) return;
+    if (testingModel || !settingsReady) return;
     setTestingModel(true);
     setTestResult(null);
     try {
@@ -89,6 +115,8 @@ export default function SpaceMemberModelDialog({
         apiBaseUrl: apiBaseUrl.trim(),
         apiKey: apiKey.trim(),
         modelName: modelName.trim(),
+        agentId: targetAgentId,
+        inheritAgentModel: scope === 'space',
       });
       setTestResult({
         type: 'success',
@@ -104,8 +132,9 @@ export default function SpaceMemberModelDialog({
     }
   };
 
-  // 恢复跟随全局
+  // 恢复继承上一级配置
   const handleResetToDefault = async () => {
+    if (saving || !settingsReady) return;
     setSaving(true);
     setError('');
     try {
@@ -125,6 +154,7 @@ export default function SpaceMemberModelDialog({
   // 提交保存
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (saving || !settingsReady) return;
     setSaving(true);
     setError('');
     try {
@@ -144,7 +174,7 @@ export default function SpaceMemberModelDialog({
   const isCustomized = Boolean(modelName.trim() || apiBaseUrl.trim() || apiKey.trim());
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/40 p-0 backdrop-blur-xs sm:items-center sm:p-4">
+    <div className="fixed inset-0 z-[80] flex items-end justify-center bg-slate-950/40 p-0 backdrop-blur-xs sm:items-center sm:p-4" role="dialog" aria-modal="true" aria-label={scope === 'agent' ? '角色默认模型配置' : '成员独立模型配置'}>
       <div className="absolute inset-0" onClick={onClose} />
       <div className="relative z-10 flex max-h-[92dvh] w-full max-w-lg flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl sm:rounded-2xl">
         {/* 头部 */}
@@ -154,8 +184,8 @@ export default function SpaceMemberModelDialog({
               <Cpu size={18} />
             </div>
             <div>
-              <h3 className="text-base font-black text-slate-950">成员独立模型配置</h3>
-              <p className="text-xs text-slate-400">仅在当前空间内生效，留空则自动继承个人中心全局配置</p>
+              <h3 className="text-base font-black text-slate-950">{scope === 'agent' ? '角色默认模型配置' : '成员独立模型配置'}</h3>
+              <p className="text-xs text-slate-400">{scope === 'agent' ? '用于你的该角色线上单聊，空间默认继承；留空继承个人全局配置' : '只影响当前空间；留空继承角色默认，再继承个人全局配置'}</p>
             </div>
           </div>
           <button
@@ -174,9 +204,9 @@ export default function SpaceMemberModelDialog({
             <Avatar src={agent?.avatar || '🤖'} alt={agent?.name || 'Agent'} size="md" />
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
-                <span className="truncate text-sm font-black text-slate-900">{agent?.name || member.agentId}</span>
+                <span className="truncate text-sm font-black text-slate-900">{agent?.name || targetAgentId}</span>
                 <span className="rounded-full bg-slate-200/80 px-2 py-0.5 text-[10px] font-bold text-slate-600">
-                  {member.roleName || agent?.category || 'Agent'}
+                  {member?.roleName || agent?.category || 'Agent'}
                 </span>
               </div>
               <p className="mt-0.5 truncate text-xs text-slate-400">
@@ -191,7 +221,7 @@ export default function SpaceMemberModelDialog({
                 </span>
               ) : (
                 <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-500">
-                  跟随全局
+                  继承{inheritedLabel}
                 </span>
               )}
             </div>
@@ -205,6 +235,9 @@ export default function SpaceMemberModelDialog({
               {error}
             </div>
           )}
+          {loadingSettings && <p className="text-xs text-slate-500" role="status">加载模型配置中…</p>}
+          {inherited && <p className="text-xs leading-5 text-slate-500">继承来源：{inheritedLabel} · {inherited.modelName}。各项留空时使用上一级对应配置。</p>}
+          <fieldset disabled={!settingsReady || loadingSettings || saving} className="min-w-0 space-y-4">
 
           {/* 1. 先写 URL */}
           <div>
@@ -213,7 +246,7 @@ export default function SpaceMemberModelDialog({
                 <Globe2 size={14} className="text-emerald-600" />
                 API 接口地址 (Base URL)
               </span>
-              <span className="text-[11px] font-normal text-slate-400">留空则跟随全局</span>
+              <span className="text-[11px] font-normal text-slate-400">留空则继承</span>
             </label>
             <input
               type="url"
@@ -222,7 +255,7 @@ export default function SpaceMemberModelDialog({
                 setApiBaseUrl(e.target.value);
                 setTestResult(null);
               }}
-              placeholder="例如: https://api.openai.com/v1 或私有端点（留空跟随全局）"
+              placeholder={inherited?.apiBaseUrl || '例如: https://api.openai.com/v1（留空继承）'}
               className="h-10 w-full rounded-xl border border-black/[0.08] bg-white px-3.5 text-xs font-medium text-slate-900 placeholder:text-slate-300 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 focus:outline-none"
             />
             <p className="mt-1 text-[11px] text-slate-400">
@@ -237,7 +270,7 @@ export default function SpaceMemberModelDialog({
                 <KeyRound size={14} className="text-amber-600" />
                 API 密钥 (API Key)
               </span>
-              <span className="text-[11px] font-normal text-slate-400">留空则跟随全局</span>
+              <span className="text-[11px] font-normal text-slate-400">留空则继承</span>
             </label>
             <div className="relative">
               <input
@@ -247,7 +280,7 @@ export default function SpaceMemberModelDialog({
                   setApiKey(e.target.value);
                   setTestResult(null);
                 }}
-                placeholder="例如: sk-...（留空则复用个人中心 API Key）"
+                placeholder="例如: sk-...（留空继承上一级 API Key）"
                 className="h-10 w-full rounded-xl border border-black/[0.08] bg-white pl-3.5 pr-10 text-xs font-medium text-slate-900 placeholder:text-slate-300 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 focus:outline-none"
               />
               <button
@@ -260,7 +293,7 @@ export default function SpaceMemberModelDialog({
               </button>
             </div>
             <p className="mt-1 text-[11px] text-slate-400">
-              为该 Agent 配置专属 Token 额度，未填写时自动使用个人中心全局 Key。
+              {scope === 'space' ? '只在当前空间使用；未填写时先继承角色默认 Key，再继承个人全局 Key。' : '仅对你使用这个角色生效；未填写时继承个人全局 Key。'}
             </p>
           </div>
 
@@ -274,6 +307,9 @@ export default function SpaceMemberModelDialog({
             }}
             apiBaseUrl={apiBaseUrl}
             apiKey={apiKey}
+            agentId={targetAgentId}
+            inheritAgentModel={scope === 'space'}
+            disabled={!settingsReady || saving}
             compact={true}
             label={
               <label className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
@@ -281,7 +317,7 @@ export default function SpaceMemberModelDialog({
                 模型名称 (Model Name)
               </label>
             }
-            placeholder="例如: deepseek-chat 或 gpt-4o（留空跟随全局）"
+            placeholder={inherited?.modelName ? `${inherited.modelName}（留空继承）` : '模型名称（留空继承）'}
             searchPlaceholder="输入关键词搜索已获取的模型..."
             actionText="手动填写其他模型"
             quickPresets={PRESET_MODELS}
@@ -299,7 +335,7 @@ export default function SpaceMemberModelDialog({
               <button
                 type="button"
                 onClick={handleTestModel}
-                disabled={!modelName.trim() || testingModel}
+                disabled={!settingsReady || testingModel}
                 className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-black/[0.08] bg-white px-3 py-1.5 text-xs font-bold text-slate-700 shadow-2xs transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {testingModel ? (
@@ -340,6 +376,7 @@ export default function SpaceMemberModelDialog({
             )}
           </div>
 
+          </fieldset>
         </form>
 
         {/* 底部固定操作栏 */}
@@ -348,11 +385,11 @@ export default function SpaceMemberModelDialog({
             <button
               type="button"
               onClick={handleResetToDefault}
-              disabled={saving}
+              disabled={saving || !settingsReady}
               className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-500 transition hover:bg-slate-100 hover:text-slate-800 disabled:opacity-50"
             >
               <RotateCcw size={13} />
-              恢复跟随全局
+              {resetLabel}
             </button>
           ) : (
             <div />
@@ -370,7 +407,7 @@ export default function SpaceMemberModelDialog({
             <button
               type="submit"
               form="space-member-model-form"
-              disabled={saving}
+              disabled={saving || !settingsReady}
               className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl bg-slate-950 px-5 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-slate-800 disabled:opacity-50"
             >
               {saving ? (

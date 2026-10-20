@@ -3,6 +3,7 @@ import path from 'node:path';
 import prisma from '@/app/api/_lib/db';
 import { getBuiltInAgents } from '@/lib/agents-data';
 import { createModelClient, resolveModelName, DEFAULT_BASE_URL, DEFAULT_MODEL } from '@/lib/model-client';
+import { loadAgentModelSetting, resolveUserModelConfig } from '@/app/api/_lib/agent-model';
 import type { Agent } from '@/types';
 
 export type ResolvedSpaceAgent = Pick<
@@ -209,7 +210,7 @@ export interface SpaceMemberModelConfig {
 
 /**
  * 统一解析空间成员在当前空间与用户上下文下的生效大模型配置与客户端
- * 优先级：SpaceMember 独立配置 > Agent 自身模型 > 用户自定义模型 > 系统/环境变量默认
+ * 优先级：空间成员独立配置 > 当前用户的角色默认配置 > 用户全局配置 > 系统默认
  */
 export async function resolveSpaceMemberModelConfig(options: {
   spaceId: string;
@@ -235,7 +236,7 @@ export async function resolveSpaceMemberModelConfig(options: {
   if (!space) throw Object.assign(new Error('Space not found'), { status: 404 });
 
   const effectiveUserId = options.userId || space?.userId || null;
-  const [user, currentAgent] = await Promise.all([
+  const [user, currentAgent, agentSetting] = await Promise.all([
     effectiveUserId
       ? prisma.user.findUnique({
           where: { id: effectiveUserId },
@@ -248,28 +249,14 @@ export async function resolveSpaceMemberModelConfig(options: {
         })
       : null,
     resolveAgent(agentId, effectiveUserId || undefined),
+    effectiveUserId ? loadAgentModelSetting(effectiveUserId, agentId) : null,
   ]);
 
   const targetMember = space?.members?.find((m: any) => m.agentId === agentId);
-  const userModel = user?.customModelEnabled ? user : null;
-  const effectiveApiBaseUrl =
-    targetMember?.apiBaseUrl?.trim() ||
-    userModel?.apiBaseUrl?.trim() ||
-    process.env.OPENAI_BASE_URL ||
-    DEFAULT_BASE_URL;
-
-  const effectiveApiKey =
-    targetMember?.apiKey?.trim() ||
-    userModel?.apiKey?.trim() ||
-    process.env.apiKey ||
-    process.env.OPENAI_API_KEY ||
-    null;
-
-  const effectiveModelName =
-    targetMember?.modelName?.trim() ||
-    (currentAgent as { model?: string | null } | null)?.model?.trim() ||
-    userModel?.modelName?.trim() ||
-    DEFAULT_MODEL;
+  const config = resolveUserModelConfig(user, agentSetting, targetMember);
+  const effectiveApiBaseUrl = config.apiBaseUrl || DEFAULT_BASE_URL;
+  const effectiveApiKey = config.apiKey;
+  const effectiveModelName = config.modelName || DEFAULT_MODEL;
 
   const model = resolveModelName(effectiveModelName);
   const hasApiKey = Boolean(effectiveApiKey);

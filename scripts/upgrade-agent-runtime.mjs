@@ -1068,6 +1068,19 @@ try {
     if (!hasColumn('SpaceMember', 'apiBaseUrl')) db.exec('ALTER TABLE "SpaceMember" ADD COLUMN "apiBaseUrl" TEXT');
     if (!hasColumn('SpaceMember', 'apiKey')) db.exec('ALTER TABLE "SpaceMember" ADD COLUMN "apiKey" TEXT');
     db.exec(`
+      CREATE TABLE IF NOT EXISTS "AgentModelSetting" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "userId" TEXT NOT NULL,
+        "agentId" TEXT NOT NULL,
+        "modelName" TEXT,
+        "apiBaseUrl" TEXT,
+        "apiKey" TEXT,
+        "updatedAt" DATETIME NOT NULL,
+        CONSTRAINT "AgentModelSetting_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS "AgentModelSetting_userId_agentId_key" ON "AgentModelSetting"("userId", "agentId");
+    `);
+    db.exec(`
       CREATE TABLE IF NOT EXISTS "KnowledgeDocument" (
         "id" TEXT NOT NULL PRIMARY KEY,
         "agentId" TEXT,

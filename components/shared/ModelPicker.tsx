@@ -18,6 +18,8 @@ export interface ModelPickerProps {
   onChange: (value: string) => void;
   apiBaseUrl?: string;
   apiKey?: string;
+  agentId?: string;
+  inheritAgentModel?: boolean;
   label?: React.ReactNode;
   placeholder?: string;
   searchPlaceholder?: string;
@@ -43,6 +45,8 @@ export default function ModelPicker({
   onChange,
   apiBaseUrl = '',
   apiKey = '',
+  agentId,
+  inheritAgentModel,
   label = '模型名称',
   placeholder = '例如 deepseek-chat、gpt-4o',
   searchPlaceholder = '搜索模型...',
@@ -70,6 +74,7 @@ export default function ModelPicker({
       const result = await userApi.models({
         apiBaseUrl: apiBaseUrl.trim(),
         apiKey: apiKey.trim(),
+        ...(agentId ? { agentId, inheritAgentModel } : {}),
       });
       const models = result.models || [];
       setAvailableModels(models);

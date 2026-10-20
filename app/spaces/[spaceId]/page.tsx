@@ -3292,21 +3292,21 @@ export default function SpaceDetailPage() {
                             <span className="truncate text-xs font-semibold text-slate-400">
                               {member?.roleName || agent.category || 'Agent'}
                             </span>
-                            {member?.modelName ? (
+                            {member && (member.modelName || member.apiBaseUrl || member.apiKey) ? (
                               <span
                                 className="inline-flex max-w-[120px] shrink-0 items-center gap-1 rounded border border-indigo-200/60 bg-indigo-50 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700"
-                                title={`独立模型: ${member.modelName}${member.apiBaseUrl ? `\n端点: ${member.apiBaseUrl}` : ''}${member.apiKey ? '\n已配置专属Key' : ''}`}
+                                title={`空间独立配置: ${member.modelName || '模型继承角色默认'}${member.apiBaseUrl ? `\n端点: ${member.apiBaseUrl}` : ''}${member.apiKey ? '\n已配置专属Key' : ''}`}
                               >
                                 <Cpu size={10} className="shrink-0" />
-                                <span className="truncate">{member.modelName}</span>
+                                <span className="truncate">{member.modelName || '空间独立配置'}</span>
                               </span>
                             ) : (
                               <span
                                 className="inline-flex shrink-0 items-center gap-1 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-400"
-                                title="继承个人中心全局模型"
+                                title="继承角色默认模型；角色未设置时继承个人全局模型"
                               >
                                 <Cpu size={10} className="shrink-0" />
-                                <span>全局默认</span>
+                                <span>继承角色默认</span>
                               </span>
                             )}
                           </div>
@@ -4840,19 +4840,19 @@ export default function SpaceDetailPage() {
                                 <div className="truncate text-sm font-black text-slate-800">{agent?.name || member.agentId}</div>
                                 <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
                                   <span className="truncate text-xs font-semibold text-slate-400">{member.roleName || agent?.category || 'Agent'}</span>
-                                  {member.modelName ? (
+                                  {member.modelName || member.apiBaseUrl || member.apiKey ? (
                                     <span
                                       className="inline-flex items-center gap-1 rounded bg-indigo-50 border border-indigo-200/60 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700"
-                                      title={`独立模型: ${member.modelName}${member.apiBaseUrl ? `\n端点: ${member.apiBaseUrl}` : ''}${member.apiKey ? '\n已配置专属Key' : ''}`}
+                                      title={`空间独立配置: ${member.modelName || '模型继承角色默认'}${member.apiBaseUrl ? `\n端点: ${member.apiBaseUrl}` : ''}${member.apiKey ? '\n已配置专属Key' : ''}`}
                                     >
                                       <Cpu size={10} />
-                                      {member.modelName}
+                                      {member.modelName || '空间独立配置'}
                                       {member.apiBaseUrl && <span className="opacity-70 text-[9px]">(独立URL)</span>}
                                     </span>
                                   ) : (
                                     <span className="inline-flex items-center gap-1 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-400">
                                       <Cpu size={10} />
-                                      全局默认
+                                      继承角色默认
                                     </span>
                                   )}
                                 </div>

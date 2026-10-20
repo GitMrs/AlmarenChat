@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowLeft, ChevronDown, ChevronUp, Database, MessageSquarePlus, SlidersHorizontal, Sparkles, X } from 'lucide-react';
+import { ArrowLeft, ChevronDown, ChevronUp, Cpu, Database, MessageSquarePlus, SlidersHorizontal, Sparkles, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -8,10 +8,12 @@ import Avatar from '@/components/shared/Avatar';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import TextInputDialog from '@/components/shared/TextInputDialog';
 import KnowledgeManager from '@/components/agent/KnowledgeManager';
+import SpaceMemberModelDialog from '@/components/spaces/SpaceMemberModelDialog';
 import { assistant as assistantApi, agents as agentsApi } from '@/lib/api';
 import type { DisplayAgent } from '@/components/chat/ChatMessageItem';
 import type { AssistantMemoryItem } from '@/types';
 import type { AgentExperience } from '@/types';
+import type { AgentModelSettingsResponse } from '@/types';
 
 type AgentDetailsPanelProps = {
   displayAgent: DisplayAgent;
@@ -126,6 +128,20 @@ export default function AgentDetailsPanel({
   const [newMemory, setNewMemory] = useState('');
   const [knowledgeModalOpen, setKnowledgeModalOpen] = useState(false);
   const [knowledgeDocCount, setKnowledgeDocCount] = useState<number | null>(null);
+  const [modelDialogOpen, setModelDialogOpen] = useState(false);
+  const [modelProfile, setModelProfile] = useState<AgentModelSettingsResponse | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setModelProfile(null);
+    setModelDialogOpen(false);
+    if (isLoggedIn && displayAgent.id) {
+      agentsApi.modelSettings(displayAgent.id).then(result => {
+        if (!cancelled) setModelProfile(result);
+      }).catch(() => {});
+    }
+    return () => { cancelled = true; };
+  }, [displayAgent.id, isLoggedIn]);
 
   useEffect(() => {
     if (!displayAgent?.id) return;
@@ -220,6 +236,19 @@ export default function AgentDetailsPanel({
         <span className="text-xs font-black text-slate-700">当前聊天：{conversationMode === 'MAIN' ? '主聊天' : '临时聊天'}</span>
         <ChevronDown size={15} className="text-slate-400" />
       </button>
+  );
+
+  const modelWidget = isLoggedIn && (
+    <button
+      type="button"
+      onClick={() => setModelDialogOpen(true)}
+      className="mt-3 flex w-full items-center justify-between gap-2 rounded-xl bg-[#fbfaf7] px-3 py-2.5 text-left transition hover:bg-slate-100"
+    >
+      <span className="flex shrink-0 items-center gap-2 text-xs font-black text-slate-700"><Cpu size={15} />角色模型设置</span>
+      <span className="truncate text-[11px] text-slate-500">{modelProfile
+        ? `${modelProfile.effective.source === 'AGENT' ? '角色默认' : modelProfile.effective.source === 'GLOBAL' ? '继承全局' : '系统默认'} · ${modelProfile.effective.modelName}`
+        : '设置默认模型'}</span>
+    </button>
   );
 
   const memoryWidget = (
@@ -415,6 +444,7 @@ export default function AgentDetailsPanel({
         <div className="mt-5 rounded-[28px] border border-black/[0.06] bg-white p-5 shadow-sm">
           <div className="mb-5 border-b border-black/[0.06] pb-5">
             {conversationSwitcher}
+            {modelWidget}
             {memoryWidget}
             {knowledgeWidget}
           </div>
@@ -510,6 +540,7 @@ export default function AgentDetailsPanel({
               )}
               <div className="border-b border-black/[0.06] pb-4">
                 {conversationSwitcher}
+                {modelWidget}
                 {memoryWidget}
                 {knowledgeWidget}
               </div>
@@ -521,6 +552,17 @@ export default function AgentDetailsPanel({
           </div>
         </div>
       )}
+      <SpaceMemberModelDialog
+        open={modelDialogOpen}
+        scope="agent"
+        member={null}
+        agent={displayAgent}
+        onClose={() => setModelDialogOpen(false)}
+        onSave={async data => {
+          const result = await agentsApi.updateModelSettings(displayAgent.id, data);
+          setModelProfile(result);
+        }}
+      />
       {knowledgeModalOpen && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-xs">
           <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-3xl bg-white shadow-2xl">

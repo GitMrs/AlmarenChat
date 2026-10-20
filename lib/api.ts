@@ -1,5 +1,6 @@
 import { decodeChatBody } from './chat-stream.mjs';
 import type { EvaluatedEvent } from './crypto/event-temporal';
+import type { AgentModelFields, AgentModelSettingsResponse } from '@/types';
 import type { AgentGrowthProfile, AgentRun, AssistantContextStats, AssistantConversationSummary, AssistantExperience, AssistantExperienceMessage, AssistantMemoryItem, AssistantQQBinding, AssistantReminder, AssistantReminderCandidate, Message, MessageAttachment, PersonalAssistantBootstrap, PersonalAssistantProfile, SpaceActionRequest, SpaceAutomation, SpaceConnector, SpaceDiscussion, SpaceDiscussionSettings, SpaceFileShare, SpaceOperationOutcome, SpaceOperationsSummary, SpaceRelay, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal, SpaceWork, SpaceWorkVersion, SpaceMcpServer, SpaceWebhook, AssistantMcpServer, McpProbeResult } from '@/types';
 
 const API_BASE = '/api';
@@ -277,6 +278,9 @@ export const assistant = {
 
 // Agents
 export const agents = {
+  modelSettings: (id: string) => request<AgentModelSettingsResponse>(`/agents/${encodeURIComponent(id)}/model-settings`),
+  updateModelSettings: (id: string, data: AgentModelFields) =>
+    request<AgentModelSettingsResponse>(`/agents/${encodeURIComponent(id)}/model-settings`, { method: 'PATCH', body: JSON.stringify(data) }),
   list: () => request<{ agents: any[] }>('/agents'),
   mine: () => request<{ agents: any[] }>('/agents?scope=mine'),
   get: (id: string) => request<{ agent: any }>(`/agents/${id}`),
@@ -1185,12 +1189,12 @@ export const user = {
       method: 'PATCH',
       body: JSON.stringify(data),
     }),
-  testModel: (data: { apiBaseUrl: string; apiKey: string; modelName: string }) =>
+  testModel: (data: { apiBaseUrl: string; apiKey: string; modelName: string; agentId?: string; inheritAgentModel?: boolean }) =>
     request<{ ok: boolean; message: string }>('/user/test-model', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
-  models: (data: { apiBaseUrl: string; apiKey: string }) =>
+  models: (data: { apiBaseUrl: string; apiKey: string; agentId?: string; inheritAgentModel?: boolean }) =>
     request<{ models: string[] }>('/user/models', {
       method: 'POST',
       body: JSON.stringify(data),
