@@ -1,21 +1,24 @@
 import cryptoEventsRaw from './crypto-events.json' with { type: 'json' };
+import { EVENT_MARKET_WINDOWS, getEventMarketResult, hasCompleteEventMarket, formatMarketPercent, type EventMarketObservation, type EventMarketWindow } from './event-market.ts';
 
 export type EventCategory = 'macro' | 'unlock' | 'upgrade' | 'regulatory' | 'derivatives';
 export type VolatilityTier = 1 | 2 | 3;
 export type EventPhase = 'IMPENDING' | 'IN_THE_STORM' | 'DIGESTING' | 'DORMANT';
 
 export interface EventImpactRecord {
+  // 复盘核验独立于日历来源；旧记录缺少此字段时保留，但不作为已验证经验使用。
+  verification?: { sourceUrls: string[]; verifiedAt: string };
   actualValue?: string;
   expectedValue?: string;
   surpriseFactor?: 'HAWKISH' | 'DOVISH' | 'IN_LINE';
   marketReaction: {
-    fiveMinSpikePct: number;
-    oneHourTrendPct: number;
-    twentyFourHourResult: 'V_REVERSAL' | 'DUMP' | 'PUMP' | 'CHOPPY';
+    fiveMinSpikePct?: number;
+    oneHourTrendPct?: number;
+    twentyFourHourResult?: 'V_REVERSAL' | 'DUMP' | 'PUMP' | 'CHOPPY';
     liquidationsUsdMillion?: number;
   };
-  playbookTakeaway: string;
-  optimalAction: string;
+  playbookTakeaway?: string;
+  optimalAction?: string;
 }
 
 export interface CryptoEvent {
@@ -39,6 +42,14 @@ export interface CryptoEvent {
   postDigestHours?: number; // 默认 4 小时
   forecast?: string | null;
   previous?: string | null;
+  source?: {
+    provider: 'faireconomy';
+    url: string;
+    title: string;
+    impact: string;
+    fetchedAt: string;
+    calendarWeek: string; // 美东日历周的周日日期，用于完整快照对账
+  };
   simulated?: boolean; // 若为情景模拟数据标记为 true，防范回测误用
   guidance?: {
     bullishCondition?: string;
@@ -46,6 +57,7 @@ export interface CryptoEvent {
     riskInstruction?: string;
   };
   impact?: EventImpactRecord;
+  marketObservation?: EventMarketObservation;
 }
 
 export interface EvaluatedEvent {
@@ -89,6 +101,45 @@ export function reloadGlobalCryptoEvents(events: CryptoEvent[]) {
  */
 export function setGlobalEventsCacheForTesting(events: CryptoEvent[]) {
   globalEventsCache = events;
+}
+
+export function formatEventSource(event: CryptoEvent): string {
+  if (!event.source) return '未记录来源（待核验）';
+  const source = event.source;
+  return `FairEconomy / ForexFactory 聚合日历 · 源评级 ${source.impact} · 采集 ${formatLocalTime(new Date(source.fetchedAt))} (UTC+8)`;
+}
+
+/** 完整复盘必须独立核验且覆盖公布后24小时，日历采集时间不能替代复盘核验。 */
+export function getVerifiedEventImpact(event: CryptoEvent, now = new Date()): EventImpactRecord | undefined {
+  const impact = event.impact;
+  const verification = impact?.verification;
+  const verifiedAt = Date.parse(verification?.verifiedAt ?? '');
+  const eventAt = Date.parse(event.timestamp);
+  if (event.simulated || !Number.isFinite(eventAt) || !Number.isFinite(verifiedAt) ||
+      verifiedAt < eventAt + 24 * 60 * 60_000 || verifiedAt > now.getTime() ||
+      !Array.isArray(verification?.sourceUrls) || !verification.sourceUrls.length || !impact?.marketReaction) return undefined;
+  const hasSources = verification.sourceUrls.every((url) => {
+    try { return ['https:', 'http:'].includes(new URL(url).protocol); }
+    catch { return false; }
+  });
+  return hasSources ? impact : undefined;
+}
+
+export function formatEventSurprise(impact?: EventImpactRecord): string {
+  if (!impact?.actualValue?.trim() || !impact.expectedValue?.trim() ||
+      /已公布|见官方快讯/.test(impact.actualValue)) return '未知';
+  return impact.surpriseFactor === 'HAWKISH' ? '鹰派偏紧'
+    : impact.surpriseFactor === 'DOVISH' ? '鸽派宽松'
+    : impact.surpriseFactor === 'IN_LINE' ? '符合预期' : '未知';
+}
+
+export function formatEventImpactPercent(value?: number): string {
+  return typeof value === 'number' && Number.isFinite(value) ? `${value >= 0 ? '+' : ''}${value}%` : '未知';
+}
+
+export function formatEventMarketResult(result?: EventImpactRecord['marketReaction']['twentyFourHourResult']): string {
+  return result === 'V_REVERSAL' ? '深V反转' : result === 'PUMP' ? '上涨'
+    : result === 'DUMP' ? '下跌' : result === 'CHOPPY' ? '震荡' : '未知';
 }
 
 /**
@@ -205,9 +256,10 @@ export function filterEventsForSpace(
 export function getHistoricalPlaybook(
   allEvents: CryptoEvent[],
   category?: EventCategory,
-  limit = 2
+  limit = 2,
+  now = new Date()
 ): Array<{ eventTitle: string; impact: EventImpactRecord }> {
-  const eventsWithImpact = allEvents.filter((e) => Boolean(e.impact));
+  const eventsWithImpact = allEvents.filter((e) => Boolean(getVerifiedEventImpact(e, now)));
 
   // 优先召回同 category 的事件，不够时由其他大事件补齐
   const categoryMatched = category
@@ -265,11 +317,15 @@ export function buildEventRadarContext(options: EventRadarOptions = {}): string 
 
   const selectedActive = activeEvaluations.slice(0, maxActiveEvents);
 
-  const lines: string[] = ['【🚨 宏观与重大事件实时战备雷达】'];
+  const lines: string[] = [
+    '【🚨 宏观与重大事件实时战备雷达】',
+    '自动日历仅覆盖本周 USD 重点事件，非全球完整日历；星级及影响币种为系统规则，预期值为聚合源提供的市场预期，缺失时不可推测。未记录来源的事件需另行核验。',
+  ];
 
   for (const item of selectedActive) {
     const { event, phase, countdownText, formattedLocalTime } = item;
     const tierIcon = event.volatilityTier === 3 ? '🔴 3星极度高危' : event.volatilityTier === 2 ? '🟡 2星强震' : '🔵 1星扰动';
+    lines.push(`  • 来源：${formatEventSource(event)}；系统评级 ${event.volatilityTier} 星；影响币种（系统规则）：${event.impactCoins.join(', ')}；市场预期 ${event.forecast ?? '源未提供'}；前值 ${event.previous ?? '源未提供'}`);
 
     if (phase === 'IN_THE_STORM') {
       lines.push(
@@ -298,28 +354,37 @@ export function buildEventRadarContext(options: EventRadarOptions = {}): string 
 
   // 3. 提取历史同类事件的复盘剧本 (Playbook) 供大模型推演参考
   const topCategory = selectedActive[0]?.event.category;
-  const playbookItems = getHistoricalPlaybook(globalEvents, topCategory, maxPlaybookItems);
+  const playbookItems = getHistoricalPlaybook(filteredEvents, topCategory, maxPlaybookItems, now);
 
   if (playbookItems.length > 0) {
     lines.push('【📚 历史同类事件复盘与战术剧本参考】');
     playbookItems.forEach((p, idx) => {
       const rx = p.impact.marketReaction;
-      const surpriseDesc =
-        p.impact.surpriseFactor === 'HAWKISH'
-          ? '超预期利空'
-          : p.impact.surpriseFactor === 'DOVISH'
-          ? '低于预期利好'
-          : '符合预期';
-      const spikeSign = rx.fiveMinSpikePct >= 0 ? `+${rx.fiveMinSpikePct}%` : `${rx.fiveMinSpikePct}%`;
-      const liqStr = rx.liquidationsUsdMillion ? `，全网爆仓 $${rx.liquidationsUsdMillion}M` : '';
+      const liqStr = typeof rx.liquidationsUsdMillion === 'number' && Number.isFinite(rx.liquidationsUsdMillion) && rx.liquidationsUsdMillion >= 0
+        ? `，来源统计爆仓额 $${rx.liquidationsUsdMillion}M` : '，爆仓额未知';
 
       lines.push(
-        `  ${idx + 1}. ${p.eventTitle}（公布值 ${p.impact.actualValue || 'N/A'}，${surpriseDesc}）：` +
-          `5分钟瞬时波动 ${spikeSign}，1小时走势 ${rx.oneHourTrendPct >= 0 ? '+' : ''}${rx.oneHourTrendPct}%${liqStr}。` +
-          `\n     💡 实战剧本总结：${p.impact.playbookTakeaway}。最优战术：${p.impact.optimalAction}`
+        `  ${idx + 1}. ${p.eventTitle}（公布值 ${p.impact.actualValue || '未知'}，预期差 ${formatEventSurprise(p.impact)}）：` +
+          `5分钟瞬时波动 ${formatEventImpactPercent(rx.fiveMinSpikePct)}，1小时走势 ${formatEventImpactPercent(rx.oneHourTrendPct)}，24小时形态 ${formatEventMarketResult(rx.twentyFourHourResult)}${liqStr}。` +
+          `\n     复盘来源：${p.impact.verification!.sourceUrls.join('、')}；核验时间：${p.impact.verification!.verifiedAt}` +
+          `\n     💡 实战剧本总结：${p.impact.playbookTakeaway || '未知'}。应对参考：${p.impact.optimalAction || '未知'}`
       );
     });
   }
 
+  const marketHistory = filteredEvents
+    .filter((event) => hasCompleteEventMarket(event, now))
+    .sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp))
+    .slice(0, maxPlaybookItems);
+  if (marketHistory.length) {
+    lines.push('【历史事件前后 BTC 行情观察】', '仅为 OKX BTC-USDT 永续合约价格统计，以预定公布时间为锚；不代表实际公布值、预期差或事件导致涨跌，不能推断其他币种表现。');
+    for (const event of marketHistory) {
+      lines.push(`- ${event.title}；预定公布 ${event.timestamp}；日历来源：${formatEventSource(event)}`);
+      for (const window of Object.keys(EVENT_MARKET_WINDOWS) as EventMarketWindow[]) {
+        const result = getEventMarketResult(event, window, now)!;
+        lines.push(`  ${window}：期末涨跌 ${formatMarketPercent(result.returnPct)}，区间最高/最低相对基准 ${formatMarketPercent(result.highPct)} / ${formatMarketPercent(result.lowPct)}；基准 ${result.baselineClose}（${result.baselineAt} 起的1分钟K线收盘价）；区间 [${result.windowStart}, ${result.windowEnd})；采集 ${result.collectedAt}；来源 ${result.sourceUrls.join('、')}`);
+      }
+    }
+  }
   return lines.join('\n');
 }

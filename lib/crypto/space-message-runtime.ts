@@ -9,6 +9,7 @@ import {
 import { extractCryptoSymbolFromText, formatCryptoContextForPrompt, getCryptoMarketData } from './okx-service';
 import { getSentinelState, type ActivePositionItem, type AmbushPlanItem } from './sentinel-service';
 import { buildEventRadarContext } from './event-temporal';
+import { readCryptoEventsFromDisk } from './event-sync.ts';
 
 export interface RuntimeHistoryMessage {
   role?: string;
@@ -173,7 +174,7 @@ export async function prepareCryptoSpaceMessageRuntime(
         extractCryptoSymbolFromText(input.textMessage) || 'BTC',
       ])
     );
-    const eventRadarContext = buildEventRadarContext({ activeSymbols: symbols });
+    const eventRadarContext = buildEventRadarContext({ events: await readCryptoEventsFromDisk(), activeSymbols: symbols });
     if (eventRadarContext) {
       promptContext = promptContext ? `${eventRadarContext}\n\n${promptContext}` : eventRadarContext;
     }

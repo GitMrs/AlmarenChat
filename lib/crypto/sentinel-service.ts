@@ -2,14 +2,13 @@ import prisma from '@/app/api/_lib/db';
 import { getCryptoMarketData } from './okx-service';
 import { randomUUID } from 'node:crypto';
 import { createScheduler } from '../runtime/scheduler.mjs';
+import { collectNextEventMarketWindow } from './event-market-collector.ts';
 import { isPlanExpired } from './trade-lifecycle';
 import {
   evaluateEventPhase,
   filterEventsForSpace,
-  loadGlobalCryptoEvents,
-  type EventImpactRecord,
 } from './event-temporal.ts';
-import { persistEventImpact, syncMacroEvents } from './event-sync.ts';
+import { readCryptoEventsFromDisk, syncMacroEvents } from './event-sync.ts';
 
 export interface AmbushPlanItem {
   id: string;
@@ -387,10 +386,10 @@ export async function checkSentinelForSpace(
     }
   }
 
-  // 3. 检查临近的重大事件（事前 T-35m 决战倒计时预警 & 事后 T+15m 落地复盘）
+  // 3. 检查临近的重大事件（事前提醒与事后早期观察分开，不自动生成完整复盘）。
   try {
     const nowObj = new Date();
-    const globalEvents = filterEventsForSpace(loadGlobalCryptoEvents(), [], allSymbols);
+    const globalEvents = filterEventsForSpace(await readCryptoEventsFromDisk(), [], allSymbols);
     for (const event of globalEvents) {
       if (event.volatilityTier < 2) continue;
       const { phase, deltaMinutes, countdownText } = evaluateEventPhase(event, nowObj);
@@ -410,56 +409,34 @@ export async function checkSentinelForSpace(
           });
         }
       }
-      // ② 事后 T+15m 落地复盘速报 (deltaMinutes 在 -45m 至 -15m 之间) 且冷却防刷屏 2 小时
+      // ② 预定公布后 15~45 分钟的早期观察，不能替代事件窗口统计或实际公布值。
       else if (phase === 'DIGESTING' && deltaMinutes <= -15 && deltaMinutes >= -45) {
         const alertKey = `${spaceId}:event:${event.id}:DIGEST`;
         if (!isAlertInCooldown(alertKey, 2 * 60 * 60 * 1000)) {
           recordAlertCooldown(alertKey);
           const btcSnap = marketMap['BTC'];
-          const btcPrice = btcSnap?.price;
-          const delta15m = typeof btcSnap?.priceDelta15mPercent === 'number'
-            ? btcSnap.priceDelta15mPercent
-            : 0;
-          const priceInfo = btcPrice
-            ? `（当前 BTC 现价约 $${btcPrice.toLocaleString()}，15m 波动 ${delta15m >= 0 ? '+' : ''}${delta15m.toFixed(2)}%）`
-            : '';
-
-          // 【数据闭环核心】：若该事件尚未归档 impact，自动沉淀并持久化写回 crypto-events.json
-          if (!event.impact) {
-            const resultPattern: 'V_REVERSAL' | 'DUMP' | 'PUMP' | 'CHOPPY' =
-              delta15m > 1.2
-                ? 'PUMP'
-                : delta15m < -1.5
-                ? 'DUMP'
-                : Math.abs(delta15m) < 0.5
-                ? 'CHOPPY'
-                : 'V_REVERSAL';
-
-            const autoImpact: EventImpactRecord = {
-              actualValue: '已公布（见官方快讯）',
-              surpriseFactor: 'IN_LINE',
-              marketReaction: {
-                fiveMinSpikePct: delta15m,
-                oneHourTrendPct: delta15m,
-                twentyFourHourResult: resultPattern,
-              },
-              playbookTakeaway: `${event.title} 发布后 15 分钟内盘面波动 ${delta15m >= 0 ? '+' : ''}${delta15m.toFixed(2)}%，分时呈现 ${resultPattern} 形态。`,
-              optimalAction:
-                delta15m < -1.5
-                  ? '谨防结构破位，切勿盲目接飞刀，等待长下影线企稳'
-                  : '第一波急剧波动已消化，以既有支撑阻力结构顺势推演',
-            };
-
-            await persistEventImpact(event.id, autoImpact).catch((e: any) => {
-              console.warn('[CryptoSentinel] persistEventImpact failed:', e?.message);
-            });
-          }
+          const quoteTime = Date.parse(btcSnap?.realtimeFetchedAt ?? '');
+          const quoteAge = nowObj.getTime() - quoteTime;
+          const hasQuote = btcSnap?.dataQuality?.ticker === true &&
+            Number.isFinite(btcSnap.price) && btcSnap.price > 0 && quoteAge >= 0 && quoteAge <= 60_000;
+          const candle = btcSnap?.candles15m?.[0];
+          const hasCandle = hasQuote && btcSnap?.dataQuality?.candles15m === true &&
+            Number.isFinite(candle?.open) && candle.open > 0 &&
+            Number.isFinite(candle?.startTimeMs) &&
+            candle.startTimeMs <= quoteTime && quoteTime < candle.startTimeMs + 15 * 60_000;
+          const candleDelta = hasCandle ? (btcSnap.price - candle.open) / candle.open * 100 : null;
+          const priceInfo = hasQuote
+            ? `BTC现价 $${btcSnap.price.toLocaleString()}（行情采集 ${new Date(quoteTime).toISOString()}）。` +
+              (candleDelta !== null
+                ? `当前15分钟K线开盘以来涨跌 ${candleDelta >= 0 ? '+' : ''}${candleDelta.toFixed(2)}%；不等同于事件发布后的涨跌。`
+                : '当前15分钟K线涨跌未知。')
+            : 'BTC行情暂不可用，不能判断事件后的涨跌或形态。';
 
           alerts.push({
             type: 'MACRO_EVENT',
             symbol: event.impactCoins[0] || 'BTC',
-            title: `🌊【事件落地复盘】${event.title} 落地 15 分钟走势速报`,
-            content: `【鹰眼·战后速报】：${event.title} 发布已过去 15 分钟${priceInfo}。\n• 当前盘面第一波急剧插针基本释放完毕，洗盘高潮暂告一段落。\n• 战术建议：观察 15 分钟 K 线是否出现放量下影线或企稳形态，等待突破确认再行建仓。`,
+            title: `🌊【事件早期观察】${event.title} 预定公布后 ${Math.round(-deltaMinutes)} 分钟`,
+            content: `【鹰眼·早期观察】：${event.title} 已到预定公布时间 ${Math.round(-deltaMinutes)} 分钟，实际公布值与预期差尚未核验。\n• ${priceInfo}\n• 本条不构成完整复盘，1小时与24小时走势尚未完成核验，请继续观察。`,
             level: 'INFO',
             notifyQQ: state.activePositions.length > 0,
           });
@@ -615,7 +592,7 @@ export function startCryptoSentinelScheduler() {
 
       // 检查是否有 3 星重大事件正处于前后约 2 小时的活跃时间窗口（T-35m 至 T+45m）
       const nowTime = new Date();
-      const globalEvents = loadGlobalCryptoEvents();
+      const globalEvents = await readCryptoEventsFromDisk();
       const hasActiveEventWindow = globalEvents.some((e) => {
         if (e.volatilityTier < 2) return false;
         const delta = (new Date(e.timestamp).getTime() - nowTime.getTime()) / (60 * 1000);
@@ -698,6 +675,13 @@ export function startCryptoSentinelScheduler() {
     } catch (err: any) {
       console.warn('[crypto-sentinel-scheduler] 宏观大事件日历后台同步告警:', err?.message || err);
     }
+  });
+
+  // 全局事件统计与房间/持仓无关；不阻塞原有空间巡检，采集器自身防止重入。
+  scheduler.register('collect-event-market', () => {
+    void collectNextEventMarketWindow().catch((error) => {
+      console.warn('[crypto-sentinel-scheduler] 事件行情采集失败:', error?.message || error);
+    });
   });
 
   scheduler.start();

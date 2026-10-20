@@ -27,8 +27,7 @@ import {
 } from 'lucide-react';
 import type { Agent, SpaceMessage } from '@/types';
 import { calculatePlanRiskReward, isPlanExpired, type CryptoPlanDecision } from '@/lib/crypto/trade-lifecycle';
-import { loadGlobalCryptoEvents, evaluateEventPhase } from '@/lib/crypto/event-temporal.ts';
-import { assistant as assistantApi, cryptoSentinel as cryptoSentinelApi, spaces as spacesApi } from '@/lib/api';
+import { assistant as assistantApi, cryptoSentinel as cryptoSentinelApi, spaces as spacesApi, cryptoEvents, type CryptoEventsData } from '@/lib/api';
 import { toast } from '@/lib/toast';
 import SpaceCryptoEventRadar from './SpaceCryptoEventRadar';
 
@@ -190,18 +189,24 @@ export default function SpaceCryptoCenter({
   const [cockpitTab, setCockpitTab] = useState<'battle' | 'events' | 'reviews'>('battle');
 
   // 全局客观宏观事件与临近暴风雨紧急预警感知
-  const globalEvents = useMemo(() => loadGlobalCryptoEvents(), []);
-  const impendingEvent = useMemo(() => {
-    const now = new Date();
-    for (const e of globalEvents) {
-      if (e.volatilityTier < 2) continue;
-      const res = evaluateEventPhase(e, now);
-      if (res.phase === 'IN_THE_STORM' || (res.deltaMinutes >= -15 && res.deltaMinutes <= 120)) {
-        return { event: e, ...res };
+  const [eventsData, setEventsData] = useState<CryptoEventsData | null>(null);
+  const impendingEvent = eventsData?.activeAlerts.find((item) => item.event.volatilityTier >= 2);
+  useEffect(() => {
+    // 雷达页打开时由雷达刷新并回传，其他页保持顶部警报更新。
+    if (cockpitTab === 'events') return;
+    let disposed = false;
+    const refresh = async () => {
+      try {
+        const res = await cryptoEvents.list({ symbol });
+        if (!disposed && res.success) setEventsData(res.data);
+      } catch (error) {
+        console.warn('[SpaceCryptoCenter] fetch events failed:', error);
       }
-    }
-    return null;
-  }, [globalEvents]);
+    };
+    void refresh();
+    const timer = window.setInterval(refresh, 30_000);
+    return () => { disposed = true; window.clearInterval(timer); };
+  }, [symbol, cockpitTab]);
 
   const [autoSyncChatPlans] = useState(false);
   const [pendingDecision, setPendingDecision] = useState<PendingCryptoDecision | null>(null);
@@ -887,7 +892,7 @@ export default function SpaceCryptoCenter({
                     cockpitTab === 'events' ? 'bg-slate-800 text-slate-200' : 'bg-slate-100 text-slate-600'
                   }`}
                 >
-                  {globalEvents.length}
+                  {eventsData?.total ?? 0}
                 </span>
               )}
             </button>
@@ -1860,6 +1865,7 @@ export default function SpaceCryptoCenter({
     {cockpitTab === 'events' && (
       <SpaceCryptoEventRadar
         currentSymbol={symbol}
+        onEventsChange={setEventsData}
         onShareToSpace={onShareToSpace}
         onBackToChat={onBackToChat}
       />

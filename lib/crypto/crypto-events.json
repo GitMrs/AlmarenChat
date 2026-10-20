@@ -100,22 +100,30 @@
   },
   {
     "id": "macro-adp-weekly-employment-change-2026-10-20",
-    "title": "美国ADP就业人数变动(小非农/NER Pulse) (ADP Weekly Employment Change)",
+    "title": "美国ADP周度就业人数变动(NER Pulse) (ADP Weekly Employment Change)",
     "category": "macro",
     "country": "USD",
     "timestamp": "2026-10-20T12:15:00.000Z",
     "impactCoins": [
       "ALL"
     ],
-    "volatilityTier": 3,
-    "preAlertHours": 24,
+    "volatilityTier": 1,
+    "preAlertHours": 4,
     "postDigestHours": 6,
     "forecast": null,
     "previous": "24.8K",
+    "source": {
+      "provider": "faireconomy",
+      "url": "https://nfs.faireconomy.media/ff_calendar_thisweek.json",
+      "title": "ADP Weekly Employment Change",
+      "impact": "Low",
+      "fetchedAt": "2026-10-20T03:11:27.215Z",
+      "calendarWeek": "2026-10-18"
+    },
     "guidance": {
-      "bullishCondition": "就业增速平稳回落，强化软着陆降息预期，利好风险资产",
-      "bearishCondition": "就业意外大幅过热推迟宽松，或断崖暴跌引发衰退担忧",
-      "riskInstruction": "美东时间 08:15 (夏令时北京时间 20:15 / UTC 12:15；冬令时北京时间 21:15 / UTC 13:15) 公布。注：该周度高频数据(NER Pulse)不提供官方一致预期(forecast: null)，仅供大非农前瞻参考，不建议作为独立开仓信号。"
+      "bullishCondition": "周度就业增速温和放缓，可作为劳动力市场趋势参考",
+      "bearishCondition": "周度数据大幅偏离近期趋势时留意风险情绪变化",
+      "riskInstruction": "这是周度高频数据，与月度小非农不同；源未提供市场预期时不推测，不宜作为独立开仓信号。"
     }
   },
   {
@@ -132,6 +140,14 @@
     "postDigestHours": 6,
     "forecast": "200K",
     "previous": "199K",
+    "source": {
+      "provider": "faireconomy",
+      "url": "https://nfs.faireconomy.media/ff_calendar_thisweek.json",
+      "title": "Unemployment Claims",
+      "impact": "Medium",
+      "fetchedAt": "2026-10-20T03:11:27.215Z",
+      "calendarWeek": "2026-10-18"
+    },
     "guidance": {
       "bullishCondition": "初请数据符合预期范围，劳动力市场平稳",
       "bearishCondition": "数据异动激增或锐减，引发短期避险情绪波动",
@@ -152,6 +168,14 @@
     "postDigestHours": 6,
     "forecast": "55.5",
     "previous": "57.0",
+    "source": {
+      "provider": "faireconomy",
+      "url": "https://nfs.faireconomy.media/ff_calendar_thisweek.json",
+      "title": "Flash Manufacturing PMI",
+      "impact": "Medium",
+      "fetchedAt": "2026-10-20T03:11:27.215Z",
+      "calendarWeek": "2026-10-18"
+    },
     "guidance": {
       "bullishCondition": "PMI 站稳荣枯线 50 上方扩张，经济基本面健康支撑资产估值",
       "bearishCondition": "PMI 深度跌入收缩区间，衰退预期骤升，避险资产受捧",
@@ -172,6 +196,14 @@
     "postDigestHours": 6,
     "forecast": "58.0",
     "previous": "58.7",
+    "source": {
+      "provider": "faireconomy",
+      "url": "https://nfs.faireconomy.media/ff_calendar_thisweek.json",
+      "title": "Flash Services PMI",
+      "impact": "Medium",
+      "fetchedAt": "2026-10-20T03:11:27.215Z",
+      "calendarWeek": "2026-10-18"
+    },
     "guidance": {
       "bullishCondition": "PMI 站稳荣枯线 50 上方扩张，经济基本面健康支撑资产估值",
       "bearishCondition": "PMI 深度跌入收缩区间，衰退预期骤升，避险资产受捧",
@@ -179,8 +211,8 @@
     }
   },
   {
-    "id": "macro-final-uom-consumer-sentiment-2026-10-23",
-    "title": "美国密歇根大学消费者信心及通胀预期终值 (Final) (Final UoM Consumer Sentiment)",
+    "id": "macro-revised-uom-consumer-sentiment-2026-10-23",
+    "title": "美国密歇根大学消费者信心修正值 (Revised UoM Consumer Sentiment)",
     "category": "macro",
     "country": "USD",
     "timestamp": "2026-10-23T14:00:00.000Z",
@@ -192,10 +224,46 @@
     "postDigestHours": 6,
     "forecast": "46.3",
     "previous": "46.3",
+    "source": {
+      "provider": "faireconomy",
+      "url": "https://nfs.faireconomy.media/ff_calendar_thisweek.json",
+      "title": "Revised UoM Consumer Sentiment",
+      "impact": "Medium",
+      "fetchedAt": "2026-10-20T03:11:27.215Z",
+      "calendarWeek": "2026-10-18"
+    },
     "guidance": {
-      "bullishCondition": "信心终值稳健且 1 年期通胀预期下行，提供完美宏观温床",
-      "bearishCondition": "通胀预期终值意外上窜，推迟降息节奏，压制币圈估值",
-      "riskInstruction": "美东时间 10:00 (夏令时北京时间 22:00 / UTC 14:00) 由密歇根大学在月末发布官方终值 (Final)，重点留意通胀预期分项终值修正"
+      "bullishCondition": "消费者信心企稳或通胀预期回落，可能改善风险偏好",
+      "bearishCondition": "消费者信心走弱或通胀预期上升，可能压制风险偏好",
+      "riskInstruction": "消费者信心和通胀预期为不同分项，初值与修正值分开观察；公布时刻以日历为准。"
+    }
+  },
+  {
+    "id": "macro-revised-uom-inflation-expectations-2026-10-23",
+    "title": "美国密歇根大学通胀预期修正值 (Revised UoM Inflation Expectations)",
+    "category": "macro",
+    "country": "USD",
+    "timestamp": "2026-10-23T14:00:00.000Z",
+    "impactCoins": [
+      "ALL"
+    ],
+    "volatilityTier": 2,
+    "preAlertHours": 4,
+    "postDigestHours": 6,
+    "forecast": null,
+    "previous": "4.7%",
+    "source": {
+      "provider": "faireconomy",
+      "url": "https://nfs.faireconomy.media/ff_calendar_thisweek.json",
+      "title": "Revised UoM Inflation Expectations",
+      "impact": "Medium",
+      "fetchedAt": "2026-10-20T03:11:27.215Z",
+      "calendarWeek": "2026-10-18"
+    },
+    "guidance": {
+      "bullishCondition": "消费者信心企稳或通胀预期回落，可能改善风险偏好",
+      "bearishCondition": "消费者信心走弱或通胀预期上升，可能压制风险偏好",
+      "riskInstruction": "消费者信心和通胀预期为不同分项，初值与修正值分开观察；公布时刻以日历为准。"
     }
   },
   {

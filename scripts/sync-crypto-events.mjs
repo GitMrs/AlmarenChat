@@ -7,12 +7,14 @@
 import { syncMacroEvents } from '../lib/crypto/event-sync.ts';
 
 async function main() {
-  console.log('🌐 [cli-sync] 正在通过 event-sync 引擎拉取并同步全球真实宏观日历...');
+  console.log('🌐 [cli-sync] 正在从 FairEconomy / ForexFactory 同步本周 USD 重点日历...');
   try {
     const res = await syncMacroEvents();
     console.log('✨ [cli-sync] 同步成功！');
     console.log(`   • 上游原始抓取: ${res.fetchedRawCount} 条`);
-    console.log(`   • 过滤清洗核心: ${res.filteredCount} 条高风险宏观大事件`);
+    console.log(`   • 过滤清洗核心: ${res.filteredCount} 条重点宏观事件`);
+    console.log(`   • 采集时间: ${res.fetchedAt}`);
+    console.log(`   • 清理改期/撤下: ${res.removedCount} 项未发布记录`);
     console.log(`   • 库内事件总数: ${res.total} 项 (新增 ${res.addedCount} 项, 增量更新 ${res.updatedCount} 项)`);
   } catch (err) {
     console.error('❌ [cli-sync] 同步失败:', err?.message || err);

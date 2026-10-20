@@ -1,16 +1,18 @@
-import { readFile, writeFile } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
+import { readFile, writeFile, rename } from 'node:fs/promises';
+import path from 'node:path';
 import {
   type CryptoEvent,
   type EventImpactRecord,
-  loadGlobalCryptoEvents,
   reloadGlobalCryptoEvents,
 } from './event-temporal.ts';
 import { smartFetch } from '../network/proxy.ts';
+import { EVENT_MARKET_INSTRUMENT, getEventMarketResult, type EventMarketObservation, type EventMarketWindow } from './event-market.ts';
 
-const JSON_PATH = fileURLToPath(new URL('./crypto-events.json', import.meta.url));
+// 与 CLI 共用项目数据文件，不能使用打包后 import.meta.url 指向的静态副本。
+const JSON_PATH = path.join(process.cwd(), 'lib', 'crypto', 'crypto-events.json');
+const CALENDAR_URL = 'https://nfs.faireconomy.media/ff_calendar_thisweek.json';
 
-// 常用宏观指标的官方中英文对照与交易指引映射 (统一明晰标注发布时区: 美东 ET / 北京时间 UTC+8 / UTC)
+// 常用宏观指标的系统中文名与交易指引映射（评级和指引均非来源原文）
 export const MACRO_DICTIONARY = [
   {
     pattern: /cpi/i,
@@ -24,17 +26,17 @@ export const MACRO_DICTIONARY = [
   },
   {
     pattern: /adp/i,
-    chineseTitle: '美国ADP就业人数变动(小非农/NER Pulse)',
+    chineseTitle: '美国ADP月度就业人数变动(小非农)',
     guidance: {
       bullishCondition: '就业增速平稳回落，强化软着陆降息预期，利好风险资产',
       bearishCondition: '就业意外大幅过热推迟宽松，或断崖暴跌引发衰退担忧',
-      riskInstruction: '美东时间 08:15 (夏令时北京时间 20:15 / UTC 12:15；冬令时北京时间 21:15 / UTC 13:15) 公布。注：该周度高频数据(NER Pulse)不提供官方一致预期(forecast: null)，仅供大非农前瞻参考，不建议作为独立开仓信号。',
+      riskInstruction: '月度 ADP 为私营部门就业报告，与周度高频数据分开观察；公布时刻以日历为准，不宜单独作为非农结果的预测。',
     },
     tier: 3 as const,
   },
   {
     pattern: /non-farm|nfp|employment change/i,
-    chineseTitle: '美国非农就业人口变动(NFP)及失业率',
+    chineseTitle: '美国非农就业人口变动(NFP)',
     guidance: {
       bullishCondition: '就业温和放缓符合软着陆预期，强化流动性充裕预期',
       bearishCondition: '就业数据过热推迟宽松，或失业率异动引发衰退恐慌',
@@ -44,11 +46,11 @@ export const MACRO_DICTIONARY = [
   },
   {
     pattern: /federal funds rate|fomc/i,
-    chineseTitle: '美联储 FOMC 利率决议及鲍威尔新闻发布会',
+    chineseTitle: '美联储 FOMC 事件',
     guidance: {
-      bullishCondition: '决议降息或鲍威尔表态温和偏鸽，全网风险偏好提振普涨',
-      bearishCondition: '意外放鹰或强调长期维持高利率，谨防去杠杆瀑布',
-      riskInstruction: '美东时间 14:00 (夏令时北京时间次日 02:00 / UTC 18:00；冬令时北京时间次日 03:00 / UTC 19:00) 决议出炉，半小时后鲍威尔发布会，为极端波动窗口，严禁入场',
+      bullishCondition: '政策信号偏向宽松或措辞偏鸽，可能提振风险偏好',
+      bearishCondition: '政策信号偏向收紧或强调长期高利率，留意去杠杆风险',
+      riskInstruction: '利率决议、会议纪要、经济预测与新闻发布会为不同事件，各自以日历所列公布时刻为准，注意声明与问答阶段的波动。',
     },
     tier: 3 as const,
   },
@@ -64,10 +66,10 @@ export const MACRO_DICTIONARY = [
   },
   {
     pattern: /pce/i,
-    chineseTitle: '美国核心PCE物价指数(美联储首选通胀锚)',
+    chineseTitle: '美国PCE物价指数',
     guidance: {
-      bullishCondition: '核心PCE稳步向2%目标靠拢，加息周期彻底终结，利好多头',
-      bearishCondition: '核心PCE反弹停滞，货币政策转向迟滞，防范阴跌',
+      bullishCondition: 'PCE通胀放缓可能提振宽松预期，需区分整体与核心分项',
+      bearishCondition: 'PCE通胀反弹可能延缓宽松，需结合预期差判断',
       riskInstruction: '美东时间 08:30 (夏令时北京时间 20:30 / UTC 12:30；冬令时北京时间 21:30 / UTC 13:30) 公布，美股开盘阶段易出现剧烈博弈，严控杠杆',
     },
     tier: 3 as const,
@@ -104,7 +106,7 @@ export const MACRO_DICTIONARY = [
   },
   {
     pattern: /retail sales/i,
-    chineseTitle: '美国核心零售销售月率(恐怖数据)',
+    chineseTitle: '美国零售销售',
     guidance: {
       bullishCondition: '消费支出温和增长未失速，化解硬着陆忧虑，利好风险情绪',
       bearishCondition: '零售数据暴跌引发通缩/衰退恐慌，或大幅过热引发鹰派反扑',
@@ -133,12 +135,12 @@ export const MACRO_DICTIONARY = [
     tier: 2 as const,
   },
   {
-    pattern: /consumer sentiment|michigan/i,
-    chineseTitle: '美国密歇根大学消费者信心及通胀预期终值(Final)',
+    pattern: /uom|consumer sentiment|michigan/i,
+    chineseTitle: '美国密歇根大学调查',
     guidance: {
-      bullishCondition: '信心终值稳健且 1 年期通胀预期下行，提供完美宏观温床',
-      bearishCondition: '通胀预期终值意外上窜，推迟降息节奏，压制币圈估值',
-      riskInstruction: '美东时间 10:00 (夏令时北京时间 22:00 / UTC 14:00) 由密歇根大学在月末发布官方终值 (Final)，重点留意通胀预期分项终值修正',
+      bullishCondition: '消费者信心企稳或通胀预期回落，可能改善风险偏好',
+      bearishCondition: '消费者信心走弱或通胀预期上升，可能压制风险偏好',
+      riskInstruction: '消费者信心和通胀预期为不同分项，初值与修正值分开观察；公布时刻以日历为准。',
     },
     tier: 2 as const,
   },
@@ -154,10 +156,10 @@ export interface RawCalendarItem {
 }
 
 // 内存 5 分钟缓存，防止短时间内高频连续请求触发上游 Cloudflare 429 限流
-let calendarCache: { data: RawCalendarItem[]; expiresAt: number } | null = null;
+let calendarCache: { data: RawCalendarItem[]; expiresAt: number; fetchedAt: string } | null = null;
 
 /**
- * 从 FairEconomy (ForexFactory 官方公开无鉴权 JSON 数据源) 拉取本周真实经济日历
+ * 从 FairEconomy / ForexFactory 聚合源拉取本周经济日历（非统计机构直连）
  */
 export async function fetchLiveForexFactoryCalendar(forceFresh = false): Promise<RawCalendarItem[]> {
   const now = Date.now();
@@ -165,10 +167,8 @@ export async function fetchLiveForexFactoryCalendar(forceFresh = false): Promise
     return calendarCache.data;
   }
 
-  const url = 'https://nfs.faireconomy.media/ff_calendar_thisweek.json';
-
   // 使用系统双轨智能请求助手 smartFetch（本地直连优先，若遇限流/网络阻断自动无缝切换代理重试）
-  const res = await smartFetch(url, {
+  const res = await smartFetch(CALENDAR_URL, {
     prefer: 'direct-first',
     timeoutMs: 12000,
     headers: {
@@ -178,43 +178,52 @@ export async function fetchLiveForexFactoryCalendar(forceFresh = false): Promise
   });
 
   if (!res.ok) {
-    if (res.status === 429 && calendarCache) {
-      console.warn('[event-sync] 上游 429 限流，降级返回上一份有效缓存');
-      return calendarCache.data;
-    }
     throw new Error(`HTTP ${res.status} ${res.statusText}`);
   }
 
   const rawEvents = (await res.json()) as RawCalendarItem[];
-  if (!Array.isArray(rawEvents)) {
-    throw new Error('返回的日历数据非数组结构');
+  if (!Array.isArray(rawEvents) || rawEvents.length === 0) {
+    throw new Error('返回的日历为空或非数组结构，保留现有数据');
+  }
+  // 完整快照用于清理改期记录，任何损坏行都应中止同步，不能当作事件撤下。
+  for (const item of rawEvents) {
+    if (!item || typeof item.title !== 'string' || typeof item.country !== 'string' ||
+        typeof item.impact !== 'string' || typeof item.date !== 'string' ||
+        !Number.isFinite(Date.parse(item.date))) {
+      throw new Error('日历行缺少有效名称、评级或公布时间，保留现有数据');
+    }
   }
 
   calendarCache = {
     data: rawEvents,
     expiresAt: now + 5 * 60 * 1000, // 5 分钟缓存
+    fetchedAt: new Date().toISOString(),
   };
 
   return rawEvents;
 }
 
 /**
- * 将原始英文外汇日历清洗、过滤为适合加密合约作战室的 CryptoEvent
- * ⚠️ 严格防范：只收录 country === 'USD'，绝不将非美国家（英镑GBP、新西兰元NZD、加元CAD等）通胀数据误标为美国CPI
+ * 返回该公布时刻所属的美东日历周（周日起）。
  */
-export function transformToCryptoEvents(rawEvents: RawCalendarItem[]): CryptoEvent[] {
+function calendarWeek(timestamp: string): string {
+  const localDate = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date(timestamp));
+  const date = new Date(`${localDate}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() - date.getUTCDay());
+  return date.toISOString().slice(0, 10);
+}
+
+/** 只收录 USD 重点事件，保留来源名称与评级，避免其他国家数据被标为美国指标。 */
+export function transformToCryptoEvents(rawEvents: RawCalendarItem[], fetchedAt = new Date().toISOString()): CryptoEvent[] {
   const transformed: CryptoEvent[] = [];
 
   for (const item of rawEvents) {
     // 1. 严格过滤：必须是 USD 货币事件（宏观锚定唯一基准）
     if (item.country !== 'USD') continue;
 
-    // 规范化标题与名称处理
-    let normalizedTitle = item.title;
-    // 修正外汇日历中密歇根大学将“Final (终值)”错标为“Revised (修正值)”的非标准命名
-    if (/revised.*uom.*consumer sentiment/i.test(normalizedTitle)) {
-      normalizedTitle = normalizedTitle.replace(/revised/i, 'Final');
-    }
+    const normalizedTitle = item.title.trim();
 
     // 2. 匹配宏观词典
     const matchedMeta = MACRO_DICTIONARY.find((dict) => dict.pattern.test(normalizedTitle));
@@ -224,6 +233,7 @@ export function transformToCryptoEvents(rawEvents: RawCalendarItem[]): CryptoEve
     // 仅收录高影响或命中核心宏观关键词的项目
     if (!isHighImpact && !matchedMeta) continue;
 
+    if (!Number.isFinite(Date.parse(item.date))) throw new Error(`无效公布时间：${item.title}`);
     const isoDate = new Date(item.date).toISOString();
     const cleanDateStr = isoDate.slice(0, 10);
     const slug = normalizedTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
@@ -235,19 +245,41 @@ export function transformToCryptoEvents(rawEvents: RawCalendarItem[]): CryptoEve
       chineseName = '美国 S&P Global 制造业采购经理人指数 (Flash PMI)';
     } else if (/flash services pmi/i.test(normalizedTitle)) {
       chineseName = '美国 S&P Global 服务业采购经理人指数 (Flash PMI)';
-    } else if (/final uom consumer sentiment/i.test(normalizedTitle)) {
-      chineseName = '美国密歇根大学消费者信心及通胀预期终值 (Final)';
+    } else if (/uom|michigan/i.test(normalizedTitle)) {
+      const variant = /prelim/i.test(normalizedTitle) ? '初值' : /revised/i.test(normalizedTitle) ? '修正值' : /final/i.test(normalizedTitle) ? '终值' : '';
+      chineseName = `美国密歇根大学${/inflation expectations/i.test(normalizedTitle) ? '通胀预期' : '消费者信心'}${variant}`;
+    } else if (/retail sales/i.test(normalizedTitle)) {
+      chineseName = /core/i.test(normalizedTitle) ? '美国核心零售销售' : '美国零售销售';
+    } else if (/pce/i.test(normalizedTitle)) {
+      chineseName = /core/i.test(normalizedTitle) ? '美国核心PCE物价指数' : '美国PCE物价指数';
+    } else if (/fomc|federal funds rate/i.test(normalizedTitle)) {
+      chineseName = /minutes/i.test(normalizedTitle) ? '美联储 FOMC 会议纪要'
+        : /press conference/i.test(normalizedTitle) ? '美联储 FOMC 新闻发布会'
+        : /projections/i.test(normalizedTitle) ? '美联储 FOMC 经济预测'
+        : /statement/i.test(normalizedTitle) ? '美联储 FOMC 政策声明'
+        : /federal funds rate/i.test(normalizedTitle) ? '美联储利率决议' : chineseName;
+    } else if (/gdp/i.test(normalizedTitle)) {
+      if (/price index/i.test(normalizedTitle)) chineseName = '美国GDP价格指数';
+      chineseName += /advance/i.test(normalizedTitle) ? '初值' : /prelim/i.test(normalizedTitle) ? '修正值' : /final/i.test(normalizedTitle) ? '终值' : '';
+    } else if (/cpi|ppi/i.test(normalizedTitle)) {
+      chineseName = `美国${/core/i.test(normalizedTitle) ? '核心' : ''}${/cpi/i.test(normalizedTitle) ? 'CPI消费者物价指数' : 'PPI生产者物价指数'}`;
     }
 
-    const volTier = matchedMeta ? matchedMeta.tier : isHighImpact ? 3 : isMediumImpact ? 2 : 1;
+    const isWeeklyAdp = /adp weekly/i.test(normalizedTitle);
+    if (isWeeklyAdp) chineseName = '美国ADP周度就业人数变动(NER Pulse)';
+    const volTier = isWeeklyAdp ? 1 : matchedMeta ? matchedMeta.tier : isHighImpact ? 3 : isMediumImpact ? 2 : 1;
 
-    const guidance = matchedMeta?.guidance || {
+    const guidance = isWeeklyAdp ? {
+      bullishCondition: '周度就业增速温和放缓，可作为劳动力市场趋势参考',
+      bearishCondition: '周度数据大幅偏离近期趋势时留意风险情绪变化',
+      riskInstruction: '这是周度高频数据，与月度小非农不同；源未提供市场预期时不推测，不宜作为独立开仓信号。',
+    } : matchedMeta?.guidance || {
       bullishCondition: '若数据利好美元流动性宽松，利好大盘风险资产',
       bearishCondition: '若数据偏紧，引发紧缩预期，谨防冲高回落',
       riskInstruction: '数据发布前后15分钟内市场流动性剧震，严禁市价追单',
     };
 
-    // 严格规范 forecast / previous: 无预期时显式标为 null (如下游 ADP NER Pulse 周度高频数据无官方预期)
+    // 源未提供的市场预期或前值显式记为 null，不自行推测。
     const forecastVal = item.forecast && item.forecast.trim() ? item.forecast.trim() : null;
     const previousVal = item.previous && item.previous.trim() ? item.previous.trim() : null;
 
@@ -263,6 +295,10 @@ export function transformToCryptoEvents(rawEvents: RawCalendarItem[]): CryptoEve
       postDigestHours: 6,
       forecast: forecastVal,
       previous: previousVal,
+      source: {
+        provider: 'faireconomy', url: CALENDAR_URL, title: item.title,
+        impact: item.impact, fetchedAt, calendarWeek: calendarWeek(isoDate),
+      },
       guidance,
     });
   }
@@ -271,70 +307,80 @@ export function transformToCryptoEvents(rawEvents: RawCalendarItem[]): CryptoEve
 }
 
 /**
- * 增量合并到本地 crypto-events.json（保护已沉淀的实战 impact 影响复盘，不被覆盖）
+ * 每次读取共享文件，确保 CLI 同步后其他服务进程不再使用旧缓存。
  */
-export async function mergeEventsIntoJson(newEvents: CryptoEvent[]) {
-  let existing: CryptoEvent[] = [];
-  try {
-    const content = await readFile(JSON_PATH, 'utf8');
-    existing = JSON.parse(content);
-  } catch (err: any) {
-    console.warn('[event-sync] 未读取到现有文件，将使用新数据');
-  }
+export async function readCryptoEventsFromDisk(): Promise<CryptoEvent[]> {
+  const events = JSON.parse(await readFile(JSON_PATH, 'utf8'));
+  if (!Array.isArray(events)) throw new Error('本地日历非数组，停止写入');
+  reloadGlobalCryptoEvents(events);
+  return events;
+}
 
-  const existingMap = new Map<string, CryptoEvent>(existing.map((e) => [e.id, e]));
+// 同一进程内的同步和复盘回填串行写入，避免各自读到旧副本后相互覆盖。
+const globalForEventWrites = globalThis as unknown as { __cryptoEventWrites?: { pending: Promise<unknown> } };
+const eventWrites = globalForEventWrites.__cryptoEventWrites ??= { pending: Promise.resolve() };
+function withEventWrite<T>(operation: () => Promise<T>): Promise<T> {
+  const result = eventWrites.pending.then(operation);
+  eventWrites.pending = result.catch(() => {});
+  return result;
+}
 
-  // 剔除已更正或作废的历史旧 ID，防范残留重复
-  const DEPRECATED_LEGACY_IDS = new Set([
-    'macro-revised-uom-consumer-sentiment-2026-10-23',
-    'fomc-2026-11-06',
-    'macro-cpi-m-m-2026-10-19',
-    'macro-median-cpi-y-y-2026-10-19',
-    'macro-trimmed-cpi-y-y-2026-10-19',
-    'macro-cpi-y-y-2026-10-21',
-    'macro-cpi-q-q-2026-10-21',
-  ]);
-  for (const depId of DEPRECATED_LEGACY_IDS) {
-    existingMap.delete(depId);
-  }
+async function writeEvents(events: CryptoEvent[]) {
+  const tempPath = `${JSON_PATH}.${process.pid}.tmp`;
+  await writeFile(tempPath, JSON.stringify(events, null, 2), 'utf8');
+  await rename(tempPath, JSON_PATH);
+  reloadGlobalCryptoEvents(events);
+}
 
-  let addedCount = 0;
-  let updatedCount = 0;
-
-  for (const event of newEvents) {
-    if (existingMap.has(event.id)) {
-      const oldEvent = existingMap.get(event.id)!;
-      // 保留已有的实战复盘记录 (impact)，绝不覆盖
-      existingMap.set(event.id, {
-        ...event,
-        impact: oldEvent.impact || event.impact,
-      });
-      updatedCount++;
-    } else {
-      existingMap.set(event.id, event);
-      addedCount++;
+export async function mergeEventsIntoJson(newEvents: CryptoEvent[], snapshotWeeks: string[] = []) {
+  return withEventWrite(async () => {
+    const existing = await readCryptoEventsFromDisk();
+    const existingMap = new Map<string, CryptoEvent>(existing.map((e) => [e.id, e]));
+    const incomingIds = new Set(newEvents.map((e) => e.id));
+    let removedCount = 0;
+    // 只对同源、同周、尚未发布且没有复盘的记录按完整快照对账。
+    // 不凭同名跨周迁移，避免将不同统计期当成改期；手工和历史记录不受影响。
+    for (const old of existing) {
+      if (old.source?.provider === 'faireconomy' && snapshotWeeks.includes(old.source.calendarWeek) &&
+          Date.parse(old.timestamp) > Date.now() && !old.impact && !incomingIds.has(old.id)) {
+        existingMap.delete(old.id);
+        removedCount++;
+      }
     }
-  }
 
-  // 按时间升序排序
-  const mergedList = Array.from(existingMap.values()).sort(
-    (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-  );
-
-  await writeFile(JSON_PATH, JSON.stringify(mergedList, null, 2), 'utf8');
-  reloadGlobalCryptoEvents(mergedList);
-
-  return { total: mergedList.length, addedCount, updatedCount, events: mergedList };
+    let addedCount = 0;
+    let updatedCount = 0;
+    for (const event of newEvents) {
+      // 旧实现曾擅自把 Revised 改写为 Final，按同一发布日迁移并保留复盘。
+      const legacyId = event.id.replace('macro-revised-uom-consumer-sentiment-', 'macro-final-uom-consumer-sentiment-');
+      const oldEvent = existingMap.get(event.id) || (legacyId !== event.id ? existingMap.get(legacyId) : undefined);
+      if (legacyId !== event.id) existingMap.delete(legacyId);
+      existingMap.set(event.id, {
+        ...event, impact: oldEvent?.impact || event.impact,
+        marketObservation: oldEvent && Date.parse(oldEvent.timestamp) === Date.parse(event.timestamp)
+          ? oldEvent.marketObservation : undefined,
+      });
+      if (oldEvent) updatedCount++;
+      else addedCount++;
+    }
+    const mergedList = Array.from(existingMap.values()).sort(
+      (a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp)
+    );
+    await writeEvents(mergedList);
+    return { total: mergedList.length, addedCount, updatedCount, removedCount, events: mergedList };
+  });
 }
 
 /**
  * 一键拉取与同步真实经济日历
  */
 export async function syncMacroEvents() {
-  const raw = await fetchLiveForexFactoryCalendar();
-  const events = transformToCryptoEvents(raw);
-  const result = await mergeEventsIntoJson(events);
-  return { ...result, fetchedRawCount: raw.length, filteredCount: events.length };
+  const raw = await fetchLiveForexFactoryCalendar(true);
+  const fetchedAt = calendarCache!.fetchedAt;
+  const events = transformToCryptoEvents(raw, fetchedAt);
+  const snapshotWeeks = Array.from(new Set(raw.map((item) => calendarWeek(item.date))));
+  const result = await mergeEventsIntoJson(events, snapshotWeeks);
+  return { ...result, fetchedRawCount: raw.length, filteredCount: events.length, fetchedAt };
 }
 
 /**
@@ -344,18 +390,40 @@ export async function persistEventImpact(
   eventId: string,
   impact?: EventImpactRecord
 ): Promise<boolean> {
-  const globalEvents = loadGlobalCryptoEvents();
-  const target = globalEvents.find((e) => e.id === eventId);
-  if (!target) return false;
-
-  target.impact = impact;
-
   try {
-    await writeFile(JSON_PATH, JSON.stringify(globalEvents, null, 2), 'utf8');
-    reloadGlobalCryptoEvents(globalEvents);
-    return true;
+    return await withEventWrite(async () => {
+      const events = await readCryptoEventsFromDisk();
+      const target = events.find((e) => e.id === eventId);
+      if (!target) return false;
+      target.impact = impact;
+      await writeEvents(events);
+      return true;
+    });
   } catch (err: any) {
     console.warn('[event-sync] Failed to write back event impact to crypto-events.json:', err?.message);
     return false;
   }
+}
+
+/** 单阶段合并到最新文件，拒绝在取数期间已经改期的事件。 */
+export async function persistEventMarketStage(
+  eventId: string,
+  scheduledAt: string,
+  window: EventMarketWindow,
+  stage: NonNullable<EventMarketObservation['stages'][EventMarketWindow]>
+): Promise<boolean> {
+  return withEventWrite(async () => {
+    const events = await readCryptoEventsFromDisk();
+    const event = events.find((item) => item.id === eventId);
+    if (!event || Date.parse(event.timestamp) !== Date.parse(scheduledAt)) return false;
+    // 已完成的数据不被晚到的请求或失败状态覆盖。
+    if (getEventMarketResult(event, window)) return true;
+    const existing = event.marketObservation;
+    event.marketObservation = {
+      provider: 'okx', instrument: EVENT_MARKET_INSTRUMENT, scheduledAt,
+      stages: { ...(existing && Date.parse(existing.scheduledAt) === Date.parse(scheduledAt) ? existing.stages : {}), [window]: stage },
+    };
+    await writeEvents(events);
+    return true;
+  });
 }

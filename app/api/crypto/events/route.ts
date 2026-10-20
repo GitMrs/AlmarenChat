@@ -1,13 +1,13 @@
 import { NextResponse } from 'next/server';
 import {
-  loadGlobalCryptoEvents,
   evaluateEventPhase,
   type CryptoEvent,
   type EvaluatedEvent,
 } from '@/lib/crypto/event-temporal.ts';
-import { syncMacroEvents } from '@/lib/crypto/event-sync.ts';
+import { readCryptoEventsFromDisk, syncMacroEvents } from '@/lib/crypto/event-sync.ts';
 
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
   try {
@@ -16,7 +16,7 @@ export async function GET(request: Request) {
     const symbol = searchParams.get('symbol');
 
     const now = new Date();
-    let events = loadGlobalCryptoEvents();
+    let events = await readCryptoEventsFromDisk();
 
     if (category) {
       events = events.filter((e) => e.category === category);
@@ -47,7 +47,8 @@ export async function GET(request: Request) {
 
     // 2. 核心活跃警戒窗口 (暴风雨中 或 距离发生 <= 2 小时)
     const activeAlerts = evaluated.filter(
-      (item) => item.phase === 'IN_THE_STORM' || (item.deltaMinutes >= -15 && item.deltaMinutes <= 120)
+      (item) => item.event.volatilityTier >= 2 &&
+        (item.phase === 'IN_THE_STORM' || (item.deltaMinutes >= -15 && item.deltaMinutes <= 120))
     );
 
     // 3. 历史大事件回顾 (已沉淀 impact 实战复盘记录，或已过期事件，按时间倒序)
@@ -63,7 +64,7 @@ export async function GET(request: Request) {
         activeAlerts,
         total: events.length,
       },
-    });
+    }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (error: any) {
     console.error('[api/crypto/events] GET failed:', error);
     return NextResponse.json(

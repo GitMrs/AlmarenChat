@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   Calendar,
   AlertTriangle,
@@ -21,17 +21,22 @@ import {
 } from 'lucide-react';
 import { cryptoEvents, type CryptoEventsData } from '@/lib/api';
 import { toast } from '@/lib/toast';
+import { formatEventSource, getVerifiedEventImpact, formatEventSurprise, formatEventImpactPercent, formatEventMarketResult } from '@/lib/crypto/event-temporal.ts';
+import type { CryptoEvent } from '@/lib/crypto/event-temporal.ts';
+import { canTrackEventMarket, EVENT_MARKET_WINDOWS, getEventMarketResult, formatMarketPercent, type EventMarketWindow } from '@/lib/crypto/event-market.ts';
 
 export interface SpaceCryptoEventRadarProps {
   currentSymbol?: string;
   onShareToSpace?: (content: string) => void;
   onBackToChat?: () => void;
+  onEventsChange?: (data: CryptoEventsData) => void;
 }
 
 export default function SpaceCryptoEventRadar({
   currentSymbol = 'BTC',
   onShareToSpace,
   onBackToChat,
+  onEventsChange,
 }: SpaceCryptoEventRadarProps) {
   const [data, setData] = useState<CryptoEventsData | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -40,25 +45,30 @@ export default function SpaceCryptoEventRadar({
   const [categoryFilter, setCategoryFilter] = useState<'ALL' | 'macro' | 'unlock' | 'derivatives'>('ALL');
   const [expanded, setExpanded] = useState<boolean>(true);
   const [selectedHistoricalId, setSelectedHistoricalId] = useState<string | null>(null);
+  const requestId = useRef(0);
 
   // 加载大事件列表
-  const loadEvents = async () => {
+  const loadEvents = useCallback(async (quiet = false) => {
+    const id = ++requestId.current;
     try {
-      setLoading(true);
+      if (!quiet) setLoading(true);
       const res = await cryptoEvents.list({ symbol: currentSymbol });
-      if (res?.success && res?.data) {
+      if (id === requestId.current && res?.success && res?.data) {
         setData(res.data);
+        onEventsChange?.(res.data);
       }
     } catch (err: any) {
       console.warn('[SpaceCryptoEventRadar] fetch events failed:', err?.message);
     } finally {
-      setLoading(false);
+      if (id === requestId.current) setLoading(false);
     }
-  };
+  }, [currentSymbol, onEventsChange]);
 
   useEffect(() => {
     void loadEvents();
-  }, [currentSymbol]);
+    const timer = window.setInterval(() => { void loadEvents(true); }, 30_000);
+    return () => { requestId.current++; window.clearInterval(timer); };
+  }, [loadEvents]);
 
   // 手动触发外部实时日历同步
   const handleSyncLiveCalendar = async () => {
@@ -100,7 +110,7 @@ export default function SpaceCryptoEventRadar({
   // 默认展开首个历史复盘
   useEffect(() => {
     if (!selectedHistoricalId && filteredHistorical.length > 0) {
-      const firstWithImpact = filteredHistorical.find((h) => h.event.impact) || filteredHistorical[0];
+      const firstWithImpact = filteredHistorical.find((h) => getVerifiedEventImpact(h.event)) || filteredHistorical[0];
       if (firstWithImpact) {
         setSelectedHistoricalId(firstWithImpact.event.id);
       }
@@ -138,7 +148,7 @@ export default function SpaceCryptoEventRadar({
               )}
             </div>
             <p className="text-[11px] font-semibold text-slate-400 mt-0.5">
-              全球宏观催化剂精准倒计时 · 7×24H 动态巡检(每12小时自动轮询) · 洗盘形态沉淀
+              自动同步本周 USD 重点日历 · 其他事件手工维护 · 每30秒刷新倒计时
             </p>
           </div>
         </div>
@@ -150,10 +160,10 @@ export default function SpaceCryptoEventRadar({
             onClick={handleSyncLiveCalendar}
             disabled={syncing}
             className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-black/[0.08] bg-slate-50 px-2.5 text-[11px] font-black text-slate-700 hover:bg-slate-100 transition disabled:opacity-50 cursor-pointer shadow-2xs"
-            title="7×24H 后台每12小时自动轮询；点击可立即与全球官方财经日历实时同步最新预期值与公布值"
+            title="从 FairEconomy / ForexFactory 聚合源拉取本周 USD 重点事件的时间、市场预期与前值，不含公布值"
           >
             <RefreshCw size={11} className={syncing ? 'animate-spin text-amber-600' : 'text-slate-500'} />
-            {syncing ? '正在拉取官方日历...' : '⚡ 实时同步最新日历'}
+            {syncing ? '同步中...' : '⚡ 同步日历'}
           </button>
 
           <button
@@ -183,7 +193,7 @@ export default function SpaceCryptoEventRadar({
           <div className="flex items-center gap-3 text-[11px] text-slate-500">
             <span>待发生: {data?.upcoming?.length || 0} 项</span>
             <span>·</span>
-            <span>已收录复盘: {data?.historical?.filter((h) => h.event.impact).length || 0} 项</span>
+            <span>已核验复盘: {data?.historical?.filter((h) => getVerifiedEventImpact(h.event)).length || 0} 项</span>
           </div>
         </div>
       )}
@@ -222,7 +232,7 @@ export default function SpaceCryptoEventRadar({
                 <BookOpen size={12} />
                 <span>实战历史回顾与剧本</span>
                 <span className="rounded-full bg-amber-100 text-amber-800 px-1.5 py-0.2 text-[10px]">
-                  {filteredHistorical.filter((h) => h.event.impact).length}
+                  {filteredHistorical.filter((h) => getVerifiedEventImpact(h.event)).length}
                 </span>
               </button>
             </div>
@@ -319,7 +329,7 @@ export default function SpaceCryptoEventRadar({
                                     : 'bg-amber-100 text-amber-800 border border-amber-200'
                                 }`}
                               >
-                                {isTier3 ? '★★★ 极端核爆' : '★★ 剧烈波动'}
+                                系统 {e.volatilityTier}星
                               </span>
 
                               <span className="rounded bg-slate-200/80 px-1.5 py-0.5 text-[10px] font-bold text-slate-700">
@@ -327,7 +337,7 @@ export default function SpaceCryptoEventRadar({
                               </span>
 
                               <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700">
-                                影响: {e.impactCoins.includes('ALL') ? '全市场 (BTC/ETH/主流山寨)' : e.impactCoins.join(', ')}
+                                系统影响: {e.impactCoins.includes('ALL') ? '全市场' : e.impactCoins.join(', ')}
                               </span>
                             </div>
 
@@ -350,12 +360,13 @@ export default function SpaceCryptoEventRadar({
                             <h4 className="text-xs sm:text-sm font-black text-slate-900 leading-snug">
                               {e.title}
                             </h4>
-                            <div className="text-[11px] font-semibold text-slate-500 mt-0.5 flex items-center gap-2">
+                            <p className="text-[10px] text-slate-500 mt-1 break-words">{formatEventSource(e)}</p>
+                            <div className="text-[11px] font-semibold text-slate-500 mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1">
                               <span>公布时间: {item.formattedLocalTime} (北京时间)</span>
-                              {(e.forecast || e.previous) && (
+                              {(e.category === 'macro' || e.forecast || e.previous) && (
                                 <>
                                   <span>·</span>
-                                  <span>预期: <strong className="text-slate-800 font-mono">{e.forecast || '-'}</strong></span>
+                                  <span>市场预期: <strong className="text-slate-800 font-mono">{e.forecast || '未提供'}</strong></span>
                                   <span>·</span>
                                   <span>前值: <strong className="text-slate-800 font-mono">{e.previous || '-'}</strong></span>
                                 </>
@@ -388,6 +399,8 @@ export default function SpaceCryptoEventRadar({
                           </div>
                         )}
 
+                        {item.deltaMinutes <= 0 && <EventMarketTracking event={e} onRefresh={() => loadEvents(true)} />}
+
                         {/* 呼叫特战队推演按钮 */}
                         <div className="pt-1 flex items-center justify-end">
                           <button
@@ -397,8 +410,9 @@ export default function SpaceCryptoEventRadar({
                                 `@特战队 重点大事件预警研判！
 【事件名称】：${e.title}
 【公布时间】：${item.formattedLocalTime} (距离发布还有 ${item.countdownText})
-【波动等级】：${isTier3 ? '★★★ 极端核爆' : '★★ 剧烈波动'}
-【预期/前值】：预期 ${e.forecast || '未公布'} · 前值 ${e.previous || '未公布'}
+【系统评级】：${e.volatilityTier}星（非来源评级）；影响币种由系统规则指定
+【来源】：${formatEventSource(e)}
+【市场预期/前值】：预期 ${e.forecast || '源未提供'} · 前值 ${e.previous || '源未提供'}
 
 请凌风结合当前 ${currentSymbol} 的日线与4H形态，评估插针区间；幽影核实巨鲸对冲仓位与资金费率；雷震给出该事件发布前后的仓位防守指令与避险建议。`
                               );
@@ -431,7 +445,7 @@ export default function SpaceCryptoEventRadar({
                   <div className="lg:col-span-5 space-y-2 max-h-[420px] overflow-y-auto pr-1">
                     {filteredHistorical.map((item) => {
                       const e = item.event;
-                      const hasImpact = Boolean(e.impact);
+                      const impact = getVerifiedEventImpact(e);
                       const isSelected = selectedHistoricalId === e.id;
 
                       return (
@@ -448,28 +462,22 @@ export default function SpaceCryptoEventRadar({
                             <span className="rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-black text-slate-700">
                               {item.formattedLocalTime.slice(0, 10)}
                             </span>
-                            {hasImpact ? (
+                            {impact ? (
                               <span
                                 className={`rounded px-1.5 py-0.2 text-[10px] font-black ${
-                                  e.impact?.marketReaction.twentyFourHourResult === 'V_REVERSAL'
+                                  impact.marketReaction.twentyFourHourResult === 'V_REVERSAL'
                                     ? 'bg-purple-100 text-purple-800'
-                                    : e.impact?.marketReaction.twentyFourHourResult === 'PUMP'
+                                    : impact.marketReaction.twentyFourHourResult === 'PUMP'
                                     ? 'bg-emerald-100 text-emerald-800'
-                                    : e.impact?.marketReaction.twentyFourHourResult === 'DUMP'
+                                    : impact.marketReaction.twentyFourHourResult === 'DUMP'
                                     ? 'bg-rose-100 text-rose-800'
                                     : 'bg-amber-100 text-amber-800'
                                 }`}
                               >
-                                {e.impact?.marketReaction.twentyFourHourResult === 'V_REVERSAL'
-                                  ? '深V反转洗盘'
-                                  : e.impact?.marketReaction.twentyFourHourResult === 'PUMP'
-                                  ? '单边主升暴拉'
-                                  : e.impact?.marketReaction.twentyFourHourResult === 'DUMP'
-                                  ? '单边暴跌瀑布'
-                                  : '双向插针诱多'}
+                                {formatEventMarketResult(impact.marketReaction.twentyFourHourResult)}
                               </span>
                             ) : (
-                              <span className="text-[10px] text-slate-400 font-semibold">待结算复盘</span>
+                              <span className="text-[10px] text-slate-400 font-semibold">{e.impact ? '复盘待核验' : '待补充复盘'}</span>
                             )}
                           </div>
 
@@ -477,19 +485,18 @@ export default function SpaceCryptoEventRadar({
                             {e.title}
                           </h5>
 
-                          {hasImpact && e.impact?.marketReaction && (
+                          {impact && (
                             <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-500">
                               <span>
                                 5m脉冲:{' '}
                                 <strong
                                   className={
-                                    e.impact.marketReaction.fiveMinSpikePct >= 0
+                                    (impact.marketReaction.fiveMinSpikePct ?? 0) >= 0
                                       ? 'text-emerald-600'
                                       : 'text-rose-600'
                                   }
                                 >
-                                  {e.impact.marketReaction.fiveMinSpikePct >= 0 ? '+' : ''}
-                                  {e.impact.marketReaction.fiveMinSpikePct}%
+                                  {formatEventImpactPercent(impact.marketReaction.fiveMinSpikePct)}
                                 </strong>
                               </span>
                               <span>·</span>
@@ -497,13 +504,12 @@ export default function SpaceCryptoEventRadar({
                                 1h趋势:{' '}
                                 <strong
                                   className={
-                                    e.impact.marketReaction.oneHourTrendPct >= 0
+                                    (impact.marketReaction.oneHourTrendPct ?? 0) >= 0
                                       ? 'text-emerald-600'
                                       : 'text-rose-600'
                                   }
                                 >
-                                  {e.impact.marketReaction.oneHourTrendPct >= 0 ? '+' : ''}
-                                  {e.impact.marketReaction.oneHourTrendPct}%
+                                  {formatEventImpactPercent(impact.marketReaction.oneHourTrendPct)}
                                 </strong>
                               </span>
                             </div>
@@ -526,7 +532,7 @@ export default function SpaceCryptoEventRadar({
                       }
 
                       const e = selectedItem.event;
-                      const impact = e.impact;
+                      const impact = getVerifiedEventImpact(e);
 
                       return (
                         <div className="space-y-3">
@@ -534,7 +540,7 @@ export default function SpaceCryptoEventRadar({
                           <div className="border-b border-black/[0.06] pb-2.5">
                             <div className="flex items-center justify-between">
                               <span className="text-[11px] font-bold text-slate-400">
-                                落地公布时间：{selectedItem.formattedLocalTime}
+                                预定公布时间：{selectedItem.formattedLocalTime}
                               </span>
                               <span className="rounded bg-slate-200 px-2 py-0.5 text-[10px] font-black text-slate-700">
                                 影响币种：{e.impactCoins.includes('ALL') ? '全市场 (BTC/ETH/主流山寨)' : e.impactCoins.join(', ')}
@@ -543,7 +549,10 @@ export default function SpaceCryptoEventRadar({
                             <h4 className="text-sm font-black text-slate-950 mt-1">
                               {e.title}
                             </h4>
+                            <p className="text-[10px] text-slate-500 mt-1 break-words">{formatEventSource(e)}</p>
                           </div>
+
+                          <EventMarketTracking event={e} onRefresh={() => loadEvents(true)} />
 
                           {impact ? (
                             <>
@@ -552,27 +561,24 @@ export default function SpaceCryptoEventRadar({
                                 <div className="rounded-lg bg-white p-2.5 border border-black/[0.05] space-y-0.5">
                                   <div className="text-[10px] font-bold text-slate-400">公布数值 / 预期</div>
                                   <div className="font-mono font-black text-slate-900">
-                                    {impact.actualValue || '-'} / {impact.expectedValue || '-'}
+                                    {impact.actualValue || '未知'} / {impact.expectedValue || '未知'}
                                   </div>
                                 </div>
 
                                 <div className="rounded-lg bg-white p-2.5 border border-black/[0.05] space-y-0.5">
                                   <div className="text-[10px] font-bold text-slate-400">宏观偏向判定</div>
                                   <div className="font-bold text-indigo-700">
-                                    {impact.surpriseFactor === 'HAWKISH'
-                                      ? '鹰派偏紧'
-                                      : impact.surpriseFactor === 'DOVISH'
-                                      ? '鸽派宽松'
-                                      : '完全符合预期'}
+                                    {formatEventSurprise(impact)}
                                   </div>
                                 </div>
 
                                 <div className="rounded-lg bg-white p-2.5 border border-black/[0.05] space-y-0.5">
-                                  <div className="text-[10px] font-bold text-slate-400">估算全网爆仓额</div>
+                                  <div className="text-[10px] font-bold text-slate-400">爆仓额（来源统计）</div>
                                   <div className="font-mono font-black text-rose-600">
-                                    {impact.marketReaction.liquidationsUsdMillion
+                                    {typeof impact.marketReaction.liquidationsUsdMillion === 'number' &&
+                                      Number.isFinite(impact.marketReaction.liquidationsUsdMillion) && impact.marketReaction.liquidationsUsdMillion >= 0
                                       ? `$${impact.marketReaction.liquidationsUsdMillion}M`
-                                      : '约 $20M+'}
+                                      : '未知'}
                                   </div>
                                 </div>
                               </div>
@@ -582,21 +588,15 @@ export default function SpaceCryptoEventRadar({
                                 <div className="flex items-center justify-between text-xs font-bold text-slate-500">
                                   <span>24小时行情定性走势:</span>
                                   <span className="font-black text-indigo-700">
-                                    {impact.marketReaction.twentyFourHourResult === 'V_REVERSAL'
-                                      ? '⚡ 经典深V反转（主力先破止损再反包）'
-                                      : impact.marketReaction.twentyFourHourResult === 'PUMP'
-                                      ? '🚀 单边暴力拉升（顺风主升浪）'
-                                      : impact.marketReaction.twentyFourHourResult === 'DUMP'
-                                      ? '🩸 阴跌瀑布（破位止损踩踏）'
-                                      : '🪚 假突破多空双杀（诱多后砸盘）'}
+                                    {formatEventMarketResult(impact.marketReaction.twentyFourHourResult)}
                                   </span>
                                 </div>
                                 <div className="flex items-center gap-4 text-xs font-medium text-slate-600 pt-1">
                                   <span>
-                                    前 5 分钟插针幅度: <strong className="font-mono text-slate-900">{impact.marketReaction.fiveMinSpikePct}%</strong>
+                                    前 5 分钟插针幅度: <strong className="font-mono text-slate-900">{formatEventImpactPercent(impact.marketReaction.fiveMinSpikePct)}</strong>
                                   </span>
                                   <span>
-                                    后 1 小时趋势走向: <strong className="font-mono text-slate-900">{impact.marketReaction.oneHourTrendPct}%</strong>
+                                    后 1 小时趋势走向: <strong className="font-mono text-slate-900">{formatEventImpactPercent(impact.marketReaction.oneHourTrendPct)}</strong>
                                   </span>
                                 </div>
                               </div>
@@ -608,7 +608,7 @@ export default function SpaceCryptoEventRadar({
                                   <span>主力操盘手法与实战复盘 (Playbook Takeaway)</span>
                                 </div>
                                 <p className="text-xs font-semibold text-slate-700 leading-relaxed">
-                                  {impact.playbookTakeaway}
+                                  {impact.playbookTakeaway || '未知'}
                                 </p>
                               </div>
 
@@ -618,10 +618,13 @@ export default function SpaceCryptoEventRadar({
                                   💡 下次遇到该事件的最优操作策略:
                                 </div>
                                 <p className="font-semibold text-emerald-800 leading-relaxed">
-                                  {impact.optimalAction}
+                                  {impact.optimalAction || '未知'}
                                 </p>
                               </div>
 
+                              <p className="text-[10px] text-slate-500 break-words">
+                                复盘来源：{impact.verification!.sourceUrls.join('、')} · 核验 {impact.verification!.verifiedAt}
+                              </p>
                               {/* 引用战术剧本到聊天室 */}
                               <div className="pt-1 flex items-center justify-end">
                                 <button
@@ -631,9 +634,10 @@ export default function SpaceCryptoEventRadar({
                                       `@雷震 · 铁面风控官 @凌风 · 盘面K线先锋
 【引用历史大事件战术剧本】：
 - 事件名称：${e.title}
-- 历史形态：${impact.marketReaction.twentyFourHourResult}
-- 操盘复盘：${impact.playbookTakeaway}
-- 避坑原则：${impact.optimalAction}
+- 历史形态：${formatEventMarketResult(impact.marketReaction.twentyFourHourResult)}
+- 操盘复盘：${impact.playbookTakeaway || '未知'}
+- 应对参考：${impact.optimalAction || '未知'}
+- 复盘来源：${impact.verification!.sourceUrls.join('、')}；核验时间：${impact.verification!.verifiedAt}
 
 请将以上实战经验纳入当前 ${currentSymbol} 的推演风控防线中，防范在相似节点被主力诱单！`
                                     );
@@ -648,8 +652,8 @@ export default function SpaceCryptoEventRadar({
                             </>
                           ) : (
                             <div className="py-6 text-center text-xs text-slate-400 font-semibold space-y-1">
-                              <p>该事件已完成，但当前未写入实战复盘记录</p>
-                              <p className="text-[11px] text-slate-400">哨兵将在事件落地 T+15m 自动计算波动并回写</p>
+                              <p>{e.impact ? '原有复盘记录待核验，暂不展示数值与结论' : '暂无已核验的完整复盘'}</p>
+                              <p className="text-[11px] text-slate-400">公布值与预期差尚未核验；行情统计单独展示，不推断事件因果</p>
                             </div>
                           )}
                         </div>
@@ -662,6 +666,67 @@ export default function SpaceCryptoEventRadar({
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+function EventMarketTracking({ event, onRefresh }: { event: CryptoEvent; onRefresh: () => Promise<void> }) {
+  const [collecting, setCollecting] = useState(false);
+  if (!canTrackEventMarket(event)) return null;
+  const now = new Date();
+  const windows = Object.keys(EVENT_MARKET_WINDOWS) as EventMarketWindow[];
+  const observation = event.marketObservation;
+  const stages = observation && Date.parse(observation.scheduledAt) === Date.parse(event.timestamp) ? observation.stages : {};
+  const canCollect = windows.some((window) => !getEventMarketResult(event, window, now) &&
+    now.getTime() >= Date.parse(event.timestamp) + EVENT_MARKET_WINDOWS[window] * 60_000 &&
+    !(stages[window]?.status === 'retry' && Date.parse(stages[window].retryAt) > now.getTime()));
+  const collect = async () => {
+    if (collecting) return;
+    setCollecting(true);
+    try {
+      const response = await cryptoEvents.collectMarket(event.id);
+      if (!response.success) toast.error('行情补采失败，请稍后重试');
+      else if (response.data.status === 'retry') toast.error('行情暂不可用，稍后自动补采');
+      else if (response.data.status === 'busy') toast.success('正在采集行情，请稍后查看');
+      else if (response.data.status === 'complete') toast.success('已补采一个时段');
+      await onRefresh();
+    } catch { toast.error('行情补采失败，请稍后重试'); }
+    finally { setCollecting(false); }
+  };
+  return (
+    <div className="rounded-xl border border-black/[0.06] bg-white p-3 space-y-2 text-xs">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="font-bold text-slate-700">BTC 事件行情跟踪 · OKX 永续合约</span>
+        <button type="button" disabled={collecting || !canCollect} onClick={collect}
+          className="rounded border border-slate-200 px-2 py-1 text-[11px] text-slate-600 disabled:opacity-40">
+          {collecting ? '采集中…' : '补采到期数据'}
+        </button>
+      </div>
+      <p className="text-[10px] text-slate-500">以预定公布前一分钟收盘价为基准；仅统计价格，不代表公布值或事件因果。</p>
+      {windows.map((window) => {
+        const result = getEventMarketResult(event, window, now);
+        const stage = stages[window];
+        const due = Date.parse(event.timestamp) + EVENT_MARKET_WINDOWS[window] * 60_000;
+        return (
+          <div key={window} className="border-t border-slate-100 pt-2 space-y-1">
+            <div className="flex flex-wrap gap-x-3 gap-y-1">
+              <strong className="text-slate-700">{window}</strong>
+              {result ? <>
+                <span>期末 {formatMarketPercent(result.returnPct)}</span>
+                <span>区间最高 / 最低 {formatMarketPercent(result.highPct)} / {formatMarketPercent(result.lowPct)}</span>
+              </> : <span className="text-slate-400">{now.getTime() < due ? '等待窗口结束' : stage?.status === 'retry' ? '取数失败，等待补采' : '已到期，等待采集'}</span>}
+            </div>
+            {result && <details className="text-[10px] text-slate-500 break-words">
+              <summary className="cursor-pointer">查看基准、区间与来源</summary>
+              <p>基准价 {result.baselineClose} · K线起始 {result.baselineAt}</p>
+              <p>区间 [{result.windowStart}, {result.windowEnd}) · {result.candleCount} 根已收盘1分钟K线</p>
+              <p>采集 {result.collectedAt} · 时间均为 UTC</p>
+              <div className="flex flex-wrap gap-2">{result.sourceUrls.map((url, index) => <a key={url} href={url} target="_blank" rel="noreferrer" className="underline">K线来源 {index + 1}</a>)}</div>
+            </details>}
+            {!result && stage?.status === 'retry' && <p className="text-[10px] text-slate-400 break-words">{stage.error} · 下次重试 {stage.retryAt} (UTC)</p>}
+          </div>
+        );
+      })}
     </div>
   );
 }

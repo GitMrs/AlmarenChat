@@ -1,4 +1,5 @@
 import { decodeChatBody } from './chat-stream.mjs';
+import type { EvaluatedEvent } from './crypto/event-temporal';
 import type { AgentGrowthProfile, AgentRun, AssistantContextStats, AssistantConversationSummary, AssistantExperience, AssistantExperienceMessage, AssistantMemoryItem, AssistantQQBinding, AssistantReminder, AssistantReminderCandidate, Message, MessageAttachment, PersonalAssistantBootstrap, PersonalAssistantProfile, SpaceActionRequest, SpaceAutomation, SpaceConnector, SpaceDiscussion, SpaceDiscussionSettings, SpaceFileShare, SpaceOperationOutcome, SpaceOperationsSummary, SpaceRelay, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal, SpaceWork, SpaceWorkVersion, SpaceMcpServer, SpaceWebhook, AssistantMcpServer, McpProbeResult } from '@/types';
 
 const API_BASE = '/api';
@@ -892,19 +893,23 @@ export const cryptoSentinel = {
 };
 
 export interface CryptoEventsData {
-  upcoming: any[];
-  historical: any[];
-  activeAlerts: any[];
+  upcoming: EvaluatedEvent[];
+  historical: EvaluatedEvent[];
+  activeAlerts: EvaluatedEvent[];
   total: number;
 }
 
 export const cryptoEvents = {
+  collectMarket: (eventId: string) =>
+    request<{ success: boolean; data: { status: 'complete' | 'retry' | 'idle' | 'busy' | 'rescheduled' } }>('/crypto/events/market', {
+      method: 'POST', body: JSON.stringify({ eventId }),
+    }),
   list: (params?: { category?: string; symbol?: string }) => {
     const q = new URLSearchParams();
     if (params?.category) q.set('category', params.category);
     if (params?.symbol) q.set('symbol', params.symbol);
     const qs = q.toString();
-    return request<{ success: boolean; data: CryptoEventsData }>(`/crypto/events${qs ? `?${qs}` : ''}`);
+    return request<{ success: boolean; data: CryptoEventsData }>(`/crypto/events${qs ? `?${qs}` : ''}`, { cache: 'no-store' });
   },
   sync: () =>
     request<{ success: boolean; message: string; data: any }>('/crypto/events', {
