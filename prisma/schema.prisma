@@ -85,6 +85,7 @@ model AgentModelSetting {
   modelName  String?
   apiBaseUrl String?
   apiKey     String?
+  dailyStudyEnabled Boolean?
   updatedAt  DateTime @updatedAt
 
   @@unique([userId, agentId])

@@ -1,6 +1,7 @@
 import { decodeChatBody } from './chat-stream.mjs';
 import type { EvaluatedEvent } from './crypto/event-temporal';
 import type { AgentModelFields, AgentModelSettingsResponse, AgentMemoryItem, AgentExperience } from '@/types';
+import type { AgentDailyStudyRecord } from '@/lib/agent-study/types';
 import type { AgentGrowthProfile, AgentRun, AssistantContextStats, AssistantConversationSummary, AssistantExperience, AssistantExperienceMessage, AssistantMemoryItem, AssistantQQBinding, AssistantReminder, AssistantReminderCandidate, Message, MessageAttachment, PersonalAssistantBootstrap, PersonalAssistantProfile, SpaceActionRequest, SpaceAutomation, SpaceConnector, SpaceDiscussion, SpaceDiscussionSettings, SpaceFileShare, SpaceOperationOutcome, SpaceOperationsSummary, SpaceRelay, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal, SpaceWork, SpaceWorkVersion, SpaceMcpServer, SpaceWebhook, AssistantMcpServer, McpProbeResult } from '@/types';
 
 const API_BASE = '/api';
@@ -354,6 +355,23 @@ export const agents = {
 
     return res.json() as Promise<{ document: any; chunkCount: number }>;
   },
+  dailyStudy: (id: string, options?: { refresh?: boolean; date?: string }) => {
+    const params = new URLSearchParams();
+    if (options?.refresh) params.set('refresh', 'true');
+    if (options?.date) params.set('date', options.date);
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    return request<{ study: AgentDailyStudyRecord | null; enabled: boolean }>(`/agents/${encodeURIComponent(id)}/daily-study${qs}`);
+  },
+  setDailyStudyEnabled: (id: string, enabled: boolean) =>
+    request<{ success: boolean; enabled: boolean; study: AgentDailyStudyRecord | null }>(`/agents/${encodeURIComponent(id)}/daily-study`, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'set_enabled', enabled }),
+    }),
+  markDailyStudyShared: (id: string, date?: string) =>
+    request<{ success: boolean; study: AgentDailyStudyRecord }>(`/agents/${encodeURIComponent(id)}/daily-study`, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'mark_shared', date }),
+    }),
 };
 
 // Conversations

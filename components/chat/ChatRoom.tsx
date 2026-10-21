@@ -21,6 +21,8 @@ import { getBuiltInAgents } from '@/lib/agents-data';
 import { getCompanionCharacterId } from '@/lib/companion/agents';
 import { companionReplyInstruction, createCompanionReplyParser } from '@/lib/companion/reply-protocol.mjs';
 import type { CompanionReply } from '@/lib/companion/reply';
+import AgentDailyStudyCard from '@/components/chat/AgentDailyStudyCard';
+import type { AgentDailyStudyRecord, AgentStudyItem } from '@/lib/agent-study/types';
 import { agentMemories, generateConversationImage, streamChat, conversations as conversationsApi, agents as agentsApi, user as userApi, uploads } from '@/lib/api';
 import {
   DEFAULT_BROWSER_MODEL_CONFIG,
@@ -147,6 +149,9 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
   const [chatMode, setChatMode] = useState<'chat' | 'image'>('chat');
   const [trendingPickerOpen, setTrendingPickerOpen] = useState(false);
   const [quickTopics, setQuickTopics] = useState<{ id: string; source: string; sourceName: string; title: string; heat?: string }[]>([]);
+  const [dailyStudy, setDailyStudy] = useState<AgentDailyStudyRecord | null>(null);
+  const [loadingDailyStudy, setLoadingDailyStudy] = useState(false);
+  const [studyEnabled, setStudyEnabled] = useState(false);
 
   const agentCategoryKey = useMemo(() => {
     const rawCat = (conversationAgent?.category || agent?.category || '').toLowerCase();
@@ -235,6 +240,47 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
       window.removeEventListener('resize', updateViewportHeight);
     };
   }, []);
+
+  const loadDailyStudy = async (targetAgentId: string, refresh = false) => {
+    if (!targetAgentId) return;
+    try {
+      setLoadingDailyStudy(true);
+      const res = await agentsApi.dailyStudy(targetAgentId, { refresh });
+      setStudyEnabled(Boolean(res?.enabled));
+      setDailyStudy(res?.study || null);
+    } catch (err) {
+      console.warn('[ChatRoom] loadDailyStudy failed:', err);
+    } finally {
+      setLoadingDailyStudy(false);
+    }
+  };
+
+  const handleToggleStudyEnabled = async (enabled: boolean) => {
+    const targetAgentId = conversationAgent?.id || agent?.id || agentId;
+    if (!targetAgentId) return;
+    try {
+      setLoadingDailyStudy(true);
+      const res = await agentsApi.setDailyStudyEnabled(targetAgentId, enabled);
+      setStudyEnabled(Boolean(res?.enabled));
+      setDailyStudy(res?.study || null);
+    } catch (err) {
+      console.warn('[ChatRoom] setDailyStudyEnabled failed:', err);
+    } finally {
+      setLoadingDailyStudy(false);
+    }
+  };
+
+  const handleDiscussStudyItem = (item: AgentStudyItem) => {
+    const text = `我看你今天看了《${item.title}》，你有什么想跟我聊聊的吗？`;
+    setDraft(text);
+    const targetAgentId = conversationAgent?.id || agent?.id || agentId;
+    if (targetAgentId) {
+      agentsApi.markDailyStudyShared(targetAgentId).catch(() => {});
+    }
+    setTimeout(() => {
+      inputRef.current?.focus();
+    }, 50);
+  };
 
   useEffect(() => {
     const loadAgent = async () => {
@@ -349,6 +395,11 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
               createdAt: new Date().toISOString(),
             },
           ]);
+        }
+
+        const targetAgentId = found?.id || agentId;
+        if (targetAgentId && authenticated) {
+          loadDailyStudy(targetAgentId);
         }
       } finally {
         setLoading(false);
@@ -1203,6 +1254,12 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
         onRenameConversation={renameConversation}
         viewMode={viewMode}
         onToggleCompanionView={companionCharacterId ? toggleCompanionView : undefined}
+        dailyStudy={dailyStudy}
+        loadingDailyStudy={loadingDailyStudy}
+        studyEnabled={studyEnabled}
+        onToggleStudyEnabled={handleToggleStudyEnabled}
+        onRefreshDailyStudy={() => displayAgent?.id && loadDailyStudy(displayAgent.id, true)}
+        onDiscussDailyStudy={handleDiscussStudyItem}
       />
 
       {viewMode === 'companion' && companionCharacterId ? (
@@ -1256,6 +1313,16 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
                   加载更早消息
                 </button>
               </div>
+            )}
+
+            {isLoggedIn && displayAgent?.id && studyEnabled && dailyStudy && (
+              <AgentDailyStudyCard
+                study={dailyStudy}
+                loading={loadingDailyStudy}
+                onRefresh={() => loadDailyStudy(displayAgent.id, true)}
+                onDiscuss={handleDiscussStudyItem}
+                defaultCollapsed={messages.length > 2}
+              />
             )}
 
             {isLoggedIn && messages.length <= 1 && !isStreaming && (

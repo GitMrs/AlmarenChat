@@ -128,6 +128,10 @@ const MANUAL_MIGRATION_REPAIRS = [
       'KnowledgeChunk_spaceId_idx',
     ],
   },
+  {
+    migration: '20261021120000_add_daily_study_to_agent_model_settings',
+    columns: [{ table: 'AgentModelSetting', names: ['dailyStudyEnabled'] }],
+  },
 ];
 const MIGRATIONS_DIRECTORY = path.resolve(process.cwd(), 'prisma', 'migrations');
 

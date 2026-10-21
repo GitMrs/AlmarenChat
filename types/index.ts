@@ -54,6 +54,7 @@ export interface AgentModelFields {
   modelName: string | null;
   apiBaseUrl: string | null;
   apiKey: string | null;
+  dailyStudyEnabled?: boolean | null;
 }
 
 export interface AgentModelSettingsResponse {

@@ -35,11 +35,22 @@ export async function PATCH(request: Request, { params }: RouteContext) {
     if (!await resolveAgent(agentId, userId)) return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
     const body = await request.json();
     if (!body || typeof body !== 'object' || Array.isArray(body)) return NextResponse.json({ error: '无效的模型配置' }, { status: 400 });
-    const data: { modelName?: string | null; apiBaseUrl?: string | null; apiKey?: string | null } = {};
+    const data: {
+      modelName?: string | null;
+      apiBaseUrl?: string | null;
+      apiKey?: string | null;
+      dailyStudyEnabled?: boolean | null;
+    } = {};
     for (const field of ['modelName', 'apiBaseUrl', 'apiKey'] as const) {
       if (body[field] === undefined) continue;
       if (body[field] !== null && typeof body[field] !== 'string') return NextResponse.json({ error: '无效的模型配置' }, { status: 400 });
       data[field] = body[field]?.trim() || null;
+    }
+    if (body.dailyStudyEnabled !== undefined) {
+      if (body.dailyStudyEnabled !== null && typeof body.dailyStudyEnabled !== 'boolean') {
+        return NextResponse.json({ error: '无效的学习设置' }, { status: 400 });
+      }
+      data.dailyStudyEnabled = body.dailyStudyEnabled;
     }
     if (data.apiBaseUrl) {
       try {

@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowLeft, ChevronDown, ChevronUp, Cpu, Database, MessageSquarePlus, SlidersHorizontal, Sparkles, X } from 'lucide-react';
+import { ArrowLeft, BookOpen, ChevronDown, ChevronUp, Cpu, Database, MessageSquarePlus, SlidersHorizontal, Sparkles, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -9,12 +9,14 @@ import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import TextInputDialog from '@/components/shared/TextInputDialog';
 import KnowledgeManager from '@/components/agent/KnowledgeManager';
 import SpaceMemberModelDialog from '@/components/spaces/SpaceMemberModelDialog';
+import AgentDailyStudyCard from '@/components/chat/AgentDailyStudyCard';
 import { agentMemories as agentMemoryApi, agents as agentsApi } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import type { DisplayAgent } from '@/components/chat/ChatMessageItem';
 import type { AgentMemoryItem } from '@/types';
 import type { AgentExperience } from '@/types';
 import type { AgentModelSettingsResponse } from '@/types';
+import type { AgentDailyStudyRecord, AgentStudyItem } from '@/lib/agent-study/types';
 
 type AgentDetailsPanelProps = {
   displayAgent: DisplayAgent;
@@ -39,6 +41,12 @@ type AgentDetailsPanelProps = {
   onRenameConversation: (conversationId: string) => void;
   viewMode?: 'chat' | 'companion';
   onToggleCompanionView?: () => void;
+  dailyStudy?: AgentDailyStudyRecord | null;
+  loadingDailyStudy?: boolean;
+  studyEnabled?: boolean;
+  onToggleStudyEnabled?: (enabled: boolean) => void;
+  onRefreshDailyStudy?: () => void;
+  onDiscussDailyStudy?: (item: AgentStudyItem) => void;
 };
 
 function ContextLimitControl({
@@ -115,12 +123,19 @@ export default function AgentDetailsPanel({
   onRenameConversation,
   viewMode = 'chat',
   onToggleCompanionView,
+  dailyStudy,
+  loadingDailyStudy,
+  studyEnabled = false,
+  onToggleStudyEnabled,
+  onRefreshDailyStudy,
+  onDiscussDailyStudy,
 }: AgentDetailsPanelProps) {
   const memoryEnabled = isLoggedIn && conversationMode === 'MAIN';
   const activeMemoryEnabled = useRef(memoryEnabled);
   activeMemoryEnabled.current = memoryEnabled;
   const [conversationDrawerOpen, setConversationDrawerOpen] = useState(false);
   const [memoryDrawerOpen, setMemoryDrawerOpen] = useState(false);
+  const [studyDrawerOpen, setStudyDrawerOpen] = useState(false);
   const [memoryTab, setMemoryTab] = useState<'memories' | 'experiences'>('memories');
   const [renameMemoryTarget, setRenameMemoryTarget] = useState<AgentMemoryItem | null>(null);
   const [renamingMemory, setRenamingMemory] = useState(false);
@@ -345,6 +360,146 @@ export default function AgentDetailsPanel({
         {knowledgeDocCount ?? 0}
       </span>
     </button>
+  );
+
+  const studyWidget = (
+    <button
+      type="button"
+      onClick={() => setStudyDrawerOpen(true)}
+      className={cn(
+        "mt-2.5 flex w-full items-center justify-between rounded-2xl border p-2.5 text-left transition hover:shadow-xs group cursor-pointer",
+        studyEnabled
+          ? "border-amber-300/80 bg-gradient-to-r from-amber-50/80 via-rose-50/40 to-orange-50/30 hover:border-amber-400"
+          : "border-slate-200 bg-slate-50/70 hover:border-slate-300 hover:bg-slate-50"
+      )}
+      title="查看与设置 Agent 每日全网自主研习"
+    >
+      <div className="flex min-w-0 items-center gap-2.5">
+        <div className={cn(
+          "flex h-7 w-7 shrink-0 items-center justify-center rounded-xl text-white shadow-xs transition",
+          studyEnabled ? "bg-gradient-to-br from-amber-500 to-rose-500" : "bg-slate-400"
+        )}>
+          <BookOpen size={14} />
+        </div>
+        <div className="min-w-0">
+          <div className="text-xs font-black text-slate-900 group-hover:text-amber-950 flex items-center gap-1.5">
+            <span>今日自主研习</span>
+            <span className={cn(
+              "rounded-full text-[10px] font-bold px-1.5 py-0.2",
+              studyEnabled ? "bg-amber-500/10 text-amber-700" : "bg-slate-200 text-slate-500"
+            )}>
+              {studyEnabled ? 'Daily' : '未开启'}
+            </span>
+          </div>
+          <div className="text-[11px] font-semibold text-slate-500 truncate">
+            {studyEnabled
+              ? (dailyStudy?.items?.length ? `精读 ${dailyStudy.items.length} 篇 · 已沉淀到认知` : '每日精读全网热点')
+              : '点击进入可为该角色开启'}
+          </div>
+        </div>
+      </div>
+      <span className={cn(
+        "flex shrink-0 items-center rounded-full px-2 py-0.5 text-[11px] font-black border shadow-2xs transition",
+        studyEnabled
+          ? "bg-white text-amber-700 border-amber-200/60"
+          : "bg-white text-slate-400 border-slate-200"
+      )}>
+        {studyEnabled ? (dailyStudy?.items?.length ?? 3) : 'OFF'}
+      </span>
+    </button>
+  );
+
+  const studyDrawer = studyDrawerOpen && (
+    <div className="fixed inset-0 z-[60] bg-slate-950/25" onClick={() => setStudyDrawerOpen(false)}>
+      <div className="absolute inset-y-0 right-0 flex w-[min(600px,94vw)] flex-col bg-white p-5 shadow-2xl" onClick={(event) => event.stopPropagation()}>
+        <div className="flex items-center justify-between border-b border-black/[0.06] pb-4">
+          <div className="flex items-center gap-2.5">
+            <div className={cn(
+              "flex h-8 w-8 items-center justify-center rounded-xl text-white shadow-2xs transition",
+              studyEnabled ? "bg-gradient-to-br from-amber-500 to-rose-500" : "bg-slate-400"
+            )}>
+              <BookOpen size={16} />
+            </div>
+            <div>
+              <h2 className="text-lg font-black text-slate-950">{displayAgent.name}的自主研习</h2>
+              <p className="mt-0.5 text-xs font-semibold text-slate-400">每日自主精选研读 3 篇热点 · 知识提炼与第一人称心得</p>
+            </div>
+          </div>
+          <button type="button" onClick={() => setStudyDrawerOpen(false)} className="rounded-full bg-[#fbfaf7] p-2 text-slate-500 hover:bg-slate-100 cursor-pointer">
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* 开关卡片 */}
+        <div className="mt-4 flex items-center justify-between rounded-2xl border border-black/[0.06] bg-[#fcfbf9] p-3.5">
+          <div className="flex items-center gap-2.5">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-black text-slate-900">自主学习开关</span>
+                <span className={cn(
+                  "rounded-full px-2 py-0.5 text-[10px] font-black transition",
+                  studyEnabled ? "bg-emerald-100 text-emerald-800" : "bg-slate-200 text-slate-600"
+                )}>
+                  {studyEnabled ? '已开启' : '已关闭'}
+                </span>
+              </div>
+              <p className="text-[11px] font-medium text-slate-400 mt-0.5">
+                {studyEnabled ? '开启后每天自选 3 篇全网热点研习并主动分享' : '目前仅 Sunny 默认开启自学，你可以随时为该角色开启'}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => onToggleStudyEnabled?.(!studyEnabled)}
+            className={cn(
+              "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none",
+              studyEnabled ? "bg-amber-500" : "bg-slate-300"
+            )}
+            role="switch"
+            aria-checked={studyEnabled}
+          >
+            <span
+              className={cn(
+                "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
+                studyEnabled ? "translate-x-5" : "translate-x-0"
+              )}
+            />
+          </button>
+        </div>
+
+        <div className="mt-2 flex-1 overflow-y-auto pr-1">
+          {!studyEnabled ? (
+            <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-slate-200 bg-[#fbfaf7] p-8 text-center my-6">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-50 text-amber-600 mb-3.5">
+                <Sparkles size={28} />
+              </div>
+              <h3 className="text-sm font-black text-slate-900">{displayAgent.name} 当前未开启自主研习</h3>
+              <p className="mt-1.5 max-w-[280px] text-xs leading-5 text-slate-500">
+                开启后，{displayAgent.name} 每天会根据自身的性格与兴趣，从 B站、知乎、GitHub 等全网平台精读 3 篇内容，形成心得以供交流。
+              </p>
+              <button
+                type="button"
+                onClick={() => onToggleStudyEnabled?.(true)}
+                className="mt-4 inline-flex items-center gap-1.5 rounded-full bg-slate-950 px-5 py-2 text-xs font-black text-white shadow-xs hover:bg-slate-800 transition active:scale-95 cursor-pointer"
+              >
+                <span>立即为 {displayAgent.name} 开启</span>
+              </button>
+            </div>
+          ) : (
+            <AgentDailyStudyCard
+              study={dailyStudy ?? null}
+              loading={loadingDailyStudy}
+              onRefresh={onRefreshDailyStudy}
+              onDiscuss={(item) => {
+                setStudyDrawerOpen(false);
+                onCloseMobileDetails();
+                onDiscussDailyStudy?.(item);
+              }}
+            />
+          )}
+        </div>
+      </div>
+    </div>
   );
 
   const conversationDrawer = conversationDrawerOpen && (
@@ -621,6 +776,7 @@ export default function AgentDetailsPanel({
       />
       {conversationDrawer}
       {memoryDrawer}
+      {studyDrawer}
       <aside className="hidden w-[340px] shrink-0 overflow-y-auto border-r border-black/[0.06] bg-white/80 p-5 backdrop-blur lg:flex lg:flex-col">
         <div className="mb-6 flex items-center justify-between gap-2">
           <button
@@ -670,6 +826,7 @@ export default function AgentDetailsPanel({
         <div className="mt-5 rounded-[28px] border border-black/[0.06] bg-white p-5 shadow-sm">
           <div className="mb-5 border-b border-black/[0.06] pb-5">
             {conversationSwitcher}
+            {studyWidget}
             {modelWidget}
             {memoryWidget}
             {knowledgeWidget}
@@ -766,6 +923,7 @@ export default function AgentDetailsPanel({
               )}
               <div className="border-b border-black/[0.06] pb-4">
                 {conversationSwitcher}
+                {studyWidget}
                 {modelWidget}
                 {memoryWidget}
                 {knowledgeWidget}
