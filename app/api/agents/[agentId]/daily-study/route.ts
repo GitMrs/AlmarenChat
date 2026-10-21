@@ -8,6 +8,8 @@ import {
   markDailyStudyShared,
   isAgentStudyEnabled,
   setAgentStudyEnabled,
+  getAgentStudySourceMode,
+  setAgentStudySourceMode,
 } from '@/lib/agent-study';
 
 export const runtime = 'nodejs';
@@ -24,10 +26,13 @@ export async function GET(
     const date = searchParams.get('date') || undefined;
     const refresh = searchParams.get('refresh') === 'true';
 
-    const enabled = await isAgentStudyEnabled(agentId, userId);
+    const [enabled, sourceMode] = await Promise.all([
+      isAgentStudyEnabled(agentId, userId),
+      getAgentStudySourceMode(agentId, userId),
+    ]);
 
     if (!enabled) {
-      return NextResponse.json({ study: null, enabled: false });
+      return NextResponse.json({ study: null, enabled: false, sourceMode });
     }
 
     const [user, setting] = await Promise.all([
@@ -39,10 +44,11 @@ export async function GET(
     const study = await getOrGenerateDailyStudy(agentId, userId, {
       date,
       forceRefresh: refresh,
+      sourceMode,
       modelConfig,
     });
 
-    return NextResponse.json({ study, enabled: true });
+    return NextResponse.json({ study, enabled: true, sourceMode });
   } catch (error: any) {
     console.error('[api/agents/daily-study] GET error:', error);
     return NextResponse.json(
@@ -80,6 +86,12 @@ export async function POST(
         });
       }
       return NextResponse.json({ success: true, enabled, study });
+    }
+
+    if (action === 'set_source_mode') {
+      const mode = body.sourceMode === 'bilibili' ? 'bilibili' : 'internal';
+      await setAgentStudySourceMode(agentId, mode, userId);
+      return NextResponse.json({ success: true, sourceMode: mode });
     }
 
     if (action === 'mark_shared') {

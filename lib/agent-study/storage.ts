@@ -5,6 +5,106 @@ import type { AgentDailyStudyRecord, AgentStudyItem } from './types';
 
 const AGENT_STUDY_DIR = path.join(process.cwd(), 'data', 'agent-study');
 const SETTINGS_FILE_PATH = path.join(AGENT_STUDY_DIR, 'settings.json');
+const SOURCE_MODES_FILE_PATH = path.join(AGENT_STUDY_DIR, 'source-modes.json');
+
+/**
+ * 获取 Agent 的学习源模式：'internal'（全网热点）或 'bilibili'（B站主动搜索）
+ * 优先从数据库 AgentModelSetting 表读取
+ */
+export async function getAgentStudySourceMode(
+  agentId: string,
+  userId?: string
+): Promise<'internal' | 'bilibili'> {
+  const db: any = (prisma as any)?.default || prisma;
+
+  if (userId && db?.agentModelSetting?.findUnique) {
+    try {
+      const record = await db.agentModelSetting.findUnique({
+        where: {
+          userId_agentId: {
+            userId,
+            agentId,
+          },
+        },
+        select: {
+          dailyStudySourceMode: true,
+        },
+      });
+      if (record?.dailyStudySourceMode === 'bilibili') {
+        return 'bilibili';
+      }
+      if (record?.dailyStudySourceMode === 'internal') {
+        return 'internal';
+      }
+    } catch (err) {
+      console.warn('[AgentStudy] Query dailyStudySourceMode failed:', err);
+    }
+  }
+
+  // 兜底本地文件
+  try {
+    const raw = await readFile(SOURCE_MODES_FILE_PATH, 'utf-8');
+    const map = JSON.parse(raw);
+    const key = userId ? `${userId}:${agentId}` : agentId;
+    if (map[key] === 'bilibili' || map[agentId] === 'bilibili') return 'bilibili';
+  } catch {}
+  return 'internal';
+}
+
+/**
+ * 设置 Agent 的学习源模式
+ * 同步持久化写入数据库 AgentModelSetting 表并备份本地文件
+ */
+export async function setAgentStudySourceMode(
+  agentId: string,
+  mode: 'internal' | 'bilibili',
+  userId?: string
+): Promise<'internal' | 'bilibili'> {
+  const db: any = (prisma as any)?.default || prisma;
+
+  if (userId && db?.agentModelSetting?.upsert) {
+    try {
+      await db.agentModelSetting.upsert({
+        where: {
+          userId_agentId: {
+            userId,
+            agentId,
+          },
+        },
+        create: {
+          userId,
+          agentId,
+          dailyStudySourceMode: mode,
+        },
+        update: {
+          dailyStudySourceMode: mode,
+          updatedAt: new Date(),
+        },
+      });
+    } catch (err) {
+      console.warn('[AgentStudy] Upsert AgentModelSetting dailyStudySourceMode failed:', err);
+    }
+  }
+
+  // 同步本地文件备份
+  try {
+    await mkdir(AGENT_STUDY_DIR, { recursive: true });
+    let map: Record<string, string> = {};
+    try {
+      const raw = await readFile(SOURCE_MODES_FILE_PATH, 'utf-8');
+      map = JSON.parse(raw);
+    } catch {}
+    const key = userId ? `${userId}:${agentId}` : agentId;
+    map[key] = mode;
+    const tmpPath = `${SOURCE_MODES_FILE_PATH}.${Date.now()}.tmp`;
+    await writeFile(tmpPath, JSON.stringify(map, null, 2), 'utf-8');
+    const { rename } = await import('node:fs/promises');
+    await rename(tmpPath, SOURCE_MODES_FILE_PATH);
+  } catch (err) {
+    console.warn('[AgentStudy] setAgentStudySourceMode backup failed:', err);
+  }
+  return mode;
+}
 
 /**
  * 判断 Agent 是否开启了自主学习
@@ -125,6 +225,36 @@ export async function setAgentStudyEnabled(
 export function getLocalISODate(date = new Date()): string {
   const offset = date.getTimezoneOffset() * 60000;
   return new Date(date.getTime() - offset).toISOString().split('T')[0];
+}
+
+/**
+ * 研习生成成功后调用：确保 (userId, agentId) 在 AgentModelSetting 表中有一行
+ * dailyStudyEnabled=true，让后台调度器能发现"默认开启"的 Agent。
+ * 已存在显式值（含用户手动关闭的 false）时绝不覆盖。
+ */
+export async function ensureStudyEnabledObserved(
+  agentId: string,
+  userId?: string
+): Promise<void> {
+  if (!userId) return;
+  const db: any = (prisma as any)?.default || prisma;
+  if (!db?.agentModelSetting?.findUnique || !db?.agentModelSetting?.upsert) return;
+
+  try {
+    const existing = await db.agentModelSetting.findUnique({
+      where: { userId_agentId: { userId, agentId } },
+      select: { dailyStudyEnabled: true },
+    });
+    if (existing && typeof existing.dailyStudyEnabled === 'boolean') return;
+
+    await db.agentModelSetting.upsert({
+      where: { userId_agentId: { userId, agentId } },
+      create: { userId, agentId, dailyStudyEnabled: true },
+      update: { dailyStudyEnabled: true, updatedAt: new Date() },
+    });
+  } catch (err) {
+    console.warn('[AgentStudy] ensureStudyEnabledObserved failed:', err);
+  }
 }
 
 function getRecordFilePath(date: string, agentId: string, userId?: string): string {

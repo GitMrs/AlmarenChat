@@ -45,6 +45,8 @@ type AgentDetailsPanelProps = {
   loadingDailyStudy?: boolean;
   studyEnabled?: boolean;
   onToggleStudyEnabled?: (enabled: boolean) => void;
+  studySourceMode?: 'internal' | 'bilibili';
+  onChangeStudySourceMode?: (mode: 'internal' | 'bilibili') => void;
   onRefreshDailyStudy?: () => void;
   onDiscussDailyStudy?: (item: AgentStudyItem) => void;
 };
@@ -127,6 +129,8 @@ export default function AgentDetailsPanel({
   loadingDailyStudy,
   studyEnabled = false,
   onToggleStudyEnabled,
+  studySourceMode = 'internal',
+  onChangeStudySourceMode,
   onRefreshDailyStudy,
   onDiscussDailyStudy,
 }: AgentDetailsPanelProps) {
@@ -467,6 +471,53 @@ export default function AgentDetailsPanel({
           </button>
         </div>
 
+        {/* 学习源选择模式 */}
+        {studyEnabled && (
+          <div className="mt-2.5 rounded-2xl border border-black/[0.06] bg-[#fcfbf9] p-3.5">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-black text-slate-900">研习内容来源</span>
+              <span className="text-[10px] font-bold text-slate-400">选择 Agent 学习渠道</span>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => onChangeStudySourceMode?.('internal')}
+                className={cn(
+                  "flex flex-col rounded-xl border p-2.5 text-left transition cursor-pointer",
+                  studySourceMode === 'internal'
+                    ? "border-amber-400/80 bg-amber-500/10 shadow-2xs"
+                    : "border-black/[0.06] bg-white hover:bg-slate-50 text-slate-600"
+                )}
+              >
+                <div className="flex items-center gap-1.5 font-black text-xs text-slate-900">
+                  <span>📰 全网热点精选</span>
+                </div>
+                <div className="mt-1 text-[11px] font-medium text-slate-500 leading-4">
+                  走内部聚合热搜（知乎/微博/少数派/读书等），极速轻量
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => onChangeStudySourceMode?.('bilibili')}
+                className={cn(
+                  "flex flex-col rounded-xl border p-2.5 text-left transition cursor-pointer",
+                  studySourceMode === 'bilibili'
+                    ? "border-rose-400/80 bg-rose-500/10 shadow-2xs"
+                    : "border-black/[0.06] bg-white hover:bg-slate-50 text-slate-600"
+                )}
+              >
+                <div className="flex items-center gap-1.5 font-black text-xs text-slate-900">
+                  <span>📺 Bilibili 主动搜索</span>
+                </div>
+                <div className="mt-1 text-[11px] font-medium text-slate-500 leading-4">
+                  到 B 站定向搜 1 小时内精炼课程，提取字幕与 ASR 深度沉淀
+                </div>
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="mt-2 flex-1 overflow-y-auto pr-1">
           {!studyEnabled ? (
             <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-slate-200 bg-[#fbfaf7] p-8 text-center my-6">
@@ -691,7 +742,7 @@ export default function AgentDetailsPanel({
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-sm font-bold text-slate-800">{experience.title}</p>
                       <span className="shrink-0 rounded-md bg-slate-200/60 px-2 py-0.5 text-[10px] font-bold text-slate-600">
-                        {({ CHAT: '单聊', TASK: '任务', DISCUSSION: '讨论', RELAY: '接力', GAME: '游戏', COORDINATION: '成员协作' } as Record<string, string>)[experience.sourceType || 'TASK'] || '空间活动'}
+                        {({ CHAT: '单聊', TASK: '任务', DISCUSSION: '讨论', RELAY: '接力', GAME: '游戏', COORDINATION: '成员协作', STUDY: '自主研习' } as Record<string, string>)[experience.sourceType || 'TASK'] || '空间活动'}
                       </span>
                     </div>
                     <p className={experience.status === 'DISABLED' ? 'mt-1.5 whitespace-pre-wrap text-sm leading-6 text-slate-400 line-through' : 'mt-1.5 whitespace-pre-wrap text-sm leading-6 text-slate-600 font-normal'}>

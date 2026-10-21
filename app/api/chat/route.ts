@@ -10,6 +10,7 @@ import { formatKnowledgeContext, getKnowledgeHits } from '@/lib/knowledge';
 import { createModelClient, resolveModelName } from '@/lib/model-client';
 import { reserveChatQuota } from '@/lib/chat-quota';
 import { loadAgentMemoryContext } from '@/lib/agent-memory';
+import { loadAgentLearningContext } from '@/lib/agent-study/context';
 import { currentTimeContext } from '@/lib/current-time-context.mjs';
 import { archiveAgentChat } from '@/app/api/_lib/agent-personal-memory';
 import { compressConversationContext, estimateMessagesTokens } from '@/lib/context-compression';
@@ -192,14 +193,15 @@ export async function POST(request: Request) {
 
     const memoryAgentId = conversationSettings?.agentId || agentId;
     const usesAgentMemory = conversationSettings?.agentMode === 'MAIN';
-    const [employeeMemory, worldContext] = await Promise.all([
+    const [employeeMemory, learningContext, worldContext] = await Promise.all([
       usesAgentMemory ? loadAgentMemoryContext({ userId, agentId: memoryAgentId, query: textMessage }) : Promise.resolve(''),
+      usesAgentMemory ? loadAgentLearningContext({ userId, agentId: memoryAgentId }) : Promise.resolve(''),
       loadAgentWorldContext({ agentId: conversationSettings?.agentId || agentId, query: textMessage, history: normalizedHistory }),
     ]);
-    let finalContext = [currentTimeContext(), context, employeeMemory, worldContext].filter(Boolean).join('\n\n');
+    let finalContext = [currentTimeContext(), context, employeeMemory, learningContext, worldContext].filter(Boolean).join('\n\n');
     if (knowledgeEnabled && agentId && textMessage.trim()) {
       try {
-        const hits = await getKnowledgeHits(agentId, textMessage);
+        const hits = await getKnowledgeHits({ agentId, userId }, textMessage);
         // 过滤出具备足够语义相关度的优质切片（余弦相似度 >= 0.35）
         const relevantHits = hits.filter((hit) => hit.score >= 0.35);
         if (relevantHits.length > 0) {

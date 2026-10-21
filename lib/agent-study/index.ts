@@ -3,3 +3,8 @@ export * from './interest-matcher';
 export * from './study-engine';
 export * from './storage';
 export * from './service';
+export * from './content-kind';
+export * from './content-provider';
+export * from './knowledge-assessor';
+export * from './ingest';
+export * from './context';

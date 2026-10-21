@@ -14,6 +14,21 @@ export type KnowledgeHit = {
   fileName: string;
   score: number;
   scope?: 'agent' | 'space';
+  sourceType?: string | null;
+  sourceUrl?: string | null;
+};
+
+export type KnowledgeDocumentInput = {
+  title: string;
+  content: string;
+  fileName?: string;
+  mimeType?: string | null;
+  sourceType?: string;
+  sourceKey?: string;
+  sourceUrl?: string;
+  summary?: string;
+  tags?: string[];
+  status?: 'ACTIVE' | 'DRAFT';
 };
 
 export type TextChunk = {
@@ -21,7 +36,9 @@ export type TextChunk = {
   title?: string;
 };
 
-export type KnowledgeTarget = string | { agentId?: string; spaceId?: string };
+export type KnowledgeTarget =
+  | string
+  | { agentId?: string; spaceId?: string; userId?: string };
 
 /**
  * Markdown 章节标题感知分块算法
@@ -116,33 +133,79 @@ function cosineSimilarity(a: number[], b: number[]) {
   return dot / (Math.sqrt(normA) * Math.sqrt(normB));
 }
 
+function resolveRepository() {
+  const db: any = (prisma as any)?.default || prisma;
+  return db;
+}
+
+function safeFileName(title: string) {
+  const base = String(title || 'knowledge')
+    .replace(/[\\/:*?"<>|\s]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80);
+  return `${base || 'knowledge'}.md`;
+}
+
 /**
- * 建立知识库文档索引（支持 Agent 角色专属知识库 与 Space 空间公共知识库）
+ * 以纯文本方式建立知识库索引（用户上传与 Agent 自主学习共用）
+ * - 知识归属由 (userId, agentId | spaceId) 共同确定，不依赖 Agent 表存在
+ * - sourceKey 存在时按归属去重，避免重复沉淀
+ * - status 为 DRAFT 的文档不会进入检索
  */
-export async function indexKnowledgeDocument(
+export async function indexKnowledgeText(
   target: KnowledgeTarget,
-  file: File,
-  content: string
+  input: KnowledgeDocumentInput
 ) {
   const agentId = typeof target === 'string' ? target : target.agentId;
   const spaceId = typeof target === 'object' ? target.spaceId : undefined;
-
+  const userId = typeof target === 'object' ? target.userId : undefined;
   if (!agentId && !spaceId) {
     throw new Error('必须指定 agentId 或 spaceId。');
   }
 
+  const content = String(input.content || '').trim();
   const chunks = splitTextMarkdownAware(content);
   if (chunks.length === 0) {
     throw new Error('文档内容为空，无法建立知识库。');
   }
 
-  const document = await prisma.knowledgeDocument.create({
+  const db = resolveRepository();
+  if (input.sourceKey && db?.knowledgeDocument?.findFirst) {
+    const existing = await db.knowledgeDocument.findFirst({
+      where: {
+        sourceKey: input.sourceKey,
+        ...(agentId ? { agentId } : {}),
+        ...(spaceId ? { spaceId } : {}),
+        ...(userId ? { userId } : {}),
+      },
+      select: { id: true, fileName: true },
+    });
+    if (existing) {
+      // 上次沉淀在切片阶段中断会留下 0 切片的孤儿文档，删掉重建而不是直接跳过
+      const chunkCount = db?.knowledgeChunk?.count
+        ? await db.knowledgeChunk.count({ where: { documentId: existing.id } })
+        : 1;
+      if (chunkCount > 0) {
+        return { document: existing, chunkCount: 0, skipped: true };
+      }
+      await db.knowledgeDocument.delete({ where: { id: existing.id } }).catch(() => {});
+    }
+  }
+
+  const document = await db.knowledgeDocument.create({
     data: {
+      userId: userId || null,
       agentId: agentId || null,
       spaceId: spaceId || null,
-      fileName: file.name,
-      mimeType: file.type || null,
-      size: file.size,
+      fileName: input.fileName || safeFileName(input.title),
+      mimeType: input.mimeType || 'text/markdown',
+      size: Buffer.byteLength(content, 'utf8'),
+      sourceType: input.sourceType || 'USER_UPLOAD',
+      sourceKey: input.sourceKey || null,
+      sourceUrl: input.sourceUrl || null,
+      summary: input.summary || null,
+      tags: Array.isArray(input.tags) && input.tags.length > 0 ? input.tags : undefined,
+      status: input.status || 'ACTIVE',
     },
   });
 
@@ -153,7 +216,7 @@ export async function indexKnowledgeDocument(
       const embedInput = chunk.title ? `【章节：${chunk.title}】\n${chunk.text}` : chunk.text;
       const embedding = await embedText(embedInput);
 
-      await prisma.knowledgeChunk.create({
+      await db.knowledgeChunk.create({
         data: {
           documentId: document.id,
           agentId: agentId || null,
@@ -166,11 +229,27 @@ export async function indexKnowledgeDocument(
       });
     }
   } catch (error) {
-    await prisma.knowledgeDocument.delete({ where: { id: document.id } }).catch(() => {});
+    await db.knowledgeDocument.delete({ where: { id: document.id } }).catch(() => {});
     throw error;
   }
 
-  return { document, chunkCount: chunks.length };
+  return { document, chunkCount: chunks.length, skipped: false };
+}
+
+/**
+ * 建立知识库文档索引（支持 Agent 角色专属知识库 与 Space 空间公共知识库）
+ */
+export async function indexKnowledgeDocument(
+  target: KnowledgeTarget,
+  file: File,
+  content: string
+) {
+  return indexKnowledgeText(target, {
+    title: file.name,
+    fileName: file.name,
+    mimeType: file.type || null,
+    content,
+  });
 }
 
 /**
@@ -184,6 +263,7 @@ export async function getKnowledgeHits(
 
   const agentId = typeof target === 'string' ? target : target.agentId;
   const spaceId = typeof target === 'object' ? target.spaceId : undefined;
+  const userId = typeof target === 'object' ? target.userId : undefined;
 
   const whereClause: any = {};
   if (agentId && spaceId) {
@@ -197,8 +277,25 @@ export async function getKnowledgeHits(
   }
 
   const chunks = await prisma.knowledgeChunk.findMany({
-    where: whereClause,
-    include: { document: { select: { fileName: true, spaceId: true, agentId: true } } },
+    where: {
+      ...whereClause,
+      // 草稿（DRAFT）不参与召回；单聊知识按用户隔离（空 userId 为历史共享数据）
+      document: {
+        status: 'ACTIVE',
+        ...(userId && !spaceId ? { OR: [{ userId }, { userId: null }] } : {}),
+      },
+    },
+    include: {
+      document: {
+        select: {
+          fileName: true,
+          spaceId: true,
+          agentId: true,
+          sourceType: true,
+          sourceUrl: true,
+        },
+      },
+    },
     orderBy: { createdAt: 'desc' },
     take: 400,
   });
@@ -215,6 +312,8 @@ export async function getKnowledgeHits(
       fileName: chunk.document.fileName,
       score: cosineSimilarity(queryEmbedding, chunk.embedding as number[]),
       scope: (chunk.spaceId ? 'space' : 'agent') as 'agent' | 'space',
+      sourceType: chunk.document.sourceType,
+      sourceUrl: chunk.document.sourceUrl,
     }))
     .sort((a, b) => b.score - a.score)
     .slice(0, MAX_CONTEXT_CHUNKS);
@@ -230,7 +329,8 @@ export function formatKnowledgeContext(hits: KnowledgeHit[], options?: { scopeLa
     .map((hit, index) => {
       const scopeTag = hit.scope === 'space' ? ' [空间共享知识]' : '';
       const titleTag = hit.title ? ` · 章节: ${hit.title}` : '';
-      return `[K${index + 1}] ${hit.fileName}${titleTag}${scopeTag} (相关度: ${hit.score.toFixed(3)})\n${hit.content}`;
+      const sourceTag = hit.sourceUrl ? ` · 来源: ${hit.sourceUrl}` : '';
+      return `[K${index + 1}] ${hit.fileName}${titleTag}${scopeTag}${sourceTag} (相关度: ${hit.score.toFixed(3)})\n${hit.content}`;
     })
     .join('\n\n');
 

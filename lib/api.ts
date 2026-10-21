@@ -360,12 +360,17 @@ export const agents = {
     if (options?.refresh) params.set('refresh', 'true');
     if (options?.date) params.set('date', options.date);
     const qs = params.toString() ? `?${params.toString()}` : '';
-    return request<{ study: AgentDailyStudyRecord | null; enabled: boolean }>(`/agents/${encodeURIComponent(id)}/daily-study${qs}`);
+    return request<{ study: AgentDailyStudyRecord | null; enabled: boolean; sourceMode?: 'internal' | 'bilibili' }>(`/agents/${encodeURIComponent(id)}/daily-study${qs}`);
   },
   setDailyStudyEnabled: (id: string, enabled: boolean) =>
     request<{ success: boolean; enabled: boolean; study: AgentDailyStudyRecord | null }>(`/agents/${encodeURIComponent(id)}/daily-study`, {
       method: 'POST',
       body: JSON.stringify({ action: 'set_enabled', enabled }),
+    }),
+  setDailyStudySourceMode: (id: string, sourceMode: 'internal' | 'bilibili') =>
+    request<{ success: boolean; sourceMode: 'internal' | 'bilibili' }>(`/agents/${encodeURIComponent(id)}/daily-study`, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'set_source_mode', sourceMode }),
     }),
   markDailyStudyShared: (id: string, date?: string) =>
     request<{ success: boolean; study: AgentDailyStudyRecord }>(`/agents/${encodeURIComponent(id)}/daily-study`, {

@@ -82,7 +82,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
 
     const content = await file.text();
     const { indexKnowledgeDocument } = await import('@/lib/knowledge');
-    const result = await indexKnowledgeDocument({ spaceId }, file, content);
+    const result = await indexKnowledgeDocument({ spaceId, userId }, file, content);
 
     return NextResponse.json({
       document: result.document,

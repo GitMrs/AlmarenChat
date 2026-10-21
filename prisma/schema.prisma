@@ -73,8 +73,6 @@ model Agent {
   isPublic     Boolean        @default(true)
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
-
-  knowledgeDocuments KnowledgeDocument[]
 }
 
 model AgentModelSetting {
@@ -86,6 +84,8 @@ model AgentModelSetting {
   apiBaseUrl String?
   apiKey     String?
   dailyStudyEnabled Boolean?
+  /** 研习渠道模式：'internal'（全网热搜）或 'bilibili'（B站主动搜索） */
+  dailyStudySourceMode String? @default("internal")
   updatedAt  DateTime @updatedAt
 
   @@unique([userId, agentId])
@@ -491,19 +491,32 @@ model SpaceFile {
 
 model KnowledgeDocument {
   id        String   @id @default(uuid())
+  /** 知识归属用户；空间公共知识可为空 */
+  userId    String?
+  /** 模型/Agent ID。不设外键，内置 Agent 与自定义 Agent 均可直接使用 */
   agentId   String?
-  agent     Agent?   @relation(fields: [agentId], references: [id], onDelete: Cascade)
   spaceId   String?
   space     Space?   @relation(fields: [spaceId], references: [id], onDelete: Cascade)
   fileName  String
   mimeType  String?
   size      Int?
+  /** USER_UPLOAD | SPACE_UPLOAD | STUDY */
+  sourceType String  @default("USER_UPLOAD")
+  /** 去重键，例如研习条目的 id 或原始 URL */
+  sourceKey  String?
+  sourceUrl  String?
+  summary    String?
+  tags       Json?
+  /** ACTIVE 才参与检索；DRAFT 为低置信草稿 */
+  status     String  @default("ACTIVE")
   createdAt DateTime @default(now())
 
   chunks KnowledgeChunk[]
 
+  @@index([userId, agentId])
   @@index([agentId])
   @@index([spaceId])
+  @@index([sourceKey])
 }
 
 model KnowledgeChunk {

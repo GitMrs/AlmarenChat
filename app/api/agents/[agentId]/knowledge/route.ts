@@ -21,18 +21,24 @@ export async function GET(request: Request, { params }: { params: Promise<{ agen
     const query = searchParams.get('q')?.trim();
 
     const agent = await prisma.agent.findUnique({ where: { id: agentId }, select: { creatorId: true } });
-    if (!agent) return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
-    if (agent.creatorId !== userId) return NextResponse.json({ error: 'Not authorized' }, { status: 403 });
+    // 内置 Agent 不在 Agent 表中，仍允许读写其知识库；仅校验自定义 Agent 的归属
+    if (agent?.creatorId && agent.creatorId !== userId) {
+      return NextResponse.json({ error: 'Not authorized' }, { status: 403 });
+    }
 
     if (query) {
       const { getKnowledgeHits } = await import('@/lib/knowledge');
-      const hits = await getKnowledgeHits(agentId, query);
+      const hits = await getKnowledgeHits({ agentId, userId }, query);
       return NextResponse.json({ hits });
     }
 
     if (documentId) {
       const document = await prisma.knowledgeDocument.findFirst({
-        where: { id: documentId, agentId },
+        where: {
+          id: documentId,
+          agentId,
+          OR: [{ userId }, { userId: null }],
+        },
         select: { id: true, fileName: true },
       });
       if (!document) return NextResponse.json({ error: 'Knowledge document not found' }, { status: 404 });
@@ -53,7 +59,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ agen
     }
 
     const documents = await prisma.knowledgeDocument.findMany({
-      where: { agentId },
+      where: {
+        agentId,
+        OR: [{ userId }, { userId: null }],
+      },
       orderBy: { createdAt: 'desc' },
       include: { _count: { select: { chunks: true } } },
     });
@@ -71,8 +80,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ age
     const { agentId } = await params;
 
     const agent = await prisma.agent.findUnique({ where: { id: agentId }, select: { creatorId: true } });
-    if (!agent) return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
-    if (agent.creatorId !== userId) return NextResponse.json({ error: 'Not authorized' }, { status: 403 });
+    if (agent?.creatorId && agent.creatorId !== userId) {
+      return NextResponse.json({ error: 'Not authorized' }, { status: 403 });
+    }
 
     const formData = await request.formData();
     const file = formData.get('file');
@@ -82,7 +92,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ age
 
     const content = await file.text();
     const { indexKnowledgeDocument } = await import('@/lib/knowledge');
-    const result = await indexKnowledgeDocument(agentId, file, content);
+    const result = await indexKnowledgeDocument({ agentId, userId }, file, content);
 
     return NextResponse.json({
       document: result.document,
@@ -103,11 +113,12 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ a
     if (!documentId) return NextResponse.json({ error: 'Missing documentId' }, { status: 400 });
 
     const agent = await prisma.agent.findUnique({ where: { id: agentId }, select: { creatorId: true } });
-    if (!agent) return NextResponse.json({ error: 'Agent not found' }, { status: 404 });
-    if (agent.creatorId !== userId) return NextResponse.json({ error: 'Not authorized' }, { status: 403 });
+    if (agent?.creatorId && agent.creatorId !== userId) {
+      return NextResponse.json({ error: 'Not authorized' }, { status: 403 });
+    }
 
     const document = await prisma.knowledgeDocument.findFirst({
-      where: { id: documentId, agentId },
+      where: { id: documentId, agentId, OR: [{ userId }, { userId: null }] },
       select: { id: true },
     });
     if (!document) return NextResponse.json({ error: 'Knowledge document not found' }, { status: 404 });

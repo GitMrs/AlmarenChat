@@ -132,6 +132,25 @@ const MANUAL_MIGRATION_REPAIRS = [
     migration: '20261021120000_add_daily_study_to_agent_model_settings',
     columns: [{ table: 'AgentModelSetting', names: ['dailyStudyEnabled'] }],
   },
+  {
+    migration: '20261021180000_add_knowledge_provenance',
+    columns: [
+      {
+        table: 'KnowledgeDocument',
+        names: ['sourceType', 'sourceKey', 'sourceUrl', 'summary', 'tags', 'status'],
+      },
+    ],
+    indexes: ['KnowledgeDocument_sourceKey_idx'],
+  },
+  {
+    migration: '20261021190000_decouple_knowledge_from_agent',
+    columns: [{ table: 'KnowledgeDocument', names: ['userId'] }],
+    indexes: ['KnowledgeDocument_userId_agentId_idx'],
+  },
+  {
+    migration: '20261021200000_add_daily_study_source_mode',
+    columns: [{ table: 'AgentModelSetting', names: ['dailyStudySourceMode'] }],
+  },
 ];
 const MIGRATIONS_DIRECTORY = path.resolve(process.cwd(), 'prisma', 'migrations');
 

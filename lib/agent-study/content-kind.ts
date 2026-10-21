@@ -1,0 +1,91 @@
+import type { AgentStudyItem } from './types';
+
+/** 实测可稳定抓到长正文的来源，用于每日“知识配额”选题 */
+export const KNOWLEDGE_FETCHABLE_SOURCES = new Set([
+  'juejin',
+  'sspai',
+  'csdn',
+  'github',
+  'hellogithub',
+]);
+
+/** 只有能产出正文的文章/仓库类来源才允许沉淀为知识；视频类依赖字幕，字幕不可用时自然被正文门槛挡掉 */
+export const KNOWLEDGE_ELIGIBLE_SOURCES = new Set([
+  'zhihu',
+  'juejin',
+  'sspai',
+  '36kr',
+  'ithome',
+  'hellogithub',
+  'github',
+  'csdn',
+  'bilibili',
+  'youtube',
+]);
+
+/** 正文低于该长度视为“只有标题/简介”，不建知识 */
+export const MIN_KNOWLEDGE_CONTENT_CHARS = 800;
+export const MAX_KNOWLEDGE_CONTENT_CHARS = 12000;
+/** 分型置信度低于该值时知识进入草稿，不参与检索 */
+export const MIN_ACTIVE_CONFIDENCE = 0.6;
+
+export type StudyContentKind = 'news' | 'opinion' | 'knowledge' | 'personal_fact';
+
+export interface StudyContentAssessment {
+  id: string;
+  contentKind: StudyContentKind;
+  category?: string;
+  title?: string;
+  summary: string;
+  keyPoints: string[];
+  confidence: number;
+}
+
+export function isKnowledgeEligibleSource(source: string) {
+  return KNOWLEDGE_ELIGIBLE_SOURCES.has(String(source || '').toLowerCase());
+}
+
+export function normalizeContentKind(value: unknown): StudyContentKind {
+  return ['news', 'opinion', 'knowledge', 'personal_fact'].includes(String(value))
+    ? (String(value) as StudyContentKind)
+    : 'news';
+}
+
+/**
+ * 1. 没有正文 → 只能是资讯/见闻，不进知识库
+ * 2. 分型不是 knowledge → 不进知识库
+ */
+export function shouldIngestAsKnowledge(options: {
+  source: string;
+  content: string;
+  assessment?: Pick<StudyContentAssessment, 'contentKind'>;
+}) {
+  if (!isKnowledgeEligibleSource(options.source)) return false;
+  if (String(options.content || '').trim().length < MIN_KNOWLEDGE_CONTENT_CHARS) return false;
+  return options.assessment?.contentKind === 'knowledge';
+}
+
+/**
+ * 构建可被 Markdown 章节感知分块器正确切分的学习笔记
+ */
+export function buildStudyKnowledgeMarkdown(options: {
+  item: Pick<AgentStudyItem, 'title' | 'sourceName' | 'url'>;
+  assessment: Pick<StudyContentAssessment, 'title' | 'summary' | 'keyPoints' | 'category'>;
+  date: string;
+  content: string;
+}) {
+  const { item, assessment, date, content } = options;
+  const title = String(assessment.title || item.title || '未命名知识').trim();
+  const keyPoints = (assessment.keyPoints || []).map((point) => `- ${point}`).filter(Boolean);
+
+  const blocks: string[] = [
+    `# ${title}`,
+    `> 来源：${item.sourceName || '网络'} | ${item.url || ''} | 研习日期：${date}`,
+  ];
+  if (assessment.category) blocks.push(`> 分类：${assessment.category}`);
+  blocks.push('', '## 摘要', assessment.summary || '');
+  if (keyPoints.length > 0) blocks.push('', '## 关键要点', ...keyPoints);
+  blocks.push('', '## 原文', String(content || '').slice(0, MAX_KNOWLEDGE_CONTENT_CHARS));
+
+  return blocks.join('\n');
+}

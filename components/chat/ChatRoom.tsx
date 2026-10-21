@@ -152,6 +152,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
   const [dailyStudy, setDailyStudy] = useState<AgentDailyStudyRecord | null>(null);
   const [loadingDailyStudy, setLoadingDailyStudy] = useState(false);
   const [studyEnabled, setStudyEnabled] = useState(false);
+  const [studySourceMode, setStudySourceMode] = useState<'internal' | 'bilibili'>('internal');
 
   const agentCategoryKey = useMemo(() => {
     const rawCat = (conversationAgent?.category || agent?.category || '').toLowerCase();
@@ -247,6 +248,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
       setLoadingDailyStudy(true);
       const res = await agentsApi.dailyStudy(targetAgentId, { refresh });
       setStudyEnabled(Boolean(res?.enabled));
+      if (res?.sourceMode) setStudySourceMode(res.sourceMode);
       setDailyStudy(res?.study || null);
     } catch (err) {
       console.warn('[ChatRoom] loadDailyStudy failed:', err);
@@ -267,6 +269,19 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
       console.warn('[ChatRoom] setDailyStudyEnabled failed:', err);
     } finally {
       setLoadingDailyStudy(false);
+    }
+  };
+
+  const handleChangeStudySourceMode = async (mode: 'internal' | 'bilibili') => {
+    const targetAgentId = conversationAgent?.id || agent?.id || agentId;
+    if (!targetAgentId) return;
+    try {
+      setStudySourceMode(mode);
+      await agentsApi.setDailyStudySourceMode(targetAgentId, mode);
+      // 切换模式后自动触发一次今日自学刷新以应用新模式
+      await loadDailyStudy(targetAgentId, true);
+    } catch (err) {
+      console.warn('[ChatRoom] setDailyStudySourceMode failed:', err);
     }
   };
 
@@ -1258,6 +1273,8 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
         loadingDailyStudy={loadingDailyStudy}
         studyEnabled={studyEnabled}
         onToggleStudyEnabled={handleToggleStudyEnabled}
+        studySourceMode={studySourceMode}
+        onChangeStudySourceMode={handleChangeStudySourceMode}
         onRefreshDailyStudy={() => displayAgent?.id && loadDailyStudy(displayAgent.id, true)}
         onDiscussDailyStudy={handleDiscussStudyItem}
       />

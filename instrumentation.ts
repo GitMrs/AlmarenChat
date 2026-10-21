@@ -22,5 +22,12 @@ export async function register() {
     } catch (err: any) {
       console.warn('[instrumentation] Failed to start crypto sentinel scheduler:', err?.message || err);
     }
+
+    try {
+      const { startAgentStudyScheduler } = await import('./lib/agent-study/scheduler');
+      startAgentStudyScheduler();
+    } catch (err: any) {
+      console.warn('[instrumentation] Failed to start agent study scheduler:', err?.message || err);
+    }
   }
 }

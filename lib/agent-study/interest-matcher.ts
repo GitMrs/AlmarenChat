@@ -1,8 +1,19 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { AgentInterestProfile } from './types';
+import {
+  KNOWLEDGE_FETCHABLE_SOURCES,
+} from './content-kind';
+import { searchBilibiliVideos } from '../video/bilibili-search.ts';
 
 const TRENDING_DIR = path.join(process.cwd(), 'data', 'trending');
+
+/** 可沉淀为知识的标题特征（用于知识配额选题） */
+const KNOWLEDGE_HINT_PATTERN =
+  /教程|指南|实践|原理|深入|如何|实现|源码|解析|入门|配置|优化|架构|避坑|手册|技巧|方案|从零|总结|算法|工具|笔记/i;
+/** 明显偏资讯/观点、不适合进入知识库的标题特征 */
+const NON_KNOWLEDGE_HINT_PATTERN =
+  /评测|体验|上手|发布|亮相|回应|热销|暴跌|股价|官宣|直播|明星|综艺|新皮肤|活动|盘点/i;
 
 export interface RawTrendingItem {
   id: string;
@@ -134,6 +145,45 @@ export async function loadTrendingSnapshot(sourceId: string): Promise<{
 }
 
 /**
+ * 根据 Agent 信息与偏好，生成用于 B 站定向搜索的高质量关键词
+ */
+export function buildAgentBilibiliSearchQueries(
+  agent: {
+    id?: string;
+    name?: string;
+    category?: string | null;
+    description?: string | null;
+    tone?: string | null;
+  },
+  profile: AgentInterestProfile
+): string[] {
+  const queries: string[] = [];
+  const category = agent.category || '';
+  const desc = agent.description || '';
+
+  // 1. 若有特定关键词，挑前两个有深度的关键词加上“教程”或“科普”
+  const substantiveKws = profile.keywords.filter((k) => k.length >= 2);
+  if (substantiveKws.length > 0) {
+    queries.push(`${substantiveKws[0]} 教程`);
+    if (substantiveKws.length > 1) {
+      queries.push(`${substantiveKws[1]} 讲解`);
+    }
+  }
+
+  // 2. 结合 Agent 类别或描述提取
+  if (category && !queries.some((q) => q.includes(category))) {
+    queries.push(`${category} 核心指南`);
+  }
+
+  // 3. 兜底
+  if (queries.length === 0) {
+    queries.push('知识精要', 'AI 实践指南');
+  }
+
+  return queries.slice(0, 2);
+}
+
+/**
  * 匹配当天与该 Agent 契合度最高的 N 条学习候选（默认 3 条）
  */
 export async function matchAgentStudyCandidates(
@@ -147,19 +197,93 @@ export async function matchAgentStudyCandidates(
   options: {
     limit?: number;
     excludeIds?: Set<string>;
+    /** 至少保留几条来自可抓正文知识源的候选（默认 0） */
+    knowledgeQuota?: number;
+    /** 是否启用 B 站实时主动搜索（默认 true） */
+    enableBilibiliSearch?: boolean;
   } = {}
 ): Promise<CandidateStudyItem[]> {
   const limit = options.limit || 3;
   const excludeIds = options.excludeIds || new Set<string>();
   const profile = resolveAgentInterestProfile(agent);
+  const enableBilibiliSearch = options.enableBilibiliSearch ?? true;
 
-  // 1. 并行加载偏好源 + 保底源
+  // 1. 并行加载偏好源 + 保底源（有知识配额时补充可抓正文的来源）
   const sourceSet = new Set([...profile.preferredSources, 'bilibili', 'zhihu']);
-  const snapshots = await Promise.all(
+  if ((options.knowledgeQuota || 0) > 0) {
+    KNOWLEDGE_FETCHABLE_SOURCES.forEach((source) => sourceSet.add(source));
+  }
+  const snapshotsPromise = Promise.all(
     Array.from(sourceSet).map((src) => loadTrendingSnapshot(src))
   );
 
+  // 2. 同步发起 B 站定向主动搜索（借鉴 bilibili_learning_bot 模式）
+  const biliSearchPromise = (async () => {
+    if (!enableBilibiliSearch) return [];
+    try {
+      const queries = buildAgentBilibiliSearchQueries(agent, profile);
+      // 每个 query 查 3 条高赞/高播放视频
+      const searchTasks = queries.map((query) =>
+        searchBilibiliVideos(query, { limit: 3, sort: 'totalrank' }).catch(() => [])
+      );
+      const videoLists = await Promise.all(searchTasks);
+      return videoLists.flat();
+    } catch {
+      return [];
+    }
+  })();
+
+  const [snapshots, biliSearchResults] = await Promise.all([snapshotsPromise, biliSearchPromise]);
+
   const candidates: CandidateStudyItem[] = [];
+
+  // 2.1 注入 B 站实时搜索结果（赋予高契合度基础分）
+  for (const video of biliSearchResults) {
+    const videoId = `bilibili-${video.bvid}`;
+    if (excludeIds.has(videoId)) continue;
+
+    const title = video.title;
+    const desc = video.description || '';
+    const fullText = `${title} ${desc}`.toLowerCase();
+
+    // 搜索结果由于是按 Agent 偏好专门定向检索的高清干货，给予更高权重加成
+    let score = 8.0;
+
+    for (const kw of profile.keywords) {
+      if (fullText.includes(kw.toLowerCase())) {
+        score += 3.0;
+      }
+    }
+
+    if (KNOWLEDGE_HINT_PATTERN.test(fullText)) {
+      score += 3.5;
+    } else if (NON_KNOWLEDGE_HINT_PATTERN.test(fullText)) {
+      score -= 2.0;
+    }
+
+    // 黄金时长加权（参考 bilibili_learning_bot：6~60分钟精讲课程额外奖励）
+    if (video.duration) {
+      const parts = video.duration.split(':').map((p) => parseInt(p, 10));
+      if (parts.length === 2 && parts[0] >= 6 && parts[0] <= 60) {
+        score += 1.5;
+      }
+    }
+
+    const heat = video.play ? `${Math.round(video.play / 10000)}万播放` : '推荐视频';
+
+    candidates.push({
+      id: videoId,
+      source: 'bilibili',
+      sourceName: 'B站搜索',
+      title: video.title,
+      url: video.url,
+      heat,
+      desc: desc.slice(0, 300),
+      thumbnail: video.pic,
+      author: video.author,
+      matchScore: score,
+    });
+  }
 
   for (const snapshot of snapshots) {
     if (!snapshot || !snapshot.items) continue;
@@ -195,6 +319,15 @@ export async function matchAgentStudyCandidates(
       // 视频源具有天然生动性，微增权重
       if (snapshot.source === 'bilibili' || snapshot.source === 'acfun') {
         score += 1.0;
+      }
+
+      // 知识配额来源：优先“教程/指南/原理”，压低“评测/发布会/热点”
+      if (KNOWLEDGE_FETCHABLE_SOURCES.has(snapshot.source)) {
+        if (KNOWLEDGE_HINT_PATTERN.test(fullText)) {
+          score += 2.5;
+        } else if (NON_KNOWLEDGE_HINT_PATTERN.test(fullText)) {
+          score -= 1.0;
+        }
       }
 
       const author = item.extra?.owner || item.extra?.author || undefined;
@@ -237,6 +370,37 @@ export async function matchAgentStudyCandidates(
       if (!selected.some((s) => s.id === candidate.id)) {
         selected.push(candidate);
       }
+    }
+  }
+
+  // 4. 知识配额：保证至少 N 条来自可抓正文的知识源，避免伴侣型 Agent 天天只有见闻
+  const knowledgeQuota = Math.max(0, Math.min(options.knowledgeQuota || 0, limit));
+  if (knowledgeQuota > 0) {
+    const countEligible = () =>
+      selected.filter((item) => KNOWLEDGE_FETCHABLE_SOURCES.has(item.source)).length;
+    const quotaPool = candidates.filter(
+      (candidate) =>
+        KNOWLEDGE_FETCHABLE_SOURCES.has(candidate.source) &&
+        !selected.some((item) => item.id === candidate.id)
+    );
+
+    while (countEligible() < knowledgeQuota && quotaPool.length > 0) {
+      const pick = quotaPool.shift()!;
+      if (selected.length < limit) {
+        selected.push(pick);
+        continue;
+      }
+      // 替换匹配度最低的非知识源条目
+      let replaceIndex = -1;
+      for (let index = selected.length - 1; index >= 0; index -= 1) {
+        if (!KNOWLEDGE_FETCHABLE_SOURCES.has(selected[index].source)) {
+          replaceIndex = index;
+          break;
+        }
+      }
+      if (replaceIndex < 0) break;
+      selected.splice(replaceIndex, 1);
+      selected.push(pick);
     }
   }
 

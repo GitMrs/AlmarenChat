@@ -1,0 +1,167 @@
+import { fetchWebpageContent } from '@/lib/fetch-webpage';
+import { fetchVideoContent, parseVideoUrl } from '@/lib/video/web-video.mjs';
+import { isVideoAsrEnabled, transcribeBilibiliVideo, transcribeYouTubeVideo } from '@/lib/video/video-asr.mjs';
+import type { CandidateStudyItem } from './interest-matcher';
+import {
+  isKnowledgeEligibleSource,
+  MAX_KNOWLEDGE_CONTENT_CHARS,
+  MIN_KNOWLEDGE_CONTENT_CHARS,
+} from './content-kind';
+
+// 视频页需要串行调用多个接口（元数据 → 字幕列表 → 字幕正文），外层兜底超时要宽于单请求 15s
+const FETCH_TIMEOUT_MS = 45_000;
+
+export interface StudyContent {
+  id: string;
+  source: string;
+  url: string;
+  title: string;
+  text: string;
+  fetched: boolean;
+  reason?: string;
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('fetch timeout')), timeoutMs);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      }
+    );
+  });
+}
+
+function normalizeText(value: string) {
+  return String(value || '')
+    .replace(/\r\n/g, '\n')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+/**
+ * 视频研习内容：字幕（web-fetch 同款链路）→ 无字幕时 bilibili 走本地 whisper ASR。
+ * ASR 是分钟级 CPU 任务，只在研习后台链路启用；聊天贴链接不受影响。
+ */
+async function fetchVideoStudyContent(
+  base: StudyContent,
+  videoRef: { platform: 'bilibili' | 'youtube'; id: string }
+): Promise<StudyContent> {
+  try {
+    const video = await withTimeout(fetchVideoContent(base.url), FETCH_TIMEOUT_MS);
+    if (!video) return { ...base, reason: 'video_meta_failed' };
+
+    let text = normalizeText(video.subtitleText || '');
+    let fromAsr = false;
+
+    if (text.length < MIN_KNOWLEDGE_CONTENT_CHARS && isVideoAsrEnabled()) {
+      const asr =
+        videoRef.platform === 'bilibili'
+          ? await transcribeBilibiliVideo({ bvid: videoRef.id, cid: video.cid, duration: video.duration })
+          : await transcribeYouTubeVideo({ videoId: videoRef.id, duration: video.duration });
+      if (asr?.text) {
+        text = normalizeText(asr.text);
+        fromAsr = true;
+      }
+    }
+
+    if (text.length < MIN_KNOWLEDGE_CONTENT_CHARS) {
+      return { ...base, text, reason: fromAsr ? 'asr_too_short' : 'no_subtitle' };
+    }
+    // ASR 转写没有标点分段保证，拼上简介帮助后续分型和笔记生成
+    const desc = normalizeText(video.desc || '');
+    const combined = desc ? `简介：${desc}\n\n${fromAsr ? '语音转写' : '字幕'}正文：${text}` : text;
+    return { ...base, text: combined.slice(0, MAX_KNOWLEDGE_CONTENT_CHARS), fetched: true };
+  } catch (error: any) {
+    return { ...base, reason: error?.message || 'video_fetch_failed' };
+  }
+}
+
+export function extractGitHubRepo(item: { source: string; url: string; title: string }) {
+  const urlMatch = String(item.url || '').match(
+    /^https?:\/\/(?:www\.)?github\.com\/([^/?#]+)\/([^/?#]+)/i
+  );
+  if (urlMatch) {
+    return { owner: urlMatch[1], repo: urlMatch[2].replace(/\.git$/i, '') };
+  }
+  if (item.source === 'hellogithub' || item.source === 'github') {
+    const match = String(item.title || '').match(/^([\w.-]+)\/([\w.-]+)\s*[:：]/);
+    if (match) return { owner: match[1], repo: match[2] };
+  }
+  return null;
+}
+
+async function fetchGitHubReadme(owner: string, repo: string) {
+  const token = process.env.GITHUB_TOKEN;
+  const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/readme`, {
+    headers: {
+      Accept: 'application/vnd.github.raw+json',
+      'User-Agent': 'AlmarenChat-AgentStudy',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
+  if (!response.ok) return '';
+  return normalizeText(await response.text());
+}
+
+/**
+ * 为可沉淀来源抓取正文。
+ * 视频/娱乐/时事来源直接返回 fetched=false，只保留为“见闻”（经历），不进入知识库。
+ */
+export async function fetchStudyContent(
+  item: Pick<CandidateStudyItem, 'id' | 'source' | 'url' | 'title'>
+): Promise<StudyContent> {
+  const base: StudyContent = {
+    id: item.id,
+    source: item.source,
+    url: item.url,
+    title: item.title,
+    text: '',
+    fetched: false,
+  };
+
+  if (!isKnowledgeEligibleSource(item.source)) {
+    return { ...base, reason: 'source_not_eligible' };
+  }
+
+  // 视频页专用通道：字幕优先 → 无字幕走 ASR 兜底。
+  // 绝不回退 Readability——视频页提取出的"正文"是推荐流垃圾，会污染知识库。
+  const videoRef = parseVideoUrl(item.url) as { platform: 'bilibili' | 'youtube'; id: string } | null;
+  if (videoRef) {
+    return fetchVideoStudyContent(base, videoRef);
+  }
+
+  // 仓库类来源优先走 GitHub README，页面本身往往只有一句简介
+  const repo = extractGitHubRepo(item);
+  if (repo) {
+    try {
+      const readme = (await fetchGitHubReadme(repo.owner, repo.repo)).slice(
+        0,
+        MAX_KNOWLEDGE_CONTENT_CHARS
+      );
+      if (readme.length >= MIN_KNOWLEDGE_CONTENT_CHARS) {
+        return { ...base, text: readme, fetched: true };
+      }
+    } catch {
+      // README 获取失败时回退到普通网页正文
+    }
+  }
+
+  try {
+    const page = await withTimeout(fetchWebpageContent(item.url), FETCH_TIMEOUT_MS);
+    const text = normalizeText(page.content).slice(0, MAX_KNOWLEDGE_CONTENT_CHARS);
+    if (text.length < MIN_KNOWLEDGE_CONTENT_CHARS) {
+      return { ...base, text, reason: 'content_too_short' };
+    }
+    return { ...base, text, fetched: true };
+  } catch (error: any) {
+    return { ...base, reason: error?.message || 'fetch_failed' };
+  }
+}

@@ -2,7 +2,7 @@ import OpenAI from 'openai';
 import { smartFetch, type SmartFetchOptions } from '@/lib/network/proxy';
 
 export const DEFAULT_BASE_URL = 'https://api-inference.modelscope.cn/v1';
-export const DEFAULT_MODEL = 'deepseek-ai/DeepSeek-V4-Flash-0731';
+export const DEFAULT_MODEL = 'deepseek-ai/DeepSeek-V4.1-Flash-1017';
 const MODEL_REQUEST_TIMEOUT_MS = 10 * 60 * 1000;
 const DEFAULT_MODEL_CLIENT_OPTIONS = {
   maxRetries: 1,

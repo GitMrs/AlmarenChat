@@ -9,6 +9,9 @@ type KnowledgeDocument = {
   id: string;
   fileName: string;
   size?: number | null;
+  sourceType?: string | null;
+  status?: string | null;
+  sourceUrl?: string | null;
   createdAt: string;
   _count?: {
     chunks: number;
@@ -350,6 +353,8 @@ export default function KnowledgeManager({
                     <span>{formatBytes(document.size)}</span>
                     <span>{document._count?.chunks || 0} 个切片</span>
                     <span>{formatDate(document.createdAt)}</span>
+                    {document.sourceType === 'STUDY' ? <span className="text-emerald-600">自主研习</span> : null}
+                    {document.status === 'DRAFT' ? <span className="text-amber-600">草稿 · 未参与检索</span> : null}
                   </div>
                 </div>
                 <button

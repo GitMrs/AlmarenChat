@@ -1,7 +1,10 @@
 import { resolveAgent } from '@/app/api/_lib/spaces';
 import { matchAgentStudyCandidates } from './interest-matcher';
 import { distillDailyStudy } from './study-engine';
+import { scheduleStudyKnowledgeIngestion } from './ingest';
 import {
+  ensureStudyEnabledObserved,
+  getAgentStudySourceMode,
   getLocalISODate,
   loadDailyStudyRecord,
   saveDailyStudyRecord,
@@ -16,6 +19,7 @@ const STUDY_ROOT = path.join(process.cwd(), 'data', 'agent-study');
 export interface GetDailyStudyOptions {
   date?: string;
   forceRefresh?: boolean;
+  sourceMode?: 'internal' | 'bilibili';
   modelConfig?: {
     apiBaseUrl?: string;
     apiKey?: string;
@@ -24,9 +28,33 @@ export interface GetDailyStudyOptions {
 }
 
 /**
- * 获取或按需生成指定 Agent 当天的自主学习成果
+ * 获取或按需生成指定 Agent 当天的自主学习成果（带 in-flight 去重，
+ * 调度器/聊天页/接口同时触发同一份研习时只跑一遍）
  */
-export async function getOrGenerateDailyStudy(
+const inflightGenerations = new Map<string, Promise<AgentDailyStudyRecord>>();
+
+export function getOrGenerateDailyStudy(
+  agentId: string,
+  userId?: string,
+  options: GetDailyStudyOptions = {}
+): Promise<AgentDailyStudyRecord> {
+  const date = options.date || getLocalISODate();
+  // forceRefresh 的调用意图是显式重算，不参与去重
+  if (options.forceRefresh) {
+    return getOrGenerateDailyStudyInternal(agentId, userId, { ...options, date });
+  }
+  const key = `${userId || '-'}|${agentId}|${date}`;
+  const pending = inflightGenerations.get(key);
+  if (pending) return pending;
+  const task = getOrGenerateDailyStudyInternal(agentId, userId, { ...options, date })
+    .finally(() => {
+      if (inflightGenerations.get(key) === task) inflightGenerations.delete(key);
+    });
+  inflightGenerations.set(key, task);
+  return task;
+}
+
+async function getOrGenerateDailyStudyInternal(
   agentId: string,
   userId?: string,
   options: GetDailyStudyOptions = {}
@@ -37,24 +65,36 @@ export async function getOrGenerateDailyStudy(
   // 1. 若未强制刷新，优先从持久化缓存读取（保证日内稳定一致，极速 0ms）
   if (!options.forceRefresh) {
     if (existing) {
+      // 当天已生成但知识尚未沉淀时，后台补齐（不阻塞卡片渲染）
+      if (userId) scheduleStudyKnowledgeIngestion(existing, options.modelConfig);
       return existing;
     }
   }
 
-  // 2. 解析 Agent 实体信息
+  // 2. 解析 Agent 实体信息与学习源模式配置
   const agent = await resolveAgent(agentId, userId);
   if (!agent) {
     throw new Error(`Agent not found: ${agentId}`);
   }
 
-  // 3. 根据 Agent 偏好与全网热点匹配 3 条候选
+  // 判定模式：'internal'（纯走内部全网热点）或 'bilibili'（走 B 站主动搜索）
+  const sourceMode = options.sourceMode || (await getAgentStudySourceMode(agentId, userId));
+  const enableBilibiliSearch = sourceMode === 'bilibili';
+
+  // 3. 根据 Agent 偏好与候选源匹配 3 条候选
   let candidates = await matchAgentStudyCandidates(agent, {
     limit: 3,
+    knowledgeQuota: 1,
+    enableBilibiliSearch,
     excludeIds: new Set(existing?.items.map((item) => item.id) || []),
   });
   // A small trending pool should still produce a usable daily record.
   if (candidates.length < 3) {
-    candidates = await matchAgentStudyCandidates(agent, { limit: 3 });
+    candidates = await matchAgentStudyCandidates(agent, {
+      limit: 3,
+      knowledgeQuota: 1,
+      enableBilibiliSearch,
+    });
   }
 
   // 4. 调用大模型进行角色化提炼（干货 + 伴侣第一人称感悟 + 今日问候）
@@ -80,6 +120,10 @@ export async function getOrGenerateDailyStudy(
   // 6. 同步至数据库 AgentExperience 表（成长经历）
   if (userId) {
     await syncStudyToAgentExperience(userId, record);
+    // 7. 后台沉淀：知识进知识库、稳定事实进记忆
+    scheduleStudyKnowledgeIngestion(record, options.modelConfig);
+    // 8. 落库开关行，让后台调度器能发现该 Agent（不覆盖用户显式关闭）
+    void ensureStudyEnabledObserved(agentId, userId).catch(() => {});
   }
 
   return record;
