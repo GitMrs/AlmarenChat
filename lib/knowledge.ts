@@ -1,9 +1,48 @@
 import prisma from '@/app/api/_lib/db';
 import { embedText } from '@/lib/local-embeddings';
+import fs from 'node:fs';
+import path from 'node:path';
 
-const CHUNK_SIZE = 500;
-const CHUNK_OVERLAP = 80;
+const TARGET_CHUNK_SIZE = 450;
 const MAX_CONTEXT_CHUNKS = 5;
+
+const RAW_FILES_DIR = path.resolve(process.cwd(), 'data/knowledge/files');
+
+export function ensureRawFilesDir() {
+  if (!fs.existsSync(RAW_FILES_DIR)) {
+    fs.mkdirSync(RAW_FILES_DIR, { recursive: true });
+  }
+  return RAW_FILES_DIR;
+}
+
+export async function saveKnowledgeRawFile(documentId: string, content: string) {
+  try {
+    ensureRawFilesDir();
+    const filePath = path.join(RAW_FILES_DIR, `${documentId}.md`);
+    await fs.promises.writeFile(filePath, content, 'utf8');
+  } catch (err: any) {
+    console.warn('[Knowledge] Failed to save raw file:', err?.message);
+  }
+}
+
+export async function readKnowledgeRawFile(documentId: string): Promise<string | null> {
+  try {
+    const filePath = path.join(RAW_FILES_DIR, `${documentId}.md`);
+    if (fs.existsSync(filePath)) {
+      return await fs.promises.readFile(filePath, 'utf8');
+    }
+  } catch {}
+  return null;
+}
+
+export async function deleteKnowledgeRawFile(documentId: string) {
+  try {
+    const filePath = path.join(RAW_FILES_DIR, `${documentId}.md`);
+    if (fs.existsSync(filePath)) {
+      await fs.promises.unlink(filePath);
+    }
+  } catch {}
+}
 
 export type KnowledgeHit = {
   id: string;
@@ -40,20 +79,26 @@ export type KnowledgeTarget =
   | string
   | { agentId?: string; spaceId?: string; userId?: string };
 
+function splitIntoSentences(text: string): string[] {
+  // 按照中英文句子终结标点（句号、感叹号、问号、分号、换行）切分，并保留标点
+  return text.split(/(?<=[。！？!?；;\n]+)/g).filter(Boolean);
+}
+
 /**
- * Markdown 章节标题感知分块算法
- * 1. 自动提取 # / ## / ### 标题并构建多级章节面包屑（例如：“第一章 系统架构 > 1.2 存储设计”）
- * 2. 在章节范围内结合 CHUNK_SIZE 与 CHUNK_OVERLAP 进行滑动切片
- * 3. 每个分块保留 title 元数据，嵌入时融入章节背景，极大提升 RAG 召回精度
+ * 智能 Markdown 章节与自然段语义分块算法（对齐星野/Knowe 知识资产规范）
+ * 1. 结构提取：自动解析 # / ## / ### 标题并构建多级章节面包屑
+ * 2. 章节聚合：自动合并短小相邻元数据/小节（如 # 标题 + ## 摘要 + ## 关键要点），形成高内聚的完整知识卡片
+ * 3. 语义保护：长章节按自然段落（\n\n）规整聚合；单段超长时按中英文句子终结标点（。！？）截断，绝不腰斩词句
+ * 4. 噪声过滤：自动剔除纯分割线（---）等无实际语义的极短碎渣
  */
 export function splitTextMarkdownAware(text: string): TextChunk[] {
   const normalized = text.replace(/\r\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
   if (!normalized) return [];
 
   const lines = normalized.split('\n');
-  const sections: Array<{ title: string; text: string }> = [];
+  const sections: Array<{ title: string; headerLine: string; text: string }> = [];
 
-  let headingStack: Array<{ level: number; text: string }> = [];
+  let headingStack: Array<{ level: number; text: string; raw: string }> = [];
   let currentBuffer: string[] = [];
 
   const getBreadcrumb = () => headingStack.map((h) => h.text).join(' > ');
@@ -68,6 +113,7 @@ export function splitTextMarkdownAware(text: string): TextChunk[] {
         if (sectionContent) {
           sections.push({
             title: getBreadcrumb(),
+            headerLine: headingStack.length > 0 ? headingStack[headingStack.length - 1].raw : '',
             text: sectionContent,
           });
         }
@@ -80,7 +126,7 @@ export function splitTextMarkdownAware(text: string): TextChunk[] {
       while (headingStack.length > 0 && headingStack[headingStack.length - 1].level >= level) {
         headingStack.pop();
       }
-      headingStack.push({ level, text: titleText });
+      headingStack.push({ level, text: titleText, raw: line });
       continue;
     }
 
@@ -92,30 +138,119 @@ export function splitTextMarkdownAware(text: string): TextChunk[] {
     if (sectionContent) {
       sections.push({
         title: getBreadcrumb(),
+        headerLine: headingStack.length > 0 ? headingStack[headingStack.length - 1].raw : '',
         text: sectionContent,
       });
     }
   }
 
-  const effectiveSections = sections.length > 0 ? sections : [{ title: '', text: normalized }];
-  const chunks: TextChunk[] = [];
+  const effectiveSections = sections.length > 0 ? sections : [{ title: '', headerLine: '', text: normalized }];
+  const rawChunks: TextChunk[] = [];
 
-  for (const sec of effectiveSections) {
-    let start = 0;
-    while (start < sec.text.length) {
-      const part = sec.text.slice(start, start + CHUNK_SIZE).trim();
-      if (part) {
-        chunks.push({
-          text: part,
-          title: sec.title || undefined,
-        });
-      }
-      if (start + CHUNK_SIZE >= sec.text.length) break;
-      start += CHUNK_SIZE - CHUNK_OVERLAP;
+  let coalescedBuffer = '';
+  let coalescedTitle = '';
+
+  const flushCoalesced = () => {
+    if (coalescedBuffer.trim()) {
+      rawChunks.push({
+        title: coalescedTitle || undefined,
+        text: coalescedBuffer.trim(),
+      });
+      coalescedBuffer = '';
+      coalescedTitle = '';
     }
+  };
+
+  for (let i = 0; i < effectiveSections.length; i++) {
+    const sec = effectiveSections[i];
+    const secFullText = sec.headerLine ? `${sec.headerLine}\n${sec.text}` : sec.text;
+
+    // 尝试与上一个小节合并（例如标题 + 摘要 + 核心要点合并为一个高内聚完整认知切片）
+    if (coalescedBuffer && (coalescedBuffer.length + secFullText.length + 2 <= TARGET_CHUNK_SIZE)) {
+      coalescedBuffer += '\n\n' + secFullText;
+      continue;
+    }
+
+    flushCoalesced();
+
+    // 如果当前小节本身很短，且不是末尾小节，先进入聚合缓冲
+    if (secFullText.length < TARGET_CHUNK_SIZE * 0.7 && i < effectiveSections.length - 1) {
+      coalescedBuffer = secFullText;
+      coalescedTitle = sec.title;
+      continue;
+    }
+
+    // 小节长度适中，直接作为一个完整语义切片
+    if (sec.text.length <= TARGET_CHUNK_SIZE) {
+      rawChunks.push({
+        title: sec.title || undefined,
+        text: sec.text,
+      });
+      continue;
+    }
+
+    // 较长章节按自然段落聚合切片，避免机械截断
+    const paragraphs = sec.text.split(/\n{2,}/);
+    let paraBuf = '';
+
+    const flushParaBuf = () => {
+      if (paraBuf.trim()) {
+        rawChunks.push({
+          title: sec.title || undefined,
+          text: paraBuf.trim(),
+        });
+        paraBuf = '';
+      }
+    };
+
+    for (const p of paragraphs) {
+      const trimmedP = p.trim();
+      if (!trimmedP) continue;
+
+      // 单个段落超过切片上限，按完整句子切分，绝不截断词句
+      if (trimmedP.length > TARGET_CHUNK_SIZE) {
+        flushParaBuf();
+        const sentences = splitIntoSentences(trimmedP);
+        let sentBuf = '';
+        for (const s of sentences) {
+          if (sentBuf && (sentBuf.length + s.length > TARGET_CHUNK_SIZE)) {
+            rawChunks.push({
+              title: sec.title || undefined,
+              text: sentBuf.trim(),
+            });
+            sentBuf = s;
+          } else {
+            sentBuf += s;
+          }
+        }
+        if (sentBuf.trim()) {
+          rawChunks.push({
+            title: sec.title || undefined,
+            text: sentBuf.trim(),
+          });
+        }
+        continue;
+      }
+
+      if (paraBuf && (paraBuf.length + trimmedP.length + 2 > TARGET_CHUNK_SIZE)) {
+        flushParaBuf();
+        paraBuf = trimmedP;
+      } else {
+        paraBuf = paraBuf ? paraBuf + '\n\n' + trimmedP : trimmedP;
+      }
+    }
+    flushParaBuf();
   }
 
-  return chunks;
+  flushCoalesced();
+
+  // 过滤少于 15 字符的无意义碎渣（如纯水平分割线 --- 或孤立符号）
+  const cleanChunks = rawChunks.filter((c) => {
+    const stripped = c.text.replace(/[-*#=_~`\s]/g, '');
+    return stripped.length >= 5;
+  });
+
+  return cleanChunks.length > 0 ? cleanChunks : rawChunks;
 }
 
 function cosineSimilarity(a: number[], b: number[]) {
@@ -209,6 +344,9 @@ export async function indexKnowledgeText(
     },
   });
 
+  // 保存原始文件到本地磁盘归档（双轨制：原文件归档 + 向量切片检索）
+  await saveKnowledgeRawFile(document.id, content);
+
   try {
     for (let index = 0; index < chunks.length; index += 1) {
       const chunk = chunks[index];
@@ -297,7 +435,7 @@ export async function getKnowledgeHits(
       },
     },
     orderBy: { createdAt: 'desc' },
-    take: 400,
+    take: 2000,
   });
   if (chunks.length === 0) return [];
 

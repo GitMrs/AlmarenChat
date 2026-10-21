@@ -97,18 +97,63 @@ export function extractGitHubRepo(item: { source: string; url: string; title: st
   return null;
 }
 
+/**
+ * 针对 HelloGitHub 的 repository 页面，通过其官方 API 解析真正的 GitHub owner 和 repo
+ */
+async function resolveHelloGitHubRepo(url: string, id?: string): Promise<{ owner: string; repo: string } | null> {
+  const match = String(url || '').match(/\/repository\/([a-zA-Z0-9_-]+)/);
+  const rid = match ? match[1] : id?.replace(/^hellogithub-/, '');
+  if (!rid) return null;
+
+  try {
+    const { smartFetch } = await import('../network/proxy.ts');
+    const res = await smartFetch(`https://api.hellogithub.com/v1/?rid=${rid}`, { timeoutMs: 10_000 });
+    if (!res.ok) return null;
+    const json = (await res.json()) as any;
+    const fullName = json?.data?.[0]?.full_name;
+    if (typeof fullName === 'string' && fullName.includes('/')) {
+      const [owner, repo] = fullName.split('/');
+      if (owner && repo) return { owner, repo };
+    }
+  } catch {}
+  return null;
+}
+
 async function fetchGitHubReadme(owner: string, repo: string) {
+  // 1. 优先通过 raw.githubusercontent.com 直连/智能代理获取（避免 GitHub API 速率限制 60次/小时）
+  try {
+    const { smartFetch } = await import('../network/proxy.ts');
+    const rawBranches = ['HEAD', 'main', 'master'];
+    for (const branch of rawBranches) {
+      const rawRes = await smartFetch(`https://raw.githubusercontent.com/${owner}/${repo}/${branch}/README.md`, {
+        timeoutMs: FETCH_TIMEOUT_MS,
+      });
+      if (rawRes.ok) {
+        const text = await rawRes.text();
+        if (text && text.trim().length > 0) {
+          return normalizeText(text);
+        }
+      }
+    }
+  } catch {}
+
+  // 2. 备用：调用 GitHub 官方 API
   const token = process.env.GITHUB_TOKEN;
-  const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/readme`, {
-    headers: {
-      Accept: 'application/vnd.github.raw+json',
-      'User-Agent': 'AlmarenChat-AgentStudy',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-  });
-  if (!response.ok) return '';
-  return normalizeText(await response.text());
+  try {
+    const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/readme`, {
+      headers: {
+        Accept: 'application/vnd.github.raw+json',
+        'User-Agent': 'AlmarenChat-AgentStudy',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    });
+    if (response.ok) {
+      return normalizeText(await response.text());
+    }
+  } catch {}
+
+  return '';
 }
 
 /**
@@ -139,7 +184,10 @@ export async function fetchStudyContent(
   }
 
   // 仓库类来源优先走 GitHub README，页面本身往往只有一句简介
-  const repo = extractGitHubRepo(item);
+  let repo = extractGitHubRepo(item);
+  if (!repo && item.source === 'hellogithub') {
+    repo = await resolveHelloGitHubRepo(item.url, item.id);
+  }
   if (repo) {
     try {
       const readme = (await fetchGitHubReadme(repo.owner, repo.repo)).slice(

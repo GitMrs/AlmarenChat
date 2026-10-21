@@ -329,6 +329,8 @@ export const agents = {
   knowledge: (id: string) => request<{ documents: any[] }>(`/agents/${id}/knowledge`),
   knowledgeChunks: (id: string, documentId: string) =>
     request<{ document: any; chunks: any[] }>(`/agents/${id}/knowledge?documentId=${encodeURIComponent(documentId)}`),
+  knowledgeRaw: (id: string, documentId: string) =>
+    request<{ document: any; content: string }>(`/agents/${id}/knowledge?documentId=${encodeURIComponent(documentId)}&raw=1`),
   searchKnowledge: (id: string, query: string) =>
     request<{ hits: any[] }>(`/agents/${id}/knowledge?q=${encodeURIComponent(query)}`),
   deleteKnowledge: (id: string, documentId: string) =>
@@ -698,6 +700,8 @@ export const spaces = {
   knowledge: (spaceId: string) => request<{ documents: any[] }>(`/spaces/${spaceId}/knowledge`),
   knowledgeChunks: (spaceId: string, documentId: string) =>
     request<{ document: any; chunks: any[] }>(`/spaces/${spaceId}/knowledge?documentId=${encodeURIComponent(documentId)}`),
+  knowledgeRaw: (spaceId: string, documentId: string) =>
+    request<{ document: any; content: string }>(`/spaces/${spaceId}/knowledge?documentId=${encodeURIComponent(documentId)}&raw=1`),
   searchKnowledge: (spaceId: string, query: string) =>
     request<{ hits: any[] }>(`/spaces/${spaceId}/knowledge?q=${encodeURIComponent(query)}`),
   deleteKnowledge: (spaceId: string, documentId: string) =>
@@ -718,6 +722,28 @@ export const spaces = {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || '上传空间知识库失败');
     return data;
+  },
+  downloadFile: (targetId: string, documentId: string, fileName: string, isSpace: boolean = false) => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    const path = isSpace ? `/spaces/${targetId}/knowledge` : `/agents/${targetId}/knowledge`;
+    fetch(`${API_BASE}${path}?documentId=${encodeURIComponent(documentId)}&download=1`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+      .then(async (res) => {
+        if (!res.ok) throw new Error('下载失败');
+        const blob = await res.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+      })
+      .catch((err) => {
+        alert(err.message || '下载原文件失败');
+      });
   },
   configureWechatConnector: (spaceId: string, data: { appId: string; appSecret?: string }) =>
     request<{ connector: SpaceConnector }>(`/spaces/${spaceId}/connectors/wechat`, {
@@ -957,6 +983,8 @@ export const cryptoEvents = {
       method: 'POST',
     }),
 };
+
+export const downloadKnowledgeFile = spaces.downloadFile;
 
 export const spaceShares = {
   list: () => request<{ shares: SpaceFileShare[] }>('/shares'),

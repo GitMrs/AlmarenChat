@@ -1349,14 +1349,6 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
                   你可以这样问
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <button
-                      type="button"
-                      onClick={() => setTrendingPickerOpen(true)}
-                      className="flex items-center gap-1.5 rounded-full bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-300/60 px-4 py-2 text-sm font-bold text-amber-700 shadow-sm transition hover:-translate-y-0.5 hover:bg-amber-500/20 hover:text-amber-800"
-                    >
-                      <Flame size={14} className="fill-amber-500 text-amber-500" />
-                      🔥 聊聊今日热搜
-                    </button>
                     {suggestedPrompts.map((prompt) => (
                     <button
                       key={prompt}

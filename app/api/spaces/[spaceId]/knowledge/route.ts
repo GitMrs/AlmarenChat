@@ -33,9 +33,12 @@ export async function GET(request: Request, { params }: { params: Promise<{ spac
     if (documentId) {
       const document = await prisma.knowledgeDocument.findFirst({
         where: { id: documentId, spaceId },
-        select: { id: true, fileName: true },
+        select: { id: true, fileName: true, mimeType: true },
       });
       if (!document) return NextResponse.json({ error: '文档未找到' }, { status: 404 });
+
+      const raw = searchParams.get('raw');
+      const download = searchParams.get('download');
 
       const chunks = await prisma.knowledgeChunk.findMany({
         where: { documentId, spaceId },
@@ -48,6 +51,26 @@ export async function GET(request: Request, { params }: { params: Promise<{ spac
           createdAt: true,
         },
       });
+
+      if (raw === '1' || raw === 'true' || download === '1' || download === 'true') {
+        const { readKnowledgeRawFile } = await import('@/lib/knowledge');
+        let fullContent = await readKnowledgeRawFile(document.id);
+        if (!fullContent) {
+          fullContent = chunks.map((c) => c.content).join('\n\n');
+        }
+
+        if (download === '1' || download === 'true') {
+          const encodedFileName = encodeURIComponent(document.fileName || 'knowledge.md');
+          return new Response(fullContent, {
+            headers: {
+              'Content-Type': 'text/markdown; charset=utf-8',
+              'Content-Disposition': `attachment; filename*=UTF-8''${encodedFileName}`,
+            },
+          });
+        }
+
+        return NextResponse.json({ document, content: fullContent });
+      }
 
       return NextResponse.json({ document, chunks });
     }
@@ -112,6 +135,10 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ s
     if (!document) return NextResponse.json({ error: '文档未找到' }, { status: 404 });
 
     await prisma.knowledgeDocument.delete({ where: { id: document.id } });
+
+    const { deleteKnowledgeRawFile } = await import('@/lib/knowledge');
+    await deleteKnowledgeRawFile(document.id);
+
     return NextResponse.json({ success: true });
   } catch (e: any) {
     if (e.message === 'Unauthorized') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

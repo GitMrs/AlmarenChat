@@ -39,9 +39,12 @@ export async function GET(request: Request, { params }: { params: Promise<{ agen
           agentId,
           OR: [{ userId }, { userId: null }],
         },
-        select: { id: true, fileName: true },
+        select: { id: true, fileName: true, mimeType: true },
       });
       if (!document) return NextResponse.json({ error: 'Knowledge document not found' }, { status: 404 });
+
+      const raw = searchParams.get('raw');
+      const download = searchParams.get('download');
 
       const chunks = await prisma.knowledgeChunk.findMany({
         where: { documentId, agentId },
@@ -54,6 +57,26 @@ export async function GET(request: Request, { params }: { params: Promise<{ agen
           createdAt: true,
         },
       });
+
+      if (raw === '1' || raw === 'true' || download === '1' || download === 'true') {
+        const { readKnowledgeRawFile } = await import('@/lib/knowledge');
+        let fullContent = await readKnowledgeRawFile(document.id);
+        if (!fullContent) {
+          fullContent = chunks.map((c) => c.content).join('\n\n');
+        }
+
+        if (download === '1' || download === 'true') {
+          const encodedFileName = encodeURIComponent(document.fileName || 'knowledge.md');
+          return new Response(fullContent, {
+            headers: {
+              'Content-Type': 'text/markdown; charset=utf-8',
+              'Content-Disposition': `attachment; filename*=UTF-8''${encodedFileName}`,
+            },
+          });
+        }
+
+        return NextResponse.json({ document, content: fullContent });
+      }
 
       return NextResponse.json({ document, chunks });
     }
@@ -124,6 +147,9 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ a
     if (!document) return NextResponse.json({ error: 'Knowledge document not found' }, { status: 404 });
 
     await prisma.knowledgeDocument.delete({ where: { id: document.id } });
+
+    const { deleteKnowledgeRawFile } = await import('@/lib/knowledge');
+    await deleteKnowledgeRawFile(document.id);
 
     return NextResponse.json({ success: true });
   } catch (e: any) {

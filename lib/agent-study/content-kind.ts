@@ -9,16 +9,14 @@ export const KNOWLEDGE_FETCHABLE_SOURCES = new Set([
   'hellogithub',
 ]);
 
-/** 只有能产出正文的文章/仓库类来源才允许沉淀为知识；视频类依赖字幕，字幕不可用时自然被正文门槛挡掉 */
+/** 只有能产出正文的文章/仓库类来源才允许沉淀为知识；视频类依赖字幕/ASR，无正文的资讯类（36氪/IT之家）不在此列 */
 export const KNOWLEDGE_ELIGIBLE_SOURCES = new Set([
   'zhihu',
   'juejin',
   'sspai',
-  '36kr',
-  'ithome',
+  'csdn',
   'hellogithub',
   'github',
-  'csdn',
   'bilibili',
   'youtube',
 ]);
@@ -26,6 +24,8 @@ export const KNOWLEDGE_ELIGIBLE_SOURCES = new Set([
 /** 正文低于该长度视为“只有标题/简介”，不建知识 */
 export const MIN_KNOWLEDGE_CONTENT_CHARS = 800;
 export const MAX_KNOWLEDGE_CONTENT_CHARS = 12000;
+/** 写入知识库 Markdown 时摘录的核心正文上限，避免盲目堆砌上万字流水账导致向量碎片爆炸 */
+export const MAX_STUDY_EXCERPT_CHARS = 1500;
 /** 分型置信度低于该值时知识进入草稿，不参与检索 */
 export const MIN_ACTIVE_CONFIDENCE = 0.6;
 
@@ -85,7 +85,14 @@ export function buildStudyKnowledgeMarkdown(options: {
   if (assessment.category) blocks.push(`> 分类：${assessment.category}`);
   blocks.push('', '## 摘要', assessment.summary || '');
   if (keyPoints.length > 0) blocks.push('', '## 关键要点', ...keyPoints);
-  blocks.push('', '## 原文', String(content || '').slice(0, MAX_KNOWLEDGE_CONTENT_CHARS));
+
+  const cleanContent = String(content || '').replace(/\r\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+  if (cleanContent.length > 0) {
+    const excerpt = cleanContent.slice(0, MAX_STUDY_EXCERPT_CHARS).trim();
+    if (excerpt) {
+      blocks.push('', '## 原文', excerpt);
+    }
+  }
 
   return blocks.join('\n');
 }
