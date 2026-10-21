@@ -268,6 +268,67 @@ function cosineSimilarity(a: number[], b: number[]) {
   return dot / (Math.sqrt(normA) * Math.sqrt(normB));
 }
 
+const STOP_QUERY_TERMS = new Set([
+  '你好', '请问', '帮我', '什么', '怎么', '如何', '为什么', '可以', '一下', '这个', '那个', '告诉', '知道',
+]);
+
+/**
+ * 提取查询词元（英文/数字单词 + 中文 2-gram），用于混合检索词法重排
+ */
+export function tokenizeSearchQuery(query: string): string[] {
+  const clean = String(query || '').toLowerCase().trim();
+  if (!clean) return [];
+  const terms = new Set<string>();
+  const words = clean.match(/[a-z0-9][a-z0-9._-]{1,}/g) || [];
+  for (const word of words) {
+    terms.add(word);
+  }
+  const cjk = clean.replace(/[^\u4e00-\u9fff]/g, '');
+  for (let i = 0; i < cjk.length - 1 && terms.size < 64; i += 1) {
+    const bigram = cjk.slice(i, i + 2);
+    if (!STOP_QUERY_TERMS.has(bigram)) {
+      terms.add(bigram);
+    }
+  }
+  return Array.from(terms);
+}
+
+/**
+ * 向量余弦相似度 (45%) + 词法高频重合度 (55%) 混合打分（参考 bilibili_learning_bot.vector_retrieval）
+ */
+export function computeHybridKnowledgeScore(options: {
+  vectorScore: number;
+  queryTerms: string[];
+  fileName?: string | null;
+  title?: string | null;
+  content: string;
+}): { score: number; lexicalScore: number; matchedTerms: number } {
+  const { vectorScore, queryTerms, fileName, title, content } = options;
+  if (queryTerms.length === 0) {
+    return { score: vectorScore, lexicalScore: 0, matchedTerms: 0 };
+  }
+  const haystack = `${fileName || ''} ${title || ''} ${content || ''}`.toLowerCase();
+  let matchedTerms = 0;
+  let freqSum = 0;
+  for (const term of queryTerms) {
+    let pos = haystack.indexOf(term);
+    let count = 0;
+    while (pos !== -1 && count < 8) {
+      count += 1;
+      pos = haystack.indexOf(term, pos + term.length);
+    }
+    if (count > 0) {
+      matchedTerms += 1;
+      freqSum += Math.log1p(count);
+    }
+  }
+  const coverage = matchedTerms / queryTerms.length;
+  const density = Math.min(1, freqSum / Math.max(1, queryTerms.length * 1.2));
+  const lexicalScore = coverage * 0.65 + density * 0.35;
+  const score = vectorScore * 0.45 + lexicalScore * 0.55;
+  return { score, lexicalScore, matchedTerms };
+}
+
 function resolveRepository() {
   const db: any = (prisma as any)?.default || prisma;
   return db;
@@ -347,11 +408,18 @@ export async function indexKnowledgeText(
   // 保存原始文件到本地磁盘归档（双轨制：原文件归档 + 向量切片检索）
   await saveKnowledgeRawFile(document.id, content);
 
+  const docTitle = String(input.title || '').trim();
   try {
     for (let index = 0; index < chunks.length; index += 1) {
       const chunk = chunks[index];
-      // 将章节信息嵌入向量输入，增强段落语境语义
-      const embedInput = chunk.title ? `【章节：${chunk.title}】\n${chunk.text}` : chunk.text;
+      // 将文档主标题与章节面包屑同时嵌入向量输入，防止不同文档的同名小节（如“方法论与实操步骤”）丢失主题上下文
+      const contextHeader = [
+        docTitle ? `文档：${docTitle}` : '',
+        chunk.title ? `章节：${chunk.title}` : '',
+      ]
+        .filter(Boolean)
+        .join(' | ');
+      const embedInput = contextHeader ? `【${contextHeader}】\n${chunk.text}` : chunk.text;
       const embedding = await embedText(embedInput);
 
       await db.knowledgeChunk.create({
@@ -391,7 +459,7 @@ export async function indexKnowledgeDocument(
 }
 
 /**
- * 知识库检索（支持同时召回 Space 公共知识库与当前 Agent 专属知识库）
+ * 知识库检索（支持同时召回 Space 公共知识库与当前 Agent 专属知识库，采用向量+词法混合重排）
  */
 export async function getKnowledgeHits(
   target: KnowledgeTarget | undefined,
@@ -414,7 +482,8 @@ export async function getKnowledgeHits(
     return [];
   }
 
-  const chunks = await prisma.knowledgeChunk.findMany({
+  const db = resolveRepository();
+  const chunks = await db.knowledgeChunk.findMany({
     where: {
       ...whereClause,
       // 草稿（DRAFT）不参与召回；单聊知识按用户隔离（空 userId 为历史共享数据）
@@ -440,21 +509,37 @@ export async function getKnowledgeHits(
   if (chunks.length === 0) return [];
 
   const queryEmbedding = await embedText(question);
+  const queryTerms = tokenizeSearchQuery(question);
+
   return chunks
-    .map((chunk) => ({
-      id: chunk.id,
-      documentId: chunk.documentId,
-      chunkIndex: chunk.chunkIndex,
-      title: chunk.title,
-      content: chunk.content,
-      fileName: chunk.document.fileName,
-      score: cosineSimilarity(queryEmbedding, chunk.embedding as number[]),
-      scope: (chunk.spaceId ? 'space' : 'agent') as 'agent' | 'space',
-      sourceType: chunk.document.sourceType,
-      sourceUrl: chunk.document.sourceUrl,
-    }))
-    .sort((a, b) => b.score - a.score)
-    .slice(0, MAX_CONTEXT_CHUNKS);
+    .map((chunk: any) => {
+      const vectorScore = cosineSimilarity(queryEmbedding, chunk.embedding as number[]);
+      const { score, matchedTerms } = computeHybridKnowledgeScore({
+        vectorScore,
+        queryTerms,
+        fileName: chunk.document.fileName,
+        title: chunk.title,
+        content: chunk.content,
+      });
+      return {
+        id: chunk.id,
+        documentId: chunk.documentId,
+        chunkIndex: chunk.chunkIndex,
+        title: chunk.title,
+        content: chunk.content,
+        fileName: chunk.document.fileName,
+        score,
+        vectorScore,
+        matchedTerms,
+        scope: (chunk.spaceId ? 'space' : 'agent') as 'agent' | 'space',
+        sourceType: chunk.document.sourceType,
+        sourceUrl: chunk.document.sourceUrl,
+      };
+    })
+    .filter((item: any) => item.matchedTerms > 0 || item.vectorScore >= 0.22)
+    .sort((a: any, b: any) => b.score - a.score)
+    .slice(0, MAX_CONTEXT_CHUNKS)
+    .map(({ vectorScore: _v, matchedTerms: _m, ...rest }: any) => rest);
 }
 
 /**

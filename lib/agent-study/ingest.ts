@@ -5,6 +5,7 @@ import { fetchStudyContent } from './content-provider';
 import { assessStudyContents, synthesizeKnowledgeDocument } from './knowledge-assessor';
 import {
   buildStudyKnowledgeMarkdown,
+  extractStudySkillMemory,
   MIN_ACTIVE_CONFIDENCE,
   shouldIngestAsKnowledge,
 } from './content-kind';
@@ -39,6 +40,7 @@ async function resolveAgentProfile(agentId: string, fallbackName: string) {
       const stored = await db.agent.findUnique({ where: { id: agentId } });
       if (stored) {
         return {
+          id: agentId,
           name: stored.name || fallbackName,
           category: stored.category || null,
           description: stored.description || null,
@@ -49,6 +51,7 @@ async function resolveAgentProfile(agentId: string, fallbackName: string) {
     } catch {}
   }
   return {
+    id: agentId,
     name: fallbackName,
     category: null,
     description: null,
@@ -57,11 +60,17 @@ async function resolveAgentProfile(agentId: string, fallbackName: string) {
   };
 }
 
-async function writeStudyMemory(userId: string, agentId: string, content: string) {
+async function writeStudyMemory(
+  userId: string,
+  agentId: string,
+  content: string,
+  category: 'fact' | 'skill' = 'fact'
+) {
   const cleaned = String(content || '').replace(/\s+/g, ' ').trim().slice(0, 500);
   if (!cleaned) return false;
 
   const db = resolveRepository();
+  if (!db?.agentMemoryItem?.findMany || !db?.agentMemoryItem?.create) return false;
   const existing = await db.agentMemoryItem.findMany({
     where: { userId, agentId, status: 'ACTIVE' },
     select: { content: true },
@@ -74,7 +83,7 @@ async function writeStudyMemory(userId: string, agentId: string, content: string
     data: {
       userId,
       agentId,
-      category: 'fact',
+      category,
       content: cleaned,
       status: 'ACTIVE',
     },
@@ -84,7 +93,7 @@ async function writeStudyMemory(userId: string, agentId: string, content: string
 
 /**
  * 把当天的研习成果按内容类型分流：
- * - knowledge      → 结合当前 Agent 人设深度提炼重构，生成专业 Markdown 笔记沉淀入库（严把门槛）
+ * - knowledge      → 结合当前 Agent 人设深度提炼重构，生成专业 Markdown 笔记沉淀入库（严把门槛），并同步提炼角色专属技能卡（category: 'skill'）
  * - personal_fact  → 长期记忆（相似度去重）
  * - news / opinion → 只保留在 AgentExperience，作为角色的“今日见闻与话题”
  */
@@ -136,7 +145,7 @@ export async function ingestStudyKnowledge(
     result.kinds[item.id] = assessment.contentKind;
 
     if (assessment.contentKind === 'personal_fact' && assessment.summary) {
-      const created = await writeStudyMemory(record.userId, record.agentId, assessment.summary);
+      const created = await writeStudyMemory(record.userId, record.agentId, assessment.summary, 'fact');
       if (created) result.memoryCount += 1;
       continue;
     }
@@ -147,7 +156,8 @@ export async function ingestStudyKnowledge(
     }
 
     // 4. 深度知识萃取：由当前 Agent 结合自身视角进行提炼，杜绝粗暴截断与口语杂音
-    const synthesized = typeof synthesizeKnowledgeDocument === 'function'
+    const hasSynthesizer = typeof synthesizeKnowledgeDocument === 'function';
+    const synthesized = hasSynthesizer
       ? await synthesizeKnowledgeDocument({
           agent: agentProfile,
           item,
@@ -156,6 +166,15 @@ export async function ingestStudyKnowledge(
           modelConfig,
         })
       : null;
+
+    // 当启用合成器但 AI 合成失败降级为原始摘录时，归为 DRAFT 草稿，防止未消化原文直接混入 ACTIVE 检索
+    const isReadyForActive =
+      assessment.confidence >= MIN_ACTIVE_CONFIDENCE && (!hasSynthesizer || Boolean(synthesized));
+
+    const categoryTags = String(assessment.category || '')
+      .split(/[\/|>]+/)
+      .map((seg) => seg.trim())
+      .filter(Boolean);
 
     try {
       const indexed = await indexKnowledgeText(
@@ -175,11 +194,30 @@ export async function ingestStudyKnowledge(
           sourceKey: item.id,
           sourceUrl: item.url,
           summary: assessment.summary,
-          tags: ['study', record.date, item.source, assessment.category || ''].filter(Boolean),
-          status: assessment.confidence >= MIN_ACTIVE_CONFIDENCE ? 'ACTIVE' : 'DRAFT',
+          tags: ['study', record.date, item.source, ...categoryTags].filter(Boolean),
+          status: isReadyForActive ? 'ACTIVE' : 'DRAFT',
         }
       );
       result.knowledgeIds[item.id] = indexed.document.id;
+
+      // 4b. 归档成功后自动提炼「角色专属技能卡」存入 AgentMemoryItem (category: 'skill')，供对话实时触发
+      if (synthesized && isReadyForActive) {
+        const skillCard = extractStudySkillMemory({
+          title: assessment.title || item.title,
+          summary: assessment.summary,
+          keyPoints: assessment.keyPoints,
+          synthesizedContent: synthesized,
+        });
+        if (skillCard) {
+          const skillCreated = await writeStudyMemory(
+            record.userId,
+            record.agentId,
+            skillCard,
+            'skill'
+          );
+          if (skillCreated) result.memoryCount += 1;
+        }
+      }
     } catch (error: any) {
       result.errors.push(`${item.id}:${error?.message || 'index_failed'}`);
       console.warn('[AgentStudy] Knowledge ingestion failed:', item.id, error?.message);

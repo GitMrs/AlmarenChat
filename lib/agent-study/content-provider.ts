@@ -4,7 +4,6 @@ import { isVideoAsrEnabled, transcribeBilibiliVideo, transcribeYouTubeVideo } fr
 import type { CandidateStudyItem } from './interest-matcher';
 import {
   isKnowledgeEligibleSource,
-  MAX_KNOWLEDGE_CONTENT_CHARS,
   MIN_KNOWLEDGE_CONTENT_CHARS,
 } from './content-kind';
 
@@ -74,10 +73,10 @@ async function fetchVideoStudyContent(
     if (text.length < MIN_KNOWLEDGE_CONTENT_CHARS) {
       return { ...base, text, reason: fromAsr ? 'asr_too_short' : 'no_subtitle' };
     }
-    // ASR 转写没有标点分段保证，拼上简介帮助后续分型和笔记生成
+    // ASR 转写没有标点分段保证，拼上简介帮助后续分型和笔记生成；保留完整字幕/转写全文交由分章提炼处理，不截断
     const desc = normalizeText(video.desc || '');
     const combined = desc ? `简介：${desc}\n\n${fromAsr ? '语音转写' : '字幕'}正文：${text}` : text;
-    return { ...base, text: combined.slice(0, MAX_KNOWLEDGE_CONTENT_CHARS), fetched: true };
+    return { ...base, text: combined, fetched: true };
   } catch (error: any) {
     return { ...base, reason: error?.message || 'video_fetch_failed' };
   }
@@ -190,10 +189,7 @@ export async function fetchStudyContent(
   }
   if (repo) {
     try {
-      const readme = (await fetchGitHubReadme(repo.owner, repo.repo)).slice(
-        0,
-        MAX_KNOWLEDGE_CONTENT_CHARS
-      );
+      const readme = await fetchGitHubReadme(repo.owner, repo.repo);
       if (readme.length >= MIN_KNOWLEDGE_CONTENT_CHARS) {
         return { ...base, text: readme, fetched: true };
       }
@@ -203,8 +199,9 @@ export async function fetchStudyContent(
   }
 
   try {
-    const page = await withTimeout(fetchWebpageContent(item.url), FETCH_TIMEOUT_MS);
-    const text = normalizeText(page.content).slice(0, MAX_KNOWLEDGE_CONTENT_CHARS);
+    // 研习链路读取网页文章时不设 20,000 字截断（maxChars: 0），完整保留章节标题、代码块与长文全貌交由动态分章提炼处理
+    const page = await withTimeout(fetchWebpageContent(item.url, { maxChars: 0 }), FETCH_TIMEOUT_MS);
+    const text = normalizeText(page.content);
     if (text.length < MIN_KNOWLEDGE_CONTENT_CHARS) {
       return { ...base, text, reason: 'content_too_short' };
     }

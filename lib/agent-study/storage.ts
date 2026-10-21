@@ -46,7 +46,7 @@ export async function getAgentStudySourceMode(
     const raw = await readFile(SOURCE_MODES_FILE_PATH, 'utf-8');
     const map = JSON.parse(raw);
     const key = userId ? `${userId}:${agentId}` : agentId;
-    if (map[key] === 'bilibili' || map[agentId] === 'bilibili') return 'bilibili';
+    if (map[key] === 'bilibili') return 'bilibili';
   } catch {}
   return 'internal';
 }
@@ -360,7 +360,8 @@ export async function syncStudyToAgentExperience(
  */
 export async function getRecentlyStudiedItemIds(
   agentId: string,
-  days: number = 30
+  days: number = 30,
+  userId?: string
 ): Promise<Set<string>> {
   const ids = new Set<string>();
   const db: any = (prisma as any)?.default || prisma;
@@ -371,6 +372,7 @@ export async function getRecentlyStudiedItemIds(
       const experiences = await db.agentExperience.findMany({
         where: {
           agentId,
+          ...(userId ? { userId } : {}),
           sourceType: 'STUDY',
           createdAt: { gte: sinceDate },
         },
@@ -394,6 +396,7 @@ export async function getRecentlyStudiedItemIds(
       const docs = await db.knowledgeDocument.findMany({
         where: {
           agentId,
+          ...(userId ? { userId } : {}),
           sourceType: 'STUDY',
           sourceKey: { not: null },
         },

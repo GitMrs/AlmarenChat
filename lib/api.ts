@@ -723,7 +723,7 @@ export const spaces = {
     if (!res.ok) throw new Error(data.error || '上传空间知识库失败');
     return data;
   },
-  downloadFile: (targetId: string, documentId: string, fileName: string, isSpace: boolean = false) => {
+  downloadKnowledgeFile: (targetId: string, documentId: string, fileName: string, isSpace: boolean = false) => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
     const path = isSpace ? `/spaces/${targetId}/knowledge` : `/agents/${targetId}/knowledge`;
     fetch(`${API_BASE}${path}?documentId=${encodeURIComponent(documentId)}&download=1`, {
@@ -984,7 +984,7 @@ export const cryptoEvents = {
     }),
 };
 
-export const downloadKnowledgeFile = spaces.downloadFile;
+export const downloadKnowledgeFile = spaces.downloadKnowledgeFile;
 
 export const spaceShares = {
   list: () => request<{ shares: SpaceFileShare[] }>('/shares'),

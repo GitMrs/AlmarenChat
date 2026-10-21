@@ -83,7 +83,7 @@ async function getOrGenerateDailyStudyInternal(
   const enableBilibiliSearch = sourceMode === 'bilibili';
 
   // 3. 根据 Agent 偏好与候选源匹配 3 条候选，加载近期已研习过的素材 ID，严防重复研习
-  const excludeIds = await getRecentlyStudiedItemIds(agentId, 30);
+  const excludeIds = await getRecentlyStudiedItemIds(agentId, 30, userId);
   if (existing?.items) {
     for (const item of existing.items) {
       excludeIds.add(item.id);

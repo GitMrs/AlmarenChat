@@ -29,8 +29,11 @@ export function extractUrls(text: string): string[] {
   return result;
 }
 
-export async function fetchWebpageContent(url: string): Promise<FetchedPage> {
-  const page = await fetchWebPage(url);
+export async function fetchWebpageContent(
+  url: string,
+  options?: { maxChars?: number }
+): Promise<FetchedPage> {
+  const page = await fetchWebPage(url, options);
   return { url: page.url, title: page.title, content: page.content };
 }
 
