@@ -155,19 +155,24 @@ export function buildAgentBilibiliSearchQueries(
     description?: string | null;
     tone?: string | null;
   },
-  profile: AgentInterestProfile
+  profile: AgentInterestProfile,
+  dateStr?: string
 ): string[] {
   const queries: string[] = [];
   const category = agent.category || '';
-  const desc = agent.description || '';
-
-  // 1. 若有特定关键词，挑前两个有深度的关键词加上“教程”或“科普”
   const substantiveKws = profile.keywords.filter((k) => k.length >= 2);
+
+  // 1. 每日轮转关键词，保证每天学习不同细分领域，绝不重复
   if (substantiveKws.length > 0) {
-    queries.push(`${substantiveKws[0]} 教程`);
-    if (substantiveKws.length > 1) {
-      queries.push(`${substantiveKws[1]} 讲解`);
-    }
+    const daySeed = dateStr
+      ? Math.abs(dateStr.split('-').reduce((acc, part) => acc * 31 + parseInt(part, 10), 0))
+      : new Date().getDate();
+    const offset = (daySeed * 2) % substantiveKws.length;
+    const kw1 = substantiveKws[offset];
+    const kw2 = substantiveKws[(offset + 1) % substantiveKws.length];
+
+    if (kw1) queries.push(`${kw1} 教程`);
+    if (kw2 && kw2 !== kw1) queries.push(`${kw2} 讲解`);
   }
 
   // 2. 结合 Agent 类别或描述提取
@@ -180,7 +185,7 @@ export function buildAgentBilibiliSearchQueries(
     queries.push('知识精要', 'AI 实践指南');
   }
 
-  return queries.slice(0, 2);
+  return queries.slice(0, 3);
 }
 
 /**
@@ -222,9 +227,9 @@ export async function matchAgentStudyCandidates(
     if (!enableBilibiliSearch) return [];
     try {
       const queries = buildAgentBilibiliSearchQueries(agent, profile);
-      // 每个 query 查 3 条高赞/高播放视频
+      // 每个 query 查 6 条高赞/高播放视频，提供充足的候选池
       const searchTasks = queries.map((query) =>
-        searchBilibiliVideos(query, { limit: 3, sort: 'totalrank' }).catch(() => [])
+        searchBilibiliVideos(query, { limit: 6, sort: 'totalrank' }).catch(() => [])
       );
       const videoLists = await Promise.all(searchTasks);
       return videoLists.flat();

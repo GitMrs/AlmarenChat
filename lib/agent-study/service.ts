@@ -6,6 +6,7 @@ import {
   ensureStudyEnabledObserved,
   getAgentStudySourceMode,
   getLocalISODate,
+  getRecentlyStudiedItemIds,
   loadDailyStudyRecord,
   saveDailyStudyRecord,
   syncStudyToAgentExperience,
@@ -81,19 +82,27 @@ async function getOrGenerateDailyStudyInternal(
   const sourceMode = options.sourceMode || (await getAgentStudySourceMode(agentId, userId));
   const enableBilibiliSearch = sourceMode === 'bilibili';
 
-  // 3. 根据 Agent 偏好与候选源匹配 3 条候选
+  // 3. 根据 Agent 偏好与候选源匹配 3 条候选，加载近期已研习过的素材 ID，严防重复研习
+  const excludeIds = await getRecentlyStudiedItemIds(agentId, 30);
+  if (existing?.items) {
+    for (const item of existing.items) {
+      excludeIds.add(item.id);
+    }
+  }
+
   let candidates = await matchAgentStudyCandidates(agent, {
     limit: 3,
     knowledgeQuota: 1,
     enableBilibiliSearch,
-    excludeIds: new Set(existing?.items.map((item) => item.id) || []),
+    excludeIds,
   });
-  // A small trending pool should still produce a usable daily record.
+  // 若候选数不足 3 条，尝试放宽知识配额（允许资讯/热搜补充），但仍严格遵守历史去重
   if (candidates.length < 3) {
     candidates = await matchAgentStudyCandidates(agent, {
       limit: 3,
-      knowledgeQuota: 1,
+      knowledgeQuota: 0,
       enableBilibiliSearch,
+      excludeIds,
     });
   }
 

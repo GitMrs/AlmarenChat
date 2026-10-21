@@ -2,7 +2,7 @@ import prisma from '@/app/api/_lib/db';
 import { indexKnowledgeText } from '@/lib/knowledge';
 import { isDuplicateMemory } from '@/lib/personal-assistant/memory-dedup.mjs';
 import { fetchStudyContent } from './content-provider';
-import { assessStudyContents } from './knowledge-assessor';
+import { assessStudyContents, synthesizeKnowledgeDocument } from './knowledge-assessor';
 import {
   buildStudyKnowledgeMarkdown,
   MIN_ACTIVE_CONFIDENCE,
@@ -32,6 +32,31 @@ function resolveRepository() {
   return db;
 }
 
+async function resolveAgentProfile(agentId: string, fallbackName: string) {
+  const db = resolveRepository();
+  if (db?.agent?.findUnique) {
+    try {
+      const stored = await db.agent.findUnique({ where: { id: agentId } });
+      if (stored) {
+        return {
+          name: stored.name || fallbackName,
+          category: stored.category || null,
+          description: stored.description || null,
+          tone: stored.tone || null,
+          systemPrompt: stored.systemPrompt || null,
+        };
+      }
+    } catch {}
+  }
+  return {
+    name: fallbackName,
+    category: null,
+    description: null,
+    tone: null,
+    systemPrompt: null,
+  };
+}
+
 async function writeStudyMemory(userId: string, agentId: string, content: string) {
   const cleaned = String(content || '').replace(/\s+/g, ' ').trim().slice(0, 500);
   if (!cleaned) return false;
@@ -59,9 +84,9 @@ async function writeStudyMemory(userId: string, agentId: string, content: string
 
 /**
  * 把当天的研习成果按内容类型分流：
- * - knowledge      → KnowledgeDocument（带来源与去重键），可被 RAG 召回
+ * - knowledge      → 结合当前 Agent 人设深度提炼重构，生成专业 Markdown 笔记沉淀入库（严把门槛）
  * - personal_fact  → 长期记忆（相似度去重）
- * - news / opinion → 只保留在 AgentExperience，作为“见闻”
+ * - news / opinion → 只保留在 AgentExperience，作为角色的“今日见闻与话题”
  */
 export async function ingestStudyKnowledge(
   record: AgentDailyStudyRecord,
@@ -86,10 +111,13 @@ export async function ingestStudyKnowledge(
   }
   if (fetched.length === 0) return result;
 
-  // 2. 一次性判定资讯 / 观点 / 知识 / 稳定事实
+  // 获取当前 Agent 的人设信息，让知识评估与提炼真正结合角色视角
+  const agentProfile = await resolveAgentProfile(record.agentId, record.agentName);
+
+  // 2. 结合 Agent 人设与定位，一次性判定资讯 / 观点 / 知识 / 稳定事实
   const itemById = new Map(record.items.map((item) => [item.id, item]));
   const assessments = await assessStudyContents({
-    agent: { name: record.agentName },
+    agent: agentProfile,
     items: fetched
       .map((content) => {
         const item = itemById.get(content.id);
@@ -118,6 +146,17 @@ export async function ingestStudyKnowledge(
       continue;
     }
 
+    // 4. 深度知识萃取：由当前 Agent 结合自身视角进行提炼，杜绝粗暴截断与口语杂音
+    const synthesized = typeof synthesizeKnowledgeDocument === 'function'
+      ? await synthesizeKnowledgeDocument({
+          agent: agentProfile,
+          item,
+          assessment,
+          rawContent: content.text,
+          modelConfig,
+        })
+      : null;
+
     try {
       const indexed = await indexKnowledgeText(
         { agentId: record.agentId, userId: record.userId },
@@ -129,6 +168,8 @@ export async function ingestStudyKnowledge(
             assessment,
             date: record.date,
             content: content.text,
+            synthesizedContent: synthesized || undefined,
+            agentName: record.agentName,
           }),
           sourceType: 'STUDY',
           sourceKey: item.id,
@@ -145,7 +186,7 @@ export async function ingestStudyKnowledge(
     }
   }
 
-  // 4. 回链到当天的研习记录，便于 UI 从卡片跳到知识库
+  // 5. 回链到当天的研习记录，便于 UI 从卡片跳到知识库
   if (Object.keys(result.knowledgeIds).length > 0) {
     try {
       const latest = await loadDailyStudyRecord(record.agentId, record.date, record.userId);
@@ -203,7 +244,6 @@ export function scheduleStudyKnowledgeIngestion(
     })
     .catch(async (error: any) => {
       console.warn('[AgentStudy] Background knowledge ingestion failed:', error?.message);
-      // 致命失败也要落诊断，否则界面上完全看不到原因；但不写 knowledgeIngestedAt，允许冷却后重试
       try {
         const latest = await loadDailyStudyRecord(record.agentId, record.date, record.userId);
         if (!latest) return;
@@ -219,7 +259,7 @@ export function scheduleStudyKnowledgeIngestion(
         latest.updatedAt = at;
         await saveDailyStudyRecord(latest);
       } catch {
-        // 诊断写入失败时不再抛错
+        // ignore
       }
     })
     .finally(() => {

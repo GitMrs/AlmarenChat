@@ -351,3 +351,63 @@ export async function syncStudyToAgentExperience(
     }
   }
 }
+
+/**
+ * 获取 Agent 近期（默认 30 天内）已经研习过的所有素材 ID，包括：
+ * 1. 数据库 AgentExperience 表中的研习经历（taskId 格式 study:YYYY-MM-DD:itemId）
+ * 2. 数据库 KnowledgeDocument 表中的研习知识文档 sourceKey
+ * 用于全局防重，确保未来每天自主学习绝不挑中已学过的重复内容
+ */
+export async function getRecentlyStudiedItemIds(
+  agentId: string,
+  days: number = 30
+): Promise<Set<string>> {
+  const ids = new Set<string>();
+  const db: any = (prisma as any)?.default || prisma;
+
+  if (db?.agentExperience?.findMany) {
+    try {
+      const sinceDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+      const experiences = await db.agentExperience.findMany({
+        where: {
+          agentId,
+          sourceType: 'STUDY',
+          createdAt: { gte: sinceDate },
+        },
+        select: { taskId: true },
+      });
+      for (const exp of experiences) {
+        if (exp.taskId && exp.taskId.startsWith('study:')) {
+          const parts = exp.taskId.split(':');
+          if (parts.length >= 3) {
+            ids.add(parts.slice(2).join(':'));
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[AgentStudy] Query recent AgentExperience failed:', err);
+    }
+  }
+
+  if (db?.knowledgeDocument?.findMany) {
+    try {
+      const docs = await db.knowledgeDocument.findMany({
+        where: {
+          agentId,
+          sourceType: 'STUDY',
+          sourceKey: { not: null },
+        },
+        select: { sourceKey: true },
+      });
+      for (const doc of docs) {
+        if (doc.sourceKey) {
+          ids.add(doc.sourceKey);
+        }
+      }
+    } catch (err) {
+      console.warn('[AgentStudy] Query recent KnowledgeDocument failed:', err);
+    }
+  }
+
+  return ids;
+}
