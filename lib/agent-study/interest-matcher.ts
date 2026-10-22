@@ -211,7 +211,8 @@ export async function matchAgentStudyCandidates(
   const limit = options.limit || 3;
   const excludeIds = options.excludeIds || new Set<string>();
   const profile = resolveAgentInterestProfile(agent);
-  const enableBilibiliSearch = options.enableBilibiliSearch ?? true;
+  // 默认关闭外部搜索：只有调用方显式开启（研习来源模式为 bilibili）时才访问 B 站搜索接口
+  const enableBilibiliSearch = options.enableBilibiliSearch ?? false;
 
   // 1. 并行加载偏好源 + 保底源（有知识配额时补充可抓正文的来源）
   const sourceSet = new Set([...profile.preferredSources, 'bilibili', 'zhihu']);

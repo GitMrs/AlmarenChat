@@ -345,9 +345,11 @@ async function condenseLongChapters(options: {
   if (chapters.length <= 1) return rawContent;
 
   try {
-    const chapterNotes = await Promise.all(
-      chapters.map(async (chunk, idx) => {
-        const prompt = `你正在协助角色「${agent.name}」研读长内容《${title}》的第 ${idx + 1}/${chapters.length} 部分。
+    // 逐章串行提炼：长视频最多 12 章，一次性并发会轻易撞上模型限流并放大费用
+    const chapterNotes: string[] = [];
+    for (let idx = 0; idx < chapters.length; idx += 1) {
+      const chunk = chapters[idx];
+      const prompt = `你正在协助角色「${agent.name}」研读长内容《${title}》的第 ${idx + 1}/${chapters.length} 部分。
 【角色专属关注点】：${agent.studyLens || ''}
 
 【当前章节原文片段 (${idx + 1}/${chapters.length})】：
@@ -359,6 +361,7 @@ ${chunk}
 3. 提到的操作步骤、技巧或避坑边界。
 直接输出要点正文，不要寒暄。`;
 
+      try {
         const resp = await client.chat.completions.create({
           model,
           messages: [
@@ -372,9 +375,15 @@ ${chunk}
           temperature: 0.2,
         });
         const text = resp.choices?.[0]?.message?.content?.trim();
-        return text ? `### 第 ${idx + 1}/${chapters.length} 阶段章节提炼\n${text}` : '';
-      })
-    );
+        if (text) chapterNotes.push(`### 第 ${idx + 1}/${chapters.length} 阶段章节提炼\n${text}`);
+      } catch (chapterErr: any) {
+        // 单章失败不中断其余章节，避免前半段成果整体作废
+        console.warn(
+          `[AgentStudy] Chapter ${idx + 1}/${chapters.length} condensation failed:`,
+          chapterErr?.message
+        );
+      }
+    }
 
     const merged = chapterNotes.filter(Boolean).join('\n\n');
     if (merged.length >= 200) {

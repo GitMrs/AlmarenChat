@@ -412,10 +412,13 @@ export async function indexKnowledgeText(
   try {
     for (let index = 0; index < chunks.length; index += 1) {
       const chunk = chunks[index];
-      // 将文档主标题与章节面包屑同时嵌入向量输入，防止不同文档的同名小节（如“方法论与实操步骤”）丢失主题上下文
+      // 将文档主标题与章节面包屑同时嵌入向量输入，防止不同文档的同名小节（如“方法论与实操步骤”）丢失主题上下文。
+      // 两部分各限 24 字：本地 embedding 模型在 480 字符处硬截断，前缀过长会挤掉正文
+      const truncateHeaderPart = (value: string) =>
+        value.length > 24 ? `${value.slice(0, 24)}…` : value;
       const contextHeader = [
-        docTitle ? `文档：${docTitle}` : '',
-        chunk.title ? `章节：${chunk.title}` : '',
+        docTitle ? `文档：${truncateHeaderPart(docTitle)}` : '',
+        chunk.title ? `章节：${truncateHeaderPart(chunk.title)}` : '',
       ]
         .filter(Boolean)
         .join(' | ');

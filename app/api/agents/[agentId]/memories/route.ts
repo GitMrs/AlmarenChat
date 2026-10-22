@@ -33,7 +33,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ age
     }
     const content = typeof body.content === 'string' ? body.content.trim() : '';
     if (!content || content.length > 500) return NextResponse.json({ error: '记忆内容需为 1～500 字' }, { status: 400 });
-    const category = ['preference', 'tech', 'rule', 'project', 'fact'].includes(body.category) ? body.category : 'preference';
+    const category = ['preference', 'tech', 'rule', 'project', 'fact', 'skill'].includes(body.category) ? body.category : 'preference';
     const existing = await prisma.agentMemoryItem.findMany({ where: { userId, agentId, status: 'ACTIVE' } });
     const duplicate = existing.find(item => isDuplicateMemory(content, [item.content]));
     if (duplicate) return NextResponse.json({ memory: duplicate, duplicate: true });

@@ -167,9 +167,16 @@ export async function ingestStudyKnowledge(
         })
       : null;
 
-    // 当启用合成器但 AI 合成失败降级为原始摘录时，归为 DRAFT 草稿，防止未消化原文直接混入 ACTIVE 检索
-    const isReadyForActive =
-      assessment.confidence >= MIN_ACTIVE_CONFIDENCE && (!hasSynthesizer || Boolean(synthesized));
+    // 当启用合成器但 AI 合成失败降级为原始摘录时，仍按置信度决定是否参与检索：
+    // 否则模型一旦不可用，知识库会静默停止增长（只写 DRAFT，界面上看不出异常）
+    const isReadyForActive = assessment.confidence >= MIN_ACTIVE_CONFIDENCE;
+    if (hasSynthesizer && !synthesized) {
+      console.warn(
+        `[AgentStudy] Knowledge synthesis fell back to raw excerpt for ${item.id}; ingested as ${
+          isReadyForActive ? 'ACTIVE' : 'DRAFT'
+        }`
+      );
+    }
 
     const categoryTags = String(assessment.category || '')
       .split(/[\/|>]+/)

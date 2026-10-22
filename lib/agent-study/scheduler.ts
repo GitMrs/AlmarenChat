@@ -1,5 +1,6 @@
 import { createScheduler } from '../runtime/scheduler.mjs';
 import prisma from '@/app/api/_lib/db';
+import { resolveUserModelConfig } from '@/app/api/_lib/agent-model';
 import { getOrGenerateDailyStudy } from './service';
 import { getLocalISODate, loadDailyStudyRecord } from './storage';
 
@@ -75,7 +76,24 @@ export async function runDailyStudyTick(deps: DailyStudyTickDeps = {}): Promise<
 
   const generate =
     deps.generate ||
-    ((agentId: string, userId: string) => getOrGenerateDailyStudy(agentId, userId));
+    (async (agentId: string, userId: string) => {
+      const db: any = (prisma as any)?.default || prisma;
+      // 后台研习必须沿用用户/Agent 自己的模型配置，否则会退回系统默认 key 而失败
+      const [user, setting] = await Promise.all([
+        db?.user?.findUnique
+          ? db.user.findUnique({
+              where: { id: userId },
+              select: { customModelEnabled: true, modelName: true, apiBaseUrl: true, apiKey: true },
+            })
+          : Promise.resolve(null),
+        db?.agentModelSetting?.findUnique
+          ? db.agentModelSetting.findUnique({ where: { userId_agentId: { userId, agentId } } })
+          : Promise.resolve(null),
+      ]);
+      return getOrGenerateDailyStudy(agentId, userId, {
+        modelConfig: resolveUserModelConfig(user, setting),
+      });
+    });
 
   const pairs = await listEnabledPairs();
   let generated = 0;
