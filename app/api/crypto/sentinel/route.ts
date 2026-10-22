@@ -6,7 +6,7 @@ import {
   getSentinelState,
   saveSentinelState,
   checkSentinelForSpace,
-} from '@/lib/crypto/sentinel-service';
+} from '@/lib/workspace/crypto/sentinel-service';
 import type { SpaceCryptoPlanDecisionAttachment } from '@/types';
 
 export const runtime = 'nodejs';

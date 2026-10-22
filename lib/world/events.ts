@@ -1,5 +1,5 @@
-import { formatLocalTime, type CryptoEvent } from '../crypto/event-temporal.ts';
-import { EVENT_MARKET_WINDOWS, getEventMarketResult, hasCompleteEventMarket, type EventMarketWindow } from '../crypto/event-market.ts';
+import { formatLocalTime, type CryptoEvent } from '../workspace/crypto/event-temporal.ts';
+import { EVENT_MARKET_WINDOWS, getEventMarketResult, hasCompleteEventMarket, type EventMarketWindow } from '../workspace/crypto/event-market.ts';
 import { isWorldEventAgent, resolveWorldEventQuery, type WorldEventHistoryMessage } from './agent-policy.ts';
 const TOPICS = [
   /CPI|消费者物价/i, /PPI|生产者物价/i, /PCE|个人消费/i, /ADP|小非农/i,

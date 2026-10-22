@@ -5,7 +5,7 @@ import {
   type EventImpactRecord,
   reloadGlobalCryptoEvents,
 } from './event-temporal.ts';
-import { smartFetch } from '../web/proxy.ts';
+import { smartFetch } from '../../web/proxy.ts';
 import { EVENT_MARKET_INSTRUMENT, getEventMarketResult, type EventMarketObservation, type EventMarketWindow } from './event-market.ts';
 
 // 与 CLI 共用项目数据文件，不能使用打包后 import.meta.url 指向的静态副本。

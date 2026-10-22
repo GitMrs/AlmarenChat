@@ -1,4 +1,4 @@
-import { readCryptoEventsFromDisk } from '../crypto/event-sync.ts';
+import { readCryptoEventsFromDisk } from '../workspace/crypto/event-sync.ts';
 import { buildAgentWorldContext } from './events.ts';
 import { isWorldEventAgent, resolveWorldEventQuery, WORLD_EVENTS_UNAVAILABLE_CONTEXT, type WorldEventHistoryMessage } from './agent-policy.ts';
 

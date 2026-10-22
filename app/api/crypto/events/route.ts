@@ -3,8 +3,8 @@ import {
   evaluateEventPhase,
   type CryptoEvent,
   type EvaluatedEvent,
-} from '@/lib/crypto/event-temporal.ts';
-import { readCryptoEventsFromDisk, syncMacroEvents } from '@/lib/crypto/event-sync.ts';
+} from '@/lib/workspace/crypto/event-temporal.ts';
+import { readCryptoEventsFromDisk, syncMacroEvents } from '@/lib/workspace/crypto/event-sync.ts';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';

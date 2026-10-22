@@ -3,7 +3,7 @@ import { fetchWebPage } from './web-fetch.mjs';
 import { createAutoWebTools } from './auto-web-core.mjs';
 import { createChatDataTools } from '../chat/chat-data-tools.mjs';
 import { platformWeather, pendingWeatherQuery, normalizeWeatherLocation } from '../misc/weather.mjs';
-import { queryCryptoMarket } from '../crypto/market-tools';
+import { queryCryptoMarket } from '../workspace/crypto/market-tools';
 import { getAvailableSources, getTrendingSnapshot } from '../trending';
 
 export { AUTO_WEB_GUIDANCE, AUTO_WEB_SCHEMAS, runAutoWebChat } from './auto-web-core.mjs';

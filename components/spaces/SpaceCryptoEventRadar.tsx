@@ -21,9 +21,9 @@ import {
 } from 'lucide-react';
 import { cryptoEvents, type CryptoEventsData } from '@/lib/client/api';
 import { toast } from '@/lib/client/toast';
-import { formatEventSource, getVerifiedEventImpact, formatEventSurprise, formatEventImpactPercent, formatEventMarketResult } from '@/lib/crypto/event-temporal.ts';
-import type { CryptoEvent } from '@/lib/crypto/event-temporal.ts';
-import { canTrackEventMarket, EVENT_MARKET_WINDOWS, getEventMarketResult, formatMarketPercent, type EventMarketWindow } from '@/lib/crypto/event-market.ts';
+import { formatEventSource, getVerifiedEventImpact, formatEventSurprise, formatEventImpactPercent, formatEventMarketResult } from '@/lib/workspace/crypto/event-temporal.ts';
+import type { CryptoEvent } from '@/lib/workspace/crypto/event-temporal.ts';
+import { canTrackEventMarket, EVENT_MARKET_WINDOWS, getEventMarketResult, formatMarketPercent, type EventMarketWindow } from '@/lib/workspace/crypto/event-market.ts';
 
 export interface SpaceCryptoEventRadarProps {
   currentSymbol?: string;

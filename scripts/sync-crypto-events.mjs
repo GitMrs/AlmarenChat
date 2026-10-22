@@ -2,9 +2,9 @@
 /**
  * 命令行一键同步运维脚本 (CLI Helper)
  * 用于开发调试、服务器部署前冷启动预热或手动执行宏观大事件日历同步。
- * 底层直接复用 lib/crypto/event-sync.ts 的生产级数据管道，无任何冗余代码。
+ * 底层直接复用 lib/workspace/crypto/event-sync.ts 的生产级数据管道，无任何冗余代码。
  */
-import { syncMacroEvents } from '../lib/crypto/event-sync.ts';
+import { syncMacroEvents } from '../lib/workspace/crypto/event-sync.ts';
 
 async function main() {
   console.log('🌐 [cli-sync] 正在从 FairEconomy / ForexFactory 同步本周 USD 重点日历...');

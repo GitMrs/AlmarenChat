@@ -6,7 +6,7 @@ import MessageActions from '@/components/chat/MessageActions';
 import MessageBubbleFrame from '@/components/chat/MessageBubbleFrame';
 import MessageContent from '@/components/chat/MessageContent';
 import type { Agent, AgentRun, AgentTask, SpaceCryptoPlanDecisionAttachment, SpaceMessage, SpacePiExecutionAttachment, SpaceRelayStartedAttachment, SpaceRunResultAttachment, SpaceTaskProposal } from '@/types';
-import { calculatePlanRiskReward } from '@/lib/crypto/trade-lifecycle';
+import { calculatePlanRiskReward } from '@/lib/workspace/crypto/trade-lifecycle';
 
 const RUN_STATUS_LABELS: Record<string, string> = {
   QUEUED: '等待执行',

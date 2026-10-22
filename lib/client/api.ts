@@ -1,5 +1,5 @@
 import { decodeChatBody } from '../chat/chat-stream.mjs';
-import type { EvaluatedEvent } from '../crypto/event-temporal';
+import type { EvaluatedEvent } from '../workspace/crypto/event-temporal';
 import type { AgentModelFields, AgentModelSettingsResponse, AgentMemoryItem, AgentExperience } from '@/types';
 import type { AgentDailyStudyRecord } from '@/lib/agent-study/types';
 import type { AgentGrowthProfile, AgentRun, AssistantContextStats, AssistantConversationSummary, AssistantExperience, AssistantExperienceMessage, AssistantMemoryItem, AssistantQQBinding, AssistantReminder, AssistantReminderCandidate, Message, MessageAttachment, PersonalAssistantBootstrap, PersonalAssistantProfile, SpaceActionRequest, SpaceAutomation, SpaceConnector, SpaceDiscussion, SpaceDiscussionSettings, SpaceFileShare, SpaceOperationOutcome, SpaceOperationsSummary, SpaceRelay, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal, SpaceWork, SpaceWorkVersion, SpaceMcpServer, SpaceWebhook, AssistantMcpServer, McpProbeResult } from '@/types';

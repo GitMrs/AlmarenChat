@@ -26,9 +26,10 @@ lib/
 │
 ├─ 空间产品域
 │  ├─ space/          Space 业务（成员、消息、技能、模板、自动化、分享、预览、作品）
-│  └─ workspace/      工作区执行 + 发布/游戏能力
+│  └─ workspace/      工作区执行 + 发布/游戏/行情能力
 │     ├─ wechat/      公众号发布
-│     └─ game/        四类互动游戏
+│     ├─ game/        四类互动游戏
+│     └─ crypto/      加密行情与事件
 │
 └─ 独立业务域
    ├─ agent-study/        研习引擎
@@ -37,7 +38,6 @@ lib/
    ├─ coding-agents/      编码 Agent 编排
    ├─ pi-runtime/         pi agent 运行时
    ├─ qq-assistant/       QQ 助手
-   ├─ crypto/             加密市场与事件
    ├─ trending/           热榜抓取
    ├─ video/              视频解析与 ASR
    ├─ tts/                语音合成
@@ -76,6 +76,7 @@ lib/
 | `workspace/` | Agent 执行工作区：任务尝试目录、快照 diff/apply/discard、写入意图判断 | `workspace-staging`、`workspace-write-intent` |
 | `workspace/wechat/` | 公众号发布链路：草稿快照、文章策略、主题、发布状态、账号连接 | `wechat-publishing`、`wechat-article-policy`、`wechat-draft-snapshot`、`wechat-official-account`、`wechat-publication-policy` |
 | `workspace/game/` | 互动游戏引擎 | `trpg/`、`turtle-soup/`、`undercover/`、`relay/` |
+| `workspace/crypto/` | 加密行情与事件驱动：行情查询、事件同步、OKX 接入、交易生命周期、哨兵调度 | `market-query`、`market-tools`、`event-sync`、`okx-service`、`trade-lifecycle`、`sentinel-service` |
 
 ### 独立业务域
 
@@ -87,7 +88,6 @@ lib/
 | `coding-agents/` | 编码 Agent 编排与沙箱 | `coordinator`、`registry`、`supervisor`、`sandbox` |
 | `pi-runtime/` | pi coding agent 的会话与工作记忆 | `session-core`、`space-session`、`working-memory` |
 | `qq-assistant/` | QQ 助手凭据、策略与 webhook | `credentials`、`policy`、`webhook` |
-| `crypto/` | 加密行情与事件驱动 | `market-query`、`market-tools`、`event-sync`、`okx-service`、`trade-lifecycle` |
 | `trending/` | 各平台热榜抓取与摘要 | `sources`、`parsers`、`scheduler`、`summary-service` |
 | `video/` | 视频解析、B 站搜索、ASR 转写 | `web-video`、`video-asr`、`bilibili-search` |
 | `tts/` | 语音合成供应商封装 | `edge-tts`、`fish-tts`、`markdown-cleaner`、`voices` |

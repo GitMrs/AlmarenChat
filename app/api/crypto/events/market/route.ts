@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { collectNextEventMarketWindow } from '@/lib/crypto/event-market-collector.ts';
+import { collectNextEventMarketWindow } from '@/lib/workspace/crypto/event-market-collector.ts';
 
 export const runtime = 'nodejs';
 

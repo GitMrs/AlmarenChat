@@ -5,7 +5,7 @@ import {
   type CryptoAttachmentInput,
   type CryptoMessageRuntimeInput,
   type PreparedCryptoMessageRuntime,
-} from '../crypto/space-message-runtime';
+} from '../workspace/crypto/space-message-runtime';
 import { loadAgentWorldContext } from '../world/context';
 
 export interface SpaceMessageRuntimeInput extends CryptoMessageRuntimeInput {

@@ -26,7 +26,7 @@ import {
   Calendar,
 } from 'lucide-react';
 import type { Agent, SpaceMessage } from '@/types';
-import { calculatePlanRiskReward, isPlanExpired, type CryptoPlanDecision } from '@/lib/crypto/trade-lifecycle';
+import { calculatePlanRiskReward, isPlanExpired, type CryptoPlanDecision } from '@/lib/workspace/crypto/trade-lifecycle';
 import { assistant as assistantApi, cryptoSentinel as cryptoSentinelApi, spaces as spacesApi, cryptoEvents, type CryptoEventsData } from '@/lib/client/api';
 import { toast } from '@/lib/client/toast';
 import SpaceCryptoEventRadar from './SpaceCryptoEventRadar';

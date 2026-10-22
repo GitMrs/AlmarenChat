@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/app/api/_lib/auth';
-import { cryptoMarketTools, queryCryptoMarket } from '@/lib/crypto/market-tools';
+import { cryptoMarketTools, queryCryptoMarket } from '@/lib/workspace/crypto/market-tools';
 
 export const runtime = 'nodejs';
 

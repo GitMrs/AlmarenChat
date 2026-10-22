@@ -4,7 +4,7 @@ import {
   analyzeCryptoTrap,
   formatCryptoContextForPrompt,
   extractCryptoSymbolFromText,
-} from '@/lib/crypto/okx-service';
+} from '@/lib/workspace/crypto/okx-service';
 
 export async function GET(request: Request) {
   try {
