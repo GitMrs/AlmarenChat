@@ -17,7 +17,7 @@ export async function register() {
     }
 
     try {
-      const { startCryptoSentinelScheduler } = await import('./lib/crypto/sentinel-service');
+      const { startCryptoSentinelScheduler } = await import('./lib/workspace/crypto/sentinel-service');
       startCryptoSentinelScheduler();
     } catch (err: any) {
       console.warn('[instrumentation] Failed to start crypto sentinel scheduler:', err?.message || err);
