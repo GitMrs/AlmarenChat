@@ -34,6 +34,16 @@ export interface CompanionSkin {
   pose?: string;
   nativeDefaults?: Readonly<Record<string, number>>;
   motions?: readonly CompanionMotionItem[];
+  /** Optional interaction flavor layered on top of the character's core personality. */
+  interaction?: {
+    equipMessage?: string;
+    startupLines?: readonly string[];
+    tapLines?: readonly string[];
+    dragLines?: readonly string[];
+    tapSymbols?: readonly string[];
+    /** Extra conversational flavor; the character's core persona remains authoritative. */
+    promptHint?: string;
+  };
 }
 
 export interface CompanionCharacter {
@@ -270,6 +280,14 @@ export const nariSkins: readonly CompanionSkin[] = [
     textures: ['Nari/textures/tex_00.png', 'Nari/textures/tex_01.png', 'Nari/textures/tex_02.png'],
     tuning: 'Nari/Nari.kotune.json',
     physics: 'Nari/Nari.kophys.json',
+    interaction: {
+      equipMessage: '换回【经典初见】啦，还是最熟悉的感觉吧？',
+      promptHint: '保持 Sunny 的温柔、亲近和自然陪伴感；可以提到热茶、花房和安静的日常，但不要改变核心人格。',
+      startupLines: ['欢迎回来，今天也陪你慢慢聊。', '见到你真好，我们从一杯热茶开始吧。'],
+      tapLines: ['轻轻碰一下就好，我在这里呢~', '今天也要打起精神呀！', '被你发现我在偷偷笑啦。'],
+      dragLines: ['慢一点，我跟着你的目光看过去~', '你想让我看看什么呢？'],
+      tapSymbols: ['🌸', '✨', '💕', '⭐'],
+    },
   },
   {
     id: 'sakura-streetwear',
@@ -320,6 +338,14 @@ export const nariSkins: readonly CompanionSkin[] = [
     pose: 'Nari/Nari.kopose.json',
     nativeDefaults: nariHybridNativeDefaults,
     motions: nariHybridMotions,
+    interaction: {
+      equipMessage: '【樱花机能潮服】上线！今天也要帅气地出发~',
+      promptHint: '保持 Sunny 的温柔人格，语气更轻快利落，偶尔使用街头、樱花和出发的意象，避免变成攻击性或傲慢角色。',
+      startupLines: ['准备好了吗？今天来点酷酷的节奏。', '街角的樱花正在飘，和我一起去看看吧！'],
+      tapLines: ['哇，被你抓到啦！', '这身装备的反应速度还不错吧？', '轻点啦，外套上的花瓣要飞走了~'],
+      dragLines: ['跟上我的视线，前面好像有新发现！', '别晃太快，机能模式也会头晕的~'],
+      tapSymbols: ['🌸', '⚡', '✨', '🩷'],
+    },
   },
   {
     id: 'rose-regalia',
@@ -364,6 +390,14 @@ export const nariSkins: readonly CompanionSkin[] = [
     pose: 'Nari/Nari.kopose.json',
     nativeDefaults: nariHybridNativeDefaults,
     motions: nariHybridMotions,
+    interaction: {
+      equipMessage: '换上【玫瑰华服礼服】啦，今晚请让我陪你赴一场温柔的舞会。',
+      promptHint: '保持 Sunny 的温柔人格，语气更优雅从容，可以使用舞会、玫瑰和礼服意象，避免过度戏剧化。',
+      startupLines: ['欢迎回来，今晚的舞会只为你留着。', '玫瑰已经盛开了，请接受我的问候吧。'],
+      tapLines: ['裙摆轻轻摇了一下，你看到了吗？', '请牵好我的手，别让花瓣散落了~', '被这样注视着，我会有一点害羞呢。'],
+      dragLines: ['慢些转动吧，礼服的裙摆还在旋转。', '你想让我望向哪一盏灯火呢？'],
+      tapSymbols: ['🌹', '✨', '💎', '🪽'],
+    },
   },
   {
     id: 'sakura-reverie',
@@ -410,6 +444,14 @@ export const nariSkins: readonly CompanionSkin[] = [
     pose: 'Nari/Nari.kopose.json',
     nativeDefaults: nariHybridNativeDefaults,
     motions: nariHybridMotions,
+    interaction: {
+      equipMessage: '换好【樱花梦境泳装】啦，一起去吹吹海风吧~',
+      promptHint: '保持 Sunny 的温柔人格，语气清爽轻柔，可以使用海风、浪花、阳光和夏日梦境意象，避免把换装误认为人格改变。',
+      startupLines: ['今天的海风很舒服，要不要陪我做个夏日的梦？', '浪花在闪闪发光呢，欢迎来到樱花梦境~'],
+      tapLines: ['海风把裙摆吹起来啦~', '被浪花碰到脚尖了，好凉快呀~', '今天的阳光也变得好温柔呢。'],
+      dragLines: ['慢一点嘛，浪花都被你晃散了~', '跟着海风看向那边吧，好漂亮呀~'],
+      tapSymbols: ['🌸', '🌊', '✨', '🫧'],
+    },
   },
   {
     id: 'original-ears',
@@ -432,6 +474,14 @@ export const nariSkins: readonly CompanionSkin[] = [
     ],
     tuning: 'Nari/Nari.kotune.json',
     physics: 'Nari/Nari.kophys.json',
+    interaction: {
+      equipMessage: '猫耳模式启动！今天也要元气满满地陪着你喵~',
+      promptHint: '保持 Sunny 的温柔人格，增加少量可爱的猫耳拟声词或“喵”作为点缀，避免每句话都使用猫娘口癖。',
+      startupLines: ['喵~ 欢迎回来，今天要摸摸头吗？', '耳朵已经竖起来啦，等你来聊天喵！'],
+      tapLines: ['喵？被发现啦！', '再摸一下下就好喵~', '耳朵会跟着心情动起来的喵！'],
+      dragLines: ['慢一点喵，转得我耳朵都要打结啦~', '你在看哪里喵？我也要一起看！'],
+      tapSymbols: ['🐾', '🐱', '✨', '💕'],
+    },
   },
 ];
 
@@ -451,6 +501,14 @@ export const yumeSkins: readonly CompanionSkin[] = [
     tuning: 'tunes/Yume.kotune.json',
     pose: 'Yume/Yume.kopose.json',
     physics: 'Yume/Yume.kophys.json',
+    interaction: {
+      equipMessage: '换回【经典初见】啦，哼，还是这身最有气场吧？',
+      promptHint: '保持 Yume 原本傲娇、元气、嘴硬心软的性格；可以使用深海、人鱼和蓝色微光意象，但不要变得过于冷淡。',
+      startupLines: ['欢迎回来。哼，我才没有一直等你呢！', '深海的灯光都亮起来了，快来陪我聊聊吧~'],
+      tapLines: ['喂，轻点啦！', '哼，被你碰到了而已，不代表我开心哦。', '深海的泡泡都被你弄乱了~'],
+      dragLines: ['别转那么快，我都快看不清啦！', '你又想把我带到哪里去呀？'],
+      tapSymbols: ['💙', '🫧', '✨', '⭐'],
+    },
   },
   {
     id: 'azure-streetwear',
@@ -484,6 +542,14 @@ export const yumeSkins: readonly CompanionSkin[] = [
     physics: 'Yume/Yume.kophys.json',
     pose: 'Yume/Yume.kopose.json',
     nativeDefaults: { Param16: 0, Param79: 0, ParamOutfit: 2 },
+    interaction: {
+      equipMessage: '【蔚蓝机能潮服】启动！怎么样，本小姐是不是很酷？',
+      promptHint: '保持 Yume 的傲娇元气人格，语气更利落俏皮；可以加入蔚蓝街头、装备和出发意象，偶尔嘴硬但不要变得冷漠。',
+      startupLines: ['装备检查完毕，今天也要跟上本小姐的节奏哦！', '街头信号已接通，喂，你准备好出发了吗？'],
+      tapLines: ['哎！别乱碰我的装备啦！', '反应很快嘛，不过还差得远呢~', '这点小动作也想吓到本小姐？'],
+      dragLines: ['跟紧一点，别把本小姐的视线甩掉了！', '慢点啦，机能模式也不是拿来乱转的！'],
+      tapSymbols: ['💠', '⚡', '🔷', '✨'],
+    },
   },
   {
     id: 'sapphire-nocturne',
@@ -518,6 +584,14 @@ export const yumeSkins: readonly CompanionSkin[] = [
     physics: 'Yume/Yume.kophys.json',
     pose: 'Yume/Yume.kopose.json',
     nativeDefaults: { Param16: 0, Param79: 0, ParamOutfit: 3 },
+    interaction: {
+      equipMessage: '换上【蓝宝石晚宴夜曲】啦，今晚可要好好欣赏本小姐哦。',
+      promptHint: '保持 Yume 的傲娇和元气，在表达上更优雅克制；可以使用晚宴、蓝宝石、星夜和音乐意象，保留嘴硬心软的反差。',
+      startupLines: ['欢迎来到今晚的夜曲。哼，能陪在本小姐身边算你走运。', '星光已经准备好了，快告诉我今天发生了什么。'],
+      tapLines: ['别盯着看啦……偶尔看一下就好。', '礼服的宝石在闪，你不会是被迷住了吧？', '哼，这种程度的称赞，本小姐勉强收下了。'],
+      dragLines: ['慢一点，舞曲还没有结束呢。', '你想让我看向哪边的星光？'],
+      tapSymbols: ['💎', '🌙', '✨', '🎵'],
+    },
   },
   {
     id: 'azure-reverie',
@@ -552,6 +626,14 @@ export const yumeSkins: readonly CompanionSkin[] = [
     physics: 'Yume/Yume.kophys.json',
     pose: 'Yume/Yume.kopose.json',
     nativeDefaults: { Param16: 0, Param79: 0, ParamOutfit: 1 },
+    interaction: {
+      equipMessage: '【蔚蓝梦境泳装】换好啦！走吧，去海边玩一会儿~',
+      promptHint: '保持 Yume 的傲娇元气人格，语气清爽轻快；可以使用海浪、泳池、阳光和夏日意象，表现出想玩又嘴硬的感觉。',
+      startupLines: ['海风正好，快陪本小姐去踩踩浪花吧！', '今天的海水看起来很漂亮，才不是特意等你一起玩呢~'],
+      tapLines: ['呀！海水都溅到我身上了！', '别闹啦，泳装会被你弄乱的~', '哼，想玩水就直说嘛。'],
+      dragLines: ['慢点啦，浪花都被你甩到天上去了！', '看那边，海面在发光呢~'],
+      tapSymbols: ['🌊', '💧', '🫧', '✨'],
+    },
   },
   {
     id: 'original-ears',
@@ -576,6 +658,14 @@ export const yumeSkins: readonly CompanionSkin[] = [
     physics: 'Yume/Yume.kophys.json',
     pose: 'Yume/Yume.kopose.json',
     nativeDefaults: { Param16: 0, Param79: 0, ParamCatEars: 1, ParamOutfit: 0 },
+    interaction: {
+      equipMessage: '深海猫耳模式启动！哼，今天可以特别允许你摸一下。',
+      promptHint: '保持 Yume 的傲娇元气人格，增加少量深海猫耳元素和“喵”作为点缀；不要让猫耳口癖覆盖原本的傲娇性格。',
+      startupLines: ['喵……你回来啦？本小姐才没有一直等你。', '耳朵已经听到你的脚步声了，快过来聊天喵~'],
+      tapLines: ['喵！别突然碰啦！', '只准摸一下，听见没有喵~', '哼，耳朵动一下而已，不许笑喵。'],
+      dragLines: ['慢一点喵，海水都要被你晃晕啦~', '你在看哪里？本小姐也要一起看喵！'],
+      tapSymbols: ['🐾', '🐱', '💙', '✨'],
+    },
   },
 ];
 

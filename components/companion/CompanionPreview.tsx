@@ -47,6 +47,7 @@ export interface CompanionPreviewProps {
   characterId?: string;
   embedded?: boolean;
   onBackToChat?: () => void;
+  onCompanionSkinChange?: (skin: CompanionSkin) => void;
   externalMessages?: Array<{ id: string; role: 'user' | 'assistant' | 'system' | string; content: string }>;
   onSendMessage?: (content: string) => Promise<void>;
   isStreaming?: boolean;
@@ -60,6 +61,7 @@ export interface CompanionPreviewProps {
 export default function CompanionPreview({
   characterId: initialCharId,
   onBackToChat,
+  onCompanionSkinChange,
   externalMessages,
   onSendMessage,
   isStreaming = false,
@@ -75,6 +77,7 @@ export default function CompanionPreview({
       key={character.id}
       character={character}
       onBackToChat={onBackToChat}
+      onCompanionSkinChange={onCompanionSkinChange}
       externalMessages={externalMessages}
       onSendMessage={onSendMessage}
       isStreaming={isStreaming}
@@ -90,6 +93,7 @@ export default function CompanionPreview({
 interface CompanionSessionProps {
   character: CompanionCharacter;
   onBackToChat?: () => void;
+  onCompanionSkinChange?: (skin: CompanionSkin) => void;
   externalMessages?: Array<{ id: string; role: 'user' | 'assistant' | 'system' | string; content: string }>;
   onSendMessage?: (content: string) => Promise<void>;
   isStreaming?: boolean;
@@ -103,6 +107,7 @@ interface CompanionSessionProps {
 function CompanionSession({
   character,
   onBackToChat,
+  onCompanionSkinChange,
   externalMessages,
   onSendMessage,
   isStreaming = false,
@@ -180,6 +185,10 @@ function CompanionSession({
     return character.skins.find(s => s.id === currentSkinId) ?? character.skins[0];
   }, [character.skins, currentSkinId]);
 
+  useEffect(() => {
+    if (activeSkin) onCompanionSkinChange?.(activeSkin);
+  }, [activeSkin, onCompanionSkinChange]);
+
   const effectiveCharacter = useMemo<CompanionCharacter>(() => {
     if (!activeSkin) return character;
     return {
@@ -200,13 +209,14 @@ function CompanionSession({
   const handleSelectSkin = (skin: CompanionSkin) => {
     if (skin.id === currentSkinId) return;
     setCurrentSkinId(skin.id);
+    onCompanionSkinChange?.(skin);
     if (typeof window !== 'undefined') {
       localStorage.setItem(`almaren_companion_skin_${character.id}`, skin.id);
     }
     setGeneration(g => g + 1);
     setReady(false);
     setTapBubble({
-      text: `换好【${skin.name}】啦！怎么样，好看吗？✨`,
+      text: skin.interaction?.equipMessage ?? `换好【${skin.name}】啦！怎么样，好看吗？✨`,
       id: Date.now(),
     });
     if (bubbleTimerRef.current) clearTimeout(bubbleTimerRef.current);
@@ -488,9 +498,18 @@ function CompanionSession({
     void playChatReply(reply);
   }, [reply, ready]);
 
-  const selectTapLine = (kind: 'tap' | 'rapid') => kind === 'tap'
-    ? getRandomTapLine(character.id, lastTapLineTextRef.current)
-    : getRapidTapLine(character.id, lastTapLineTextRef.current);
+  const selectTapLine = (kind: 'tap' | 'rapid'): VoiceLine => {
+    // 皮肤台词没有对应的本地音频时，普通点击和连击都使用同一组轻量字幕反馈。
+    const skinLines = activeSkin?.interaction?.tapLines;
+    if (skinLines?.length) {
+      const candidates = skinLines.filter(text => text !== lastTapLineTextRef.current);
+      const text = (candidates.length ? candidates : skinLines)[Math.floor(Math.random() * (candidates.length ? candidates : skinLines).length)];
+      return { id: `skin-${activeSkin?.id ?? 'default'}-${kind}`, text };
+    }
+    return kind === 'tap'
+      ? getRandomTapLine(character.id, lastTapLineTextRef.current)
+      : getRapidTapLine(character.id, lastTapLineTextRef.current);
+  };
 
   const prepareTapVoice = (kind: 'tap' | 'rapid') => {
     if (!voiceEnabled || !sfxEnabled || preparedTapVoicesRef.current.has(kind)) return;
@@ -775,14 +794,20 @@ function CompanionSession({
 
   // 播放初次载入欢迎问候语音
   const playStartupVoice = () => {
-    const line = getRandomStartupLine(character.id);
+    const skinLines = activeSkin?.interaction?.startupLines;
+    const line = skinLines?.length
+      ? { id: `skin-${activeSkin?.id ?? 'default'}-startup`, text: skinLines[Math.floor(Math.random() * skinLines.length)] }
+      : getRandomStartupLine(character.id);
     const { targetMotionId, targetExpression } = behavior.getStartupReaction(character);
     playVoice(line, { targetMotionId, targetExpression, isStartup: true });
   };
 
   // 播放拖拽反应趣味语音
   const playDragVoice = () => {
-    const line = getRandomDragLine(character.id);
+    const skinLines = activeSkin?.interaction?.dragLines;
+    const line = skinLines?.length
+      ? { id: `skin-${activeSkin?.id ?? 'default'}-drag`, text: skinLines[Math.floor(Math.random() * skinLines.length)] }
+      : getRandomDragLine(character.id);
     const { targetMotionId, targetExpression } = behavior.getDragReaction(character, line);
     playVoice(line, { targetMotionId, targetExpression });
   };
@@ -884,7 +909,9 @@ function CompanionSession({
     const rect = e.currentTarget.getBoundingClientRect();
     const x = Math.max(20, Math.min(rect.width - 20, e.clientX - rect.left));
     const y = Math.max(20, Math.min(rect.height - 20, e.clientY - rect.top));
-    const symbols = behavior.tapSymbols;
+    const symbols = activeSkin?.interaction?.tapSymbols?.length
+      ? activeSkin.interaction.tapSymbols
+      : behavior.tapSymbols;
     const symbol = symbols[Math.floor(Math.random() * symbols.length)];
     const pId = now + Math.random();
     setTapParticles(prev => [...prev.slice(-6), { id: pId, x, y, symbol }]);
