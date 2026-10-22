@@ -4,7 +4,7 @@ import {
   Users,
   PanelRightClose,
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn } from '@/lib/client/utils';
 import { FileNode, PreviewFile, WorkspaceSkill, SkillPreset, StudioWorkspaceItem } from '../../types';
 import { FilesTab } from './FilesTab';
 import { RosterTab } from './RosterTab';

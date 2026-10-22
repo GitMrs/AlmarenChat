@@ -16,9 +16,9 @@ import {
   AlertCircle,
   RefreshCw,
 } from 'lucide-react';
-import { assistant as assistantApi } from '@/lib/api';
+import { assistant as assistantApi } from '@/lib/client/api';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
-import { cn } from '@/lib/utils';
+import { cn } from '@/lib/client/utils';
 import type { AssistantContextStats, AssistantExperience, AssistantExperienceMessage } from '@/types';
 
 interface AssistantContextModalProps {

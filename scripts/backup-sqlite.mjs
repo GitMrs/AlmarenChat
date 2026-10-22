@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { backupSqliteDatabase } from '../lib/sqlite-backup.mjs';
+import { backupSqliteDatabase } from '../lib/core/sqlite-backup.mjs';
 
 const result = await backupSqliteDatabase({
   databaseUrl: process.env.DATABASE_URL || 'file:./data/dev.db',

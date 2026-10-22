@@ -9,9 +9,9 @@ import {
   isRunBudgetWait,
   validateContinuationIterations,
   validateWaitAnswer,
-} from '@/lib/agent-wait-policy.mjs';
+} from '@/lib/agents/runtime/agent-wait-policy.mjs';
 import { appendAgentRunEvent } from '@/app/api/_lib/agent-run-events';
-import { taskModelRequestLimit } from '@/lib/task-execution-plan.mjs';
+import { taskModelRequestLimit } from '@/lib/agents/runtime/task-execution-plan.mjs';
 
 export async function POST(request: Request, { params }: { params: Promise<{ runId: string }> }) {
   try {

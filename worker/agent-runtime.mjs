@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { randomUUID } from 'node:crypto';
-import { resolveAgentModelConfig } from '../lib/agent-model-config.mjs';
+import { resolveAgentModelConfig } from '../lib/agents/model/agent-model-config.mjs';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -10,7 +10,7 @@ import {
   executeWorkspaceTool,
   snapshotWorkspace,
   wantsWebResearch,
-} from '../lib/agent-runtime/runtime-tools.mjs';
+} from '../lib/agents/runtime/runtime-tools.mjs';
 import {
   completionOutcome,
   directRunSummary,
@@ -21,15 +21,15 @@ import {
   shouldPauseRunProcessing,
 } from './policies/run-policy.mjs';
 import { shouldRefreshResearch } from './policies/research-policy.mjs';
-import { taskModelRequestLimit } from '../lib/task-execution-plan.mjs';
-import { COORDINATOR_ACTION_TOOL, COORDINATOR_ACTION_TOOL_NAME, COORDINATOR_REVIEW_TOOL, COORDINATOR_REVIEW_TOOL_NAME, authorizationAllowsCapability, authorizationRequirements, automatedSinglePassCoverage, coordinatorDecisionTrigger, coordinatorTaskReviewInstructions, coordinatorTaskReviewRequest, dispatchConstraintFromFeedback, dispatchRequiresApproval, requestCoordinatorAction, requestCoordinatorReviewAction, structuredToolOutput } from '../lib/agent-runtime-v3-policy.mjs';
-import { completionIdFor } from '../lib/agent-completion-policy.mjs';
-import { isExecutionBudgetWait, isResearchSourceWait } from '../lib/agent-wait-policy.mjs';
-import { appendSpaceMemory, spaceMemoryContext } from '../lib/space-memory-policy.mjs';
-import { readSpaceLearningSync, spaceLearningContext } from '../lib/space-learning.mjs';
-import { loadSpaceFoundationContext } from '../lib/space-foundation.mjs';
-import { prepareWorkspaceAttempt, readExecutionCheckpoint, saveExecutionCheckpoint } from '../lib/workspace-staging.mjs';
-import { taskSkill, validateSkillArtifacts } from '../lib/agent-runtime/skill-registry.mjs';
+import { taskModelRequestLimit } from '../lib/agents/runtime/task-execution-plan.mjs';
+import { COORDINATOR_ACTION_TOOL, COORDINATOR_ACTION_TOOL_NAME, COORDINATOR_REVIEW_TOOL, COORDINATOR_REVIEW_TOOL_NAME, authorizationAllowsCapability, authorizationRequirements, automatedSinglePassCoverage, coordinatorDecisionTrigger, coordinatorTaskReviewInstructions, coordinatorTaskReviewRequest, dispatchConstraintFromFeedback, dispatchRequiresApproval, requestCoordinatorAction, requestCoordinatorReviewAction, structuredToolOutput } from '../lib/agents/runtime/agent-runtime-v3-policy.mjs';
+import { completionIdFor } from '../lib/agents/runtime/agent-completion-policy.mjs';
+import { isExecutionBudgetWait, isResearchSourceWait } from '../lib/agents/runtime/agent-wait-policy.mjs';
+import { appendSpaceMemory, spaceMemoryContext } from '../lib/space/space-memory-policy.mjs';
+import { readSpaceLearningSync, spaceLearningContext } from '../lib/space/space-learning.mjs';
+import { loadSpaceFoundationContext } from '../lib/space/space-foundation.mjs';
+import { prepareWorkspaceAttempt, readExecutionCheckpoint, saveExecutionCheckpoint } from '../lib/workspace/workspace-staging.mjs';
+import { taskSkill, validateSkillArtifacts } from '../lib/agents/runtime/skill-registry.mjs';
 import {
   claimNextCompletion,
   deliverCompletion,
@@ -63,7 +63,7 @@ import {
   recoverAutomationDeliveries,
 } from './runtime/automation-delivery-store.mjs';
 import { createConnectorActionRuntime } from './runtime/connector-action-runtime.mjs';
-import { parseMcpServers } from '../lib/agent-runtime/mcp-config.mjs';
+import { parseMcpServers } from '../lib/agents/runtime/mcp-config.mjs';
 import { decryptConnectorCredential } from '../lib/connectors/credentials.mjs';
 import { loadAgentMemoryContextSync, recordAcceptedAgentExperiences } from './runtime/agent-memory-store.mjs';
 import {
@@ -77,7 +77,7 @@ import { createExecutionEngineRegistry } from './engines/engine-registry.mjs';
 import { createNativeExecutionEngine, NATIVE_EXECUTION_ENGINE_ID } from './engines/native-engine.mjs';
 import { createPiExecutionEngine } from './engines/pi-engine.mjs';
 import { createPiWorkerGovernance } from './engines/pi-worker-governance.mjs';
-import { createScheduler } from '../lib/runtime/scheduler.mjs';
+import { createScheduler } from '../lib/core/scheduler.mjs';
 
 const workerDir = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(workerDir, '..');

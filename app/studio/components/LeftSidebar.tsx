@@ -11,7 +11,7 @@ import {
   Trash2,
   Settings,
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn } from '@/lib/client/utils';
 import { StudioWorkspaceItem } from '../types';
 
 interface LeftSidebarProps {

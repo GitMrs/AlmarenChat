@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
-import { normalizeWebhookConfig } from '@/lib/space-automation-policy.mjs';
+import { normalizeWebhookConfig } from '@/lib/space/space-automation-policy.mjs';
 import { getSpaceForUser } from '@/app/api/_lib/spaces';
 
 function publicWebhook(webhook: any) {

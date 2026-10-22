@@ -4,9 +4,9 @@ import { Prisma } from '@/src/generated/prisma/client';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { ACTIVE_AGENT_RUN_STATUSES, agentRunInclude, getAgentRunForUser, isAgentRunActive } from '@/app/api/_lib/agent-runs';
-import { coordinatorAuthorization } from '@/lib/agent-runtime-v3-policy.mjs';
-import { retryContextFromRuns } from '@/lib/run-retry-policy.mjs';
-import { taskProposalWithServerCapabilities } from '@/lib/task-proposal-policy.mjs';
+import { coordinatorAuthorization } from '@/lib/agents/runtime/agent-runtime-v3-policy.mjs';
+import { retryContextFromRuns } from '@/lib/agents/runtime/run-retry-policy.mjs';
+import { taskProposalWithServerCapabilities } from '@/lib/space/task-proposal-policy.mjs';
 
 export async function POST(request: Request, { params }: { params: Promise<{ runId: string }> }) {
   try {

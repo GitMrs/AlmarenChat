@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { Ban, BriefcaseBusiness, Check, Loader2, Pencil, Plus, RotateCcw, Sparkles, Trash2, X } from 'lucide-react';
-import { agents as agentsApi } from '@/lib/api';
+import { agents as agentsApi } from '@/lib/client/api';
 import type { AgentExperience, AgentGrowthProfile, AgentMemoryRule } from '@/types';
 
 const CATEGORY_LABELS: Record<string, string> = {

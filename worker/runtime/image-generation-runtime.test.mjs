@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { generateWorkspaceImage, generateWorkspaceImages } from './image-generation-runtime.mjs';
-import { imageGenerationTimeoutMs } from '../../lib/image-generation.mjs';
+import { imageGenerationTimeoutMs } from '../../lib/media/image-generation.mjs';
 
 const PNG = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 0]);
 const model = { apiKey: 'secret', baseURL: 'https://example.com/v1', name: 'image-model', size: '1024x1024' };

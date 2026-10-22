@@ -19,8 +19,8 @@ import {
   Zap,
   Info,
 } from 'lucide-react';
-import { cryptoEvents, type CryptoEventsData } from '@/lib/api';
-import { toast } from '@/lib/toast';
+import { cryptoEvents, type CryptoEventsData } from '@/lib/client/api';
+import { toast } from '@/lib/client/toast';
 import { formatEventSource, getVerifiedEventImpact, formatEventSurprise, formatEventImpactPercent, formatEventMarketResult } from '@/lib/crypto/event-temporal.ts';
 import type { CryptoEvent } from '@/lib/crypto/event-temporal.ts';
 import { canTrackEventMarket, EVENT_MARKET_WINDOWS, getEventMarketResult, formatMarketPercent, type EventMarketWindow } from '@/lib/crypto/event-market.ts';

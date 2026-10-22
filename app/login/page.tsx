@@ -14,8 +14,8 @@ import {
   Sparkles,
   Wand2,
 } from 'lucide-react';
-import { auth } from '@/lib/api';
-import { cn } from '@/lib/utils';
+import { auth } from '@/lib/client/api';
+import { cn } from '@/lib/client/utils';
 
 type AuthMode = 'login' | 'register';
 type ActiveField = 'name' | 'email' | 'password' | null;

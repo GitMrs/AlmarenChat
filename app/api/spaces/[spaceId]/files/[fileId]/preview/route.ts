@@ -2,8 +2,8 @@ import { NextResponse } from 'next/server';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { getSpaceForUser } from '@/app/api/_lib/spaces';
-import { signSpacePreviewToken } from '@/lib/space-preview-token.mjs';
-import { logicalWorkspaceRelativePath } from '@/lib/space-work-paths.mjs';
+import { signSpacePreviewToken } from '@/lib/space/space-preview-token.mjs';
+import { logicalWorkspaceRelativePath } from '@/lib/space/space-work-paths.mjs';
 
 function encodedPath(value: string) {
   return value.split('/').map((part) => encodeURIComponent(part)).join('/');

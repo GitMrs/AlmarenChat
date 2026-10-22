@@ -1,6 +1,6 @@
 import React from 'react';
 import { BookOpen, CheckCircle, Download, Loader2 } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn } from '@/lib/client/utils';
 import { SkillPreset, WorkspaceSkill } from '../../types';
 
 interface InstallSkillModalProps {

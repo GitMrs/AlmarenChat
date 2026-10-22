@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { requireAgentMemoryAccess } from '@/app/api/_lib/agent-personal-memory';
-import { loadAgentMemoryContext } from '@/lib/agent-memory';
+import { loadAgentMemoryContext } from '@/lib/agents/memory/agent-memory';
 
 export async function POST(request: Request, { params }: { params: Promise<{ agentId: string }> }) {
   try {

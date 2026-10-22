@@ -2,8 +2,8 @@
 
 import { useState } from 'react';
 import { Sparkles, Eye, EyeOff } from 'lucide-react';
-import { auth } from '@/lib/api';
-import { cn } from '@/lib/utils';
+import { auth } from '@/lib/client/api';
+import { cn } from '@/lib/client/utils';
 
 interface LoginScreenProps {
   onLogin: (token: string, user: any) => void;

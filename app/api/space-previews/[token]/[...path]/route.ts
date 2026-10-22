@@ -2,9 +2,9 @@ import { readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { NextResponse } from 'next/server';
 import { ensureSpaceRoot, resolveSpacePath } from '@/app/api/_lib/spaces';
-import { verifySpacePreviewToken } from '@/lib/space-preview-token.mjs';
-import { spacePreviewPolicy } from '@/lib/space-preview-policy.mjs';
-import { workspaceAttemptFile } from '@/lib/workspace-staging.mjs';
+import { verifySpacePreviewToken } from '@/lib/space/space-preview-token.mjs';
+import { spacePreviewPolicy } from '@/lib/space/space-preview-policy.mjs';
+import { workspaceAttemptFile } from '@/lib/workspace/workspace-staging.mjs';
 
 const MAX_PREVIEW_FILE_BYTES = 5 * 1024 * 1024;
 const MIME_TYPES: Record<string, string> = {

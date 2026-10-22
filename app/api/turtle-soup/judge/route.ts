@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/app/api/_lib/db';
 import { getUserIdFromRequest } from '@/app/api/_lib/auth';
-import { createModelClient, resolveModelName } from '@/lib/model-client';
-import { getPuzzleById } from '@/lib/turtle-soup/service';
-import type { TurtleSoupJudgeResult, TurtleSoupVerdict } from '@/lib/turtle-soup/types';
+import { createModelClient, resolveModelName } from '@/lib/core/model-client';
+import { getPuzzleById } from '@/lib/workspace/game/turtle-soup/service';
+import type { TurtleSoupJudgeResult, TurtleSoupVerdict } from '@/lib/workspace/game/turtle-soup/types';
 
 export const runtime = 'nodejs';
 

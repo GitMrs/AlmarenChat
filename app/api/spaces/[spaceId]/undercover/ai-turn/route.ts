@@ -10,7 +10,7 @@ import {
   parseVoteResponse,
   buildGuessPrompt,
   parseGuessResponse,
-} from '@/lib/undercover/ai-player';
+} from '@/lib/workspace/game/undercover/ai-player';
 
 function boundedText(value: unknown, maxLength: number) {
   return typeof value === 'string' ? value.trim().slice(0, maxLength) : '';

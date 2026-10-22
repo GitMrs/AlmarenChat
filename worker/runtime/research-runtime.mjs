@@ -4,10 +4,10 @@ import {
   researchRequirements,
   searchWeb,
   wantsWebResearch,
-} from '../../lib/agent-runtime/runtime-tools.mjs';
-import { authorizationAllowsCapability } from '../../lib/agent-runtime-v3-policy.mjs';
-import { explicitlyForbidsResearchExecution, explicitlyForbidsWebResearch } from '../../lib/web-research-intent.mjs';
-import { createRuntimePermissionBroker } from '../../lib/runtime-permission-broker.mjs';
+} from '../../lib/agents/runtime/runtime-tools.mjs';
+import { authorizationAllowsCapability } from '../../lib/agents/runtime/agent-runtime-v3-policy.mjs';
+import { explicitlyForbidsResearchExecution, explicitlyForbidsWebResearch } from '../../lib/web/web-research-intent.mjs';
+import { createRuntimePermissionBroker } from '../../lib/agents/runtime/runtime-permission-broker.mjs';
 
 function parseResearchPlan(content, fallbackQuery) {
   try {

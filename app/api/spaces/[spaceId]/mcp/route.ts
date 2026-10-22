@@ -4,7 +4,7 @@ import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { getSpaceForUser } from '@/app/api/_lib/spaces';
 import { encryptConnectorCredential } from '@/lib/connectors/credentials.mjs';
-import { parseMcpServers } from '@/lib/agent-runtime/mcp-config.mjs';
+import { parseMcpServers } from '@/lib/agents/runtime/mcp-config.mjs';
 
 export const runtime = 'nodejs';
 

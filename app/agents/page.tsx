@@ -7,10 +7,10 @@ import AppShell from '@/components/layout/AppShell';
 import AgentCard from '@/components/agent/AgentCard';
 import CategoryFilter from '@/components/agent/CategoryFilter';
 import LoadingSpinner from '@/components/shared/LoadingSpinner';
-import { getAgentsByCategory, getBuiltInAgents, searchAgents } from '@/lib/agents-data';
-import { agents as agentsApi, favorites as favoritesApi } from '@/lib/api';
+import { getAgentsByCategory, getBuiltInAgents, searchAgents } from '@/lib/agents/data/agents-data';
+import { agents as agentsApi, favorites as favoritesApi } from '@/lib/client/api';
 import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
-import { cn } from '@/lib/utils';
+import { cn } from '@/lib/client/utils';
 import type { Agent } from '@/types';
 
 const AGENTS_PAGE_STATE_KEY = 'almaren:agents-page-state';

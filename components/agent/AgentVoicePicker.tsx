@@ -5,7 +5,7 @@ import { Loader2, Square, Volume2 } from 'lucide-react';
 import { useTTS } from '@/hooks/useTTS';
 import SearchableSelect, { SearchableSelectOption } from '@/components/shared/SearchableSelect';
 import { CURATED_VOICES, DEFAULT_VOICE_ID, getVoiceById } from '@/lib/tts/voices.mjs';
-import { cn } from '@/lib/utils';
+import { cn } from '@/lib/client/utils';
 
 interface AgentVoicePickerProps {
   value: string;

@@ -1,20 +1,20 @@
 import { contextManager } from './context-manager.mjs';
-import { runToolLoop } from '../../lib/agent-runtime/tool-loop.mjs';
+import { runToolLoop } from '../../lib/agents/runtime/tool-loop.mjs';
 import {
   executeWorkspaceTool,
   safeCommandToolSchema,
   wantsWebResearch,
   workspaceToolSchemas,
-} from '../../lib/agent-runtime/runtime-tools.mjs';
+} from '../../lib/agents/runtime/runtime-tools.mjs';
 import { blocksUnapprovedFullOverwrite } from '../policies/workspace-write-policy.mjs';
-import { authorizationAllowsCapability } from '../../lib/agent-runtime-v3-policy.mjs';
-import { skillAllowsTool, skillExecutionToolSchema, spaceSkillReferenceToolSchema, taskSkill } from '../../lib/agent-runtime/skill-registry.mjs';
-import { readSpaceSkillFile } from '../../lib/space-skills.mjs';
+import { authorizationAllowsCapability } from '../../lib/agents/runtime/agent-runtime-v3-policy.mjs';
+import { skillAllowsTool, skillExecutionToolSchema, spaceSkillReferenceToolSchema, taskSkill } from '../../lib/agents/runtime/skill-registry.mjs';
+import { readSpaceSkillFile } from '../../lib/space/space-skills.mjs';
 import { executeSkill } from '../runtime/builtin-skill-runtime.mjs';
 import { generateImageToolSchema, generateImagesToolSchema, generateWorkspaceImages } from '../runtime/image-generation-runtime.mjs';
-import { continuationIterationsFromAnswer } from '../../lib/agent-wait-policy.mjs';
-import { taskContextTargetTokens } from '../../lib/model-limits.mjs';
-import { currentTimeContext } from '../../lib/current-time-context.mjs';
+import { continuationIterationsFromAnswer } from '../../lib/agents/runtime/agent-wait-policy.mjs';
+import { taskContextTargetTokens } from '../../lib/core/model-limits.mjs';
+import { currentTimeContext } from '../../lib/agents/memory/current-time-context.mjs';
 
 const READ_TOOLS = new Set(['list_files', 'read_file', 'check_files']);
 export const EXECUTOR_TOOL_ITERATIONS = 10;

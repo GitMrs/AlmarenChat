@@ -3,9 +3,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { Check, Cloud, Cpu, Flame, Image as ImageIcon, ImagePlus, Loader2, Plus, Send, Square, Trash2, X } from 'lucide-react';
 import ComposerShell from '@/components/chat/ComposerShell';
-import { cn } from '@/lib/utils';
+import { cn } from '@/lib/client/utils';
 import type { MessageAttachment } from '@/types';
-import type { BrowserModelSource } from '@/lib/browser-model';
+import type { BrowserModelSource } from '@/lib/web/browser-model';
 
 type ChatComposerProps = {
   agentName: string;

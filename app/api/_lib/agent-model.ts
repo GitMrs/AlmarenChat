@@ -1,6 +1,6 @@
 import prisma from '@/app/api/_lib/db';
-import { DEFAULT_BASE_URL, DEFAULT_MODEL } from '@/lib/model-client';
-import { resolveAgentModelConfig } from '@/lib/agent-model-config.mjs';
+import { DEFAULT_BASE_URL, DEFAULT_MODEL } from '@/lib/core/model-client';
+import { resolveAgentModelConfig } from '@/lib/agents/model/agent-model-config.mjs';
 
 type ModelFields = { modelName?: string | null; apiBaseUrl?: string | null; apiKey?: string | null };
 

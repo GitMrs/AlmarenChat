@@ -5,8 +5,8 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { prepareWorkspaceAttempt } from '../../lib/workspace-staging.mjs';
-import { getSpaceSkill, installSpaceSkillPackage, updateSpaceSkillExecution, validateSpaceSkillPackage } from '../../lib/space-skills.mjs';
+import { prepareWorkspaceAttempt } from '../../lib/workspace/workspace-staging.mjs';
+import { getSpaceSkill, installSpaceSkillPackage, updateSpaceSkillExecution, validateSpaceSkillPackage } from '../../lib/space/space-skills.mjs';
 import { executeBuiltinSkill, executeSkill } from './builtin-skill-runtime.mjs';
 
 const sourceProjectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');

@@ -2,7 +2,7 @@
 
 import type { ReactNode } from 'react';
 import Avatar from '@/components/shared/Avatar';
-import { cn } from '@/lib/utils';
+import { cn } from '@/lib/client/utils';
 
 type MessageBubbleFrameProps = {
   role: 'user' | 'assistant' | 'system';

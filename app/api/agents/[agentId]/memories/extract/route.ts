@@ -3,7 +3,7 @@ import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { requireAgentMemoryAccess } from '@/app/api/_lib/agent-personal-memory';
 import { loadAgentModelSetting, resolveUserModelConfig } from '@/app/api/_lib/agent-model';
-import { createModelClient, resolveModelName } from '@/lib/model-client';
+import { createModelClient, resolveModelName } from '@/lib/core/model-client';
 import { memoryFingerprint } from '@/lib/personal-assistant/memory-dedup.mjs';
 import { explicitMemoryContent, explicitMemoryPrompt, parseExplicitMemory, shouldExtractMemorySuggestion } from '@/lib/personal-assistant/memory-intent.mjs';
 

@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { getSpaceForUser } from '@/app/api/_lib/spaces';
-import { normalizeShareTheme } from '@/lib/share-theme-policy.mjs';
+import { normalizeShareTheme } from '@/lib/media/share-theme-policy.mjs';
 
 function shareUrl(shareId: string | null) {
   return shareId ? `/share/${shareId}/` : null;

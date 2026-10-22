@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { automationAuthorization, nextScheduledAutomationRunAt } from '../../lib/space-automation-policy.mjs';
-import { executeSpaceScriptSync } from '../../lib/space-script-runner.mjs';
+import { automationAuthorization, nextScheduledAutomationRunAt } from '../../lib/space/space-automation-policy.mjs';
+import { executeSpaceScriptSync } from '../../lib/space/space-script-runner.mjs';
 import {
   automationResultHash,
   deliveryStatusFor,

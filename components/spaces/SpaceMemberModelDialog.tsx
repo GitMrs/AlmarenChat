@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import Avatar from '@/components/shared/Avatar';
 import ModelPicker from '@/components/shared/ModelPicker';
-import { agents as agentsApi, user as userApi } from '@/lib/api';
+import { agents as agentsApi, user as userApi } from '@/lib/client/api';
 import type { Agent, AgentModelSettingsResponse, SpaceMember } from '@/types';
 
 interface SpaceMemberModelDialogProps {

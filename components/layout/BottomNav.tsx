@@ -2,7 +2,7 @@
 
 import { usePathname, useRouter } from 'next/navigation';
 import { Bot, Compass, PanelsTopLeft, UserRound, MessageCircle } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn } from '@/lib/client/utils';
 
 const tabs = [
   { id: 'discover', label: '发现', icon: Compass, href: '/' },

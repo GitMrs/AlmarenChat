@@ -1,10 +1,10 @@
-import { completionIdFor } from '../../lib/agent-completion-policy.mjs';
+import { completionIdFor } from '../../lib/agents/runtime/agent-completion-policy.mjs';
 import {
   EXECUTION_BUDGET_WAIT_REASON,
   RESEARCH_SOURCE_WAIT_REASON,
   RUN_BUDGET_WAIT_ERROR,
   normalizeWaitRequest,
-} from '../../lib/agent-wait-policy.mjs';
+} from '../../lib/agents/runtime/agent-wait-policy.mjs';
 import { cancelRunRecord } from './run-cancellation-store.mjs';
 import { executionFailureStatus } from '../policies/run-policy.mjs';
 

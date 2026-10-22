@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
 import { Prisma } from '@/src/generated/prisma/client';
-import { normalizeWeatherLocation, platformWeather } from '@/lib/weather.mjs';
+import { normalizeWeatherLocation, platformWeather } from '@/lib/misc/weather.mjs';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
-import { MODEL_CONTEXT_WINDOW_OPTIONS } from '@/lib/model-limits.mjs';
-import { parseMcpServers } from '@/lib/agent-runtime/mcp-config.mjs';
+import { MODEL_CONTEXT_WINDOW_OPTIONS } from '@/lib/core/model-limits.mjs';
+import { parseMcpServers } from '@/lib/agents/runtime/mcp-config.mjs';
 
 export async function GET(request: Request) {
   try {

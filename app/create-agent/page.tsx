@@ -35,10 +35,10 @@ import Avatar from '@/components/shared/Avatar';
 import SearchableSelect from '@/components/shared/SearchableSelect';
 import { useTTS } from '@/hooks/useTTS';
 import { getVoiceById } from '@/lib/tts/voices.mjs';
-import { createAgentAvatar, createRandomAgentAvatarOptions, DEFAULT_AGENT_AVATAR } from '@/lib/agent-avatar';
-import { cn } from '@/lib/utils';
+import { createAgentAvatar, createRandomAgentAvatarOptions, DEFAULT_AGENT_AVATAR } from '@/lib/agents/data/agent-avatar';
+import { cn } from '@/lib/client/utils';
 import { AGENT_CATEGORIES, AGENT_TONES, CATEGORY_COLORS } from '@/types';
-import { agents, auth } from '@/lib/api';
+import { agents, auth } from '@/lib/client/api';
 
 const AVATAR_OPTIONS = ['🪄', '🤖', '💡', '📚', '🧭', '🎨', '🧠', '🛠️', '🌿', '🔥', '🌙', '☕', '🎯', '🧩', '📝', '🪐', '🛡️', '⚖️', '🔬', '💼'];
 

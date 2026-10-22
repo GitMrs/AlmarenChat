@@ -17,24 +17,24 @@ import ChatComposer from '@/components/chat/ChatComposer';
 import { MessageItem } from '@/components/chat/ChatMessageItem';
 import MemorySuggestionDialog, { type MemorySuggestion } from '@/components/chat/MemorySuggestionDialog';
 import { useTTS } from '@/hooks/useTTS';
-import { getBuiltInAgents } from '@/lib/agents-data';
+import { getBuiltInAgents } from '@/lib/agents/data/agents-data';
 import { getCompanionCharacterId } from '@/lib/companion/agents';
 import { companionReplyInstruction, createCompanionReplyParser } from '@/lib/companion/reply-protocol.mjs';
 import type { CompanionReply } from '@/lib/companion/reply';
 import AgentDailyStudyCard from '@/components/chat/AgentDailyStudyCard';
 import type { AgentDailyStudyRecord, AgentStudyItem } from '@/lib/agent-study/types';
-import { agentMemories, generateConversationImage, streamChat, conversations as conversationsApi, agents as agentsApi, user as userApi, uploads } from '@/lib/api';
+import { agentMemories, generateConversationImage, streamChat, conversations as conversationsApi, agents as agentsApi, user as userApi, uploads } from '@/lib/client/api';
 import {
   DEFAULT_BROWSER_MODEL_CONFIG,
   readBrowserModelConfigForScope,
   saveBrowserModelConfig,
   streamBrowserModel,
-} from '@/lib/browser-model';
-import { cn } from '@/lib/utils';
+} from '@/lib/web/browser-model';
+import { cn } from '@/lib/client/utils';
 import { CATEGORY_COLORS } from '@/types';
 import type { Agent, MessageAttachment } from '@/types';
 import type { ChatMessage, DisplayAgent } from '@/components/chat/ChatMessageItem';
-import type { BrowserModelConfig, BrowserModelSource } from '@/lib/browser-model';
+import type { BrowserModelConfig, BrowserModelSource } from '@/lib/web/browser-model';
 import { shouldExtractMemorySuggestion } from '@/lib/personal-assistant/memory-intent.mjs';
 import { isWorldEventAgent, resolveWorldEventQuery, WORLD_EVENTS_UNAVAILABLE_CONTEXT } from '@/lib/world/agent-policy';
 

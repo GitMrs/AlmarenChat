@@ -10,7 +10,7 @@ import {
   ShieldAlert,
   XCircle,
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn } from '@/lib/client/utils';
 import { ToolInvocation } from '../../types';
 
 interface ToolCardProps {

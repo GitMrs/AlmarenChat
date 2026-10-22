@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useId, useState } from 'react';
-import { moonPhase } from '@/lib/moon-phase.mjs';
+import { moonPhase } from '@/lib/misc/moon-phase.mjs';
 import styles from './AlmarenIslandScene.module.css';
 
 export type TimePhase = 'dawn' | 'day' | 'dusk' | 'night';

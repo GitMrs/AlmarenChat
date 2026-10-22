@@ -1,4 +1,4 @@
-import { smartFetch } from '@/lib/network/proxy';
+import { smartFetch } from '@/lib/web/proxy';
 import { getSourceConfig, TRENDING_SOURCES } from './sources';
 import { parseBaidu, parseBilibili, parseDailyHot, parseDouHotlist, parse36Kr, parseZhihu, parseRssFeed, parseBinanceArticles, parseOkxAnnouncements, parseOkxOrbitHtml, parseBlockBeatsHtml, parseForesightHtml } from './parsers';
 import { isSnapshotFresh, readSnapshot, saveSnapshot, getLocalISODate } from './storage';

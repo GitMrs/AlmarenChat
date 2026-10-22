@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import prisma from '@/app/api/_lib/db';
-import { reserveChatQuota } from '@/lib/chat-quota';
-import { createModelClient, resolveModelName } from '@/lib/model-client';
-import { createChatWebTools, runAutoWebChat } from '@/lib/auto-web';
+import { reserveChatQuota } from '@/lib/chat/chat-quota';
+import { createModelClient, resolveModelName } from '@/lib/core/model-client';
+import { createChatWebTools, runAutoWebChat } from '@/lib/web/auto-web';
 import { buildAssistantActivityContext, buildAssistantPlatformContext } from '@/lib/personal-assistant/platform-context';
 import { buildPersonalAssistantPrompt } from '@/lib/personal-assistant/prompt-builder';
 import { ensurePersonalAssistant } from '@/lib/personal-assistant/profile';
@@ -17,8 +17,8 @@ import { loadUserMemoryItems } from '@/lib/personal-assistant/user-memory';
 import { stripRetrievalNotices } from '@/lib/personal-assistant/retrieval-notice.mjs';
 import { isValidInternalQQSecret } from '@/lib/qq-assistant/credentials.mjs';
 import { classifyQQCommand, qqImageAttachments } from '@/lib/qq-assistant/policy.mjs';
-import { compressConversationContext } from '@/lib/context-compression';
-import { conversationContextTargetTokens } from '@/lib/model-limits.mjs';
+import { compressConversationContext } from '@/lib/agents/memory/context-compression';
+import { conversationContextTargetTokens } from '@/lib/core/model-limits.mjs';
 
 export const runtime = 'nodejs';
 

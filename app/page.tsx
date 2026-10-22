@@ -20,9 +20,9 @@ import {
 import AppShell from '@/components/layout/AppShell';
 import AgentCard from '@/components/agent/AgentCard';
 import LoadingSpinner from '@/components/shared/LoadingSpinner';
-import { getAgentsGroupedByCategory, getBuiltInAgents } from '@/lib/agents-data';
-import { agents as agentsApi, conversations as conversationsApi, favorites as favoritesApi } from '@/lib/api';
-import { cn } from '@/lib/utils';
+import { getAgentsGroupedByCategory, getBuiltInAgents } from '@/lib/agents/data/agents-data';
+import { agents as agentsApi, conversations as conversationsApi, favorites as favoritesApi } from '@/lib/client/api';
+import { cn } from '@/lib/client/utils';
 import type { Agent } from '@/types';
 
 const scenarioLinks = [

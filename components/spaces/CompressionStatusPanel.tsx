@@ -13,7 +13,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { useContextCompression } from '@/hooks/useContextCompression';
-import { spaces as spacesApi } from '@/lib/api';
+import { spaces as spacesApi } from '@/lib/client/api';
 
 interface CompressionStatusPanelProps {
   spaceId: string;

@@ -1,4 +1,4 @@
-import { completionIdFor, TERMINAL_RUN_STATUSES } from '../../lib/agent-completion-policy.mjs';
+import { completionIdFor, TERMINAL_RUN_STATUSES } from '../../lib/agents/runtime/agent-completion-policy.mjs';
 import { enqueueCompletion } from './completion-outbox.mjs';
 import { appendRunEvent } from './event-store.mjs';
 

@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import Database from 'better-sqlite3';
-import { createCollaborationState } from '../../lib/relay/collaboration.mjs';
-import { createGomokuState } from '../../lib/relay/gomoku.mjs';
+import { createCollaborationState } from '../../lib/workspace/game/relay/collaboration.mjs';
+import { createGomokuState } from '../../lib/workspace/game/relay/gomoku.mjs';
 import { createRelayRuntime } from './relay-runtime.mjs';
 
 function fixture({ action = { row: 8, column: 8, comment: '占据中心' }, runLoop, completeMessage } = {}) {

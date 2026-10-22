@@ -23,19 +23,19 @@ import {
 import LoginRequired from '@/components/auth/LoginRequired';
 import ModelPicker from '@/components/shared/ModelPicker';
 import WeatherLocationSettings from './WeatherLocationSettings';
-import { auth, user as userApi } from '@/lib/api';
+import { auth, user as userApi } from '@/lib/client/api';
 import {
   DEFAULT_BROWSER_MODEL_CONFIG,
   readBrowserModelConfigForScope,
   saveBrowserModelConfig,
   type BrowserModelConfig,
-} from '@/lib/browser-model';
+} from '@/lib/web/browser-model';
 import {
   MODEL_CONTEXT_WINDOW_OPTIONS,
   modelTokenLimits,
   recommendedModelContextWindow,
-} from '@/lib/model-limits.mjs';
-import { cn } from '@/lib/utils';
+} from '@/lib/core/model-limits.mjs';
+import { cn } from '@/lib/client/utils';
 
 const CONTEXT_WINDOW_LABELS: Record<number, string> = {
   32_768: '32K',

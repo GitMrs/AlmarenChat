@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
-import { manualAgentMemoryRule, synchronizeAgentMemory } from '@/lib/agent-memory-service';
+import { manualAgentMemoryRule, synchronizeAgentMemory } from '@/lib/agents/memory/agent-memory-service';
 
 const ACTIONS = new Set(['approve', 'ignore', 'update', 'enable', 'disable']);
 

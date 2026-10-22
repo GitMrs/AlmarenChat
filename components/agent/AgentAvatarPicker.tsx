@@ -1,7 +1,7 @@
 'use client';
 
 import Avatar from '@/components/shared/Avatar';
-import { cn } from '@/lib/utils';
+import { cn } from '@/lib/client/utils';
 import { RefreshCw } from 'lucide-react';
 
 interface AgentAvatarPickerProps {

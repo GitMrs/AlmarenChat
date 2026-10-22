@@ -5,16 +5,16 @@ import {
   executeWorkspaceTool,
   safeCommandToolSchema,
   workspaceToolSchemas,
-} from '../../lib/agent-runtime/runtime-tools.mjs';
-import { authorizationAllowsCapability } from '../../lib/agent-runtime-v3-policy.mjs';
+} from '../../lib/agents/runtime/runtime-tools.mjs';
+import { authorizationAllowsCapability } from '../../lib/agents/runtime/agent-runtime-v3-policy.mjs';
 import {
   skillAllowsTool,
   skillExecutionToolSchema,
   spaceSkillReferenceToolSchema,
   taskSkill,
-} from '../../lib/agent-runtime/skill-registry.mjs';
-import { readSpaceSkillFile } from '../../lib/space-skills.mjs';
-import { workspaceAttemptRoot } from '../../lib/workspace-staging.mjs';
+} from '../../lib/agents/runtime/skill-registry.mjs';
+import { readSpaceSkillFile } from '../../lib/space/space-skills.mjs';
+import { workspaceAttemptRoot } from '../../lib/workspace/workspace-staging.mjs';
 import { blocksUnapprovedFullOverwrite } from '../policies/workspace-write-policy.mjs';
 import { executeSkill } from '../runtime/builtin-skill-runtime.mjs';
 import {
@@ -23,11 +23,11 @@ import {
   generateWorkspaceImages,
 } from '../runtime/image-generation-runtime.mjs';
 import { reserveModelRequest } from '../runtime/model-budget.mjs';
-import { loadSkillPackage, readSkillPackageFile } from '../../lib/agent-runtime/skill-package-loader.mjs';
+import { loadSkillPackage, readSkillPackageFile } from '../../lib/agents/runtime/skill-package-loader.mjs';
 import { runSandboxedSkillProcess } from '../runtime/sandbox-runner.mjs';
-import { searchWeb } from '../../lib/agent-runtime/runtime-tools.mjs';
-import { fetchWebPage } from '../../lib/web-fetch.mjs';
-import { createHttpMcpClient, mcpToolName } from '../../lib/agent-runtime/mcp-client.mjs';
+import { searchWeb } from '../../lib/agents/runtime/runtime-tools.mjs';
+import { fetchWebPage } from '../../lib/web/web-fetch.mjs';
+import { createHttpMcpClient, mcpToolName } from '../../lib/agents/runtime/mcp-client.mjs';
 
 const READ_TOOLS = new Set(['list_files', 'read_file', 'check_files']);
 const TOOL_LABELS = {

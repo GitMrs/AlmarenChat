@@ -2,8 +2,8 @@ import { NextResponse } from 'next/server';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { getAgentRunForUser, isAgentRunActive } from '@/app/api/_lib/agent-runs';
-import { completionIdFor } from '@/lib/agent-completion-policy.mjs';
-import { discardWorkspaceAttempt } from '@/lib/workspace-staging.mjs';
+import { completionIdFor } from '@/lib/agents/runtime/agent-completion-policy.mjs';
+import { discardWorkspaceAttempt } from '@/lib/workspace/workspace-staging.mjs';
 import { persistSpaceMemory } from '@/app/api/_lib/space-memory';
 import { appendAgentRunEvent } from '@/app/api/_lib/agent-run-events';
 

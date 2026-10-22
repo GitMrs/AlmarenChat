@@ -18,7 +18,7 @@ import {
 } from '../lib/qq-assistant/policy.mjs';
 import { resolveWorkerDatabasePath } from './runtime/worker-config.mjs';
 import { openWorkerDatabase } from './runtime/worker-database.mjs';
-import { createScheduler } from '../lib/runtime/scheduler.mjs';
+import { createScheduler } from '../lib/core/scheduler.mjs';
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const secret = process.env.QQ_ASSISTANT_SECRET || '';

@@ -3,8 +3,8 @@ import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { ensureSpaceRoot } from '@/app/api/_lib/spaces';
 import { connectorActionDefinition } from '@/lib/connectors/registry.mjs';
-import { buildWechatDraftSnapshot, selectAutomatedWechatDraftFiles } from '@/lib/connectors/wechat-draft-snapshot';
-import { commitSpacePendingHistory } from '@/lib/space-pending-history.mjs';
+import { buildWechatDraftSnapshot, selectAutomatedWechatDraftFiles } from '@/lib/workspace/wechat/wechat-draft-snapshot';
+import { commitSpacePendingHistory } from '@/lib/space/space-pending-history.mjs';
 
 async function prepareFinalizationFollowUp(
   actionId: string,

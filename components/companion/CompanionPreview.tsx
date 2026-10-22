@@ -12,7 +12,7 @@ import '@/app/companion/companion.css';
 import { getCompanionBehavior, type QuickPromptItem } from '@/lib/companion/behaviors';
 import { getCompanionReplyReaction, type CompanionReply } from '@/lib/companion/reply';
 import { primeChatAudio } from '@/lib/companion/chat-audio';
-import { tts } from '@/lib/api';
+import { tts } from '@/lib/client/api';
 import { cleanMarkdownForTTS } from '@/lib/tts/markdown-cleaner';
 
 interface CompanionDisplayMessage {

@@ -4,7 +4,7 @@ import { NextResponse } from 'next/server';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { ensureSpaceRoot, getSpaceForUser, resolveSpacePath } from '@/app/api/_lib/spaces';
-import { decorateSpaceFile } from '@/lib/space-asset-policy.mjs';
+import { decorateSpaceFile } from '@/lib/space/space-asset-policy.mjs';
 
 const MAX_FILE_SIZE = 2 * 1024 * 1024;
 const MAX_IMAGE_FILE_SIZE = 5 * 1024 * 1024;

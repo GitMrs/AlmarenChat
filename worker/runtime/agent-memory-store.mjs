@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { agentMemoryContext } from '../../lib/agent-memory-policy.mjs';
-import { personalMemoryContext, buildSpaceExperience } from '../../lib/agent-personal-memory.mjs';
+import { agentMemoryContext } from '../../lib/agents/memory/agent-memory-policy.mjs';
+import { personalMemoryContext, buildSpaceExperience } from '../../lib/agents/memory/agent-personal-memory.mjs';
 
 function cleanText(value, limit) {
   return String(value || '').replace(/\s+/g, ' ').trim().slice(0, limit);

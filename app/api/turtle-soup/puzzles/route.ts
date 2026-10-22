@@ -7,7 +7,7 @@ import {
   getRandomPuzzle,
   getPuzzleWithIndex,
   getRandomPuzzleWithIndex,
-} from '@/lib/turtle-soup/service';
+} from '@/lib/workspace/game/turtle-soup/service';
 
 export const runtime = 'nodejs';
 

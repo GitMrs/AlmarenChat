@@ -6,9 +6,9 @@ import { useRouter } from 'next/navigation';
 import { ArrowRight, Blocks, Bot, Brain, ChevronDown, Copy, Eye, EyeOff, Heart, KeyRound, Loader2, MessageCircleHeart, Plus, RefreshCw, RotateCcw, Save, Sparkles, Trash2, Unplug, Upload } from 'lucide-react';
 import Avatar from '@/components/shared/Avatar';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
-import { assistant, uploads, user as userApi } from '@/lib/api';
+import { assistant, uploads, user as userApi } from '@/lib/client/api';
 import { qqAssistantErrorNotice } from '@/lib/qq-assistant/policy.mjs';
-import { cn } from '@/lib/utils';
+import { cn } from '@/lib/client/utils';
 import type { AssistantExperience, AssistantExperienceMessage, AssistantMemoryItem, AssistantQQBinding, PersonalAssistantProfile } from '@/types';
 
 const EMPTY_PROFILE: PersonalAssistantProfile = {

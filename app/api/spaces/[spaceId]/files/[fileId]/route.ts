@@ -4,11 +4,11 @@ import { NextResponse } from 'next/server';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { ensureSpaceRoot, getSpaceForUser, resolveSpacePath } from '@/app/api/_lib/spaces';
-import { isEditableSpaceFile, MAX_EDITABLE_SPACE_FILE_BYTES } from '@/lib/space-files';
-import { workspaceAttemptFile } from '@/lib/workspace-staging.mjs';
-import { logicalWorkspaceRelativePath } from '@/lib/space-work-paths.mjs';
+import { isEditableSpaceFile, MAX_EDITABLE_SPACE_FILE_BYTES } from '@/lib/space/space-files';
+import { workspaceAttemptFile } from '@/lib/workspace/workspace-staging.mjs';
+import { logicalWorkspaceRelativePath } from '@/lib/space/space-work-paths.mjs';
 import { isPiSpaceTurnActive } from '@/lib/pi-runtime/space-session.mjs';
-import { createWorkVersion } from '@/lib/work-versions.mjs';
+import { createWorkVersion } from '@/lib/space/work-versions.mjs';
 
 const EDIT_BLOCKING_RUN_STATUSES = ['QUEUED', 'PLANNING', 'RUNNING', 'SUMMARIZING', 'CANCEL_REQUESTED'];
 

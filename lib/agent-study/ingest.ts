@@ -1,5 +1,5 @@
 import prisma from '@/app/api/_lib/db';
-import { indexKnowledgeText } from '@/lib/knowledge';
+import { indexKnowledgeText } from '@/lib/knowledge/knowledge';
 import { isDuplicateMemory } from '@/lib/personal-assistant/memory-dedup.mjs';
 import { fetchStudyContent } from './content-provider';
 import { assessStudyContents, synthesizeKnowledgeDocument } from './knowledge-assessor';

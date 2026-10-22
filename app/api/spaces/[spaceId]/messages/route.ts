@@ -13,28 +13,28 @@ import {
   resolveMentionTarget,
   resolveSpaceMemberModelConfig,
 } from '@/app/api/_lib/spaces';
-import { describeWorkspaceArtifact, executeWorkspaceTool, workspaceToolSchemas } from '@/lib/agent-runtime/runtime-tools.mjs';
-import { createChatWebTools } from '@/lib/auto-web';
-import { collectChatCompletionStream, runToolLoop } from '@/lib/agent-runtime/tool-loop.mjs';
-import { normalizeTaskProposalSteps, taskProposalCapabilities, taskProposalNeedsClarification, taskProposalWithTurnNetworkAuthorization } from '@/lib/task-proposals';
-import { professionalDeliverableNeedsTask } from '@/lib/task-proposal-policy.mjs';
-import { buildContextCheckpointSummary, estimateMessagesTokens } from '@/lib/context-compression';
-import { conversationContextTargetTokens, modelTokenLimits } from '@/lib/model-limits.mjs';
-import { spaceMemoryContext } from '@/lib/space-memory-policy.mjs';
+import { describeWorkspaceArtifact, executeWorkspaceTool, workspaceToolSchemas } from '@/lib/agents/runtime/runtime-tools.mjs';
+import { createChatWebTools } from '@/lib/web/auto-web';
+import { collectChatCompletionStream, runToolLoop } from '@/lib/agents/runtime/tool-loop.mjs';
+import { normalizeTaskProposalSteps, taskProposalCapabilities, taskProposalNeedsClarification, taskProposalWithTurnNetworkAuthorization } from '@/lib/space/task-proposals';
+import { professionalDeliverableNeedsTask } from '@/lib/space/task-proposal-policy.mjs';
+import { buildContextCheckpointSummary, estimateMessagesTokens } from '@/lib/agents/memory/context-compression';
+import { conversationContextTargetTokens, modelTokenLimits } from '@/lib/core/model-limits.mjs';
+import { spaceMemoryContext } from '@/lib/space/space-memory-policy.mjs';
 import { persistSpaceMemory, rebuildSpaceMemory, spaceMemoryNeedsTrustedRebuild } from '@/app/api/_lib/space-memory';
-import { recentRunEvidenceContext } from '@/lib/agent-run-evidence.mjs';
-import { readSpaceLearning, spaceLearningContext } from '@/lib/space-learning.mjs';
-import { getSpaceSkill, readSpaceSkillFile } from '@/lib/space-skills.mjs';
-import { spaceSkillReferenceToolSchema } from '@/lib/agent-runtime/skill-registry.mjs';
+import { recentRunEvidenceContext } from '@/lib/agents/runtime/agent-run-evidence.mjs';
+import { readSpaceLearning, spaceLearningContext } from '@/lib/space/space-learning.mjs';
+import { getSpaceSkill, readSpaceSkillFile } from '@/lib/space/space-skills.mjs';
+import { spaceSkillReferenceToolSchema } from '@/lib/agents/runtime/skill-registry.mjs';
 import { runPiSpaceTurn } from '@/lib/pi-runtime/space-session.mjs';
 import { selectRelevantProjectMemory } from '@/lib/pi-runtime/working-memory.mjs';
-import { createCollaborationState } from '@/lib/relay/collaboration.mjs';
-import { createGomokuState } from '@/lib/relay/gomoku.mjs';
-import { relayStagePolicy } from '@/lib/relay/stage-policy.mjs';
-import { loadAgentMemoryContext } from '@/lib/agent-memory';
-import { currentTimeContext } from '@/lib/current-time-context.mjs';
+import { createCollaborationState } from '@/lib/workspace/game/relay/collaboration.mjs';
+import { createGomokuState } from '@/lib/workspace/game/relay/gomoku.mjs';
+import { relayStagePolicy } from '@/lib/workspace/game/relay/stage-policy.mjs';
+import { loadAgentMemoryContext } from '@/lib/agents/memory/agent-memory';
+import { currentTimeContext } from '@/lib/agents/memory/current-time-context.mjs';
 import { recordSpaceAgentExperiences } from '@/app/api/_lib/agent-personal-memory';
-import { prepareSpaceMessageRuntime } from '@/lib/space-message-runtime';
+import { prepareSpaceMessageRuntime } from '@/lib/space/space-message-runtime';
 import { loadAgentWorldContext } from '@/lib/world/context';
 
 const MESSAGE_PAGE_SIZE = 40;
@@ -874,7 +874,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
     let spaceKnowledgeContext = '';
     if (textMessage.trim()) {
       try {
-        const { getKnowledgeHits, formatKnowledgeContext } = await import('@/lib/knowledge');
+        const { getKnowledgeHits, formatKnowledgeContext } = await import('@/lib/knowledge/knowledge');
         const hits = await getKnowledgeHits(
           { spaceId, agentId: targetAgent.id !== SPACE_COORDINATOR.id ? targetAgent.id : undefined },
           textMessage

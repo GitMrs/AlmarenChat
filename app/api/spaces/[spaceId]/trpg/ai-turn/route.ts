@@ -5,7 +5,7 @@ import {
   buildTrpgSystemPrompt,
   buildTrpgUserPrompt,
   parseAiNarrationResponse,
-} from '@/lib/trpg/ai-narrator';
+} from '@/lib/workspace/game/trpg/ai-narrator';
 
 export async function POST(
   request: Request,

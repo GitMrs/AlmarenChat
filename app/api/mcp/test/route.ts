@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/app/api/_lib/auth';
-import { createHttpMcpClient } from '@/lib/agent-runtime/mcp-client.mjs';
+import { createHttpMcpClient } from '@/lib/agents/runtime/mcp-client.mjs';
 
 export const runtime = 'nodejs';
 

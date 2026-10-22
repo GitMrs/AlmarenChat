@@ -5,9 +5,9 @@ import { Code2, Copy, ExternalLink, Eye, Globe2, Image as ImageIcon, Loader2, Ma
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import MarkdownPublishingPreview from '@/components/spaces/MarkdownPublishingPreview';
 import StaticHtmlPreview from '@/components/spaces/StaticHtmlPreview';
-import { spaces as spacesApi } from '@/lib/api';
-import { isWechatPublishableMarkdownFile, splitWechatArticleMarkdown } from '@/lib/wechat-publishing.mjs';
-import { getWechatPublishingTheme, WECHAT_PUBLISHING_THEMES } from '@/lib/wechat-publishing-themes.mjs';
+import { spaces as spacesApi } from '@/lib/client/api';
+import { isWechatPublishableMarkdownFile, splitWechatArticleMarkdown } from '@/lib/workspace/wechat/wechat-publishing.mjs';
+import { getWechatPublishingTheme, WECHAT_PUBLISHING_THEMES } from '@/lib/workspace/wechat/wechat-publishing-themes.mjs';
 import type { SpaceFile } from '@/types';
 
 const WECHAT_THEME_STORAGE_KEY = 'almaren:wechat-publishing-theme';

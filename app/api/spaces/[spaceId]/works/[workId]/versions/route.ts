@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { getSpaceForUser } from '@/app/api/_lib/spaces';
-import { createWorkVersion } from '@/lib/work-versions.mjs';
+import { createWorkVersion } from '@/lib/space/work-versions.mjs';
 
 export async function GET(_request: Request, { params }: { params: Promise<{ spaceId: string; workId: string }> }) {
   try {

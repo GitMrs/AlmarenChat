@@ -1,4 +1,4 @@
-import { smartFetch } from '../network/proxy.ts';
+import { smartFetch } from '../web/proxy.ts';
 import {
   extractCryptoSymbolFromText,
   normalizeSymbol,

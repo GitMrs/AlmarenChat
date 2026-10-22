@@ -3,7 +3,7 @@ import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { ACTIVE_AGENT_RUN_STATUSES } from '@/app/api/_lib/agent-runs';
 import { ensureSpaceRoot, spaceRoot } from '@/app/api/_lib/spaces';
-import { resetSpaceContentsStorage } from '@/lib/space-content-reset.mjs';
+import { resetSpaceContentsStorage } from '@/lib/space/space-content-reset.mjs';
 
 const ACTIVE_DISCUSSION_STATUSES = ['QUEUED', 'RUNNING', 'WAITING_RESEARCH', 'CANCEL_REQUESTED'];
 const ACTIVE_RELAY_STATUSES = ['QUEUED', 'RUNNING', 'PAUSE_REQUESTED', 'WAITING_APPROVAL', 'PAUSED', 'CANCEL_REQUESTED'];

@@ -8,8 +8,8 @@ import remarkGfm from 'remark-gfm';
 import AppShell from '@/components/layout/AppShell';
 import Avatar from '@/components/shared/Avatar';
 import LoadingSpinner from '@/components/shared/LoadingSpinner';
-import { getBuiltInAgents } from '@/lib/agents-data';
-import { agents as agentsApi } from '@/lib/api';
+import { getBuiltInAgents } from '@/lib/agents/data/agents-data';
+import { agents as agentsApi } from '@/lib/client/api';
 import { CATEGORY_COLORS } from '@/types';
 import type { Agent } from '@/types';
 

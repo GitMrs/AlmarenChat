@@ -25,7 +25,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ spac
     if (space.userId !== userId) return NextResponse.json({ error: '无权访问该空间' }, { status: 403 });
 
     if (query) {
-      const { getKnowledgeHits } = await import('@/lib/knowledge');
+      const { getKnowledgeHits } = await import('@/lib/knowledge/knowledge');
       const hits = await getKnowledgeHits({ spaceId }, query);
       return NextResponse.json({ hits });
     }
@@ -53,7 +53,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ spac
       });
 
       if (raw === '1' || raw === 'true' || download === '1' || download === 'true') {
-        const { readKnowledgeRawFile } = await import('@/lib/knowledge');
+        const { readKnowledgeRawFile } = await import('@/lib/knowledge/knowledge');
         let fullContent = await readKnowledgeRawFile(document.id);
         if (!fullContent) {
           fullContent = chunks.map((c) => c.content).join('\n\n');
@@ -104,7 +104,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
     if (file.size > MAX_FILE_SIZE) return NextResponse.json({ error: '文档大小不能超过 2MB。' }, { status: 400 });
 
     const content = await file.text();
-    const { indexKnowledgeDocument } = await import('@/lib/knowledge');
+    const { indexKnowledgeDocument } = await import('@/lib/knowledge/knowledge');
     const result = await indexKnowledgeDocument({ spaceId, userId }, file, content);
 
     return NextResponse.json({
@@ -136,7 +136,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ s
 
     await prisma.knowledgeDocument.delete({ where: { id: document.id } });
 
-    const { deleteKnowledgeRawFile } = await import('@/lib/knowledge');
+    const { deleteKnowledgeRawFile } = await import('@/lib/knowledge/knowledge');
     await deleteKnowledgeRawFile(document.id);
 
     return NextResponse.json({ success: true });

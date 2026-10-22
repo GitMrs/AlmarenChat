@@ -10,7 +10,7 @@ import {
   ExternalLink,
   Sparkles,
 } from 'lucide-react';
-import { subscribeToasts, dismissToast, type ToastItem } from '@/lib/toast';
+import { subscribeToasts, dismissToast, type ToastItem } from '@/lib/client/toast';
 
 export default function GlobalToastContainer() {
   const [items, setItems] = useState<ToastItem[]>([]);

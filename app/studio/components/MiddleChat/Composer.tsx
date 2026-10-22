@@ -7,7 +7,7 @@ import {
   Mic,
   Send,
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn } from '@/lib/client/utils';
 import { StudioApprovalMode } from '../../types';
 
 interface ComposerProps {

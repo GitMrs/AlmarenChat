@@ -1,4 +1,4 @@
-import { createScheduler } from '../runtime/scheduler.mjs';
+import { createScheduler } from '../core/scheduler.mjs';
 import prisma from '@/app/api/_lib/db';
 import { resolveUserModelConfig } from '@/app/api/_lib/agent-model';
 import { getOrGenerateDailyStudy } from './service';

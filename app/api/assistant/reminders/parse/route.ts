@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
-import { createModelClient, resolveModelName } from '@/lib/model-client';
+import { createModelClient, resolveModelName } from '@/lib/core/model-client';
 import { classifyReminderRequest } from '@/lib/personal-assistant/reminder-intent.mjs';
 import { buildReminderExtractionPrompt, parseReminderExtraction } from '@/lib/personal-assistant/reminder-extraction.mjs';
 

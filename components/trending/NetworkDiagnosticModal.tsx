@@ -15,7 +15,7 @@ import {
   ShieldCheck,
   Zap,
 } from 'lucide-react';
-import type { NetworkDiagnosticsResult } from '@/lib/network/proxy';
+import type { NetworkDiagnosticsResult } from '@/lib/web/proxy';
 
 interface NetworkDiagnosticModalProps {
   isOpen: boolean;

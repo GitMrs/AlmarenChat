@@ -1,7 +1,7 @@
 import prisma from '@/app/api/_lib/db';
 import { getCryptoMarketData } from './okx-service';
 import { randomUUID } from 'node:crypto';
-import { createScheduler } from '../runtime/scheduler.mjs';
+import { createScheduler } from '../core/scheduler.mjs';
 import { collectNextEventMarketWindow } from './event-market-collector.ts';
 import { isPlanExpired } from './trade-lifecycle';
 import {

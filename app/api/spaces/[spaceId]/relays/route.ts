@@ -3,9 +3,9 @@ import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { ACTIVE_AGENT_RUN_STATUSES } from '@/app/api/_lib/agent-runs';
 import { getSpaceForUser } from '@/app/api/_lib/spaces';
-import { createCollaborationState } from '@/lib/relay/collaboration.mjs';
-import { createGomokuState } from '@/lib/relay/gomoku.mjs';
-import { relayStagePolicy } from '@/lib/relay/stage-policy.mjs';
+import { createCollaborationState } from '@/lib/workspace/game/relay/collaboration.mjs';
+import { createGomokuState } from '@/lib/workspace/game/relay/gomoku.mjs';
+import { relayStagePolicy } from '@/lib/workspace/game/relay/stage-policy.mjs';
 
 const ACTIVE_DISCUSSION_STATUSES = ['QUEUED', 'RUNNING', 'WAITING_RESEARCH', 'CANCEL_REQUESTED'];
 const ACTIVE_RELAY_STATUSES = ['QUEUED', 'RUNNING', 'PAUSE_REQUESTED', 'WAITING_APPROVAL', 'PAUSED', 'CANCEL_REQUESTED'];

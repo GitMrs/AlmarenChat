@@ -21,9 +21,9 @@ import {
   Wrench,
   Zap,
 } from 'lucide-react';
-import { user as userApi, mcp as mcpApi } from '@/lib/api';
+import { user as userApi, mcp as mcpApi } from '@/lib/client/api';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
-import { cn } from '@/lib/utils';
+import { cn } from '@/lib/client/utils';
 import type { AssistantMcpServer, McpDiscoveredTool, McpProbeResult } from '@/types';
 
 const MAX_MCP_SERVERS = 8;

@@ -3,7 +3,7 @@
 import { forwardRef } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { getWechatPublishingTheme } from '@/lib/wechat-publishing-themes.mjs';
+import { getWechatPublishingTheme } from '@/lib/workspace/wechat/wechat-publishing-themes.mjs';
 
 function publishingComponents(theme: ReturnType<typeof getWechatPublishingTheme>): Components {
   return {

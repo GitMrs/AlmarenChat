@@ -1,6 +1,6 @@
 import prisma from '@/app/api/_lib/db';
 import { resolveAgent } from '@/app/api/_lib/spaces';
-import { buildSpaceExperience } from '@/lib/agent-personal-memory.mjs';
+import { buildSpaceExperience } from '@/lib/agents/memory/agent-personal-memory.mjs';
 
 export async function requireAgentMemoryAccess(userId: string, agentId: string) {
   const agent = await resolveAgent(agentId, userId);

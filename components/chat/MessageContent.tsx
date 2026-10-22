@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { ChevronDown, ChevronUp } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn } from '@/lib/client/utils';
 import type { SpaceMessageAttachment } from '@/types';
 
 const USER_COLLAPSE_CHARS = 400;

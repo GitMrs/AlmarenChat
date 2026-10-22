@@ -20,27 +20,27 @@ import SpaceDiscussionDialog from '@/components/spaces/SpaceDiscussionDialog';
 import SpaceMemberModelDialog from '@/components/spaces/SpaceMemberModelDialog';
 import SpaceDiscussionSettingsDialog from '@/components/spaces/SpaceDiscussionSettingsDialog';
 import KnowledgeManager from '@/components/agent/KnowledgeManager';
-import SpaceGameCenter from '@/components/spaces/SpaceGameCenter';
+import SpaceGameCenter from '@/components/spaces/game/SpaceGameCenter';
 import SpaceCryptoCenter from '@/components/spaces/SpaceCryptoCenter';
 import SpaceDiscussionStatus from '@/components/spaces/SpaceDiscussionStatus';
-import SpaceRelayStatus from '@/components/spaces/SpaceRelayStatus';
+import SpaceRelayStatus from '@/components/spaces/game/SpaceRelayStatus';
 import SpaceOperationsCenter, { type SpaceOperationsTab } from '@/components/spaces/SpaceOperationsCenter';
 import TrendingTopicPicker from '@/components/trending/TrendingTopicPicker';
 import { CompressionStatusPanel } from '@/components/spaces/CompressionStatusPanel';
-import { agentRuns as agentRunsApi, agents as agentsApi, cryptoSentinel as cryptoSentinelApi, spaces as spacesApi, streamSpaceMessage } from '@/lib/api';
-import { getBuiltInAgents } from '@/lib/agents-data';
+import { agentRuns as agentRunsApi, agents as agentsApi, cryptoSentinel as cryptoSentinelApi, spaces as spacesApi, streamSpaceMessage } from '@/lib/client/api';
+import { getBuiltInAgents } from '@/lib/agents/data/agents-data';
 import { useTTS } from '@/hooks/useTTS';
-import { latestRunInRetryChain } from '@/lib/agent-run-retry-chain.mjs';
+import { latestRunInRetryChain } from '@/lib/agents/runtime/agent-run-retry-chain.mjs';
 import {
   DEFAULT_CONTINUATION_ITERATIONS,
   isExecutionBudgetWait,
   isResearchSourceWait,
   isRunBudgetWait,
   MAX_CONTINUATION_ITERATIONS,
-} from '@/lib/agent-wait-policy.mjs';
-import { isEditableSpaceFile, isPreviewableSpaceImage } from '@/lib/space-files';
-import { spaceAssetRoleLabel } from '@/lib/space-asset-policy.mjs';
-import { createClientId } from '@/lib/client-id';
+} from '@/lib/agents/runtime/agent-wait-policy.mjs';
+import { isEditableSpaceFile, isPreviewableSpaceImage } from '@/lib/space/space-files';
+import { spaceAssetRoleLabel } from '@/lib/space/space-asset-policy.mjs';
+import { createClientId } from '@/lib/client/client-id';
 
 import type { Agent, AgentRun, AgentRunEvent, AgentTask, SpaceActionRequest, SpaceAutomation, SpaceConnector, SpaceCryptoPlanDecisionAttachment, SpaceDiscussion, SpaceDiscussionSettings, SpaceFile, SpaceLearning, SpaceLearningItem, SpaceMessage, SpaceMcpServer, SpaceOperationOutcome, SpaceOperationsSummary, SpacePiCoordinationRequest, SpacePiExecutionActivity, SpacePiExecutionNote, SpacePiSkillApproval, SpaceRelay, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal, SpaceWebhook, SpaceWork, SpaceWorkVersion } from '@/types';
 import { DEFAULT_SPACE_DISCUSSION_SETTINGS } from '@/types';

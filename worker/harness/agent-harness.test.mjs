@@ -4,8 +4,8 @@ import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { ADVISOR_MAX_ATTEMPTS, ADVISOR_TOOL_ITERATIONS, EXECUTOR_MAX_ATTEMPTS, EXECUTOR_TOOL_ITERATIONS, runAdvisorHarness, runExecutorHarness } from './agent-harness.mjs';
-import { ADVISOR_MODEL_REQUEST_LIMIT, EXECUTOR_MODEL_REQUEST_LIMIT } from '../../lib/task-execution-plan.mjs';
-import { executeWorkspaceTool } from '../../lib/agent-runtime/runtime-tools.mjs';
+import { ADVISOR_MODEL_REQUEST_LIMIT, EXECUTOR_MODEL_REQUEST_LIMIT } from '../../lib/agents/runtime/task-execution-plan.mjs';
+import { executeWorkspaceTool } from '../../lib/agents/runtime/runtime-tools.mjs';
 
 const run = { id: 'run-1', input: '完成页面', runtimeVersion: 3 };
 const task = {

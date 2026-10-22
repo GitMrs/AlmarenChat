@@ -1,4 +1,4 @@
-import { smartFetch } from '../network/proxy.ts';
+import { smartFetch } from '../web/proxy.ts';
 import { EVENT_MARKET_INSTRUMENT, EVENT_MARKET_WINDOWS, type EventMarketWindow, type EventMarketResult } from './event-market.ts';
 
 interface ClosedCandle {

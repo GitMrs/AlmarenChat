@@ -1,7 +1,7 @@
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { workspaceAttemptFile } from '../../lib/workspace-staging.mjs';
-import { IMAGE_GENERATION_SIZES, isNonRetryableImageGenerationError, requestGeneratedImage } from '../../lib/image-generation.mjs';
+import { workspaceAttemptFile } from '../../lib/workspace/workspace-staging.mjs';
+import { IMAGE_GENERATION_SIZES, isNonRetryableImageGenerationError, requestGeneratedImage } from '../../lib/media/image-generation.mjs';
 
 const MAX_PROMPT_CHARS = 2_000;
 const MAX_BATCH_IMAGES = 1;

@@ -8,8 +8,8 @@ import {
   estimateMessagesTokens,
   calculateTextBytes,
   calculateMessagesBytes,
-} from '@/lib/context-compression';
-import { modelTokenLimits } from '@/lib/model-limits.mjs';
+} from '@/lib/agents/memory/context-compression';
+import { modelTokenLimits } from '@/lib/core/model-limits.mjs';
 
 /**
  * GET /api/spaces/[spaceId]/compression-stats

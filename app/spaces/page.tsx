@@ -8,8 +8,8 @@ import LoginRequired from '@/components/auth/LoginRequired';
 import Avatar from '@/components/shared/Avatar';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import CreateSpaceDialog, { type CreateSpaceInput } from '@/components/spaces/CreateSpaceDialog';
-import { spaces as spacesApi, agents as agentsApi } from '@/lib/api';
-import { getBuiltInAgents } from '@/lib/agents-data';
+import { spaces as spacesApi, agents as agentsApi } from '@/lib/client/api';
+import { getBuiltInAgents } from '@/lib/agents/data/agents-data';
 import type { Agent } from '@/types';
 
 function formatTime(value: string) {

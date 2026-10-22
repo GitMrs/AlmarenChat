@@ -8,7 +8,7 @@ import {
   normalizeAutomationSchedule,
   normalizeAutomationExecutionMode,
   normalizeAutomationScriptPath,
-} from '@/lib/space-automation-policy.mjs';
+} from '@/lib/space/space-automation-policy.mjs';
 
 function parseDate(value: unknown, fallback: Date) {
   if (value === undefined || value === null || value === '') return fallback;

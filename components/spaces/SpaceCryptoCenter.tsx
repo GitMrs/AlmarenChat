@@ -27,8 +27,8 @@ import {
 } from 'lucide-react';
 import type { Agent, SpaceMessage } from '@/types';
 import { calculatePlanRiskReward, isPlanExpired, type CryptoPlanDecision } from '@/lib/crypto/trade-lifecycle';
-import { assistant as assistantApi, cryptoSentinel as cryptoSentinelApi, spaces as spacesApi, cryptoEvents, type CryptoEventsData } from '@/lib/api';
-import { toast } from '@/lib/toast';
+import { assistant as assistantApi, cryptoSentinel as cryptoSentinelApi, spaces as spacesApi, cryptoEvents, type CryptoEventsData } from '@/lib/client/api';
+import { toast } from '@/lib/client/toast';
 import SpaceCryptoEventRadar from './SpaceCryptoEventRadar';
 
 function getCleanPlanTitle(plan: { symbol: string; name?: string; direction?: string }): string {

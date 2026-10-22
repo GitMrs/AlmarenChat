@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Bot, Eye, EyeOff, Search, Trash2, Users, MessageCircle, UserRound, Settings2 } from 'lucide-react';
-import { admin as adminApi } from '@/lib/api';
+import { admin as adminApi } from '@/lib/client/api';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import LoadingSpinner from '@/components/shared/LoadingSpinner';
 

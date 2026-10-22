@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { Prisma } from '@/src/generated/prisma/client';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
-import { relayStagePolicy } from '@/lib/relay/stage-policy.mjs';
+import { relayStagePolicy } from '@/lib/workspace/game/relay/stage-policy.mjs';
 
 export async function PATCH(
   request: Request,

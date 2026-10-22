@@ -1,7 +1,7 @@
 'use client';
 
 import { Check, Copy, Loader2, RefreshCw, Square, Trash2, Volume2 } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn } from '@/lib/client/utils';
 
 function formatTime(value: string) {
   return new Intl.DateTimeFormat('zh-CN', {

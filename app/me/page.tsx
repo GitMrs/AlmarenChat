@@ -34,9 +34,9 @@ import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import Avatar from '@/components/shared/Avatar';
 import PersonalAssistantSettings from '@/components/assistant/PersonalAssistantSettings';
 import McpServerManager from '@/components/mcp/McpServerManager';
-import { agents as agentsApi, auth, conversations as conversationsApi, favorites as favoritesApi, spaceShares as spaceSharesApi, spaces as spacesApi } from '@/lib/api';
+import { agents as agentsApi, auth, conversations as conversationsApi, favorites as favoritesApi, spaceShares as spaceSharesApi, spaces as spacesApi } from '@/lib/client/api';
 import type { Agent, SpaceFileShare } from '@/types';
-import { cn } from '@/lib/utils';
+import { cn } from '@/lib/client/utils';
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat('zh-CN', {

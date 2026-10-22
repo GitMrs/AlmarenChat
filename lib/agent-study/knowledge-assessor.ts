@@ -1,4 +1,4 @@
-import { createModelClient, resolveModelName } from '@/lib/model-client';
+import { createModelClient, resolveModelName } from '@/lib/core/model-client';
 import type { AgentStudyItem } from './types';
 import {
   buildRepresentativeExcerpt,

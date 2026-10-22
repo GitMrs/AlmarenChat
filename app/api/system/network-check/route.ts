@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { runNetworkDiagnostics } from '@/lib/network/proxy';
+import { runNetworkDiagnostics } from '@/lib/web/proxy';
 
 export const runtime = 'nodejs';
 

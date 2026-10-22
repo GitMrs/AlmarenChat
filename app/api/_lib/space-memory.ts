@@ -1,5 +1,5 @@
 import prisma from '@/app/api/_lib/db';
-import { appendSpaceMemory } from '@/lib/space-memory-policy.mjs';
+import { appendSpaceMemory } from '@/lib/space/space-memory-policy.mjs';
 
 const TRUSTED_MEMORY_POLICY = 'trusted-space-memory-v2';
 

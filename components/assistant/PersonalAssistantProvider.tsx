@@ -9,13 +9,13 @@ import MessageBubbleFrame from '@/components/chat/MessageBubbleFrame';
 import MessageContent from '@/components/chat/MessageContent';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import { AssistantContextModal } from '@/components/assistant/AssistantContextModal';
-import { assistant, uploads } from '@/lib/api';
-import { completeBrowserModel, readBrowserModelConfigForScope, streamBrowserModel } from '@/lib/browser-model';
-import type { BrowserModelSource } from '@/lib/browser-model';
-import { cn } from '@/lib/utils';
+import { assistant, uploads } from '@/lib/client/api';
+import { completeBrowserModel, readBrowserModelConfigForScope, streamBrowserModel } from '@/lib/web/browser-model';
+import type { BrowserModelSource } from '@/lib/web/browser-model';
+import { cn } from '@/lib/client/utils';
 import { shouldExtractMemorySuggestion } from '@/lib/personal-assistant/memory-intent.mjs';
 import type { AssistantConversationSummary, AssistantExperience, AssistantReminder, AssistantReminderCandidate, Message, MessageAttachment, PersonalAssistantBootstrap } from '@/types';
-import { createClientId } from '@/lib/client-id';
+import { createClientId } from '@/lib/client/client-id';
 
 const HIDDEN_PATHS = ['/login'];
 

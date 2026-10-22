@@ -1,7 +1,7 @@
 'use client';
 
-import { cn } from '@/lib/utils';
-import { resolveAgentAvatar } from '@/lib/agent-avatar';
+import { cn } from '@/lib/client/utils';
+import { resolveAgentAvatar } from '@/lib/agents/data/agent-avatar';
 
 interface AvatarProps {
   src?: string;

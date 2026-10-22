@@ -4,8 +4,8 @@ import { useEffect, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Bookmark, Check, ChevronDown, ChevronRight, Copy, Database, Download, FileText, Loader2, Search, Trash2, UploadCloud, X } from 'lucide-react';
-import { agents, downloadKnowledgeFile, spaces } from '@/lib/api';
-import { cn } from '@/lib/utils';
+import { agents, downloadKnowledgeFile, spaces } from '@/lib/client/api';
+import { cn } from '@/lib/client/utils';
 
 type KnowledgeDocument = {
   id: string;

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/app/api/_lib/auth';
 import prisma from '@/app/api/_lib/db';
-import { normalizeWeatherLocation, platformWeather } from '@/lib/weather.mjs';
+import { normalizeWeatherLocation, platformWeather } from '@/lib/misc/weather.mjs';
 
 export const runtime = 'nodejs';
 

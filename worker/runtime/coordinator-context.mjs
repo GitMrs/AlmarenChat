@@ -1,4 +1,4 @@
-import { skillsForAgent } from '../../lib/agent-runtime/skill-registry.mjs';
+import { skillsForAgent } from '../../lib/agents/runtime/skill-registry.mjs';
 
 const ACTIVE_TASK_STATUSES = new Set([
   'PROPOSED',

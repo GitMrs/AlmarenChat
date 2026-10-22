@@ -3,7 +3,7 @@ import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { ensureSpaceRoot, getSpaceForUser } from '@/app/api/_lib/spaces';
 import { randomUUID } from 'node:crypto';
-import { buildWechatDraftSnapshot } from '@/lib/connectors/wechat-draft-snapshot';
+import { buildWechatDraftSnapshot } from '@/lib/workspace/wechat/wechat-draft-snapshot';
 
 export async function GET(request: Request, { params }: { params: Promise<{ spaceId: string }> }) {
   try {

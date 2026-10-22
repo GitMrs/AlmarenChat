@@ -1,4 +1,4 @@
-import { fetchWebpageContent } from '@/lib/fetch-webpage';
+import { fetchWebpageContent } from '@/lib/web/fetch-webpage';
 import { fetchVideoContent, parseVideoUrl } from '@/lib/video/web-video.mjs';
 import { isVideoAsrEnabled, transcribeBilibiliVideo, transcribeYouTubeVideo } from '@/lib/video/video-asr.mjs';
 import type { CandidateStudyItem } from './interest-matcher';
@@ -105,7 +105,7 @@ async function resolveHelloGitHubRepo(url: string, id?: string): Promise<{ owner
   if (!rid) return null;
 
   try {
-    const { smartFetch } = await import('../network/proxy.ts');
+    const { smartFetch } = await import('../web/proxy.ts');
     const res = await smartFetch(`https://api.hellogithub.com/v1/?rid=${rid}`, { timeoutMs: 10_000 });
     if (!res.ok) return null;
     const json = (await res.json()) as any;
@@ -121,7 +121,7 @@ async function resolveHelloGitHubRepo(url: string, id?: string): Promise<{ owner
 async function fetchGitHubReadme(owner: string, repo: string) {
   // 1. 优先通过 raw.githubusercontent.com 直连/智能代理获取（避免 GitHub API 速率限制 60次/小时）
   try {
-    const { smartFetch } = await import('../network/proxy.ts');
+    const { smartFetch } = await import('../web/proxy.ts');
     const rawBranches = ['HEAD', 'main', 'master'];
     for (const branch of rawBranches) {
       const rawRes = await smartFetch(`https://raw.githubusercontent.com/${owner}/${repo}/${branch}/README.md`, {

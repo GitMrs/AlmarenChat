@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
-import { createModelClient, resolveModelName } from '@/lib/model-client';
+import { createModelClient, resolveModelName } from '@/lib/core/model-client';
 import { memoryFingerprint } from '@/lib/personal-assistant/memory-dedup.mjs';
 import { explicitMemoryContent, explicitMemoryPrompt, parseExplicitMemory } from '@/lib/personal-assistant/memory-intent.mjs';
 

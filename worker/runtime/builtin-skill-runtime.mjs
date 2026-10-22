@@ -1,8 +1,8 @@
 import { lstat, readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
-import { builtinSkill } from '../../lib/agent-runtime/skill-registry.mjs';
-import { resolveSpaceSkillExecution } from '../../lib/space-skills.mjs';
-import { workspaceAttemptFile, workspaceAttemptRoot } from '../../lib/workspace-staging.mjs';
+import { builtinSkill } from '../../lib/agents/runtime/skill-registry.mjs';
+import { resolveSpaceSkillExecution } from '../../lib/space/space-skills.mjs';
+import { workspaceAttemptFile, workspaceAttemptRoot } from '../../lib/workspace/workspace-staging.mjs';
 import { runSandboxedSkillProcess } from './sandbox-runner.mjs';
 
 function manifestPath(projectRoot, packagePath) {

@@ -4,11 +4,11 @@ import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { ACTIVE_AGENT_RUN_STATUSES, agentRunInclude } from '@/app/api/_lib/agent-runs';
 import { getSpaceForUser, resolveManyAgents } from '@/app/api/_lib/spaces';
-import { taskProposalNeedsClarification } from '@/lib/task-proposals';
-import { coordinatorAuthorization } from '@/lib/agent-runtime-v3-policy.mjs';
-import { taskProposalWithServerCapabilities } from '@/lib/task-proposal-policy.mjs';
-import { getSpaceSkill, listSpaceSkills } from '@/lib/space-skills.mjs';
-import { runningWorkStage } from '@/lib/space-templates.mjs';
+import { taskProposalNeedsClarification } from '@/lib/space/task-proposals';
+import { coordinatorAuthorization } from '@/lib/agents/runtime/agent-runtime-v3-policy.mjs';
+import { taskProposalWithServerCapabilities } from '@/lib/space/task-proposal-policy.mjs';
+import { getSpaceSkill, listSpaceSkills } from '@/lib/space/space-skills.mjs';
+import { runningWorkStage } from '@/lib/space/space-templates.mjs';
 
 const ACTIVE_RELAY_STATUSES = ['QUEUED', 'RUNNING', 'PAUSE_REQUESTED', 'WAITING_APPROVAL', 'PAUSED', 'CANCEL_REQUESTED'];
 

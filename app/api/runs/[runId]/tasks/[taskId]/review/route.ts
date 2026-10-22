@@ -2,11 +2,11 @@ import { NextResponse } from 'next/server';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { getAgentRunForUser } from '@/app/api/_lib/agent-runs';
-import { applyWorkspaceAttempt, discardWorkspaceAttempt, recoverWorkspaceAttemptApplication } from '@/lib/workspace-staging.mjs';
+import { applyWorkspaceAttempt, discardWorkspaceAttempt, recoverWorkspaceAttemptApplication } from '@/lib/workspace/workspace-staging.mjs';
 import { appendAgentRunEvent } from '@/app/api/_lib/agent-run-events';
-import { taskModelRequestLimit } from '@/lib/task-execution-plan.mjs';
-import { storedWorkspaceRelativePath } from '@/lib/space-work-paths.mjs';
-import { recordAgentCorrection } from '@/lib/agent-memory-service';
+import { taskModelRequestLimit } from '@/lib/agents/runtime/task-execution-plan.mjs';
+import { storedWorkspaceRelativePath } from '@/lib/space/space-work-paths.mjs';
+import { recordAgentCorrection } from '@/lib/agents/memory/agent-memory-service';
 
 const REVIEW_ACTIONS = new Set(['approve', 'retry', 'skip']);
 

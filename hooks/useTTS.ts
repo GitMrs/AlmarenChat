@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { tts } from '@/lib/api';
+import { tts } from '@/lib/client/api';
 import { cleanMarkdownForTTS } from '@/lib/tts/markdown-cleaner';
 
 export interface PlayTTSOptions {

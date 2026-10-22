@@ -1,6 +1,6 @@
 import React from 'react';
 import { BookOpen, Copy } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn } from '@/lib/client/utils';
 import { WorkspaceSkill } from '../../types';
 
 interface SkillPreviewModalProps {

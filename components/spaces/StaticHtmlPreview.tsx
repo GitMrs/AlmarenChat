@@ -1,4 +1,4 @@
-import { STATIC_HTML_SANDBOX } from '@/lib/static-html-sandbox.mjs';
+import { STATIC_HTML_SANDBOX } from '@/lib/web/static-html-sandbox.mjs';
 
 export default function StaticHtmlPreview({
   title,

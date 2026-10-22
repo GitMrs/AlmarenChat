@@ -1,6 +1,6 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
-import { createModelClient, resolveModelName } from '../model-client';
+import { createModelClient, resolveModelName } from '../core/model-client';
 import { getTrendingSnapshot, getAvailableSources } from './service';
 import { getSourcesByCategory } from './sources';
 import { getLocalISODate } from './storage';

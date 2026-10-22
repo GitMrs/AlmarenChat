@@ -8,7 +8,7 @@ import {
   parseSpaceSkillArchive,
   removeSpaceSkill,
   updateSpaceSkillExecution,
-} from '@/lib/space-skills.mjs';
+} from '@/lib/space/space-skills.mjs';
 
 function errorStatus(error: Error) {
   if (error.message === 'Unauthorized') return 401;

@@ -3,10 +3,10 @@ import path from 'node:path';
 import { NextResponse } from 'next/server';
 import prisma from '@/app/api/_lib/db';
 import { resolveSpacePath, spaceRoot } from '@/app/api/_lib/spaces';
-import { renderSharedMarkdownPage } from '@/lib/markdown-share.mjs';
-import { isValidShareId, resolveSharedResource } from '@/lib/space-share-policy.mjs';
-import { STATIC_HTML_SANDBOX } from '@/lib/static-html-sandbox.mjs';
-import { TRUSTED_STATIC_CDN_SOURCES } from '@/lib/space-preview-policy.mjs';
+import { renderSharedMarkdownPage } from '@/lib/media/markdown-share.mjs';
+import { isValidShareId, resolveSharedResource } from '@/lib/space/space-share-policy.mjs';
+import { STATIC_HTML_SANDBOX } from '@/lib/web/static-html-sandbox.mjs';
+import { TRUSTED_STATIC_CDN_SOURCES } from '@/lib/space/space-preview-policy.mjs';
 
 const MAX_SHARED_FILE_BYTES = 5 * 1024 * 1024;
 

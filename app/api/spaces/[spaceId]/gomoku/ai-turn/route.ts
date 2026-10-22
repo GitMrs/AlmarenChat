@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getUserIdFromRequest } from '@/app/api/_lib/auth';
 import { getSpaceForUser, resolveAgent, resolveSpaceMemberModelConfig } from '@/app/api/_lib/spaces';
-import { findCandidateMoves, findBestMove } from '@/lib/relay/gomoku-ai';
+import { findCandidateMoves, findBestMove } from '@/lib/workspace/game/relay/gomoku-ai';
 
 export async function POST(
   request: Request,

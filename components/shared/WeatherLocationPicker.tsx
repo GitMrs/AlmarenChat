@@ -2,8 +2,8 @@
 
 import { useEffect, useId, useRef, useState } from 'react';
 import { ChevronDown, Loader2, MapPin, Search, X } from 'lucide-react';
-import { weather } from '@/lib/api';
-import { cn } from '@/lib/utils';
+import { weather } from '@/lib/client/api';
+import { cn } from '@/lib/client/utils';
 import type { WeatherLocation } from '@/types/weather';
 
 export const weatherLocationLabel = (location: WeatherLocation) => [...new Set([location.country, location.province, location.city, location.name].filter(Boolean))].join(' · ');

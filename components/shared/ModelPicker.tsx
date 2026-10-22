@@ -3,8 +3,8 @@
 import React, { useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 import SearchableSelect from './SearchableSelect';
-import { user as userApi } from '@/lib/api';
-import { cn } from '@/lib/utils';
+import { user as userApi } from '@/lib/client/api';
+import { cn } from '@/lib/client/utils';
 
 export interface ModelPickerPreset {
   label: string;

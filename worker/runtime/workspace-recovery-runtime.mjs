@@ -1,7 +1,7 @@
 import {
   discardWorkspaceAttemptSync,
   recoverWorkspaceAttemptApplication,
-} from '../../lib/workspace-staging.mjs';
+} from '../../lib/workspace/workspace-staging.mjs';
 
 export function createWorkspaceRecoveryRuntime({
   db,

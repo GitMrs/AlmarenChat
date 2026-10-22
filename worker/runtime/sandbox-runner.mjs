@@ -3,7 +3,7 @@ import { access, lstat, mkdir, mkdtemp, realpath, rm } from 'node:fs/promises';
 import { constants as fsConstants } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { createLinuxBubblewrapInvocation } from '../../lib/linux-bubblewrap.mjs';
+import { createLinuxBubblewrapInvocation } from '../../lib/core/linux-bubblewrap.mjs';
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_MAX_OUTPUT_BYTES = 64 * 1024;

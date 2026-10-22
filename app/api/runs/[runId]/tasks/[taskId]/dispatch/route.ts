@@ -4,9 +4,9 @@ import { requireAuth } from '@/app/api/_lib/auth';
 import { appendAgentRunEvent } from '@/app/api/_lib/agent-run-events';
 import { getAgentRunForUser } from '@/app/api/_lib/agent-runs';
 import { resolveAgent } from '@/app/api/_lib/spaces';
-import { coordinatorStateAfterDispatchRejection } from '@/lib/agent-runtime-v3-policy.mjs';
-import { resolveTaskSkill } from '@/lib/agent-runtime/skill-registry.mjs';
-import { getSpaceSkill } from '@/lib/space-skills.mjs';
+import { coordinatorStateAfterDispatchRejection } from '@/lib/agents/runtime/agent-runtime-v3-policy.mjs';
+import { resolveTaskSkill } from '@/lib/agents/runtime/skill-registry.mjs';
+import { getSpaceSkill } from '@/lib/space/space-skills.mjs';
 
 const ACTIONS = new Set(['approve', 'reject']);
 

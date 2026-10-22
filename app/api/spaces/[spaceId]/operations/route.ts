@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
-import { summarizeSpaceOperations } from '@/lib/space-operations.mjs';
+import { summarizeSpaceOperations } from '@/lib/space/space-operations.mjs';
 
 export async function GET(request: Request, { params }: { params: Promise<{ spaceId: string }> }) {
   try {

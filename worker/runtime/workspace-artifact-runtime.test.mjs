@@ -7,7 +7,7 @@ import Database from 'better-sqlite3';
 import {
   prepareWorkspaceAttempt,
   workspaceAttemptFile,
-} from '../../lib/workspace-staging.mjs';
+} from '../../lib/workspace/workspace-staging.mjs';
 import { createWorkspaceArtifactRuntime } from './workspace-artifact-runtime.mjs';
 
 async function fixture() {

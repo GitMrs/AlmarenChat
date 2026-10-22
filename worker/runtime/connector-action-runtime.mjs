@@ -1,9 +1,9 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
-import { createWechatOfficialAccountConnector } from '../../lib/connectors/wechat-official-account.mjs';
+import { createWechatOfficialAccountConnector } from '../../lib/workspace/wechat/wechat-official-account.mjs';
 import { createEncryptedConnectorTokenCache, readWechatConnectorCredentials } from '../../lib/connectors/store.mjs';
-import { classifyWechatPublicationStatus, MAX_WECHAT_PUBLICATION_POLLS, wechatPublicationPollDelayMs } from '../../lib/connectors/wechat-publication-policy.mjs';
+import { classifyWechatPublicationStatus, MAX_WECHAT_PUBLICATION_POLLS, wechatPublicationPollDelayMs } from '../../lib/workspace/wechat/wechat-publication-policy.mjs';
 
 function json(value, fallback = null) {
   if (!value) return fallback;

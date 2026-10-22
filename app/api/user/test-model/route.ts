@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { resolveModelRequestConfig } from '@/app/api/_lib/model-request';
-import { createModelClient } from '@/lib/model-client';
+import { createModelClient } from '@/lib/core/model-client';
 
 export async function POST(request: Request) {
   try {

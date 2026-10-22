@@ -4,7 +4,7 @@ import { resolveUserWorkspace, resolveStudioWorkspace } from './sandbox';
 import { safeJoinReal } from './safe-path';
 import { agentSupervisor } from './supervisor';
 import { CodingAgentId } from './types';
-import { createModelClient, resolveModelName } from '../model-client';
+import { createModelClient, resolveModelName } from '../core/model-client';
 import { approvalStore, StudioApprovalMode } from './approval-store';
 
 export type { StudioApprovalMode };

@@ -1,8 +1,8 @@
 import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import prisma from '@/app/api/_lib/db';
-import { getBuiltInAgents } from '@/lib/agents-data';
-import { createModelClient, resolveModelName, DEFAULT_BASE_URL, DEFAULT_MODEL } from '@/lib/model-client';
+import { getBuiltInAgents } from '@/lib/agents/data/agents-data';
+import { createModelClient, resolveModelName, DEFAULT_BASE_URL, DEFAULT_MODEL } from '@/lib/core/model-client';
 import { loadAgentModelSetting, resolveUserModelConfig } from '@/app/api/_lib/agent-model';
 import type { Agent } from '@/types';
 

@@ -2,7 +2,7 @@
 
 import WeatherLocationPicker from '@/components/shared/WeatherLocationPicker';
 import type { WeatherLocation } from '@/types/weather';
-import { useWeatherLocation } from '@/lib/use-weather-location';
+import { useWeatherLocation } from '@/lib/client/use-weather-location';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ArrowUpRight,

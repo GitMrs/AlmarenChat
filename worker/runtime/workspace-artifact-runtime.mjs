@@ -4,12 +4,12 @@ import {
   diffWorkspaceSnapshots,
   executeWorkspaceTool,
   snapshotWorkspace,
-} from '../../lib/agent-runtime/runtime-tools.mjs';
+} from '../../lib/agents/runtime/runtime-tools.mjs';
 import {
   applyWorkspaceAttempt,
   discardWorkspaceAttempt,
-} from '../../lib/workspace-staging.mjs';
-import { storedWorkspaceRelativePath, workspaceFileWorkId } from '../../lib/space-work-paths.mjs';
+} from '../../lib/workspace/workspace-staging.mjs';
+import { storedWorkspaceRelativePath, workspaceFileWorkId } from '../../lib/space/space-work-paths.mjs';
 
 export function createWorkspaceArtifactRuntime({
   db,

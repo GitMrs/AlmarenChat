@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import WeatherLocationPicker from '@/components/shared/WeatherLocationPicker';
-import { useWeatherLocation } from '@/lib/use-weather-location';
+import { useWeatherLocation } from '@/lib/client/use-weather-location';
 
 export default function WeatherLocationSettings() {
   const { location, loading, error, save } = useWeatherLocation();

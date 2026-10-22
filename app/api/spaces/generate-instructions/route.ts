@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireAuth } from '@/app/api/_lib/auth';
 import prisma from '@/app/api/_lib/db';
-import { createModelClient, DEFAULT_BASE_URL, DEFAULT_MODEL } from '@/lib/model-client';
+import { createModelClient, DEFAULT_BASE_URL, DEFAULT_MODEL } from '@/lib/core/model-client';
 
 export async function POST(request: Request) {
   try {

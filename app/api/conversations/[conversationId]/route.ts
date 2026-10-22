@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
-import { removeGeneratedChatImages } from '@/lib/generated-chat-images.mjs';
+import { removeGeneratedChatImages } from '@/lib/media/generated-chat-images.mjs';
 
 export async function GET(
   request: Request,

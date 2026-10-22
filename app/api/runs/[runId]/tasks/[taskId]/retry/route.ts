@@ -5,9 +5,9 @@ import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { ACTIVE_AGENT_RUN_STATUSES, agentRunInclude, getAgentRunForUser, isAgentRunActive } from '@/app/api/_lib/agent-runs';
 import { appendAgentRunEvent } from '@/app/api/_lib/agent-run-events';
-import { builtinSkill, skillSnapshot } from '@/lib/agent-runtime/skill-registry.mjs';
-import { taskModelRequestLimit } from '@/lib/task-execution-plan.mjs';
-import { cloneWorkspaceAttempt, discardWorkspaceAttempt, prepareWorkspaceAttempt } from '@/lib/workspace-staging.mjs';
+import { builtinSkill, skillSnapshot } from '@/lib/agents/runtime/skill-registry.mjs';
+import { taskModelRequestLimit } from '@/lib/agents/runtime/task-execution-plan.mjs';
+import { cloneWorkspaceAttempt, discardWorkspaceAttempt, prepareWorkspaceAttempt } from '@/lib/workspace/workspace-staging.mjs';
 
 export async function POST(
   request: Request,

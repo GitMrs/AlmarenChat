@@ -5,7 +5,7 @@ import path from 'node:path';
 import test from 'node:test';
 import Database from 'better-sqlite3';
 import { encryptQQCredential } from '../../lib/qq-assistant/credentials.mjs';
-import { renderWebhookTemplate } from '../../lib/webhook-template.mjs';
+import { renderWebhookTemplate } from '../../lib/connectors/webhook-template.mjs';
 import { notifyWebhookCompletion, qqNotificationText } from './qq-webhook.mjs';
 
 const payload = {

@@ -3,7 +3,7 @@
 import { ArrowRight, Heart, MessageCircle, Sparkles } from 'lucide-react';
 import { motion } from 'motion/react';
 import Avatar from '@/components/shared/Avatar';
-import { cn } from '@/lib/utils';
+import { cn } from '@/lib/client/utils';
 import { CATEGORY_COLORS } from '@/types';
 import type { Agent } from '@/types';
 

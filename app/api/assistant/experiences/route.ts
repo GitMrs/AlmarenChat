@@ -3,8 +3,8 @@ import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { ensurePersonalAssistant } from '@/lib/personal-assistant/profile';
 import { manualArchiveAssistantMessages, EXPERIENCE_ARCHIVE_TRIGGER, EXPERIENCE_ARCHIVE_BATCH } from '@/lib/personal-assistant/experience-memory';
-import { estimateMessagesTokens } from '@/lib/context-compression';
-import { createModelClient, resolveModelName } from '@/lib/model-client';
+import { estimateMessagesTokens } from '@/lib/agents/memory/context-compression';
+import { createModelClient, resolveModelName } from '@/lib/core/model-client';
 
 export const runtime = 'nodejs';
 

@@ -1,5 +1,5 @@
 import OpenAI from 'openai';
-import { collectChatCompletionStream, isTransientModelError, withTransientModelRetry } from '../../lib/agent-runtime/tool-loop.mjs';
+import { collectChatCompletionStream, isTransientModelError, withTransientModelRetry } from '../../lib/agents/runtime/tool-loop.mjs';
 import { reserveModelRequest } from './model-budget.mjs';
 
 function estimateTokens(text) {

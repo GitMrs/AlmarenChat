@@ -7,7 +7,7 @@ import {
   normalizeAutomationSchedule,
   normalizeAutomationExecutionMode,
   normalizeAutomationScriptPath,
-} from '@/lib/space-automation-policy.mjs';
+} from '@/lib/space/space-automation-policy.mjs';
 
 async function ownedAutomation(spaceId: string, automationId: string, userId: string) {
   return prisma.spaceAutomation.findFirst({

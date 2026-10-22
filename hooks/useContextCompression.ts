@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { spaces as spacesApi } from '@/lib/api';
+import { spaces as spacesApi } from '@/lib/client/api';
 
 export interface CompressionStats {
   totalTokens?: number;

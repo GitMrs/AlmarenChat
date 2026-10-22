@@ -4,7 +4,7 @@ import path from 'node:path';
 import { NextResponse } from 'next/server';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
-import { IMAGE_GENERATION_SIZES, requestGeneratedImage } from '@/lib/image-generation.mjs';
+import { IMAGE_GENERATION_SIZES, requestGeneratedImage } from '@/lib/media/image-generation.mjs';
 
 export async function POST(
   request: Request,

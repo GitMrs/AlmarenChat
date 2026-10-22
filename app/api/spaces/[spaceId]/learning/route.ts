@@ -9,7 +9,7 @@ import {
   renderSpaceLearningReadme,
   updateSpaceLearning,
   writeSpaceLearning,
-} from '@/lib/space-learning.mjs';
+} from '@/lib/space/space-learning.mjs';
 
 function options(userId: string, spaceId: string) {
   return { projectRoot: process.cwd(), userId, spaceId };

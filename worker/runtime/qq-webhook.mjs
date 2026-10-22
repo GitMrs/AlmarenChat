@@ -3,10 +3,10 @@ import { readFileSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 import { decryptQQCredential } from '../../lib/qq-assistant/credentials.mjs';
 import { buildQQWebhookUrl } from '../../lib/qq-assistant/webhook.mjs';
-import { isUnsafeWebhookHostname } from '../../lib/space-automation-policy.mjs';
-import { renderWebhookTemplate } from '../../lib/webhook-template.mjs';
-import { findDeliveryArtifact, normalizeDeliveryManifest } from '../../lib/delivery-manifest.mjs';
-import { normalizeShareTheme } from '../../lib/share-theme-policy.mjs';
+import { isUnsafeWebhookHostname } from '../../lib/space/space-automation-policy.mjs';
+import { renderWebhookTemplate } from '../../lib/connectors/webhook-template.mjs';
+import { findDeliveryArtifact, normalizeDeliveryManifest } from '../../lib/connectors/delivery-manifest.mjs';
+import { normalizeShareTheme } from '../../lib/media/share-theme-policy.mjs';
 
 function shortError(error) {
   return (error instanceof Error ? error.message : String(error)).slice(0, 500);
@@ -27,7 +27,7 @@ function readTextArtifact(artifact, context, projectRoot, limit = 12_000) {
   }
 }
 
-export { renderWebhookTemplate } from '../../lib/webhook-template.mjs';
+export { renderWebhookTemplate } from '../../lib/connectors/webhook-template.mjs';
 
 function primaryTextArtifact(db, context, projectRoot) {
   if (!context.workId && !context.runId) return null;

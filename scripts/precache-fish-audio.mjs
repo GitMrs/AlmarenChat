@@ -6,7 +6,7 @@ import {
   INTERACTION_LINES,
   UNDO_LINES,
   CHARACTER_LINES,
-} from '../lib/relay/gomoku-ai.ts';
+} from '../lib/workspace/game/relay/gomoku-ai.ts';
 import {
   cleanMarkdownForTTS,
   getCacheKey,

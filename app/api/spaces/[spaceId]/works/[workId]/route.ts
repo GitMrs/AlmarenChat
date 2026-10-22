@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
-import { templateLifecycleStage } from '@/lib/space-templates.mjs';
+import { templateLifecycleStage } from '@/lib/space/space-templates.mjs';
 
 const WORK_STATUSES = new Set(['ACTIVE', 'COMPLETED', 'ARCHIVED']);
 

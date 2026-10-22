@@ -6,7 +6,7 @@ import { ArrowRight, Check, Clock3, Edit3, Loader2, MessageSquare, Search, Spark
 import AppShell from '@/components/layout/AppShell';
 import LoginRequired from '@/components/auth/LoginRequired';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
-import { conversations as conversationsApi } from '@/lib/api';
+import { conversations as conversationsApi } from '@/lib/client/api';
 import { CATEGORY_COLORS } from '@/types';
 
 function formatTime(dateStr: string) {
