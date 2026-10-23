@@ -35,6 +35,8 @@ interface ComposerProps {
   isListening: boolean;
   handleToggleVoice: () => void;
   handleSend: () => void;
+  deliveryMode: 'steer' | 'followUp';
+  setDeliveryMode: (mode: 'steer' | 'followUp') => void;
 }
 
 export const Composer: React.FC<ComposerProps> = ({
@@ -62,6 +64,8 @@ export const Composer: React.FC<ComposerProps> = ({
   isListening,
   handleToggleVoice,
   handleSend,
+  deliveryMode,
+  setDeliveryMode,
 }) => {
   return (
     <div className="max-w-3xl mx-auto bg-white border border-black/[0.08] rounded-3xl p-3 shadow-lg transition-all duration-200 focus-within:border-black/[0.2] focus-within:ring-4 focus-within:ring-slate-100">
@@ -100,13 +104,50 @@ export const Composer: React.FC<ComposerProps> = ({
         </div>
       </div>
 
+      {/* 任务执行中：补充消息投递方式 */}
+      {isStreaming && (
+        <div className="flex items-center gap-1.5 px-1 mb-2 flex-wrap">
+          <span className="text-[10px] text-slate-400">任务执行中，新消息：</span>
+          <button
+            type="button"
+            onClick={() => setDeliveryMode('steer')}
+            className={cn(
+              'px-2 py-0.5 rounded-lg text-[10px] font-medium transition-colors cursor-pointer border',
+              deliveryMode === 'steer'
+                ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                : 'bg-white text-slate-500 border-black/[0.08] hover:bg-slate-50'
+            )}
+            title="在当前工具调用完成后、下一次模型调用前插入，立即纠偏"
+          >
+            ⚡ 立即插话
+          </button>
+          <button
+            type="button"
+            onClick={() => setDeliveryMode('followUp')}
+            className={cn(
+              'px-2 py-0.5 rounded-lg text-[10px] font-medium transition-colors cursor-pointer border',
+              deliveryMode === 'followUp'
+                ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                : 'bg-white text-slate-500 border-black/[0.08] hover:bg-slate-50'
+            )}
+            title="等当前任务全部结束后再处理"
+          >
+            ⏳ 结束后追加
+          </button>
+        </div>
+      )}
+
       {/* Textarea Input */}
       <textarea
         ref={textareaRef}
         value={input}
         onChange={(e) => setInput(e.target.value)}
         onKeyDown={handleKeyDown}
-        placeholder="输入你的工程任务或规划需求... (Enter 发送, Shift+Enter 换行)"
+        placeholder={
+          isStreaming
+            ? '任务执行中，可输入纠偏指令或追加需求... (Enter 发送, Shift+Enter 换行)'
+            : '输入你的工程任务或规划需求... (Enter 发送, Shift+Enter 换行)'
+        }
         rows={2}
         className="w-full bg-transparent border-0 text-sm text-slate-800 placeholder-slate-400 focus:outline-none resize-none leading-relaxed px-1"
       />
@@ -292,7 +333,14 @@ export const Composer: React.FC<ComposerProps> = ({
           <button
             type="button"
             onClick={handleSend}
-            disabled={!input.trim() || isStreaming}
+            disabled={!input.trim()}
+            title={
+              isStreaming
+                ? deliveryMode === 'steer'
+                  ? '立即插话：当前工具调用完成后、下一次模型调用前送达'
+                  : '结束后追加：等当前任务全部结束后再处理'
+                : '发送'
+            }
             className={cn(
               'w-8 h-8 rounded-full flex items-center justify-center transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shadow-xs',
               input.trim()

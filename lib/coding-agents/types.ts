@@ -49,6 +49,8 @@ export interface AgentSession {
   prompt: string;
   status: AgentSessionStatus;
   workspaceDir: string;
+  sandboxMode?: 'host' | 'docker';
+  containerName?: string;
   pid?: number;
   startedAt: number;
   endedAt?: number;

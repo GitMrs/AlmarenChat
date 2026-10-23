@@ -4,6 +4,7 @@ import path from 'node:path';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { deleteStudioWorkspaceFolder, resolveStudioWorkspace } from '@/lib/coding-agents/sandbox';
+import { stopStudioPiRuntime } from '@/lib/coding-agents/pi-runtime';
 
 export async function PATCH(
   request: Request,
@@ -89,6 +90,7 @@ export async function DELETE(
       where: { id: workspaceId },
     });
 
+    await stopStudioPiRuntime(userId, workspaceId).catch(() => {});
     await deleteStudioWorkspaceFolder(process.cwd(), userId, workspaceId);
 
     return NextResponse.json({ success: true, deletedWorkspaceId: workspaceId });

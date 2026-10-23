@@ -1,6 +1,6 @@
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
-import { runCoordinatorChat } from '@/lib/coding-agents/coordinator';
+import { runStudioPiTurn } from '@/lib/coding-agents/pi-runtime';
 import { approvalStore } from '@/lib/coding-agents/approval-store';
 
 export const dynamic = 'force-dynamic';
@@ -94,25 +94,40 @@ export async function POST(request: Request) {
         const toolsMap = new Map<string, any>();
         let finalTokens: number | null = null;
 
-        const persistAssistantMessage = async () => {
-          if (!activeWorkspaceId) return;
-          const toolsArray = Array.from(toolsMap.values());
-          if (!accumulatedAssistantContent && toolsArray.length === 0) return;
-
-          try {
-            await prisma.studioMessage.create({
+        const saveAssistantSegment = (
+          content: string,
+          toolsArray: any[],
+          tokens: number | null
+        ): Promise<void> => {
+          if (!activeWorkspaceId) return Promise.resolve();
+          if (!content && toolsArray.length === 0) return Promise.resolve();
+          return prisma.studioMessage
+            .create({
               data: {
                 workspaceId: activeWorkspaceId,
                 userId,
                 role: 'assistant',
-                content: accumulatedAssistantContent,
+                content,
                 tools: toolsArray.length > 0 ? toolsArray : null,
-                tokens: finalTokens,
+                tokens,
               },
+            })
+            .then(() => undefined)
+            .catch((persistErr) => {
+              console.error('[Studio] Failed to persist assistant message:', persistErr);
             });
-          } catch (persistErr) {
-            console.error('[Studio] Failed to persist assistant message:', persistErr);
-          }
+        };
+
+        const persistAssistantMessage = async () => {
+          await saveAssistantSegment(accumulatedAssistantContent, Array.from(toolsMap.values()), finalTokens);
+        };
+
+        // 用户中途插话时，把上一段回复先落库并清空聚合器，使界面气泡与数据库记录一一对应
+        const flushBeforeInjection = () => {
+          void saveAssistantSegment(accumulatedAssistantContent, Array.from(toolsMap.values()), finalTokens);
+          accumulatedAssistantContent = '';
+          toolsMap.clear();
+          finalTokens = null;
         };
 
         const runId = `run_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
@@ -132,20 +147,24 @@ export async function POST(request: Request) {
         }, 10000);
 
         try {
-          await runCoordinatorChat({
+          await runStudioPiTurn({
             userId,
             runId,
             approvalMode,
             workspaceId: activeWorkspaceId,
             workspaceSystemPrompt: currentWorkspace?.systemPrompt || undefined,
             message: message.trim(),
-            history: Array.isArray(history) ? history : [],
+            history: Array.isArray(history)
+              ? history
+                  .filter((item: any) => (item?.role === 'user' || item?.role === 'assistant') && typeof item?.content === 'string')
+                  .map((item: any) => ({ role: item.role, content: item.content }))
+              : [],
             reasoningEffort: reasoningEffort || 'high',
             modelName: activeModel || undefined,
             modelContextWindow: userSettings?.modelContextWindow || undefined,
             apiBaseUrl: activeBaseUrl || undefined,
             apiKey: activeApiKey || undefined,
-            agentKeys,
+            resetSession: !Array.isArray(history) || history.length === 0,
             signal: request.signal,
             onEvent: (event) => {
               // Aggregate message deltas
@@ -194,6 +213,9 @@ export async function POST(request: Request) {
                 toolsMap.set(event.data.toolCallId, item);
               } else if (event.type === 'usage.updated' && event.data?.totalTokens) {
                 finalTokens = event.data.totalTokens;
+              } else if (event.type === 'user.message_injected') {
+                // 中途插话：上一段回复另存为一条消息，后续内容归入新气泡
+                flushBeforeInjection();
               }
 
               controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));

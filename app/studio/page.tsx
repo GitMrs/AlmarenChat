@@ -95,6 +95,8 @@ export default function StudioPage() {
     return 'dangerous';
   });
   const [showApprovalMenu, setShowApprovalMenu] = useState(false);
+  // 任务执行中补充消息的投递方式：steer 立即插话 / followUp 结束后追加
+  const [deliveryMode, setDeliveryMode] = useState<'steer' | 'followUp'>('steer');
   const [approvingToolId, setApprovingToolId] = useState<string | null>(null);
 
   const handleSelectApprovalMode = (mode: 'dangerous' | 'always' | 'never') => {
@@ -1417,7 +1419,12 @@ export default function StudioPage() {
   // Send Message & Stream Response
   const handleSend = async (textToSend?: string) => {
     const text = (typeof textToSend === 'string' ? textToSend : input).trim();
-    if (!text || isStreaming) return;
+    if (!text) return;
+    // 任务执行中：作为补充消息投递给正在运行的 pi 回合
+    if (isStreaming) {
+      await handleInjectMessage(text);
+      return;
+    }
 
     isHistoryJumpNeededRef.current = false;
     if (!textToSend) {
@@ -1428,7 +1435,7 @@ export default function StudioPage() {
     }
 
     const userMessageId = `msg-user-${Date.now()}`;
-    const assistantMessageId = `msg-asst-${Date.now()}`;
+    let assistantMessageId = `msg-asst-${Date.now()}`;
 
     // Add user message to state
     setMessages((prev) => [
@@ -1631,7 +1638,7 @@ export default function StudioPage() {
                     : prev
                 );
               } else if (event.type === 'terminal.chunk') {
-                const chunkText = event.data?.text || '';
+                const chunkText = event.data?.text || event.data?.chunk || '';
                 if (chunkText) {
                   setLiveTerminalLogs((prev) => {
                     const clean = chunkText.endsWith('\n') ? chunkText.slice(0, -1) : chunkText;
@@ -1648,10 +1655,71 @@ export default function StudioPage() {
                       : m
                   )
                 );
+              } else if (event.type === 'message.thinking') {
+                const chunk = event.data?.delta ?? '';
+                if (chunk) {
+                  setMessages((prev) =>
+                    prev.map((m) =>
+                      m.id === assistantMessageId
+                        ? { ...m, thinking: (m.thinking || '') + chunk }
+                        : m
+                    )
+                  );
+                }
+              } else if (event.type === 'tool.progress') {
+                if (event.data?.toolCallId) {
+                  setMessages((prev) =>
+                    prev.map((m) =>
+                      m.id === assistantMessageId
+                        ? {
+                            ...m,
+                            tools: (m.tools || []).map((t) =>
+                              t.id === event.data.toolCallId
+                                ? { ...t, liveOutput: event.data.output || '' }
+                                : t
+                            ),
+                          }
+                        : m
+                    )
+                  );
+                }
               } else if (event.type === 'usage.updated') {
                 setTotalTokens(event.data.totalTokens);
                 setContextLength(event.data.contextLength);
                 setRemainingTokens(event.data.remainingTokens);
+              } else if (event.type === 'user.message_injected') {
+                // 服务端已把补充消息投递给运行中的 pi，此处开启新的对话气泡承接后续输出
+                const injectedText = event.data?.message || '';
+                const now = Date.now();
+                const nextAssistantId = `msg-asst-${now}`;
+                setMessages((prev) => [
+                  ...prev,
+                  {
+                    id: `msg-user-${now}`,
+                    role: 'user',
+                    content: injectedText,
+                    timestamp: now,
+                  },
+                  {
+                    id: nextAssistantId,
+                    role: 'assistant',
+                    content: '',
+                    tools: [],
+                    timestamp: now,
+                  },
+                ]);
+                assistantMessageId = nextAssistantId;
+              } else if (event.type === 'user.inject_failed') {
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === assistantMessageId
+                      ? {
+                          ...m,
+                          content: (m.content || '') + `\n\n> ⚠️ 补充消息未被接受: ${event.data?.error || '未知原因'}`,
+                        }
+                      : m
+                  )
+                );
               } else if (event.type === 'run.failed') {
                 const failMsg = event.data?.error || '运行中断，请稍后重试';
                 setMessages((prev) =>
@@ -1685,6 +1753,55 @@ export default function StudioPage() {
       );
     } finally {
       setIsStreaming(false);
+    }
+  };
+
+  // 任务执行中补充消息：steer 立即插话 / followUp 结束后追加
+  const handleInjectMessage = async (text: string) => {
+    if (!activeWorkspaceId) return;
+
+    setInput('');
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+    }
+
+    try {
+      const token = getAuthToken();
+      if (!token) {
+        handleAuthFailure();
+        return;
+      }
+      const res = await fetch('/api/studio/chat/inject', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          message: text,
+          workspaceId: activeWorkspaceId,
+          mode: deliveryMode,
+        }),
+      });
+
+      if (res.status === 401) {
+        handleAuthFailure();
+        return;
+      }
+      if (res.status === 409) {
+        // 任务刚好结束，没有可投递的回合：放回输入框让用户重新发送
+        setInput(text);
+        alert('当前任务已结束，消息已放回输入框，请重新发送');
+        return;
+      }
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        setInput(text);
+        alert(errData.error || '补充消息发送失败');
+      }
+    } catch (err) {
+      setInput(text);
+      alert('补充消息发送失败: ' + String(err));
     }
   };
 
@@ -1888,6 +2005,8 @@ export default function StudioPage() {
             isListening={isListening}
             handleToggleVoice={handleToggleVoice}
             handleSend={handleSend}
+            deliveryMode={deliveryMode}
+            setDeliveryMode={setDeliveryMode}
           />
         </div>
       </main>

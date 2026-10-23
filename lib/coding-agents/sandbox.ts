@@ -112,6 +112,12 @@ export function buildSanitizedEnv(options: SanitizedEnvOptions): Record<string, 
     'LC_ALL',
     'COMSPEC',
     'NODE_PATH',
+    // Windows 下 pi 通过 ProgramFiles 定位 Git Bash，缺失会导致 bash 工具不可用
+    'ProgramFiles',
+    'ProgramFiles(x86)',
+    'ProgramW6432',
+    'APPDATA',
+    'LOCALAPPDATA',
   ];
 
   const env: Record<string, string | undefined> = {

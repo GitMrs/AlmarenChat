@@ -24,6 +24,8 @@ export interface ToolInvocation {
   approvalId?: string;
   args?: Record<string, any>;
   result?: string;
+  /** 工具执行中的实时输出（累计），完成后由 result 取代 */
+  liveOutput?: string;
   sessionId?: string;
   agentId?: string;
   expanded?: boolean;
@@ -33,6 +35,8 @@ export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant' | 'tool';
   content?: string;
+  /** 推理模型流式思考内容（仅本次运行内有效，不落库） */
+  thinking?: string;
   tools?: ToolInvocation[];
   tokens?: number | null;
   timestamp: number;

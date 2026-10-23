@@ -34,6 +34,14 @@ export const ToolCard: React.FC<ToolCardProps> = ({
   onCopyResult,
   timestamp,
 }) => {
+  const liveConsoleRef = React.useRef<HTMLDivElement | null>(null);
+
+  // 实时输出滚动跟随
+  React.useEffect(() => {
+    const el = liveConsoleRef.current;
+    if (el && tool.liveOutput) el.scrollTop = el.scrollHeight;
+  }, [tool.liveOutput]);
+
   return (
     <div className="rounded-2xl border border-black/[0.08] bg-white overflow-hidden shadow-2xs transition-all hover:border-black/[0.14]">
       {/* Top Clickable Bar */}
@@ -274,11 +282,11 @@ export const ToolCard: React.FC<ToolCardProps> = ({
                 <Terminal size={11} className="text-emerald-600" />
                 <span>执行结果与输出</span>
               </span>
-              {tool.result && (
+              {(tool.result || tool.liveOutput) && (
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    onCopyResult(tool.result!);
+                    onCopyResult(tool.result || tool.liveOutput || '');
                   }}
                   className="px-2 py-0.5 rounded-md bg-white border border-black/[0.08] hover:bg-slate-100 text-slate-600 text-[10px] transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
                   title="复制结果"
@@ -298,7 +306,10 @@ export const ToolCard: React.FC<ToolCardProps> = ({
               )}
             </div>
 
-            <div className="bg-slate-50 rounded-xl p-3 border border-black/[0.06] font-mono text-xs max-h-60 overflow-y-auto text-slate-800">
+            <div
+              ref={liveConsoleRef}
+              className="bg-slate-50 rounded-xl p-3 border border-black/[0.06] font-mono text-xs max-h-60 overflow-y-auto text-slate-800"
+            >
               {tool.result ? (
                 <div className="leading-relaxed whitespace-pre-wrap break-all text-[11px] text-slate-700">
                   {tool.result}
@@ -309,10 +320,16 @@ export const ToolCard: React.FC<ToolCardProps> = ({
                   <span>等待人工审批确认中，批准后将继续执行...</span>
                 </div>
               ) : tool.status === 'running' ? (
-                <div className="flex items-center justify-center py-6 gap-2 text-slate-400 text-xs">
-                  <Loader2 size={14} className="animate-spin text-indigo-500" />
-                  <span>正在执行中，等待输出返回...</span>
-                </div>
+                tool.liveOutput ? (
+                  <div className="leading-relaxed whitespace-pre-wrap break-all text-[11px] text-slate-700">
+                    {tool.liveOutput}
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center py-6 gap-2 text-slate-400 text-xs">
+                    <Loader2 size={14} className="animate-spin text-indigo-500" />
+                    <span>正在执行中，等待输出返回...</span>
+                  </div>
+                )
               ) : (
                 <div className="text-slate-400 text-center py-4 text-xs">
                   该工具调用已执行完成，无控制台回显内容。

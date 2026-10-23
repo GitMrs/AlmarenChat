@@ -8,6 +8,7 @@ import {
   RotateCw,
   Zap,
   ArrowUp,
+  ChevronRight,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -108,6 +109,34 @@ const MarkdownCodeBlock: React.FC<{ className?: string; children: React.ReactNod
 
 MarkdownCodeBlock.displayName = 'MarkdownCodeBlock';
 
+/** 推理模型的思考过程面板（默认折叠，仅本次运行内展示） */
+const ThinkingPanel: React.FC<{ text: string; isActive: boolean }> = ({ text, isActive }) => {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="rounded-2xl border border-black/[0.06] bg-slate-50/70 overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center gap-2 px-4 py-2 text-[11px] font-medium text-slate-500 hover:text-slate-700 transition-colors cursor-pointer select-none"
+      >
+        <ChevronRight
+          size={12}
+          className={`transition-transform flex-shrink-0 ${open ? 'rotate-90' : ''}`}
+        />
+        <span>{isActive ? '正在思考…' : '思考过程'}</span>
+        {isActive && <Loader2 size={11} className="animate-spin text-indigo-500" />}
+        <span className="ml-auto text-[10px] font-mono text-slate-400">{text.length} 字</span>
+      </button>
+      {open && (
+        <div className="px-4 pb-3 max-h-64 overflow-y-auto whitespace-pre-wrap break-words text-[11px] leading-relaxed text-slate-500">
+          {text}
+        </div>
+      )}
+    </div>
+  );
+};
+
 interface MessageItemProps {
   message: ChatMessage;
   isLastAssistant: boolean;
@@ -188,6 +217,14 @@ const MessageItem = React.memo<MessageItemProps>(
 
     return (
       <div className="space-y-3">
+        {/* 思考过程（推理模型） */}
+        {message.thinking && (
+          <ThinkingPanel
+            text={message.thinking}
+            isActive={isStreaming && isLastAssistant}
+          />
+        )}
+
         {/* Embedded Tool Calls */}
         {message.tools && message.tools.length > 0 && (
           <div className="space-y-2.5 my-2">
@@ -204,6 +241,25 @@ const MessageItem = React.memo<MessageItemProps>(
                 timestamp={message.timestamp}
               />
             ))}
+          </div>
+        )}
+
+        {/* 等待首个输出时的思考占位（模型思考/决策阶段不会产生文本增量） */}
+        {!message.content && !message.thinking && isStreaming && isLastAssistant && (
+          <div className="group flex items-start gap-3">
+            <div className="w-8 h-8 rounded-2xl bg-white border border-black/[0.06] shadow-xs flex items-center justify-center text-sm flex-shrink-0 mt-0.5 select-none">
+              🤖
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="bg-white border border-black/[0.06] rounded-[24px] px-5 py-4 shadow-sm text-sm text-slate-500 leading-relaxed inline-flex items-center gap-2">
+                <span className="inline-flex gap-1 items-center">
+                  <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-bounce [animation-delay:-0.3s]" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-bounce [animation-delay:-0.15s]" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-bounce" />
+                </span>
+                <span className="text-xs">正在思考…</span>
+              </div>
+            </div>
           </div>
         )}
 

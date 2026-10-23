@@ -1,5 +1,3 @@
-import path from 'node:path';
-import fs from 'node:fs';
 import { spawn, ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { resolveUserWorkspace, resolveStudioWorkspace, buildSanitizedEnv } from './sandbox';
@@ -7,6 +5,9 @@ import { CODING_AGENTS_REGISTRY } from './registry';
 import { checkAgentStatus } from './detector';
 import { AgentSession, AgentSessionEvent, AgentSessionLaunchOptions, CodingAgentId } from './types';
 import { killOwnedProcessTree, windowsCmdShimExecution } from './windows-compat';
+import { killStudioContainer, spawnDocker } from './sandbox/docker-driver';
+import { buildPiLaunchSpec, PiLaunchSpec } from './pi-launch';
+import { redactSecrets } from './secret-redaction';
 
 const MAX_CONCURRENT_PER_USER = 1;
 const MAX_GLOBAL_CONCURRENT = 5;
@@ -16,6 +17,7 @@ const MAX_LOG_BUFFER_LINES = 1000;
 interface ActiveProcessMeta {
   child?: ChildProcess;
   timeoutTimer?: NodeJS.Timeout;
+  containerName?: string;
 }
 
 class AgentSupervisor {
@@ -92,61 +94,25 @@ class AgentSupervisor {
 
     // 6. Build command and arguments
     const isWin = process.platform === 'win32';
-    let command = meta.command;
-    let args: string[] = [];
-
-    const localPiCli = path.resolve(process.cwd(), 'node_modules', '@earendil-works', 'pi-coding-agent', 'dist', 'bundle', 'cli.js');
-
-    // Build sanitized env
     const env = buildSanitizedEnv({
       agentId,
       customApiKey,
       customBaseUrl: options.customBaseUrl,
     });
 
-    if (agentId === 'pi') {
-      command = process.execPath;
-      if (options.customBaseUrl && customApiKey) {
-        // Configure Pi custom provider with the user's proxy & model
-        const piConfigDir = path.resolve(process.cwd(), 'data', 'studio', userId, '.pi_agent');
-        fs.mkdirSync(piConfigDir, { recursive: true });
-        const targetModel = options.modelName || 'gemini-3.7-flash-high';
-        const modelsConfig = {
-          providers: {
-            custom: {
-              baseUrl: options.customBaseUrl,
-              api: 'openai-completions',
-              apiKey: customApiKey,
-              models: [
-                {
-                  id: targetModel,
-                  name: targetModel,
-                  reasoning: false,
-                  input: ['text'],
-                },
-              ],
-            },
-          },
-        };
-        fs.writeFileSync(path.join(piConfigDir, 'models.json'), JSON.stringify(modelsConfig, null, 2), 'utf-8');
-        env.PI_CODING_AGENT_DIR = piConfigDir;
-        args = [localPiCli, '--provider', 'custom', '--model', targetModel, '-a', '-p', prompt.trim()];
-      } else {
-        args = [localPiCli, '-a', '-p', prompt.trim()];
-      }
-    } else if (agentId === 'claude-code') {
-      args = ['-p', prompt.trim()];
-    } else {
-      args = [prompt.trim()];
-    }
-
-    let spawnCmd = command;
-    let spawnArgs = args;
-    let spawnOptions: Record<string, unknown> = {
+    let spawnCmd = meta.command;
+    let spawnArgs: string[] = [];
+    const spawnOptions: Record<string, unknown> = {
       cwd: workspaceDir,
       env,
       stdio: ['pipe', 'pipe', 'pipe'],
     };
+
+    if (agentId === 'claude-code') {
+      spawnArgs = ['-p', prompt.trim()];
+    } else if (agentId !== 'pi') {
+      spawnArgs = [prompt.trim()];
+    }
 
     if (isWin && agentId !== 'pi') {
       const shim = windowsCmdShimExecution(spawnCmd, spawnArgs);
@@ -156,13 +122,43 @@ class AgentSupervisor {
     }
 
     try {
-      const child = spawn(spawnCmd, spawnArgs, spawnOptions);
+      // pi 优先在 Docker 沙箱内执行；Docker 不可用时的行为由 STUDIO_SANDBOX_MODE 决定
+      let piLaunch: PiLaunchSpec | null = null;
+      if (agentId === 'pi') {
+        piLaunch = await buildPiLaunchSpec({
+          sessionId,
+          userId,
+          workspaceDir,
+          agentArgs: ['-a', '-p', prompt.trim()],
+          customApiKey,
+          customBaseUrl: options.customBaseUrl,
+          modelName: options.modelName,
+        });
+        session.sandboxMode = piLaunch.kind === 'docker' ? 'docker' : 'host';
+        session.containerName = piLaunch.kind === 'docker' ? piLaunch.containerName : undefined;
+        this.appendLog(
+          session,
+          piLaunch.kind === 'docker'
+            ? `[SYSTEM] 🐳 沙箱模式：Docker 容器 (${piLaunch.containerName})`
+            : `[SYSTEM] 💻 沙箱模式：宿主进程`
+        );
+      }
+
+      const child = piLaunch
+        ? piLaunch.kind === 'docker'
+          ? spawnDocker(piLaunch.args)
+          : spawn(piLaunch.command, piLaunch.args, {
+              cwd: piLaunch.cwd,
+              env: piLaunch.env as NodeJS.ProcessEnv,
+              stdio: ['pipe', 'pipe', 'pipe'],
+            })
+        : spawn(spawnCmd, spawnArgs, spawnOptions);
       // Close stdin immediately so interactive CLIs (like pi, node, python) do not hang waiting for EOF!
       child.stdin?.end();
       session.pid = child.pid;
       this.appendLog(session, `[SYSTEM] ⚡ 子进程已拉起 (PID: ${child.pid})`);
 
-      const metaHolder: ActiveProcessMeta = { child };
+      const metaHolder: ActiveProcessMeta = { child, containerName: session.containerName };
       this.processes.set(sessionId, metaHolder);
 
       // Setup watchdog timeout
@@ -171,9 +167,11 @@ class AgentSupervisor {
         this.stopSession(userId, sessionId, '超时自动熔断');
       }, MAX_SESSION_TIMEOUT_MS);
 
+      const secrets = [customApiKey, process.env.apiKey, process.env.OPENAI_API_KEY];
+
       // Stdout listener
       child.stdout?.on('data', (chunk: Buffer) => {
-        const text = chunk.toString('utf-8');
+        const text = redactSecrets(chunk.toString('utf-8'), secrets);
         this.emitEvent(session, {
           type: 'stdout',
           data: text,
@@ -183,7 +181,7 @@ class AgentSupervisor {
 
       // Stderr listener
       child.stderr?.on('data', (chunk: Buffer) => {
-        const text = chunk.toString('utf-8');
+        const text = redactSecrets(chunk.toString('utf-8'), secrets);
         this.emitEvent(session, {
           type: 'stderr',
           data: text,
@@ -260,6 +258,10 @@ class AgentSupervisor {
 
     this.appendLog(session, `[SYSTEM] 🛑 操作中止: ${reason}`);
 
+    if (processMeta?.containerName) {
+      // 杀掉 docker CLI 不会停止容器，必须显式 rm -f
+      await killStudioContainer(processMeta.containerName);
+    }
     if (session.pid) {
       killOwnedProcessTree(session.pid, () => {
         processMeta?.child?.kill('SIGTERM');
