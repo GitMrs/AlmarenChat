@@ -3,9 +3,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Check, ChevronRight, Eye, LayoutGrid, Loader2, MessageCircle, Pause, Play, RotateCcw, SendHorizonal, Settings, Sliders, Smile, Sparkles, Volume2, VolumeX, X } from 'lucide-react';
+import { Check, ChevronRight, Eye, LayoutGrid, Loader2, MessageCircle, Pause, Play, RotateCcw, SendHorizonal, Settings, Shirt, Sliders, Smile, Sparkles, Volume2, VolumeX, X } from 'lucide-react';
 import CompanionStage, { type FramingMode, type StageHandle, type StageSnapshot } from './CompanionStage';
-import { companionCharacters, type CompanionCharacter } from '@/lib/companion/catalog';
+import { companionCharacters, type CompanionCharacter, type CompanionSkin } from '@/lib/companion/catalog';
 import { getRandomTapLine, getRapidTapLine, getRandomStartupLine, getRandomDragLine, type VoiceLine } from '@/lib/companion/voice';
 import '@/app/companion/companion.css';
 
@@ -47,6 +47,7 @@ export interface CompanionPreviewProps {
   characterId?: string;
   embedded?: boolean;
   onBackToChat?: () => void;
+  onCompanionSkinChange?: (skin: CompanionSkin) => void;
   externalMessages?: Array<{ id: string; role: 'user' | 'assistant' | 'system' | string; content: string }>;
   onSendMessage?: (content: string) => Promise<void>;
   isStreaming?: boolean;
@@ -60,6 +61,7 @@ export interface CompanionPreviewProps {
 export default function CompanionPreview({
   characterId: initialCharId,
   onBackToChat,
+  onCompanionSkinChange,
   externalMessages,
   onSendMessage,
   isStreaming = false,
@@ -75,6 +77,7 @@ export default function CompanionPreview({
       key={character.id}
       character={character}
       onBackToChat={onBackToChat}
+      onCompanionSkinChange={onCompanionSkinChange}
       externalMessages={externalMessages}
       onSendMessage={onSendMessage}
       isStreaming={isStreaming}
@@ -90,6 +93,7 @@ export default function CompanionPreview({
 interface CompanionSessionProps {
   character: CompanionCharacter;
   onBackToChat?: () => void;
+  onCompanionSkinChange?: (skin: CompanionSkin) => void;
   externalMessages?: Array<{ id: string; role: 'user' | 'assistant' | 'system' | string; content: string }>;
   onSendMessage?: (content: string) => Promise<void>;
   isStreaming?: boolean;
@@ -103,6 +107,7 @@ interface CompanionSessionProps {
 function CompanionSession({
   character,
   onBackToChat,
+  onCompanionSkinChange,
   externalMessages,
   onSendMessage,
   isStreaming = false,
@@ -162,6 +167,63 @@ function CompanionSession({
   const isDev = process.env.NODE_ENV === 'development' || isDebugOverride;
 
   const behavior = useMemo(() => getCompanionBehavior(character.id), [character.id]);
+
+  const [wardrobeOpen, setWardrobeOpen] = useState(false);
+  const [currentSkinId, setCurrentSkinId] = useState<string>(() => {
+    if (typeof window === 'undefined') return 'original';
+    return localStorage.getItem(`almaren_companion_skin_${character.id}`) || 'original';
+  });
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const saved = localStorage.getItem(`almaren_companion_skin_${character.id}`);
+    setCurrentSkinId(saved || 'original');
+  }, [character.id]);
+
+  const activeSkin = useMemo(() => {
+    if (!character.skins || character.skins.length === 0) return null;
+    return character.skins.find(s => s.id === currentSkinId) ?? character.skins[0];
+  }, [character.skins, currentSkinId]);
+
+  useEffect(() => {
+    if (activeSkin) onCompanionSkinChange?.(activeSkin);
+  }, [activeSkin, onCompanionSkinChange]);
+
+  const effectiveCharacter = useMemo<CompanionCharacter>(() => {
+    if (!activeSkin) return character;
+    return {
+      ...character,
+      modelRoot: activeSkin.modelRoot,
+      assetDir: activeSkin.assetDir ?? character.assetDir,
+      rig: activeSkin.rig,
+      binary: activeSkin.binary,
+      textures: activeSkin.textures,
+      tuning: activeSkin.tuning ?? character.tuning,
+      physics: activeSkin.physics ?? character.physics,
+      pose: activeSkin.pose ?? character.pose,
+      nativeDefaults: activeSkin.nativeDefaults ?? character.nativeDefaults,
+      motions: activeSkin.motions ?? character.motions,
+    };
+  }, [character, activeSkin]);
+
+  const handleSelectSkin = (skin: CompanionSkin) => {
+    if (skin.id === currentSkinId) return;
+    setCurrentSkinId(skin.id);
+    onCompanionSkinChange?.(skin);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(`almaren_companion_skin_${character.id}`, skin.id);
+    }
+    setGeneration(g => g + 1);
+    setReady(false);
+    setTapBubble({
+      text: skin.interaction?.equipMessage ?? `换好【${skin.name}】啦！怎么样，好看吗？✨`,
+      id: Date.now(),
+    });
+    if (bubbleTimerRef.current) clearTimeout(bubbleTimerRef.current);
+    bubbleTimerRef.current = setTimeout(() => {
+      setTapBubble(null);
+    }, 3800);
+  };
 
   const sceneBg = behavior.defaultSceneBg ?? 'cherry_room';
   const [ready, setReady] = useState(false);
@@ -436,9 +498,18 @@ function CompanionSession({
     void playChatReply(reply);
   }, [reply, ready]);
 
-  const selectTapLine = (kind: 'tap' | 'rapid') => kind === 'tap'
-    ? getRandomTapLine(character.id, lastTapLineTextRef.current)
-    : getRapidTapLine(character.id, lastTapLineTextRef.current);
+  const selectTapLine = (kind: 'tap' | 'rapid'): VoiceLine => {
+    // 皮肤台词没有对应的本地音频时，普通点击和连击都使用同一组轻量字幕反馈。
+    const skinLines = activeSkin?.interaction?.tapLines;
+    if (skinLines?.length) {
+      const candidates = skinLines.filter(text => text !== lastTapLineTextRef.current);
+      const text = (candidates.length ? candidates : skinLines)[Math.floor(Math.random() * (candidates.length ? candidates : skinLines).length)];
+      return { id: `skin-${activeSkin?.id ?? 'default'}-${kind}`, text };
+    }
+    return kind === 'tap'
+      ? getRandomTapLine(character.id, lastTapLineTextRef.current)
+      : getRapidTapLine(character.id, lastTapLineTextRef.current);
+  };
 
   const prepareTapVoice = (kind: 'tap' | 'rapid') => {
     if (!voiceEnabled || !sfxEnabled || preparedTapVoicesRef.current.has(kind)) return;
@@ -723,14 +794,20 @@ function CompanionSession({
 
   // 播放初次载入欢迎问候语音
   const playStartupVoice = () => {
-    const line = getRandomStartupLine(character.id);
+    const skinLines = activeSkin?.interaction?.startupLines;
+    const line = skinLines?.length
+      ? { id: `skin-${activeSkin?.id ?? 'default'}-startup`, text: skinLines[Math.floor(Math.random() * skinLines.length)] }
+      : getRandomStartupLine(character.id);
     const { targetMotionId, targetExpression } = behavior.getStartupReaction(character);
     playVoice(line, { targetMotionId, targetExpression, isStartup: true });
   };
 
   // 播放拖拽反应趣味语音
   const playDragVoice = () => {
-    const line = getRandomDragLine(character.id);
+    const skinLines = activeSkin?.interaction?.dragLines;
+    const line = skinLines?.length
+      ? { id: `skin-${activeSkin?.id ?? 'default'}-drag`, text: skinLines[Math.floor(Math.random() * skinLines.length)] }
+      : getRandomDragLine(character.id);
     const { targetMotionId, targetExpression } = behavior.getDragReaction(character, line);
     playVoice(line, { targetMotionId, targetExpression });
   };
@@ -832,7 +909,9 @@ function CompanionSession({
     const rect = e.currentTarget.getBoundingClientRect();
     const x = Math.max(20, Math.min(rect.width - 20, e.clientX - rect.left));
     const y = Math.max(20, Math.min(rect.height - 20, e.clientY - rect.top));
-    const symbols = behavior.tapSymbols;
+    const symbols = activeSkin?.interaction?.tapSymbols?.length
+      ? activeSkin.interaction.tapSymbols
+      : behavior.tapSymbols;
     const symbol = symbols[Math.floor(Math.random() * symbols.length)];
     const pId = now + Math.random();
     setTapParticles(prev => [...prev.slice(-6), { id: pId, x, y, symbol }]);
@@ -983,23 +1062,37 @@ function CompanionSession({
           onLostPointerCapture={handleScenePointerUp}
           onClick={handleCharacterTap}
         >
-          {/* 实景场景背景图 (温暖樱花阳光书房 / 蔚蓝海景天台书房) */}
-          {sceneBg === 'cherry_room' && (
-            <div className="companion-scene-backdrop companion-scene-backdrop--cherry" aria-hidden="true" />
-          )}
-          {sceneBg === 'ocean_room' && (
-            <div className="companion-scene-backdrop companion-scene-backdrop--ocean" aria-hidden="true" />
+          {/* 实景场景背景图：优先使用当前所选皮肤的专属背景壁纸 */}
+          {activeSkin?.background ? (
+            <div
+              className="companion-scene-backdrop"
+              style={{
+                backgroundImage: `url(${activeSkin.background})`,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center',
+              }}
+              aria-hidden="true"
+            />
+          ) : (
+            <>
+              {sceneBg === 'cherry_room' && (
+                <div className="companion-scene-backdrop companion-scene-backdrop--cherry" aria-hidden="true" />
+              )}
+              {sceneBg === 'ocean_room' && (
+                <div className="companion-scene-backdrop companion-scene-backdrop--ocean" aria-hidden="true" />
+              )}
+            </>
           )}
 
           {/* PC 桌面端专属顶部舞台工具条 (左侧伴侣身份标，右侧场景氛围与视角模式) */}
           <div className="companion-stage-desktop-hud">
-            {/* <div className="companion-stage-badge">
+            <div className="companion-stage-badge">
               <span className="companion-stage-badge-avatar">{character.name[0]}</span>
               <div className="companion-stage-badge-text">
                 <strong>{character.name}</strong>
-                <span>{character.title || '治愈伴侣'}</span>
+                <span>{activeSkin?.name ? `【${activeSkin.name}】` : (character.title || '治愈伴侣')}</span>
               </div>
-            </div> */}
+            </div>
             <div className="companion-stage-desktop-actions">
               <div className="companion-stage-pill-group" role="group" aria-label="镜头模式">
                 <button
@@ -1024,34 +1117,56 @@ function CompanionSession({
                   全身
                 </button>
               </div>
-            </div>
-              <div className="companion-hud-capsules">
-            {voiceReplayButton}
-            <button
-              type="button"
-              className={`companion-hud-chip companion-hud-chip--btn ${!voiceEnabled ? 'is-muted' : ''}`}
-              onClick={() => toggleVoice(!voiceEnabled)}
-              title={voiceEnabled ? '伴侣对话语音已开启（点击静音）' : '伴侣对话语音已静音（点击开启）'}
-              aria-label={voiceEnabled ? '伴侣对话语音已开启，点击静音' : '伴侣对话语音已静音，点击开启'}
-            >
-              {voiceEnabled ? (
-                <>
-                  <Volume2 size={15} className="companion-hud-icon--active" />
-                  <span className="companion-hud-text">语音开启</span>
-                </>
-              ) : (
-                <>
-                  <VolumeX size={15} className="companion-hud-icon--muted" />
-                  <span className="companion-hud-text">已静音</span>
-                </>
+              {character.skins && character.skins.length > 1 && (
+                <button
+                  type="button"
+                  className={`companion-stage-pill ${wardrobeOpen ? 'is-active' : ''}`}
+                  onClick={() => setWardrobeOpen(true)}
+                  title={`换装衣橱 · 当前【${activeSkin?.name || '经典初见'}】`}
+                >
+                  <Shirt size={14} style={{ marginRight: 4, display: 'inline', verticalAlign: '-2px' }} />
+                  换装衣橱
+                </button>
               )}
-            </button>
-          </div>
+            </div>
+            <div className="companion-hud-capsules">
+              {voiceReplayButton}
+              <button
+                type="button"
+                className={`companion-hud-chip companion-hud-chip--btn ${!voiceEnabled ? 'is-muted' : ''}`}
+                onClick={() => toggleVoice(!voiceEnabled)}
+                title={voiceEnabled ? '伴侣对话语音已开启（点击静音）' : '伴侣对话语音已静音（点击开启）'}
+                aria-label={voiceEnabled ? '伴侣对话语音已开启，点击静音' : '伴侣对话语音已静音，点击开启'}
+              >
+                {voiceEnabled ? (
+                  <>
+                    <Volume2 size={15} className="companion-hud-icon--active" />
+                    <span className="companion-hud-text">语音开启</span>
+                  </>
+                ) : (
+                  <>
+                    <VolumeX size={15} className="companion-hud-icon--muted" />
+                    <span className="companion-hud-text">已静音</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
 
           {/* 移动端屏幕悬浮 HUD 标签 (右侧控制与设置) */}
 
           <div className="companion-floating-hud companion-floating-hud--right">
+            {character.skins && character.skins.length > 1 && (
+              <button
+                type="button"
+                className={`companion-stage-chip companion-stage-chip--icon ${wardrobeOpen ? 'is-active' : ''}`}
+                onClick={() => setWardrobeOpen(true)}
+                title={`换装衣橱 · 当前穿戴【${activeSkin?.name || '经典初见'}】`}
+                aria-label="换装衣橱"
+              >
+                <Shirt size={16} />
+              </button>
+            )}
             <button
               type="button"
               className={`companion-stage-chip companion-stage-chip--icon ${!voiceEnabled ? 'is-muted' : ''}`}
@@ -1089,9 +1204,9 @@ function CompanionSession({
 
           <div className="companion-floor" aria-hidden="true" />
           <CompanionStage
-            key={generation}
+            key={`${character.id}-${currentSkinId}-${generation}`}
             ref={stage}
-            character={character}
+            character={effectiveCharacter}
             motionId={motionId}
             expressionId={expressionId}
             playing={playing && !error}
@@ -1759,6 +1874,76 @@ function CompanionSession({
                     </span>
                   </Link>
                 </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 4. 换装衣橱弹窗 (Wardrobe Modal) */}
+        {wardrobeOpen && character.skins && character.skins.length > 0 && (
+          <div
+            className="companion-settings-modal-backdrop companion-settings-backdrop"
+            onClick={() => setWardrobeOpen(false)}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="companion-wardrobe-modal-title"
+          >
+            <div className="companion-wardrobe-card" onClick={(e) => e.stopPropagation()}>
+              <div className="companion-settings-header">
+                <div className="companion-settings-title-group">
+                  <div className="companion-settings-icon-badge">
+                    <Shirt size={20} />
+                  </div>
+                  <div>
+                    <h4 id="companion-wardrobe-modal-title" className="companion-settings-title">
+                      换装衣橱 · {character.name}
+                    </h4>
+                    <p className="companion-settings-subtitle">
+                      自由切换伴侣外观服饰与专属场景背景
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="companion-settings-close-btn"
+                  onClick={() => setWardrobeOpen(false)}
+                  aria-label="关闭换装衣橱"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="companion-wardrobe-grid">
+                {character.skins.map((skin) => {
+                  const isEquipped = skin.id === currentSkinId;
+                  return (
+                    <button
+                      key={skin.id}
+                      type="button"
+                      className={`companion-wardrobe-item ${isEquipped ? 'is-active' : ''}`}
+                      onClick={() => handleSelectSkin(skin)}
+                    >
+                      <div className="companion-wardrobe-preview">
+                        <img
+                          src={skin.card || skin.portrait || '/companion/wardrobe/cards/Nari.ears.webp'}
+                          alt={skin.name}
+                          className="companion-wardrobe-img"
+                          loading="lazy"
+                        />
+                        {isEquipped && (
+                          <div className="companion-wardrobe-badge">
+                            <Check size={12} />
+                            已穿戴
+                          </div>
+                        )}
+                      </div>
+                      <div className="companion-wardrobe-title">{skin.name}</div>
+                      {skin.description && (
+                        <div className="companion-wardrobe-desc">{skin.description}</div>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           </div>

@@ -13,6 +13,7 @@ import LoginRequired from '@/components/auth/LoginRequired';
 import LoadingSpinner from '@/components/shared/LoadingSpinner';
 import AgentDetailsPanel from '@/components/chat/AgentDetailsPanel';
 import CompanionPreview from '@/components/companion/CompanionPreview';
+import type { CompanionSkin } from '@/lib/companion/catalog';
 import ChatComposer from '@/components/chat/ChatComposer';
 import { MessageItem } from '@/components/chat/ChatMessageItem';
 import MemorySuggestionDialog, { type MemorySuggestion } from '@/components/chat/MemorySuggestionDialog';
@@ -105,6 +106,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
   const [streamingContent, setStreamingContent] = useState('');
   const [draft, setDraft] = useState('');
   const [companionDraft, setCompanionDraft] = useState('');
+  const [companionSkinPrompt, setCompanionSkinPrompt] = useState('');
   const [companionReply, setCompanionReply] = useState<CompanionReply | null>(null);
   const activeViewRef = useRef(viewMode);
   activeViewRef.current = viewMode;
@@ -927,7 +929,10 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
         const memoryContext = conversationMode === 'MAIN'
           ? (await agentMemories.context(displayAgent?.id || agentId, localConversationId, content, controller.signal)).context
           : '';
-        const systemPrompt = [displayAgent?.systemPrompt, memoryContext, worldContext, isCompanionSend ? companionReplyInstruction : ''].filter(Boolean).join('\n\n');
+        const companionSkinInstruction = isCompanionSend && companionSkinPrompt
+          ? `当前换装的皮肤对话规则（只影响表达氛围，不改变核心人格）：${companionSkinPrompt}\n请在自然相关的回复中适度融入这些元素，偶尔使用对应意象或小口头禅即可；不要每句话都重复皮肤关键词，也不要把服装设定说成角色身份发生了改变。`
+          : '';
+        const systemPrompt = [displayAgent?.systemPrompt, memoryContext, worldContext, isCompanionSend ? companionReplyInstruction : '', companionSkinInstruction].filter(Boolean).join('\n\n');
         if (systemPrompt) {
           modelMessages.unshift({ role: 'system', content: systemPrompt });
         }
@@ -944,7 +949,12 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
         result = await streamChat({
           message: content,
           history,
-          context: displayAgent?.systemPrompt,
+          context: [
+            displayAgent?.systemPrompt,
+            isCompanionSend && companionSkinPrompt
+              ? `当前换装的皮肤对话规则（只影响表达氛围，不改变核心人格）：${companionSkinPrompt}\n请在自然相关的回复中适度融入这些元素，偶尔使用对应意象或小口头禅即可；不要每句话都重复皮肤关键词，也不要把服装设定说成角色身份发生了改变。`
+              : '',
+          ].filter(Boolean).join('\n\n'),
           conversationId: conversationId || undefined,
           agentId: displayAgent?.id || agentId,
           attachments: outgoingAttachments,
@@ -1291,6 +1301,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
             characterId={companionCharacterId}
             embedded
             onBackToChat={toggleCompanionView}
+            onCompanionSkinChange={(skin: CompanionSkin) => setCompanionSkinPrompt(skin.interaction?.promptHint || '')}
             externalMessages={messages}
             onSendMessage={async (text) => {
               await handleSend(text);

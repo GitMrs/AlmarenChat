@@ -165,21 +165,54 @@ interface StageRuntime {
 
 const resourceJsonCache = new Map<string, any>();
 
+function resolveResourceUrl(character: CompanionCharacter, path: string): string {
+  if (path.startsWith('/') || path.startsWith('http://') || path.startsWith('https://')) {
+    return path;
+  }
+  return `${character.modelRoot}/${path}`;
+}
+
 async function resource(character: CompanionCharacter, path: string, signal: AbortSignal) {
-  const response = await fetch(`${character.modelRoot}/${path}`, { signal });
-  if (!response.ok) throw new Error(`模型资源加载失败（${response.status}）`);
+  const url = resolveResourceUrl(character, path);
+  let response = await fetch(url, { signal });
+  if (!response.ok && character.modelRoot.startsWith('/companion/skins/')) {
+    const fallbackUrl = `/companion/models/${character.id}/${path}`;
+    try {
+      const fallback = await fetch(fallbackUrl, { signal });
+      if (fallback.ok) response = fallback;
+    } catch {
+      // ignore fallback error and throw original status below
+    }
+  }
+  if (!response.ok) throw new Error(`模型资源加载失败（${response.status}）: ${path}`);
   return response;
 }
 
 async function cachedJsonResource<T = any>(character: CompanionCharacter, path: string, signal: AbortSignal): Promise<T> {
-  const url = `${character.modelRoot}/${path}`;
-  if (resourceJsonCache.has(url)) {
-    return resourceJsonCache.get(url) as T;
+  const primaryUrl = resolveResourceUrl(character, path);
+  if (resourceJsonCache.has(primaryUrl)) {
+    return resourceJsonCache.get(primaryUrl) as T;
   }
-  const response = await fetch(url, { signal });
-  if (!response.ok) throw new Error(`模型资源加载失败（${response.status}）`);
+  let response = await fetch(primaryUrl, { signal });
+  let cacheKey = primaryUrl;
+  if (!response.ok && character.modelRoot.startsWith('/companion/skins/')) {
+    const fallbackUrl = `/companion/models/${character.id}/${path}`;
+    if (resourceJsonCache.has(fallbackUrl)) {
+      return resourceJsonCache.get(fallbackUrl) as T;
+    }
+    try {
+      const fallback = await fetch(fallbackUrl, { signal });
+      if (fallback.ok) {
+        response = fallback;
+        cacheKey = fallbackUrl;
+      }
+    } catch {
+      // ignore fallback error and throw original status below
+    }
+  }
+  if (!response.ok) throw new Error(`模型资源加载失败（${response.status}）: ${path}`);
   const data = await response.json();
-  resourceJsonCache.set(url, data);
+  resourceJsonCache.set(cacheKey, data);
   return data as T;
 }
 
@@ -503,7 +536,13 @@ const KoroStage = forwardRef<StageHandle, StageProps>(function KoroStage(props, 
       runtime.current.model = model;
       model.applyTuning(tuning);
       if (pose) model.applyPose(pose);
+      if (character.nativeDefaults) {
+        for (const [id, value] of Object.entries(character.nativeDefaults)) {
+          if (Number.isFinite(value)) model.setParameter(id, value);
+        }
+      }
       const physics = physicsData ? new PhysicsPlayer(physicsData, character.physicsWindSettings) : null;
+      if (physics) physics.settle(model);
       runtime.current.settlePhysics = true;
       const basePartOpacity = new Float32Array(model.partOpacity);
       model.update();
@@ -631,6 +670,11 @@ const KoroStage = forwardRef<StageHandle, StageProps>(function KoroStage(props, 
               physics.update(model, delta * (settings.speed || 1));
             }
             state.settlePhysics = false;
+          }
+          if (character.nativeDefaults) {
+            for (const [id, value] of Object.entries(character.nativeDefaults)) {
+              if (Number.isFinite(value)) model.setParameter(id, value);
+            }
           }
           model.update();
 
