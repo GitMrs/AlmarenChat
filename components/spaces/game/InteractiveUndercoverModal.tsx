@@ -41,6 +41,7 @@ import {
 } from '@/lib/workspace/game/undercover/engine';
 import { useTTS } from '@/hooks/useTTS';
 import { spaces } from '@/lib/client/api';
+import { recordGameExperienceOnce, type GameExperienceEntry } from '@/lib/client/game-experience';
 import type { Agent } from '@/types';
 
 export interface InteractiveUndercoverModalProps {
@@ -71,6 +72,7 @@ export default function InteractiveUndercoverModal({
   const autoTurnTimerRef = useRef<NodeJS.Timeout | null>(null);
   const chatContainerRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const experienceRecordedRef = useRef<string>('');
 
   useEffect(() => {
     setMounted(true);
@@ -100,6 +102,25 @@ export default function InteractiveUndercoverModal({
   useEffect(() => {
     scrollToBottom(true);
   }, [game.messages, scrollToBottom]);
+
+  // 终局后把这一局写进参与角色的个人记忆（不保存对局状态）
+  useEffect(() => {
+    if (game.phase !== 'game_over' || !game.winner || !spaceId) return;
+    const winnerText = game.winner === 'civilian' ? '平民阵营胜利' : '卧底阵营胜利';
+    recordGameExperienceOnce(experienceRecordedRef, spaceId, game.id, {
+      gameType: 'undercover',
+      topic: `谁是卧底 · ${winnerText}`,
+      summary: `平民词「${game.civilianWord}」，卧底词「${game.undercoverWord}」，共 ${game.round} 轮。${game.winReason || ''}`,
+      entries: game.players
+        .filter((player) => player.id !== 'user')
+        .map((player): GameExperienceEntry => ({
+          agentId: player.id,
+          agentName: player.name,
+          content: `在《谁是卧底》中扮演${player.role === 'undercover' ? '卧底' : '平民'}，拿到词语「${player.word}」，${player.isAlive ? '存活到终局' : '中途被投票出局'}。`,
+          result: player.role === game.winner ? 'win' : 'loss',
+        })),
+    });
+  }, [game.phase, game.winner, game.id, game.round, game.civilianWord, game.undercoverWord, game.winReason, game.players, spaceId]);
 
   // 重置开局
   const handleStartNewGame = useCallback((engineMode: UndercoverEngineMode = 'ai') => {

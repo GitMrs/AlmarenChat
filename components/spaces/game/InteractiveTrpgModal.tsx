@@ -77,6 +77,7 @@ import {
   type SkillCheckResult,
 } from '@/lib/workspace/game/trpg/dice.ts';
 import { useTTS } from '@/hooks/useTTS';
+import { createGameSessionId, recordGameExperienceOnce } from '@/lib/client/game-experience';
 
 const EMPTY_SPACE_AGENTS: Agent[] = [];
 import type { Agent } from '@/types';
@@ -135,6 +136,8 @@ export default function InteractiveTrpgModal({
   const abortAiRef = useRef<AbortController | null>(null);
   const autoVoicePrimedRef = useRef(false);
   const lastAutoVoiceKeyRef = useRef('');
+  const experienceSessionRef = useRef<string>('');
+  const experienceRecordedRef = useRef<string>('');
 
   useEffect(() => {
     setMounted(true);
@@ -254,6 +257,7 @@ export default function InteractiveTrpgModal({
   // 恢复未完成的对局存档
   const handleResumeSavedGame = () => {
     if (!savedGame) return;
+    experienceSessionRef.current = createGameSessionId('trpg');
     stopTTS();
     if (abortAiRef.current) abortAiRef.current.abort();
     autoVoicePrimedRef.current = false;
@@ -279,6 +283,7 @@ export default function InteractiveTrpgModal({
 
   // 开启全新跑团冒险
   const handleStartAdventure = () => {
+    experienceSessionRef.current = createGameSessionId('trpg');
     stopTTS();
     if (abortAiRef.current) abortAiRef.current.abort();
     autoVoicePrimedRef.current = false;
@@ -542,6 +547,29 @@ export default function InteractiveTrpgModal({
     onShareToSpace(report);
     onClose();
   };
+
+  // 抵达结局后把这一局写进守秘人和同伴的个人记忆（不保存跑团进度）
+  useEffect(() => {
+    if (!spaceId) return;
+    if (game.status !== 'victory' && game.status !== 'game_over') return;
+    const sessionId = experienceSessionRef.current || createGameSessionId('trpg');
+    const scenarioTitle = game.scenario.title || '跑团冒险';
+    const endingTitle = game.scenario.nodes[game.currentNodeId]?.endingTitle
+      || (game.status === 'victory' ? '冒险成功' : '中途倒下');
+    const outcome = game.status === 'victory' ? '通关' : '失败';
+
+    recordGameExperienceOnce(experienceRecordedRef, spaceId, sessionId, {
+      gameType: 'trpg',
+      topic: `跑团 · ${scenarioTitle}`,
+      summary: `剧本《${scenarioTitle}》，抵达结局「${endingTitle}」（${outcome}），共 ${game.turnCount} 回合、${game.history.length} 条记录。`,
+      entries: [
+        { agentId: 'gaming-dm', agentName: '守秘人 DM', content: `作为守秘人主持《${scenarioTitle}》，抵达结局「${endingTitle}」。` },
+        { agentId: 'gaming-lulu', agentName: '璐璐', content: `作为冒险同伴参与《${scenarioTitle}》，抵达结局「${endingTitle}」。` },
+        { agentId: 'gaming-koko', agentName: '可可', content: `作为冒险同伴参与《${scenarioTitle}》，抵达结局「${endingTitle}」。` },
+        { agentId: 'gaming-nox', agentName: '诺克斯', content: `作为冒险同伴参与《${scenarioTitle}》，抵达结局「${endingTitle}」。` },
+      ],
+    });
+  }, [game.status, game.scenario.title, game.currentNodeId, game.turnCount, game.history.length, spaceId]);
 
   if (!isOpen || !mounted) return null;
 

@@ -923,6 +923,22 @@ export const spaces = {
       body: JSON.stringify(data),
       signal: options?.signal,
     }),
+
+  // 对局结束时把游戏经历写入参与 Agent 的个人记忆（不保存对局状态）
+  recordGameExperience: (
+    spaceId: string,
+    data: {
+      gameType: 'gomoku' | 'undercover' | 'trpg' | 'turtlesoup' | 'live';
+      sessionId: string;
+      topic: string;
+      summary: string;
+      entries: Array<{ agentId: string; agentName?: string; content: string; result?: 'win' | 'loss' | 'draw' }>;
+    }
+  ) =>
+    request<{ ok: boolean; recorded: number }>(`/spaces/${spaceId}/games/experience`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
 };
 
 export const cryptoSentinel = {

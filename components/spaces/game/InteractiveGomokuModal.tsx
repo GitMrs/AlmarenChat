@@ -17,6 +17,7 @@ import {
 } from '@/lib/workspace/game/relay/gomoku-ai';
 import { useTTS } from '@/hooks/useTTS';
 import { spaces } from '@/lib/client/api';
+import { createGameSessionId, recordGameExperienceOnce, type GameExperienceEntry } from '@/lib/client/game-experience';
 import type { Agent } from '@/types';
 
 export type GomokuEngineMode = 'js' | 'perceive' | 'full';
@@ -217,6 +218,8 @@ export default function InteractiveGomokuModal({
   const eveTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isAutoPlayingRef = useRef<boolean>(isAutoPlaying);
   const winnerRef = useRef<'player' | 'ai' | 'draw' | null>(winner);
+  const experienceSessionRef = useRef<string>('');
+  const experienceRecordedRef = useRef<string>('');
   const gameModeRef = useRef<'pve' | 'eve'>(gameMode);
   const boardRef = useRef<number[]>(board);
   const moveHistoryRef = useRef<Array<{ row: number; col: number; player: number }>>(moveHistory);
@@ -315,6 +318,7 @@ export default function InteractiveGomokuModal({
     setHintCell(null);
     setWinner(null);
     winnerRef.current = null;
+    experienceSessionRef.current = createGameSessionId('gomoku');
     setIsAiThinking(false);
     lastSpokenMoveRef.current = 0;
 
@@ -365,6 +369,45 @@ export default function InteractiveGomokuModal({
       }
     }
   };
+
+  // 对局结束后把这一局写进参与角色的个人记忆（不保存棋谱）
+  useEffect(() => {
+    if (!winner || !spaceId) return;
+    const sessionId = experienceSessionRef.current || createGameSessionId('gomoku');
+    const moves = moveHistory.length;
+    const blackName = gameMode === 'eve' ? getShortName(blackAgent.name) : '用户';
+    const whiteName = gameMode === 'eve' ? getShortName(whiteAgent.name) : getShortName(opponent.name);
+    const resultText = winner === 'draw' ? '和棋' : winner === 'player' ? `${blackName}获胜` : `${whiteName}获胜`;
+
+    const entries: GameExperienceEntry[] = gameMode === 'eve'
+      ? [
+          {
+            agentId: blackAgent.id,
+            agentName: getShortName(blackAgent.name),
+            content: `五子棋 AI 内战：我执黑对阵${whiteName}，最终${resultText}，共 ${moves} 手。`,
+            result: winner === 'player' ? 'win' : winner === 'ai' ? 'loss' : 'draw',
+          },
+          {
+            agentId: whiteAgent.id,
+            agentName: getShortName(whiteAgent.name),
+            content: `五子棋 AI 内战：我执白对阵${blackName}，最终${resultText}，共 ${moves} 手。`,
+            result: winner === 'ai' ? 'win' : winner === 'player' ? 'loss' : 'draw',
+          },
+        ]
+      : [{
+          agentId: opponent.id,
+          agentName: getShortName(opponent.name),
+          content: `五子棋人机对弈：我执白对阵用户（执黑），最终${resultText}，共 ${moves} 手。`,
+          result: winner === 'ai' ? 'win' : winner === 'player' ? 'loss' : 'draw',
+        }];
+
+    recordGameExperienceOnce(experienceRecordedRef, spaceId, sessionId, {
+      gameType: 'gomoku',
+      topic: `五子棋 · ${gameMode === 'eve' ? 'AI 内战' : '人机对弈'}`,
+      summary: `${blackName} 执黑 vs ${whiteName} 执白，${resultText}，共 ${moves} 手。`,
+      entries,
+    });
+  }, [winner, spaceId, gameMode, moveHistory.length, opponent.id, opponent.name, blackAgent.id, blackAgent.name, whiteAgent.id, whiteAgent.name]);
 
   // 响应外部传入的初始模式与弹窗开启
   useEffect(() => {

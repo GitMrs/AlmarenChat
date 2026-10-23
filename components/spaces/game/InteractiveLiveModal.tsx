@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Camera, CircleStop, MessageCircle, Pause, Play, Send, Trash2, Volume2, VolumeX, X } from 'lucide-react';
 import { streamSpaceMessage } from '@/lib/client/api';
+import { createGameSessionId, recordGameExperienceOnce } from '@/lib/client/game-experience';
 import { useTTS } from '@/hooks/useTTS';
 import type { Agent } from '@/types';
 import luluImage from '@/src/lib/imgs/gaming-lulu.png';
@@ -105,6 +106,8 @@ export default function InteractiveLiveModal({
   const [error, setError] = useState('');
   const { play: playTTS, stop: stopTTS, isPlaying, isLoading } = useTTS();
   const storageKey = `almaren-live-session:${spaceId}`;
+  const experienceSessionRef = useRef<string>('');
+  const experienceRecordedRef = useRef<string>('');
 
   const preferredHostIds = useMemo(() => {
     const find = (keywords: string[]) => spaceAgents.find((agent) => keywords.some((keyword) => agent.name.includes(keyword)));
@@ -151,6 +154,29 @@ export default function InteractiveLiveModal({
     if (status === 'setup' && events.length === 0) return;
     localStorage.setItem(storageKey, JSON.stringify({ topic, events: events.slice(-LIVE_STORAGE_EVENT_LIMIT), hostIds: selectedHostIds, themeId: selectedThemeId, nextTurnStyle, status }));
   }, [storageKey, status, topic, events, selectedHostIds, selectedThemeId, nextTurnStyle]);
+
+  // 直播结束后把这一场写进两位主持人的个人记忆
+  useEffect(() => {
+    if (status !== 'ended' || !spaceId) return;
+    const sessionId = experienceSessionRef.current;
+    if (!sessionId) return;
+
+    const participants = [hosts.lulu, hosts.keke].filter(Boolean) as Agent[];
+    if (!participants.length) return;
+    const turns = events.filter((event) => event.type === 'agent').length;
+    const cleanTopic = topic.trim();
+
+    recordGameExperienceOnce(experienceRecordedRef, spaceId, sessionId, {
+      gameType: 'live',
+      topic: `AI 聊天室 · ${cleanTopic.slice(0, 40)}`,
+      summary: `围绕「${cleanTopic}」主持了 ${turns} 段对话。`,
+      entries: participants.map((host) => ({
+        agentId: host.id,
+        agentName: host.name,
+        content: `作为 AI 聊天室主持人，围绕「${cleanTopic}」参与了 ${turns} 段对话。`,
+      })),
+    });
+  }, [status, spaceId, hosts.lulu, hosts.keke, topic, events]);
 
   if (!isOpen) return null;
   const agentTurns = events.filter((event): event is Extract<LiveEvent, { type: 'agent' }> => event.type === 'agent');
@@ -213,6 +239,7 @@ export default function InteractiveLiveModal({
     setNextTurnStyle(openingStyle === 'long' ? 'short' : 'long');
     setEvents([]);
     setStatus('live');
+    experienceSessionRef.current = createGameSessionId('live');
     const openingLength = openingStyle === 'long' ? '约 80-180 字，完整建立主题和氛围' : '约 30-100 字，简短建立主题和氛围';
     await generateTurn(hosts.lulu, `${liveGroundingRules}\n${liveAudienceRules}\n你正在主持一场只有${hostNames}参加的 AI 主题聊天室。主题是“${topic.trim()}”。这是开场发言，本轮随机采用${openingStyle === 'long' ? '较长' : '较短'}表达：请用${openingLength}的自然方式开场。后续接话者必须使用与本轮相反的长度，不能连续两轮都长讲或都短讲。只能泛泛称呼正在观看的人，不要假装看到了弹幕或观众回应。不要强行把话题交给另一位主持人。只输出要对观众说的话。`, true, []);
   };

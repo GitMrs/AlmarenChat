@@ -35,6 +35,7 @@ import {
 } from 'lucide-react';
 import { useTTS } from '@/hooks/useTTS';
 import { soupAudio } from '@/lib/workspace/game/turtle-soup/sound';
+import { createGameSessionId, recordGameExperienceOnce } from '@/lib/client/game-experience';
 import { calculateDetectiveScore, getDetectiveTitle } from '@/lib/workspace/game/turtle-soup/scoring';
 import luluImage from '@/src/lib/imgs/gaming-lulu.png';
 import kekeImage from '@/src/lib/imgs/gaming-koko.png';
@@ -155,6 +156,27 @@ export default function InteractiveTurtleSoupModal({
   const activePuzzleIdRef = useRef<string>('');
   const activeRoundIdRef = useRef<string>(`round-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`);
   const pendingAbortRef = useRef<AbortController | null>(null);
+  const experienceSessionRef = useRef<string>('');
+  const experienceRecordedRef = useRef<string>('');
+
+  // 谜题结束（解出或揭晓）后把这一局写进两位搭子的个人记忆
+  useEffect(() => {
+    if (!gameResult || !currentPuzzle || !spaceId) return;
+    const sessionId = experienceSessionRef.current;
+    if (!sessionId) return;
+
+    const solved = gameResult === 'solved';
+    recordGameExperienceOnce(experienceRecordedRef, spaceId, sessionId, {
+      gameType: 'turtlesoup',
+      topic: `海龟汤 · ${currentPuzzle.title}`,
+      summary: `谜题《${currentPuzzle.title}》，${solved ? '被推理解开' : '用户选择揭晓答案'}，共提问 ${messages.filter((message) => message.sender === 'user').length} 次、使用提示 ${unlockedHintsCount} 次。`,
+      entries: [hostLeft, hostRight].map((host) => ({
+        agentId: host.id,
+        agentName: host.name,
+        content: `作为海龟汤伴玩搭子，陪用户推理《${currentPuzzle.title}》，${solved ? '最终还原了真相' : '最后由主持人揭晓了答案'}。`,
+      })),
+    });
+  }, [gameResult, currentPuzzle, spaceId, messages, unlockedHintsCount, hostLeft, hostRight]);
 
   // 取消所有当前在途的网络请求
   const cancelAllPendingRequests = () => {
@@ -395,6 +417,7 @@ export default function InteractiveTurtleSoupModal({
     cancelAllPendingRequests();
     const currentRound = roundId || `round-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     activeRoundIdRef.current = currentRound;
+    experienceSessionRef.current = createGameSessionId('turtlesoup');
     activePuzzleIdRef.current = puzzle.id;
     setIsSubmitting(false);
     stopTTS();
