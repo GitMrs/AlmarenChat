@@ -275,6 +275,46 @@
   box-shadow: 0 2px 6px rgba(92, 67, 45, 0.06);
 }
 
+/* PC 顶部右侧的高频操作使用紧凑图标按钮，避免和角色信息争夺空间 */
+.companion-hud-chip--compact {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  justify-content: center;
+  gap: 0;
+  border-radius: 50%;
+}
+
+.companion-hud-chip--compact .companion-hud-text {
+  display: none;
+}
+
+.companion-hud-chip--wardrobe {
+  color: #be185d;
+  background: rgba(255, 248, 250, 0.94);
+  border-color: rgba(244, 114, 182, 0.42);
+}
+
+.companion-hud-chip--wardrobe:hover,
+.companion-hud-chip--wardrobe.is-active {
+  color: #be185d;
+  background: #fff0f5;
+  border-color: rgba(244, 114, 182, 0.72);
+}
+
+.companion-page[data-character="yume"] .companion-hud-chip--wardrobe {
+  color: #0284c7;
+  background: rgba(240, 249, 255, 0.94);
+  border-color: rgba(14, 165, 233, 0.42);
+}
+
+.companion-page[data-character="yume"] .companion-hud-chip--wardrobe:hover,
+.companion-page[data-character="yume"] .companion-hud-chip--wardrobe.is-active {
+  color: #0284c7;
+  background: #eaf7ff;
+  border-color: rgba(14, 165, 233, 0.72);
+}
+
 .companion-hud-chip--btn.is-muted {
   color: #9c8e82;
   background: rgba(245, 240, 235, 0.88);
@@ -1892,6 +1932,63 @@
     box-shadow: 0 2px 8px rgba(190, 24, 93, 0.15);
   }
 
+  /* 衣橱是场景入口，和特写/半身/全身镜头模式保持视觉区分 */
+  .companion-stage-wardrobe {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 34px;
+    padding: 0 11px;
+    border: 1px solid rgba(244, 114, 182, 0.38);
+    border-radius: 17px;
+    background: rgba(255, 248, 250, 0.92);
+    color: #be185d;
+    box-shadow: 0 4px 14px rgba(190, 24, 93, 0.1);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    cursor: pointer;
+    font: inherit;
+    font-size: 11.5px;
+    font-weight: 700;
+    white-space: nowrap;
+    transition: all 0.18s ease;
+  }
+
+  .companion-stage-wardrobe:hover {
+    background: #ffffff;
+    border-color: rgba(244, 114, 182, 0.7);
+    box-shadow: 0 6px 18px rgba(190, 24, 93, 0.16);
+    transform: translateY(-1px);
+  }
+
+  .companion-stage-wardrobe:active {
+    transform: translateY(0);
+  }
+
+  .companion-stage-wardrobe.is-active {
+    background: #be185d;
+    border-color: #be185d;
+    color: #ffffff;
+  }
+
+  .companion-page[data-character="yume"] .companion-stage-wardrobe {
+    border-color: rgba(14, 165, 233, 0.4);
+    background: rgba(240, 249, 255, 0.94);
+    color: #0284c7;
+    box-shadow: 0 4px 14px rgba(2, 132, 199, 0.1);
+  }
+
+  .companion-page[data-character="yume"] .companion-stage-wardrobe:hover {
+    border-color: rgba(14, 165, 233, 0.72);
+    box-shadow: 0 6px 18px rgba(2, 132, 199, 0.16);
+  }
+
+  .companion-page[data-character="yume"] .companion-stage-wardrobe.is-active {
+    background: #0284c7;
+    border-color: #0284c7;
+    color: #ffffff;
+  }
+
   .companion-page[data-character="yume"] .companion-stage-pill.is-active {
     color: #0284c7;
     box-shadow: 0 2px 8px rgba(2, 132, 199, 0.18);
@@ -2780,6 +2877,17 @@
   border-color: #e5dacd;
 }
 
+.companion-setting-row--stacked {
+  align-items: stretch;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.companion-framing-switch--settings {
+  width: 100%;
+  margin: 0;
+}
+
 .companion-setting-info {
   flex: 1;
   min-width: 0;
@@ -3125,4 +3233,911 @@
     padding: 14px 16px 18px;
   }
 }
+/* ==========================================================================
+   伴侣电话连麦与实时语音交互 (Companion Phone Call & Voice System)
+   ========================================================================== */
 
+/* 1. 底栏与控制台呼叫/语音按钮 */
+.companion-dock-btn--call {
+  color: #16a34a !important;
+  background: #f0fdf4 !important;
+  border: 1px solid rgba(34, 197, 94, 0.25) !important;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.companion-dock-btn--call:hover {
+  background: #dcfce7 !important;
+  color: #15803d !important;
+  transform: translateY(-2px) scale(1.05);
+  box-shadow: 0 4px 12px rgba(34, 197, 94, 0.28);
+}
+
+.companion-dock-btn--mic {
+  color: #d97706;
+  background: #fffbeb;
+  border: 1px solid rgba(245, 158, 11, 0.2);
+  transition: all 0.2s ease;
+}
+
+.companion-dock-btn--mic:hover {
+  background: #fef3c7;
+  color: #b45309;
+  transform: translateY(-1px);
+}
+
+.companion-dock-btn--mic.is-recording {
+  color: #ef4444 !important;
+  background: #fef2f2 !important;
+  border-color: rgba(239, 68, 68, 0.4) !important;
+  animation: mic-pulse 1.4s infinite ease-in-out;
+}
+
+@keyframes mic-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(239, 68, 68, 0);
+    transform: scale(1.08);
+  }
+}
+
+/* 2. 通话全屏沉浸浮层 (Call Layer) */
+.companion-call-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+  animation: call-fade-in 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes call-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.companion-call-backdrop {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at center, rgba(30, 20, 32, 0.72) 0%, rgba(15, 10, 18, 0.88) 100%);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.companion-call-modal {
+  position: relative;
+  z-index: 2;
+  width: 90%;
+  max-width: 440px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  border-radius: 28px;
+  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(28px);
+  color: #ffffff;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  animation: call-pop-up 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes call-pop-up {
+  from { transform: translateY(28px) scale(0.96); opacity: 0; }
+  to { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+/* 3. 拨号动画 (Dialing State) */
+.companion-call-dialing {
+  padding: 48px 24px 36px;
+  text-align: center;
+}
+
+.companion-call-avatar-outer {
+  position: relative;
+  width: 100px;
+  height: 100px;
+  margin: 0 auto 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.companion-call-ripple-ring {
+  position: absolute;
+  inset: -10px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  animation: ripple-wave 2s infinite ease-out;
+}
+
+.companion-call-ripple-ring.ring-2 {
+  animation-delay: 0.8s;
+}
+
+@keyframes ripple-wave {
+  0% { transform: scale(0.7); opacity: 0.9; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+
+.companion-call-avatar-box {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #f472b6, #ec4899);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 24px rgba(236, 72, 153, 0.45);
+  border: 3px solid rgba(255, 255, 255, 0.85);
+  position: relative;
+  z-index: 2;
+}
+
+.companion-call-layer[data-character="yume"] .companion-call-avatar-box {
+  background: linear-gradient(135deg, #38bdf8, #0ea5e9);
+  box-shadow: 0 8px 24px rgba(14, 165, 233, 0.45);
+}
+
+.companion-call-avatar-letter {
+  font-size: 32px;
+  font-weight: 800;
+  color: #ffffff;
+}
+
+.companion-call-title {
+  font-size: 22px;
+  font-weight: 800;
+  margin: 0 0 8px;
+  letter-spacing: -0.02em;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.companion-call-status-tip {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.78);
+  margin: 0 0 36px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.companion-call-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #34d399;
+  box-shadow: 0 0 10px #34d399;
+  animation: pulse-dot 1.2s infinite ease-in-out;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 0.5; transform: scale(0.9); }
+  50% { opacity: 1; transform: scale(1.2); }
+}
+
+/* 4. 接通通话状态 (Connected State) */
+.companion-call-connected {
+  width: 92%;
+  max-width: 480px;
+  padding: 18px 20px 22px;
+  min-height: 380px;
+  justify-content: space-between;
+}
+
+.companion-call-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.companion-call-header-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.companion-call-connected-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 8px #22c55e;
+}
+
+.companion-call-timer {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  color: #86efac;
+}
+
+.companion-call-peer-name {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.companion-call-live-label {
+  color: #22c55e;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.companion-call-action-label {
+  display: block;
+  margin-top: 5px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.companion-call-collapse-btn {
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: rgba(255, 255, 255, 0.85);
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.companion-call-collapse-btn:hover {
+  background: rgba(255, 255, 255, 0.22);
+  color: #ffffff;
+}
+
+.companion-call-body {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1;
+  margin-bottom: 20px;
+  justify-content: center;
+}
+
+.companion-call-bubble {
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 18px;
+  padding: 14px 16px;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transition: all 0.25s ease;
+}
+
+.companion-call-bubble--companion {
+  border-left: 3px solid #ec4899;
+}
+
+.companion-call-layer[data-character="yume"] .companion-call-bubble--companion {
+  border-left: 3px solid #0ea5e9;
+}
+
+.companion-call-bubble.is-speaking {
+  box-shadow: 0 0 20px rgba(236, 72, 153, 0.25);
+  border-color: rgba(236, 72, 153, 0.4);
+}
+
+.companion-call-bubble-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.companion-call-bubble-avatar {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #f472b6;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.companion-call-bubble-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.companion-call-bubble-text {
+  font-size: 15px;
+  line-height: 1.5;
+  color: #ffffff;
+  margin: 0;
+  word-break: break-word;
+}
+
+.companion-call-typing {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 13px;
+}
+
+.companion-call-typing > span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.45;
+  animation: companion-call-typing-bounce 1.2s infinite ease-in-out;
+}
+
+.companion-call-typing > span:nth-child(2) { animation-delay: 0.16s; }
+.companion-call-typing > span:nth-child(3) { animation-delay: 0.32s; }
+
+.companion-call-typing em {
+  margin-left: 4px;
+  font-style: normal;
+}
+
+@keyframes companion-call-typing-bounce {
+  0%, 80%, 100% { transform: translateY(0) scale(0.7); opacity: 0.35; }
+  40% { transform: translateY(-2px) scale(1); opacity: 1; }
+}
+
+.companion-call-bubble--user {
+  background: rgba(16, 185, 129, 0.12);
+  border-color: rgba(16, 185, 129, 0.3);
+}
+
+.companion-call-user-icon {
+  color: #34d399;
+  display: flex;
+  align-items: center;
+}
+
+.companion-call-bubble-text.is-hearing {
+  color: #a7f3d0;
+  font-style: italic;
+}
+
+/* 声波动画 */
+.companion-call-wave {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: auto;
+}
+
+.wave-bar {
+  width: 3px;
+  height: 12px;
+  background: #ec4899;
+  border-radius: 2px;
+  animation: wave-bounce 1s infinite ease-in-out;
+}
+
+.wave-bar.bar-2 {
+  animation-delay: 0.2s;
+  height: 16px;
+}
+
+.wave-bar.bar-3 {
+  animation-delay: 0.4s;
+  height: 10px;
+}
+
+@keyframes wave-bounce {
+  0%, 100% { transform: scaleY(0.4); }
+  50% { transform: scaleY(1.3); }
+}
+
+/* 备用文字输入框 */
+.companion-call-text-tray {
+  width: 100%;
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.companion-call-text-input {
+  flex: 1;
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 12px;
+  padding: 10px 14px;
+  color: #ffffff;
+  font-size: 14px;
+  outline: none;
+}
+
+.companion-call-text-input:focus {
+  border-color: #ec4899;
+}
+
+.companion-call-text-send {
+  background: #ec4899;
+  color: #ffffff;
+  border: none;
+  border-radius: 12px;
+  padding: 0 16px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.companion-call-text-send:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* 底部功能控制托盘 */
+.companion-call-footer {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  padding-top: 10px;
+}
+
+.companion-call-circle-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.companion-call-circle-btn:hover {
+  background: rgba(255, 255, 255, 0.24);
+  transform: translateY(-2px);
+}
+
+.companion-call-circle-btn.is-muted {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: rgba(239, 68, 68, 0.4);
+  color: #fca5a5;
+}
+
+.companion-call-circle-btn.is-active {
+  background: rgba(236, 72, 153, 0.3);
+  border-color: #ec4899;
+}
+
+.companion-call-btn-label {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.companion-call-btn--hangup {
+  background: linear-gradient(135deg, #ef4444, #dc2626) !important;
+  border: 1px solid rgba(255, 255, 255, 0.3) !important;
+  box-shadow: 0 8px 24px rgba(220, 38, 38, 0.4) !important;
+  color: #ffffff !important;
+  width: 64px !important;
+  height: 64px !important;
+}
+
+.companion-call-btn--hangup:hover {
+  background: linear-gradient(135deg, #f87171, #ef4444) !important;
+  transform: translateY(-2px) scale(1.05) !important;
+}
+
+.companion-call-btn--hangup:active {
+  transform: scale(0.96) !important;
+}
+
+/* 5. 最小化顶部灵动胶囊 (Mini Pill) */
+.companion-call-minipill {
+  position: absolute;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(20, 16, 24, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  padding: 6px 10px 6px 14px;
+  border-radius: 999px;
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  animation: pill-drop-down 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes pill-drop-down {
+  from { transform: translate(-50%, -15px); opacity: 0; }
+  to { transform: translate(-50%, 0); opacity: 1; }
+}
+
+.companion-call-minipill-expand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: none;
+  border: none;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+}
+
+.companion-call-minipill-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 6px #22c55e;
+  animation: pulse-dot 1.2s infinite ease-in-out;
+}
+
+.companion-call-minipill-icon {
+  color: #86efac;
+}
+
+.companion-call-minipill-time {
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  color: #86efac;
+}
+
+.companion-call-minipill-name {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.companion-call-minipill-hangup {
+  background: #ef4444;
+  color: #ffffff;
+  border: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  margin-left: 4px;
+  transition: all 0.2s ease;
+}
+
+.companion-call-minipill-hangup:hover {
+  background: #dc2626;
+  transform: scale(1.08);
+}
+
+/* 6. 通话结束卡片 (Ended State) */
+.companion-call-ended {
+  padding: 36px 24px 28px;
+  text-align: center;
+}
+
+.companion-call-ended-icon {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #f87171;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 16px;
+}
+
+.companion-call-ended-title {
+  font-size: 20px;
+  font-weight: 800;
+  margin: 0 0 8px;
+}
+
+.companion-call-ended-duration {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.72);
+  margin: 0 0 24px;
+}
+
+.companion-call-ended-close-btn {
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: #ffffff;
+  padding: 10px 32px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.companion-call-ended-close-btn:hover {
+  background: rgba(255, 255, 255, 0.26);
+  transform: translateY(-1px);
+}
+
+/* 通话 HUD：保留角色舞台，只叠加状态、字幕和控制键。 */
+.companion-call-layer {
+  align-items: stretch;
+  justify-content: stretch;
+}
+
+.companion-call-backdrop {
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  pointer-events: none;
+}
+
+.companion-call-modal {
+  width: 100%;
+  max-width: none;
+  min-height: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  color: #4a3427;
+}
+
+.companion-call-layer[data-phase="dialing"] .companion-call-modal,
+.companion-call-layer[data-phase="ended"] .companion-call-modal {
+  justify-content: center;
+}
+
+.companion-call-connected {
+  justify-content: initial;
+}
+
+.companion-call-header {
+  position: absolute;
+  top: 16px;
+  left: 18px;
+  right: 18px;
+  width: auto;
+  margin: 0;
+  z-index: 2;
+}
+
+.companion-call-header-pill {
+  padding: 7px 13px;
+  background: rgba(255, 253, 250, 0.9);
+  border: 1px solid rgba(228, 214, 201, 0.9);
+  box-shadow: 0 4px 14px rgba(65, 40, 25, 0.1);
+  color: #5c432d;
+}
+
+.companion-call-timer,
+.companion-call-peer-name {
+  color: #5c432d;
+}
+
+.companion-call-collapse-btn {
+  background: rgba(255, 253, 250, 0.9);
+  border-color: rgba(228, 214, 201, 0.9);
+  color: #7d6b5c;
+  box-shadow: 0 4px 14px rgba(65, 40, 25, 0.08);
+}
+
+.companion-call-body {
+  position: absolute;
+  left: 50%;
+  bottom: 108px;
+  transform: translateX(-50%);
+  width: min(580px, calc(100% - 36px));
+  max-height: 42%;
+  margin: 0;
+  justify-content: flex-end;
+  gap: 8px;
+  overflow: hidden;
+}
+
+.companion-call-bubble {
+  width: fit-content;
+  max-width: min(92%, 520px);
+  padding: 9px 14px;
+  border: 1px solid rgba(228, 214, 201, 0.9);
+  border-radius: 16px;
+  background: rgba(255, 253, 250, 0.94);
+  box-shadow: 0 4px 14px rgba(65, 40, 25, 0.1);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.companion-call-bubble--companion {
+  align-self: flex-start;
+  border-left: 3px solid #e06c75;
+}
+
+.companion-call-bubble--user {
+  align-self: flex-end;
+  border-left: 1px solid rgba(16, 185, 129, 0.35);
+  background: rgba(240, 253, 250, 0.94);
+}
+
+.companion-call-bubble-header {
+  margin-bottom: 3px;
+}
+
+.companion-call-bubble-name {
+  color: #87674c;
+}
+
+.companion-call-bubble-text {
+  color: #4a3427;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.companion-call-bubble-text.is-hearing {
+  color: #28745f;
+}
+
+.companion-call-footer {
+  position: absolute;
+  left: 50%;
+  bottom: 20px;
+  transform: translateX(-50%);
+  width: auto;
+  gap: 18px;
+  padding: 0;
+}
+
+.companion-call-circle-btn {
+  width: 58px;
+  height: 58px;
+  background: rgba(255, 253, 250, 0.94);
+  border-color: rgba(228, 214, 201, 0.9);
+  color: #5c432d;
+  box-shadow: 0 4px 14px rgba(65, 40, 25, 0.12);
+}
+
+.companion-call-btn-label {
+  display: none;
+}
+
+.companion-call-btn--hangup {
+  width: 64px !important;
+  height: 64px !important;
+}
+
+.companion-call-text-tray {
+  position: absolute;
+  left: 50%;
+  bottom: 92px;
+  transform: translateX(-50%);
+  width: min(460px, calc(100% - 36px));
+  margin: 0;
+  z-index: 3;
+}
+
+/* 通话 HUD 接管舞台顶部，避免和衣橱、语音等普通场景按钮重叠。 */
+.companion-page[data-call-phase="dialing"] .companion-stage-desktop-hud,
+.companion-page[data-call-phase="connected"] .companion-stage-desktop-hud,
+.companion-page[data-call-phase="ended"] .companion-stage-desktop-hud,
+.companion-page[data-call-phase="dialing"] .companion-floating-hud,
+.companion-page[data-call-phase="connected"] .companion-floating-hud,
+.companion-page[data-call-phase="ended"] .companion-floating-hud {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* H5 电话层使用独立的居中通话面板，不继承 PC 舞台 HUD 的全屏定位。 */
+@media (max-width: 1023px) {
+  .companion-call-layer {
+    align-items: center;
+    justify-content: center;
+  }
+
+  .companion-call-backdrop {
+    background: radial-gradient(circle at center, rgba(30, 20, 32, 0.72) 0%, rgba(15, 10, 18, 0.88) 100%);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    pointer-events: auto;
+  }
+
+  .companion-call-modal {
+    width: 90%;
+    max-width: 440px;
+    height: auto;
+    min-height: 0;
+    padding: 24px;
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    border-radius: 28px;
+    background: rgba(255, 255, 255, 0.12);
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+    color: #ffffff;
+    backdrop-filter: blur(28px);
+    -webkit-backdrop-filter: blur(28px);
+  }
+
+  .companion-call-connected {
+    width: 92%;
+    max-width: 480px;
+    min-height: 380px;
+    padding: 18px 20px 22px;
+  }
+
+  .companion-call-header {
+    position: static;
+    width: 100%;
+    margin-bottom: 16px;
+  }
+
+  .companion-call-header-pill {
+    background: rgba(0, 0, 0, 0.35);
+    border-color: rgba(255, 255, 255, 0.16);
+    color: #fff;
+  }
+
+  .companion-call-timer,
+  .companion-call-peer-name {
+    color: rgba(255, 255, 255, 0.9);
+  }
+
+  .companion-call-body {
+    position: static;
+    transform: none;
+    width: 100%;
+    max-height: 42vh;
+    margin-bottom: 20px;
+    overflow: auto;
+  }
+
+  .companion-call-bubble {
+    max-width: 92%;
+    background: rgba(0, 0, 0, 0.4);
+    border-color: rgba(255, 255, 255, 0.14);
+  }
+
+  .companion-call-bubble-name,
+  .companion-call-bubble-text {
+    color: #fff;
+  }
+
+  .companion-call-bubble--user {
+    background: rgba(16, 185, 129, 0.16);
+  }
+
+  .companion-call-footer {
+    position: static;
+    transform: none;
+    width: 100%;
+    gap: 18px;
+    padding-top: 10px;
+  }
+
+  .companion-call-btn-label {
+    display: block;
+  }
+
+  .companion-call-text-tray {
+    position: static;
+    transform: none;
+    width: 100%;
+    margin-bottom: 16px;
+  }
+}

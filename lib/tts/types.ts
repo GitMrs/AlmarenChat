@@ -20,6 +20,8 @@ export interface TTSOptions {
   cacheNamespace?: 'gomoku' | 'companion' | string;
   engine?: 'edge' | 'fish-audio';
   referenceId?: string;
+  format?: 'mp3' | 'pcm';
+  latency?: 'balanced' | 'normal';
 }
 
 export interface TTSResult {

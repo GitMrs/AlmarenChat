@@ -1331,6 +1331,23 @@ export const tts = {
     }
     return res.blob();
   },
+  stream: async (text: string, options?: { voice?: string }, signal?: AbortSignal) => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    const res = await fetch(`${API_BASE}/tts/stream`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ text, ...options }),
+      signal,
+    });
+    if (!res.ok || !res.body) {
+      const err = await res.json().catch(() => ({ error: 'Streaming TTS request failed' }));
+      throw new Error(err.error || `HTTP ${res.status}`);
+    }
+    return res.body;
+  },
   getAudioUrl: (text: string, options?: { voice?: string; rate?: string; pitch?: string }) => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
     const params = new URLSearchParams({ text });

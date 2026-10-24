@@ -1,4 +1,4 @@
-import { type KoroModel, stepClothSprings, stepPendantSprings } from '@/lib/companion/vendor/koro-core.js';
+import { type KoroModel, stepClothSprings, stepPendantSprings } from './vendor/koro-core.js';
 
 interface Vector { X: number; Y: number }
 interface Normalization { Minimum: number; Default: number; Maximum: number }

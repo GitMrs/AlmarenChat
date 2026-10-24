@@ -3,8 +3,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Check, ChevronRight, Eye, LayoutGrid, Loader2, MessageCircle, Pause, Play, RotateCcw, SendHorizonal, Settings, Shirt, Sliders, Smile, Sparkles, Volume2, VolumeX, X } from 'lucide-react';
+import { Check, ChevronDown, ChevronRight, ChevronUp, Eye, LayoutGrid, Loader2, MessageCircle, Mic, MicOff, Pause, PhoneCall, PhoneOff, Play, RotateCcw, SendHorizonal, Settings, Shirt, Sliders, Smile, Sparkles, Volume2, VolumeX, X } from 'lucide-react';
 import CompanionStage, { type FramingMode, type StageHandle, type StageSnapshot } from './CompanionStage';
+import CallOverlay, { type CallPhase } from './CallOverlay';
+import { CallSoundManager, VoiceRecognitionManager } from '@/lib/companion/call-audio';
 import { companionCharacters, type CompanionCharacter, type CompanionSkin } from '@/lib/companion/catalog';
 import { getRandomTapLine, getRapidTapLine, getRandomStartupLine, getRandomDragLine, type VoiceLine } from '@/lib/companion/voice';
 import '@/app/companion/companion.css';
@@ -14,12 +16,19 @@ import { getCompanionReplyReaction, type CompanionReply } from '@/lib/companion/
 import { primeChatAudio } from '@/lib/companion/chat-audio';
 import { tts } from '@/lib/client/api';
 import { cleanMarkdownForTTS } from '@/lib/tts/markdown-cleaner';
+import { playChunkedMp3 } from '@/lib/companion/stream-audio';
 
 interface CompanionDisplayMessage {
   id: string;
   sender: 'user' | 'companion';
   text: string;
   isSticker?: boolean;
+}
+
+interface CallTranscriptMessage {
+  id: string;
+  sender: 'user' | 'companion';
+  text: string;
 }
 
 function getInitialMotion(charId: string): string {
@@ -30,6 +39,20 @@ function getRandomIdleMotion(charId: string, currentMotionId: string): string {
   const pool = getCompanionBehavior(charId).idlePool;
   const candidates = pool.filter(id => id !== currentMotionId);
   return candidates[Math.floor(Math.random() * candidates.length)] || pool[0];
+}
+
+function splitSpeechText(text: string): string[] {
+  const normalized = text.replace(/\s+/g, ' ').trim();
+  if (!normalized) return [];
+  const chunks: string[] = [];
+  let rest = normalized;
+  while (rest.length > 0) {
+    const match = rest.match(/^(.{16,180}?[。！？!?；;]|.{80,180}(?:，|,|：|:)|.{1,180}$)/);
+    const part = match?.[1]?.trim() || rest.slice(0, 180).trim();
+    chunks.push(part);
+    rest = rest.slice(part.length).trim();
+  }
+  return chunks.filter(Boolean);
 }
 
 function releaseAudio(audio: HTMLAudioElement) {
@@ -253,6 +276,44 @@ function CompanionSession({
     return val !== null ? val === 'true' : true;
   });
 
+  // ================= 电话连麦与实时语音状态 =================
+  const [callPhase, setCallPhase] = useState<CallPhase>('idle');
+  const [callDuration, setCallDuration] = useState(0);
+  const [isCallMuted, setIsCallMuted] = useState(false);
+  const [isCallCollapsed, setIsCallCollapsed] = useState(false);
+  const [callHearing, setCallHearing] = useState('');
+  const [callUserText, setCallUserText] = useState('');
+  const [callSubtitle, setCallSubtitle] = useState('');
+  const [callReplying, setCallReplying] = useState(false);
+  const [callTranscript, setCallTranscript] = useState<CallTranscriptMessage[]>([]);
+  const [isComposerMicRecording, setIsComposerMicRecording] = useState(false);
+
+  const callSoundsRef = useRef<CallSoundManager | null>(null);
+  const callVoiceRecRef = useRef<VoiceRecognitionManager | null>(null);
+  const composerVoiceRecRef = useRef<VoiceRecognitionManager | null>(null);
+  const callTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const callDialTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (callDialTimerRef.current) clearTimeout(callDialTimerRef.current);
+      if (callTimerRef.current) clearInterval(callTimerRef.current);
+      callSoundsRef.current?.stopAll();
+      callVoiceRecRef.current?.destroy();
+      composerVoiceRecRef.current?.destroy();
+    };
+  }, []);
+
+  // 通话中播放 AI 语音时暂停麦克风，避免把扬声器里的回复重新识别成用户输入。
+  useEffect(() => {
+    if (callPhase !== 'connected') return;
+    if (isSpeaking || isCallMuted) {
+      callVoiceRecRef.current?.stop();
+      return;
+    }
+    callVoiceRecRef.current?.start();
+  }, [callPhase, isSpeaking, isCallMuted]);
+
 
 
   // 移动端视口动态适配（精准兼容 iOS Safari 顶底栏、Chrome、微信 Webview 与软键盘弹起）
@@ -357,6 +418,7 @@ function CompanionSession({
   const chatAudioRef = useRef<HTMLAudioElement | null>(null);
   const chatPlaybackRef = useRef(0);
   const chatObjectUrlRef = useRef<string | null>(null);
+  const streamCleanupRef = useRef<(() => void) | null>(null);
   const isComposingRef = useRef(false);
   const lastReplyIdRef = useRef(reply?.id);
   const voiceEnabledRef = useRef(voiceEnabled);
@@ -394,6 +456,8 @@ function CompanionSession({
     chatPlaybackRef.current++;
     chatAbortControllerRef.current?.abort();
     chatAbortControllerRef.current = null;
+    streamCleanupRef.current?.();
+    streamCleanupRef.current = null;
     const audio = currentAudioRef.current;
     currentAudioRef.current = null;
     if (audio) releaseAudio(audio);
@@ -410,6 +474,10 @@ function CompanionSession({
 
   const primeReplyAudio = () => {
     stopPlayback();
+    if (callPhase === 'connected' && voiceEnabledRef.current) {
+      // 用户说完后到 AI 音频真正开始播放前，继续保持麦克风关闭。
+      setIsSpeaking(true);
+    }
     if (!voiceEnabledRef.current) return;
     const audio = chatAudioRef.current || new Audio();
     chatAudioRef.current = audio;
@@ -436,7 +504,13 @@ function CompanionSession({
   const playChatReply = async (message: CompanionReply) => {
     const text = cleanMarkdownForTTS(message.content);
     if (!voiceEnabledRef.current || !text) return;
+    if (callPhase === 'connected') {
+      // TTS 合成阶段也先暂停收音，避免网络延迟期间用户说话和即将播放的回复串在一起。
+      callVoiceRecRef.current?.stop();
+    }
     stopPlayback();
+    // 合成期间也视为“AI 正在说话”，保持收音暂停，直到本轮播放结束。
+    if (callPhase === 'connected') setIsSpeaking(true);
     const playback = chatPlaybackRef.current;
     const controller = new AbortController();
     chatAbortControllerRef.current = controller;
@@ -449,6 +523,57 @@ function CompanionSession({
       setChatVoiceNotice({ messageId: message.id, status: 'failed' });
     };
     try {
+      const canStreamCallAudio = callPhase === 'connected'
+        && typeof voice === 'string'
+        && voice.startsWith('fish-')
+        && typeof window !== 'undefined'
+        && 'MediaSource' in window
+        && MediaSource.isTypeSupported('audio/mpeg');
+      if (canStreamCallAudio) {
+        const audio = chatAudioRef.current || new Audio();
+        chatAudioRef.current = audio;
+        currentAudioRef.current = audio;
+        audio.onplaying = () => {
+          if (!isCurrent()) return;
+          isPlayingVoiceRef.current = true;
+          setChatVoiceNotice(null);
+          setIsSpeaking(true);
+          stage.current?.speak(Math.max(2000, text.length * 180));
+        };
+        // 流式播放由 playChunkedMp3 在 audio 真正 ended 后推进下一句。
+        audio.onended = null;
+        audio.onpause = () => {
+          if (!isCurrent()) return;
+          setIsSpeaking(false);
+          stage.current?.stopSpeaking();
+        };
+        // 短回复使用一个完整音频流。拆成多个句子会在 MediaSource 切换时
+        // 造成后一段尚未接上就触发 ended，听感上像只播放了半句话。
+        const segments = text.length <= 180 ? [text] : splitSpeechText(text);
+        let segmentIndex = 0;
+        const playNextSegment = async (): Promise<void> => {
+          if (!isCurrent() || segmentIndex >= segments.length) return;
+          streamCleanupRef.current?.();
+          streamCleanupRef.current = null;
+          const segment = segments[segmentIndex++];
+          const body = await tts.stream(segment, { voice }, controller.signal);
+          if (!isCurrent()) return;
+          streamCleanupRef.current = await playChunkedMp3(audio, body, controller.signal, {
+            onPlaying: () => {
+              isPlayingVoiceRef.current = true;
+              setChatVoiceNotice(null);
+              stage.current?.speak(Math.max(1200, segment.length * 180));
+            },
+            onError: failed,
+            onEnded: () => {
+              if (segmentIndex < segments.length) void playNextSegment().catch(failed);
+              else if (isCurrent()) stopPlayback();
+            },
+          });
+        };
+        await playNextSegment();
+        return;
+      }
       const blob = await tts.synthesizeBlob(text, { voice }, controller.signal);
       if (!isCurrent()) return;
       const audio = chatAudioRef.current || new Audio();
@@ -486,6 +611,15 @@ function CompanionSession({
   useEffect(() => {
     if (!ready || !reply || reply.id === lastReplyIdRef.current) return;
     lastReplyIdRef.current = reply.id;
+    if (callPhase === 'connected') {
+      setCallReplying(false);
+    }
+    if (callPhase === 'connected') {
+      setCallSubtitle(reply.content);
+      setCallTranscript(current => current.some(message => message.id === reply.id)
+        ? current
+        : [...current, { id: reply.id, sender: 'companion', text: reply.content }]);
+    }
     const reaction = getCompanionReplyReaction(character, reply.emotion);
     if (reaction.motionId) {
       if (motionId === reaction.motionId) stage.current?.restart();
@@ -496,11 +630,12 @@ function CompanionSession({
     if (expressionResetTimerRef.current) clearSessionTimeout(expressionResetTimerRef.current);
     expressionResetTimerRef.current = setSessionTimeout(() => setExpressionId(''), 4000);
     void playChatReply(reply);
-  }, [reply, ready]);
+  }, [reply, ready, callPhase]);
 
   const selectTapLine = (kind: 'tap' | 'rapid'): VoiceLine => {
-    // 皮肤台词没有对应的本地音频时，普通点击和连击都使用同一组轻量字幕反馈。
-    const skinLines = activeSkin?.interaction?.tapLines;
+    // 换装皮肤没有专属录制音频时，使用皮肤台词轻量字幕反馈；默认初始外观优先使用真实角色配音库。
+    const isOriginalSkin = !activeSkin || activeSkin.id === 'original' || activeSkin.id === 'default';
+    const skinLines = !isOriginalSkin ? activeSkin.interaction?.tapLines : null;
     if (skinLines?.length) {
       const candidates = skinLines.filter(text => text !== lastTapLineTextRef.current);
       const text = (candidates.length ? candidates : skinLines)[Math.floor(Math.random() * (candidates.length ? candidates : skinLines).length)];
@@ -563,8 +698,8 @@ function CompanionSession({
 
   const handleScenePointerDown = (e: React.PointerEvent) => {
     if (!usable || dragStartRef.current || e.isPrimary === false || (e.pointerType === 'mouse' && e.button !== 0)) return;
-    const target = e.target as HTMLCanvasElement;
-    if (!target.matches('canvas.companion-canvas')) return;
+    const target = e.target as HTMLCanvasElement | null;
+    if (!target?.matches?.('canvas.companion-canvas')) return;
     try {
       target.setPointerCapture(e.pointerId);
     } catch {
@@ -1005,6 +1140,180 @@ function CompanionSession({
     onSendMessage?.(item.userText).catch(console.error);
   };
 
+  const startCallVoiceRecognition = () => {
+    if (!VoiceRecognitionManager.isSupported()) {
+      console.warn('[Call] Web Speech API not supported in this browser');
+      return;
+    }
+    if (!callVoiceRecRef.current) {
+      callVoiceRecRef.current = new VoiceRecognitionManager({
+        onInterimResult: (interim) => {
+          setCallHearing(interim);
+          triggerListeningMotion();
+        },
+        onFinalResult: (finalText) => {
+          setCallHearing('');
+          setCallUserText(finalText);
+          // 一句话完成后先停收音，等本轮 AI 回复播放结束再恢复。
+          callVoiceRecRef.current?.stop();
+          if (!finalText || isStreaming) return;
+          setCallTranscript(current => [...current, {
+            id: `call-user-${Date.now()}`,
+            sender: 'user',
+            text: finalText,
+          }]);
+          setCallReplying(true);
+          primeReplyAudio();
+          triggerListeningMotion();
+          onSendMessage?.(finalText).catch(error => {
+            setCallReplying(false);
+            console.error(error);
+          });
+        },
+        onError: (err) => {
+          console.warn('[Call VoiceRecognition error]:', err);
+        },
+      });
+    }
+    callVoiceRecRef.current.start();
+  };
+
+  const handleStartCall = () => {
+    if (callPhase === 'dialing' || callPhase === 'connected') return;
+    stopPlayback();
+    setCallPhase('dialing');
+    setCallDuration(0);
+    setCallHearing('');
+    setCallUserText('');
+    setCallSubtitle('');
+    setCallReplying(false);
+    setCallTranscript([]);
+    setIsCallCollapsed(false);
+    setIsCallMuted(false);
+
+    if (!callSoundsRef.current) {
+      callSoundsRef.current = new CallSoundManager();
+    }
+    callSoundsRef.current.playRing();
+    triggerListeningMotion();
+    // 必须在用户点击的同步调用链里启动识别，否则浏览器可能拒绝麦克风权限。
+    // 拨号动画仍然延迟 2 秒接通，但权限申请提前完成。
+    startCallVoiceRecognition();
+
+    if (callDialTimerRef.current) clearTimeout(callDialTimerRef.current);
+    callDialTimerRef.current = setTimeout(() => {
+      if (!sessionActiveRef.current) return;
+      callSoundsRef.current?.playConnect();
+      setCallPhase('connected');
+      setCallReplying(false);
+
+      if (callTimerRef.current) clearInterval(callTimerRef.current);
+      callTimerRef.current = setInterval(() => {
+        setCallDuration(d => d + 1);
+      }, 1000);
+
+      const greeting = character.id === 'yume'
+        ? '喂喂~ 是你呀！今天有什么悄悄话要跟我说吗？✨'
+        : '喂~ 收到你的电话啦！今天过得顺心吗，快跟我说说吧🌸';
+      setCallSubtitle(greeting);
+
+      const pseudoReply: CompanionReply = {
+        id: `call-greeting-${Date.now()}`,
+        content: greeting,
+        emotion: 'happy',
+      };
+      setCallTranscript([{ id: pseudoReply.id, sender: 'companion', text: greeting }]);
+      void playChatReply(pseudoReply);
+    }, 3000);
+  };
+
+  const handleHangUp = () => {
+    if (callDialTimerRef.current) {
+      clearTimeout(callDialTimerRef.current);
+      callDialTimerRef.current = null;
+    }
+    if (callTimerRef.current) {
+      clearInterval(callTimerRef.current);
+      callTimerRef.current = null;
+    }
+    callVoiceRecRef.current?.stop();
+    callSoundsRef.current?.playHangUp();
+    setCallPhase('ended');
+    setCallReplying(false);
+    stopPlayback();
+  };
+
+  const handleToggleCallMute = () => {
+    setIsCallMuted(prev => {
+      const next = !prev;
+      if (next) {
+        callVoiceRecRef.current?.stop();
+      } else {
+        callVoiceRecRef.current?.start();
+      }
+      return next;
+    });
+  };
+
+  const handleToggleCallCollapse = () => {
+    setIsCallCollapsed(c => !c);
+  };
+
+  const handleDismissCallEnded = () => {
+    setCallPhase('idle');
+    setCallReplying(false);
+    callSoundsRef.current?.stopAll();
+  };
+
+  const handleCallManualSend = (text: string) => {
+    if (!text.trim() || isStreaming) return;
+    setCallTranscript(current => [...current, {
+      id: `call-user-${Date.now()}`,
+      sender: 'user',
+      text: text.trim(),
+    }]);
+    setCallReplying(true);
+    primeReplyAudio();
+    triggerListeningMotion();
+    onSendMessage?.(text.trim()).catch(error => {
+      setCallReplying(false);
+      console.error(error);
+    });
+  };
+
+  const handleToggleComposerMic = () => {
+    if (!VoiceRecognitionManager.isSupported()) {
+      alert('当前浏览器未开放或不支持 Web Speech 语音识别，建议使用 Chrome / Edge 或 Safari 访问。');
+      return;
+    }
+    if (isComposerMicRecording) {
+      composerVoiceRecRef.current?.stop();
+      setIsComposerMicRecording(false);
+      return;
+    }
+    stopPlayback();
+    triggerListeningMotion();
+    if (!composerVoiceRecRef.current) {
+      composerVoiceRecRef.current = new VoiceRecognitionManager({
+        onInterimResult: (interim) => {
+          onDraftChange?.(interim);
+        },
+        onFinalResult: (finalText) => {
+          onDraftChange?.(finalText);
+          setIsComposerMicRecording(false);
+        },
+        onEnd: () => {
+          setIsComposerMicRecording(false);
+        },
+        onError: () => {
+          setIsComposerMicRecording(false);
+        },
+      });
+    }
+    composerVoiceRecRef.current.start();
+    setIsComposerMicRecording(true);
+  };
+
   const retry = () => {
     setError('');
     setReady(false);
@@ -1047,6 +1356,7 @@ function CompanionSession({
     <main
       className="companion-page companion-page--embedded"
       data-character={character.id}
+      data-call-phase={callPhase}
     >
       <div
         className={`companion-workspace ${panelCollapsed ? 'is-collapsed' : ''}`}
@@ -1093,47 +1403,23 @@ function CompanionSession({
                 <span>{activeSkin?.name ? `【${activeSkin.name}】` : (character.title || '治愈伴侣')}</span>
               </div>
             </div>
-            <div className="companion-stage-desktop-actions">
-              <div className="companion-stage-pill-group" role="group" aria-label="镜头模式">
-                <button
-                  type="button"
-                  className={`companion-stage-pill ${framingMode === 'closeup' ? 'is-active' : ''}`}
-                  onClick={() => setFramingMode('closeup')}
-                >
-                  特写
-                </button>
-                <button
-                  type="button"
-                  className={`companion-stage-pill ${framingMode === 'half' ? 'is-active' : ''}`}
-                  onClick={() => setFramingMode('half')}
-                >
-                  半身
-                </button>
-                <button
-                  type="button"
-                  className={`companion-stage-pill ${framingMode === 'full' ? 'is-active' : ''}`}
-                  onClick={() => setFramingMode('full')}
-                >
-                  全身
-                </button>
-              </div>
+            <div className="companion-hud-capsules">
+              {voiceReplayButton}
               {character.skins && character.skins.length > 1 && (
                 <button
                   type="button"
-                  className={`companion-stage-pill ${wardrobeOpen ? 'is-active' : ''}`}
+                  className={`companion-hud-chip companion-hud-chip--btn companion-hud-chip--compact companion-hud-chip--wardrobe ${wardrobeOpen ? 'is-active' : ''}`}
                   onClick={() => setWardrobeOpen(true)}
                   title={`换装衣橱 · 当前【${activeSkin?.name || '经典初见'}】`}
+                  aria-label={`打开换装衣橱，当前穿戴${activeSkin?.name || '经典初见'}`}
+                  aria-pressed={wardrobeOpen}
                 >
-                  <Shirt size={14} style={{ marginRight: 4, display: 'inline', verticalAlign: '-2px' }} />
-                  换装衣橱
+                  <Shirt size={15} aria-hidden="true" />
                 </button>
               )}
-            </div>
-            <div className="companion-hud-capsules">
-              {voiceReplayButton}
               <button
                 type="button"
-                className={`companion-hud-chip companion-hud-chip--btn ${!voiceEnabled ? 'is-muted' : ''}`}
+                className={`companion-hud-chip companion-hud-chip--btn companion-hud-chip--compact ${!voiceEnabled ? 'is-muted' : ''}`}
                 onClick={() => toggleVoice(!voiceEnabled)}
                 title={voiceEnabled ? '伴侣对话语音已开启（点击静音）' : '伴侣对话语音已静音（点击开启）'}
                 aria-label={voiceEnabled ? '伴侣对话语音已开启，点击静音' : '伴侣对话语音已静音，点击开启'}
@@ -1214,7 +1500,7 @@ function CompanionSession({
             speed={speed}
             zoom={zoom}
             focusOffsetY={focusOffsetY}
-            framingMode={framingMode}
+            framingMode={callPhase === 'dialing' || callPhase === 'connected' ? 'half' : framingMode}
             autoBlink={autoBlink}
             lookAt={lookAt}
             speaking={isSpeaking}
@@ -1335,6 +1621,28 @@ function CompanionSession({
             </>
           )}
 
+          {/* 通话全屏沉浸浮层与最小化顶部胶囊 */}
+          <CallOverlay
+            character={character}
+            activeSkin={activeSkin}
+            phase={callPhase}
+            duration={callDuration}
+            isMuted={isCallMuted}
+            onToggleMute={handleToggleCallMute}
+            onHangUp={handleHangUp}
+            isCollapsed={isCallCollapsed}
+            onToggleCollapse={handleToggleCallCollapse}
+            hearingText={callHearing}
+            userText={callUserText}
+            subtitleText={callSubtitle}
+            transcript={callTranscript}
+            isReplying={callPhase === 'connected' && (isStreaming || callReplying)}
+            isSpeaking={isSpeaking}
+            isUserSpeaking={Boolean(callHearing)}
+            onManualSend={handleCallManualSend}
+            onDismissEnded={handleDismissCallEnded}
+          />
+
           {/* 灵动胶囊底栏 (Candy Dockbar: 表情互动 + 消息输入 + 发送) */}
           <div className="companion-dockbar" role="toolbar" aria-label="伴侣快捷交互栏">
             <div className="companion-dock" data-character={character.id}>
@@ -1349,13 +1657,24 @@ function CompanionSession({
                 <Smile size={18} />
               </button>
 
-              {/* 2. 消息输入框 */}
+              {/* 2. 拨打电话连麦按钮 */}
+              {/* <button
+                type="button"
+                className={`companion-dock-btn companion-dock-btn--call ${callPhase !== 'idle' ? 'is-active' : ''}`}
+                aria-label="和伴侣语音通话"
+                title="开启语音电话"
+                onClick={handleStartCall}
+              >
+                <PhoneCall size={18} />
+              </button> */}
+
+              {/* 3. 消息输入框 */}
               <form className="companion-composer" onSubmit={handleSendMessage}>
                 <input
                   ref={inputRef}
                   type="text"
                   className="companion-composer-input"
-                  placeholder={effectiveIsReplying ? `${character.name} 正在认真回复中…` : `和${character.name}聊聊...`}
+                  placeholder={effectiveIsReplying ? `${character.name} 正在认真回复中…` : isComposerMicRecording ? '正在倾听你说的话...' : `和${character.name}聊聊...`}
                   value={messageText}
                   onChange={e => onDraftChange?.(e.target.value)}
                   onCompositionStart={() => { isComposingRef.current = true; }}
@@ -1365,7 +1684,18 @@ function CompanionSession({
                 />
               </form>
 
-              {/* 3. 发送按钮 */}
+              {/* 4. 语音麦克风即时录音按钮 (Composer Mic) */}
+              <button
+                type="button"
+                className={`companion-dock-btn companion-dock-btn--mic ${isComposerMicRecording ? 'is-recording' : ''}`}
+                aria-label={isComposerMicRecording ? '正在听你说...' : '麦克风语音输入'}
+                title={isComposerMicRecording ? '点击结束语音' : '点击按麦克风说话'}
+                onClick={handleToggleComposerMic}
+              >
+                {isComposerMicRecording ? <MicOff size={18} /> : <Mic size={18} />}
+              </button>
+
+              {/* 5. 发送按钮 */}
               <button
                 type="button"
                 className={`companion-dock-btn companion-dock-btn--send ${messageText.trim() && !effectiveIsReplying ? 'is-ready' : 'is-disabled'}`}
@@ -1394,16 +1724,26 @@ function CompanionSession({
               </div>
             </div>
             <div className="companion-console-header-actions">
+              {/* <button
+                type="button"
+                className={`companion-hud-chip companion-hud-chip--btn ${callPhase !== 'idle' ? 'is-active text-emerald-600' : ''}`}
+                onClick={handleStartCall}
+                title="拨打语音电话"
+                aria-label="拨打语音电话"
+              >
+                <PhoneCall size={14} className="text-emerald-600" />
+                <span className="companion-hud-text">打电话</span>
+              </button> */}
               <button
-              type="button"
-              className="companion-hud-chip companion-hud-chip--btn"
-              onClick={() => setSettingsOpen(true)}
-              title="伴侣偏好设置"
-              aria-label="伴侣偏好设置"
-            >
-              <Settings size={15} />
-              <span className="companion-hud-text">设置</span>
-            </button>
+                type="button"
+                className="companion-hud-chip companion-hud-chip--btn"
+                onClick={() => setSettingsOpen(true)}
+                title="伴侣偏好设置"
+                aria-label="伴侣偏好设置"
+              >
+                <Settings size={15} />
+                <span className="companion-hud-text">设置</span>
+              </button>
             </div>
           </div>
 
@@ -1481,7 +1821,7 @@ function CompanionSession({
                   <input
                     type="text"
                     className="companion-desktop-composer-input"
-                    placeholder={effectiveIsReplying ? `${character.name} 正在认真回复中…` : `和${character.name}聊聊... (按 Enter 发送)`}
+                    placeholder={effectiveIsReplying ? `${character.name} 正在认真回复中…` : isComposerMicRecording ? '正在倾听你说的话...' : `和${character.name}聊聊... (按 Enter 发送)`}
                     value={messageText}
                     onChange={e => onDraftChange?.(e.target.value)}
                     onCompositionStart={() => { isComposingRef.current = true; }}
@@ -1489,6 +1829,15 @@ function CompanionSession({
                     onKeyDown={handleComposerKeyDown}
                     disabled={!usable || effectiveIsReplying}
                   />
+                  <button
+                    type="button"
+                    className={`companion-dock-btn companion-dock-btn--mic mr-2 ${isComposerMicRecording ? 'is-recording' : ''}`}
+                    onClick={handleToggleComposerMic}
+                    title={isComposerMicRecording ? '点击结束语音识别' : '麦克风语音输入'}
+                    aria-label="麦克风语音输入"
+                  >
+                    {isComposerMicRecording ? <MicOff size={16} /> : <Mic size={16} />}
+                  </button>
                   <button
                     type="submit"
                     className={`companion-desktop-send-btn ${messageText.trim() && !effectiveIsReplying ? 'is-ready' : ''}`}
@@ -1855,6 +2204,25 @@ function CompanionSession({
                     >
                       <span className="companion-switch-thumb" />
                     </button>
+                  </div>
+                </div>
+
+                {/* 2. 显示与镜头 */}
+                <div className="companion-settings-group">
+                  <div className="companion-settings-group-header">
+                    <h5 className="companion-settings-group-title">显示与镜头</h5>
+                  </div>
+                  <div className="companion-setting-row companion-setting-row--stacked">
+                    <div className="companion-setting-info">
+                      <span className="companion-setting-label">角色构图</span>
+                      <p className="companion-setting-desc">选择角色在舞台中的取景范围。</p>
+                    </div>
+                    <div className="companion-framing-switch companion-framing-switch--settings" role="group" aria-label="角色构图">
+                      <button type="button" aria-pressed={framingMode === 'auto'} onClick={() => setFramingMode('auto')}>自适应</button>
+                      <button type="button" aria-pressed={framingMode === 'closeup'} onClick={() => setFramingMode('closeup')}>大特写</button>
+                      <button type="button" aria-pressed={framingMode === 'half'} onClick={() => setFramingMode('half')}>半身</button>
+                      <button type="button" aria-pressed={framingMode === 'full'} onClick={() => setFramingMode('full')}>全身</button>
+                    </div>
                   </div>
                 </div>
 

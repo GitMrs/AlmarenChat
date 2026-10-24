@@ -161,6 +161,8 @@ interface StageRuntime {
   manualSpeakUntil: number;
   endedFired: boolean;
   uncompressedHeight?: number;
+  cameraHalfHeight?: number;
+  cameraCenterY?: number;
 }
 
 const resourceJsonCache = new Map<string, any>();
@@ -737,16 +739,28 @@ const KoroStage = forwardRef<StageHandle, StageProps>(function KoroStage(props, 
           const focusOffset = (settings.focusOffsetY ?? 0) * baseHalfHeight * 0.75;
 
           // 核心防缩放算法：利用 compressionRatio 补偿 halfHeight，保证像素级渲染尺度 100% 恒定，键盘挤压绝不缩水
-          const halfHeight = (baseHalfHeight / settings.zoom) * compressionRatio;
-          const halfWidth = halfHeight * currentAspect;
+          const targetHalfHeight = (baseHalfHeight / settings.zoom) * compressionRatio;
           const centerX = (bounds.maximumX + bounds.minimumX) / 2;
 
-          let centerY = baseCenterY + focusOffset;
+          let targetCenterY = baseCenterY + focusOffset;
           if (isCompressed) {
             // 软键盘弹起时焦点平滑保持在面部与眼神区域，保证眼神对视自然留在剩余视口中
             const faceY = bounds.minimumY + modelHeight * 0.16;
-            centerY = faceY + (baseCenterY - faceY) * compressionRatio + focusOffset;
+            targetCenterY = faceY + (baseCenterY - faceY) * compressionRatio + focusOffset;
           }
+
+          // 构图切换（例如通话时从全身切到半身）使用相机插值，避免一帧内跳变。
+          if (runtime.current.cameraHalfHeight === undefined || runtime.current.cameraCenterY === undefined) {
+            runtime.current.cameraHalfHeight = targetHalfHeight;
+            runtime.current.cameraCenterY = targetCenterY;
+          } else {
+            const cameraEase = 1 - Math.exp(-delta / 0.22);
+            runtime.current.cameraHalfHeight += (targetHalfHeight - runtime.current.cameraHalfHeight) * cameraEase;
+            runtime.current.cameraCenterY += (targetCenterY - runtime.current.cameraCenterY) * cameraEase;
+          }
+          const halfHeight = runtime.current.cameraHalfHeight;
+          const halfWidth = halfHeight * currentAspect;
+          const centerY = runtime.current.cameraCenterY;
 
           projection[0] = 1 / halfWidth;
           projection[5] = -1 / halfHeight;
