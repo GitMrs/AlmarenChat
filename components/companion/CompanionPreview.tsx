@@ -208,6 +208,8 @@ function CompanionSession({
     return character.skins.find(s => s.id === currentSkinId) ?? character.skins[0];
   }, [character.skins, currentSkinId]);
 
+  const pendingEquipLineRef = useRef<VoiceLine | null>(null);
+
   useEffect(() => {
     if (activeSkin) onCompanionSkinChange?.(activeSkin);
   }, [activeSkin, onCompanionSkinChange]);
@@ -238,14 +240,24 @@ function CompanionSession({
     }
     setGeneration(g => g + 1);
     setReady(false);
+    const equipText = skin.interaction?.equipMessage ?? `换好【${skin.name}】啦！怎么样，好看吗？✨`;
     setTapBubble({
-      text: skin.interaction?.equipMessage ?? `换好【${skin.name}】啦！怎么样，好看吗？✨`,
+      text: equipText,
       id: Date.now(),
     });
     if (bubbleTimerRef.current) clearTimeout(bubbleTimerRef.current);
     bubbleTimerRef.current = setTimeout(() => {
       setTapBubble(null);
-    }, 3800);
+    }, 4500);
+
+    const isOriginalSkin = skin.id === 'original' || skin.id === 'default';
+    if (!isOriginalSkin) {
+      pendingEquipLineRef.current = {
+        id: `skin-${skin.id}-equip`,
+        text: equipText,
+        audioUrl: `/companion/audio/voice/${character.id}/skins/${skin.id}/equip.mp3`,
+      };
+    }
   };
 
   const sceneBg = behavior.defaultSceneBg ?? 'cherry_room';
@@ -633,13 +645,20 @@ function CompanionSession({
   }, [reply, ready, callPhase]);
 
   const selectTapLine = (kind: 'tap' | 'rapid'): VoiceLine => {
-    // 换装皮肤没有专属录制音频时，使用皮肤台词轻量字幕反馈；默认初始外观优先使用真实角色配音库。
+    // 换装皮肤优先使用专属录制的高保真本地音频与字幕反馈；默认初始外观使用基础角色配音库。
     const isOriginalSkin = !activeSkin || activeSkin.id === 'original' || activeSkin.id === 'default';
     const skinLines = !isOriginalSkin ? activeSkin.interaction?.tapLines : null;
     if (skinLines?.length) {
       const candidates = skinLines.filter(text => text !== lastTapLineTextRef.current);
-      const text = (candidates.length ? candidates : skinLines)[Math.floor(Math.random() * (candidates.length ? candidates : skinLines).length)];
-      return { id: `skin-${activeSkin?.id ?? 'default'}-${kind}`, text };
+      const pool = candidates.length ? candidates : skinLines;
+      const text = pool[Math.floor(Math.random() * pool.length)];
+      const lineIdx = skinLines.indexOf(text);
+      const filename = `tap_${String(lineIdx + 1).padStart(2, '0')}.mp3`;
+      return {
+        id: `skin-${activeSkin?.id ?? 'default'}-${kind}`,
+        text,
+        audioUrl: `/companion/audio/voice/${character.id}/skins/${activeSkin?.id}/${filename}`,
+      };
     }
     return kind === 'tap'
       ? getRandomTapLine(character.id, lastTapLineTextRef.current)
@@ -929,27 +948,61 @@ function CompanionSession({
 
   // 播放初次载入欢迎问候语音
   const playStartupVoice = () => {
-    const skinLines = activeSkin?.interaction?.startupLines;
-    const line = skinLines?.length
-      ? { id: `skin-${activeSkin?.id ?? 'default'}-startup`, text: skinLines[Math.floor(Math.random() * skinLines.length)] }
-      : getRandomStartupLine(character.id);
+    const isOriginalSkin = !activeSkin || activeSkin.id === 'original' || activeSkin.id === 'default';
+    const skinLines = !isOriginalSkin ? activeSkin?.interaction?.startupLines : null;
+    let line: VoiceLine;
+    if (skinLines?.length) {
+      const text = skinLines[Math.floor(Math.random() * skinLines.length)];
+      const lineIdx = skinLines.indexOf(text);
+      const filename = `startup_${String(lineIdx + 1).padStart(2, '0')}.mp3`;
+      line = {
+        id: `skin-${activeSkin?.id ?? 'default'}-startup`,
+        text,
+        audioUrl: `/companion/audio/voice/${character.id}/skins/${activeSkin?.id}/${filename}`,
+      };
+    } else {
+      line = getRandomStartupLine(character.id);
+    }
     const { targetMotionId, targetExpression } = behavior.getStartupReaction(character);
     playVoice(line, { targetMotionId, targetExpression, isStartup: true });
   };
 
   // 播放拖拽反应趣味语音
   const playDragVoice = () => {
-    const skinLines = activeSkin?.interaction?.dragLines;
-    const line = skinLines?.length
-      ? { id: `skin-${activeSkin?.id ?? 'default'}-drag`, text: skinLines[Math.floor(Math.random() * skinLines.length)] }
-      : getRandomDragLine(character.id);
+    const isOriginalSkin = !activeSkin || activeSkin.id === 'original' || activeSkin.id === 'default';
+    const skinLines = !isOriginalSkin ? activeSkin?.interaction?.dragLines : null;
+    let line: VoiceLine;
+    if (skinLines?.length) {
+      const text = skinLines[Math.floor(Math.random() * skinLines.length)];
+      const lineIdx = skinLines.indexOf(text);
+      const filename = `drag_${String(lineIdx + 1).padStart(2, '0')}.mp3`;
+      line = {
+        id: `skin-${activeSkin?.id ?? 'default'}-drag`,
+        text,
+        audioUrl: `/companion/audio/voice/${character.id}/skins/${activeSkin?.id}/${filename}`,
+      };
+    } else {
+      line = getRandomDragLine(character.id);
+    }
     const { targetMotionId, targetExpression } = behavior.getDragReaction(character, line);
     playVoice(line, { targetMotionId, targetExpression });
   };
 
-  // 角色模型准备就绪后，播放亲切的进场日常问候（支持切换伴侣时重新触发）
+  // 角色模型准备就绪后，播放亲切的进场问候或换装亮相宣言（支持切换伴侣与换装时触发）
   useEffect(() => {
-    if (!ready || isStreaming || reply || externalMessages?.some(message => message.id !== 'greeting') || lastStartupCharIdRef.current === character.id) return;
+    if (!ready || isStreaming || reply) return;
+
+    // 优先播放换装亮相语音与口型动画
+    if (pendingEquipLineRef.current) {
+      const equipLine = pendingEquipLineRef.current;
+      pendingEquipLineRef.current = null;
+      const timer = setSessionTimeout(() => {
+        playVoice(equipLine, { targetExpression: '开心' });
+      }, 350);
+      return () => clearSessionTimeout(timer);
+    }
+
+    if (externalMessages?.some(message => message.id !== 'greeting') || lastStartupCharIdRef.current === character.id) return;
     lastStartupCharIdRef.current = character.id;
 
     const timer = setSessionTimeout(() => {

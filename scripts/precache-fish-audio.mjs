@@ -447,11 +447,199 @@ async function generateGomokuAudio() {
   console.log('====================================================\n');
 }
 
+// 伴侣换装皮肤专属语音批量生成
+async function generateSkinAudio(targetCharacter = 'all', specificSkinId = null, force = false) {
+  console.log('====================================================');
+  console.log('👗 伴侣换装皮肤 Fish Audio 专属语音包批量生成工具');
+  console.log('====================================================');
+  console.log(`- 模型配置: s2.1-pro-free (免费模型)`);
+
+  const { nariSkins, yumeSkins } = await import('../lib/companion/catalog.ts');
+  const characters = targetCharacter === 'all' ? ['nari', 'yume'] : [targetCharacter];
+
+  for (const charId of characters) {
+    const cfg = COMPANION_CONFIG[charId];
+    if (!cfg) continue;
+
+    const allSkins = charId === 'nari' ? nariSkins : yumeSkins;
+    const skinsToProcess = allSkins.filter(skin => {
+      if (skin.id === 'original' || skin.id === 'default') return false; // 经典皮肤走默认主音库
+      if (specificSkinId && skin.id !== specificSkinId) return false;
+      return Boolean(skin.interaction);
+    });
+
+    console.log(`\n====================================================`);
+    console.log(`🌸 角色: ${cfg.name} (待处理 ${skinsToProcess.length} 套换装皮肤)`);
+    console.log(`====================================================`);
+
+    for (const skin of skinsToProcess) {
+      const skinOutputDir = path.join(cfg.outputDir, 'skins', skin.id);
+      const skinPublicBase = `${cfg.publicBase}/skins/${skin.id}`;
+      await fs.promises.mkdir(skinOutputDir, { recursive: true });
+
+      const manifest = [];
+      let generatedCount = 0;
+      let cachedCount = 0;
+      let failCount = 0;
+
+      console.log(`\n👗 正在处理皮肤: 【${skin.name}】(${skin.id})`);
+
+      // 1. 换装亮相语音 (Equip line)
+      if (skin.interaction?.equipMessage) {
+        const text = skin.interaction.equipMessage;
+        const filename = 'equip.mp3';
+        const filePath = path.join(skinOutputDir, filename);
+        const publicUrl = `${skinPublicBase}/${filename}`;
+
+        manifest.push({
+          id: `skin-${skin.id}-equip`,
+          type: 'equip',
+          text,
+          file: publicUrl,
+        });
+
+        if (!force && fs.existsSync(filePath) && fs.statSync(filePath).size > 1000) {
+          cachedCount++;
+          console.log(`  [Equip] [已有音频] ${text}`);
+        } else {
+          process.stdout.write(`  [Equip] [生成中] ${text}... `);
+          try {
+            const buffer = fetchFishAudioWithCurl(text, cfg.fishVoiceId, cfg.speed);
+            await fs.promises.writeFile(filePath, buffer);
+            generatedCount++;
+            console.log(`✅ 成功 (${(buffer.length / 1024).toFixed(1)} KB)`);
+          } catch (err) {
+            failCount++;
+            console.log(`❌ 失败: ${err.message}`);
+          }
+          await sleep(350);
+        }
+      }
+
+      // 2. 问候语音 (Startup lines)
+      const startupLines = skin.interaction?.startupLines || [];
+      for (let i = 0; i < startupLines.length; i++) {
+        const text = startupLines[i];
+        const filename = `startup_${String(i + 1).padStart(2, '0')}.mp3`;
+        const filePath = path.join(skinOutputDir, filename);
+        const publicUrl = `${skinPublicBase}/${filename}`;
+
+        manifest.push({
+          id: `skin-${skin.id}-startup-${i + 1}`,
+          type: 'startup',
+          text,
+          file: publicUrl,
+        });
+
+        if (!force && fs.existsSync(filePath) && fs.statSync(filePath).size > 1000) {
+          cachedCount++;
+          console.log(`  [Startup ${i + 1}/${startupLines.length}] [已有音频] ${text}`);
+        } else {
+          process.stdout.write(`  [Startup ${i + 1}/${startupLines.length}] [生成中] ${text}... `);
+          try {
+            const buffer = fetchFishAudioWithCurl(text, cfg.fishVoiceId, cfg.speed);
+            await fs.promises.writeFile(filePath, buffer);
+            generatedCount++;
+            console.log(`✅ 成功 (${(buffer.length / 1024).toFixed(1)} KB)`);
+          } catch (err) {
+            failCount++;
+            console.log(`❌ 失败: ${err.message}`);
+          }
+          await sleep(350);
+        }
+      }
+
+      // 3. 触碰互动语音 (Tap lines)
+      const tapLines = skin.interaction?.tapLines || [];
+      for (let i = 0; i < tapLines.length; i++) {
+        const text = tapLines[i];
+        const filename = `tap_${String(i + 1).padStart(2, '0')}.mp3`;
+        const filePath = path.join(skinOutputDir, filename);
+        const publicUrl = `${skinPublicBase}/${filename}`;
+
+        manifest.push({
+          id: `skin-${skin.id}-tap-${i + 1}`,
+          type: 'tap',
+          text,
+          file: publicUrl,
+        });
+
+        if (!force && fs.existsSync(filePath) && fs.statSync(filePath).size > 1000) {
+          cachedCount++;
+          console.log(`  [Tap ${i + 1}/${tapLines.length}] [已有音频] ${text}`);
+        } else {
+          process.stdout.write(`  [Tap ${i + 1}/${tapLines.length}] [生成中] ${text}... `);
+          try {
+            const buffer = fetchFishAudioWithCurl(text, cfg.fishVoiceId, cfg.speed);
+            await fs.promises.writeFile(filePath, buffer);
+            generatedCount++;
+            console.log(`✅ 成功 (${(buffer.length / 1024).toFixed(1)} KB)`);
+          } catch (err) {
+            failCount++;
+            console.log(`❌ 失败: ${err.message}`);
+          }
+          await sleep(350);
+        }
+      }
+
+      // 4. 拖拽趣味互动语音 (Drag lines)
+      const dragLines = skin.interaction?.dragLines || [];
+      for (let i = 0; i < dragLines.length; i++) {
+        const text = dragLines[i];
+        const filename = `drag_${String(i + 1).padStart(2, '0')}.mp3`;
+        const filePath = path.join(skinOutputDir, filename);
+        const publicUrl = `${skinPublicBase}/${filename}`;
+
+        manifest.push({
+          id: `skin-${skin.id}-drag-${i + 1}`,
+          type: 'drag',
+          text,
+          file: publicUrl,
+        });
+
+        if (!force && fs.existsSync(filePath) && fs.statSync(filePath).size > 1000) {
+          cachedCount++;
+          console.log(`  [Drag ${i + 1}/${dragLines.length}] [已有音频] ${text}`);
+        } else {
+          process.stdout.write(`  [Drag ${i + 1}/${dragLines.length}] [生成中] ${text}... `);
+          try {
+            const buffer = fetchFishAudioWithCurl(text, cfg.fishVoiceId, cfg.speed);
+            await fs.promises.writeFile(filePath, buffer);
+            generatedCount++;
+            console.log(`✅ 成功 (${(buffer.length / 1024).toFixed(1)} KB)`);
+          } catch (err) {
+            failCount++;
+            console.log(`❌ 失败: ${err.message}`);
+          }
+          await sleep(350);
+        }
+      }
+
+      // 写入清单文件
+      const manifestPath = path.join(skinOutputDir, 'manifest.json');
+      await fs.promises.writeFile(manifestPath, JSON.stringify(manifest, null, 2), 'utf-8');
+      console.log(`  📋 清单已生成: ${manifestPath}`);
+      console.log(`  📊 皮肤【${skin.name}】处理完成: 本次生成 ${generatedCount} 句, 复用已有 ${cachedCount} 句, 失败 ${failCount} 句`);
+    }
+  }
+
+  console.log('\n🎉 所有皮肤专属语音已处理完毕！\n');
+}
+
 async function main() {
   const args = process.argv.slice(2);
   const force = args.includes('--force');
+  const skinsMode = args.includes('--skins');
+  const skinArgIdx = args.indexOf('--skin');
+  const specificSkinId = skinArgIdx !== -1 ? args[skinArgIdx + 1] : null;
+
   if (args.includes('--gomoku')) {
     await generateGomokuAudio();
+  } else if (skinsMode || specificSkinId) {
+    let target = 'all';
+    if (args.includes('--nari')) target = 'nari';
+    else if (args.includes('--yume')) target = 'yume';
+    await generateSkinAudio(target, specificSkinId, force);
   } else {
     // 默认执行伴侣语音生成，支持指定 --nari / --yume / --all
     let target = 'nari';
