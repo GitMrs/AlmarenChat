@@ -65,6 +65,7 @@ import {
 import { createConnectorActionRuntime } from './runtime/connector-action-runtime.mjs';
 import { parseMcpServers } from '../lib/agents/runtime/mcp-config.mjs';
 import { decryptConnectorCredential } from '../lib/connectors/credentials.mjs';
+import { createBilibiliAgentTools } from '../lib/bilibili/agent-tools.mjs';
 import { loadAgentMemoryContextSync, recordAcceptedAgentExperiences } from './runtime/agent-memory-store.mjs';
 import {
   loadCoordinatorAcceptanceEvidence,
@@ -349,6 +350,22 @@ function claimNextRelay() {
 function loadRunContext(run) {
   const space = db.prepare('SELECT * FROM "Space" WHERE "id" = ? AND "userId" = ?').get(run.spaceId, run.userId);
   if (!space) throw new Error('任务所属空间不存在');
+  const bilibiliTools = space.templateId === 'bilibili-creator'
+    ? createBilibiliAgentTools({
+        userId: run.userId,
+        spaceId: run.spaceId,
+        projectRoot,
+        loadConnector: async () => db.prepare(
+          'SELECT "id", "spaceId", "enabled", "status", "publicConfig", "credentialCiphertext" FROM "SpaceConnector" WHERE "spaceId" = ? AND "provider" = ? LIMIT 1'
+        ).get(run.spaceId, 'BILIBILI') || null,
+        markExpired: async () => {
+          const timestamp = now();
+          db.prepare(
+            'UPDATE "SpaceConnector" SET "status" = ?, "lastError" = ?, "lastCheckedAt" = ?, "updatedAt" = ? WHERE "spaceId" = ? AND "provider" = ?'
+          ).run('EXPIRED', '登录已失效，请重新扫码', timestamp, timestamp, run.spaceId, 'BILIBILI');
+        },
+      })
+    : null;
   const user = db.prepare(
     'SELECT "customModelEnabled", "apiBaseUrl", "apiKey", "modelName", "modelContextWindow", "imageModelEnabled", "imageModelName", "imageModelSize", "imageModelProtocol", "imageApiBaseUrl", "imageApiKey", "tavilyApiKey" FROM "User" WHERE "id" = ?'
   ).get(run.userId);
@@ -434,6 +451,7 @@ function loadRunContext(run) {
   }
   return {
     space,
+    bilibiliTools,
     agents,
     model: defaultModel,
     imageModel: (() => {

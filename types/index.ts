@@ -311,7 +311,7 @@ export interface SpaceConnector {
   enabled: boolean;
   configured: boolean;
   status: 'CONFIGURED' | 'READY' | 'ERROR' | 'DISABLED' | string;
-  publicConfig: { appId?: string };
+  publicConfig: { appId?: string; mid?: string; uname?: string; face?: string; level?: string };
   lastCheckedAt?: string | null;
   lastError?: string | null;
   createdAt: string;

@@ -4,6 +4,80 @@ import type { AgentModelFields, AgentModelSettingsResponse, AgentMemoryItem, Age
 import type { AgentDailyStudyRecord } from '@/lib/agent-study/types';
 import type { AgentGrowthProfile, AgentRun, AssistantContextStats, AssistantConversationSummary, AssistantExperience, AssistantExperienceMessage, AssistantMemoryItem, AssistantQQBinding, AssistantReminder, AssistantReminderCandidate, Message, MessageAttachment, PersonalAssistantBootstrap, PersonalAssistantProfile, SpaceActionRequest, SpaceAutomation, SpaceConnector, SpaceDiscussion, SpaceDiscussionSettings, SpaceFileShare, SpaceOperationOutcome, SpaceOperationsSummary, SpaceRelay, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal, SpaceWork, SpaceWorkVersion, SpaceMcpServer, SpaceWebhook, AssistantMcpServer, McpProbeResult } from '@/types';
 
+export interface BilibiliProfile {
+  mid: string;
+  uname: string;
+  face: string;
+  level: string;
+  coins?: number;
+  vip?: boolean;
+  follower?: number;
+  following?: number;
+}
+
+export interface BilibiliVideoItem {
+  bvid: string;
+  title: string;
+  cover: string;
+  author: string;
+  mid: string;
+  duration: number;
+  play: number;
+  pubdate: number;
+  url: string;
+  desc?: string;
+}
+
+export interface BilibiliVideoStat {
+  view: number;
+  like: number;
+  coin: number;
+  favorite: number;
+  reply: number;
+}
+
+export interface BilibiliVideoDetail extends BilibiliVideoItem {
+  cid?: number;
+  subtitleText?: string;
+  hasSubtitle?: boolean;
+  stat?: BilibiliVideoStat | null;
+}
+
+export interface BilibiliVideoResponse {
+  video: BilibiliVideoDetail;
+  formatted: string;
+  asrEnabled: boolean;
+}
+
+export interface BilibiliHotItem {
+  id: string;
+  title: string;
+  url: string;
+  heat?: string;
+  desc?: string;
+  thumbnail?: string;
+  publishTime?: string;
+  extra?: Record<string, any>;
+}
+
+export interface BilibiliFolder {
+  id: string;
+  title: string;
+  count: number;
+}
+
+export interface BilibiliDataResponse {
+  tab: string;
+  items?: BilibiliVideoItem[];
+  folders?: BilibiliFolder[];
+  profile?: BilibiliProfile;
+  mediaId?: string;
+  hasMore?: boolean;
+  fetchedAt?: number;
+  cached?: boolean;
+  error?: string;
+}
+
 const API_BASE = '/api';
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
@@ -764,6 +838,50 @@ export const spaces = {
     }),
   removeWechatConnector: (spaceId: string) =>
     request<{ success: true }>(`/spaces/${spaceId}/connectors/wechat`, { method: 'DELETE' }),
+  bilibiliConnector: (spaceId: string) =>
+    request<{ connector: SpaceConnector | null }>(`/spaces/${spaceId}/connectors/bilibili`),
+  createBilibiliQrCode: (spaceId: string) =>
+    request<{ url: string; key: string }>(`/spaces/${spaceId}/connectors/bilibili/qrcode`, { method: 'POST' }),
+  pollBilibiliQrCode: (spaceId: string, key: string) =>
+    request<{ status: string; connector?: SpaceConnector; profile?: BilibiliProfile; warning?: string }>(
+      `/spaces/${spaceId}/connectors/bilibili/qrcode?key=${encodeURIComponent(key)}`
+    ),
+  connectBilibiliCookie: (spaceId: string, cookie: string) =>
+    request<{ connector: SpaceConnector; profile: BilibiliProfile }>(`/spaces/${spaceId}/connectors/bilibili`, {
+      method: 'PUT',
+      body: JSON.stringify({ cookie }),
+    }),
+  validateBilibiliConnector: (spaceId: string) =>
+    request<{ connector: SpaceConnector; profile: BilibiliProfile }>(`/spaces/${spaceId}/connectors/bilibili/validate`, {
+      method: 'POST',
+    }),
+  removeBilibiliConnector: (spaceId: string) =>
+    request<{ success: true }>(`/spaces/${spaceId}/connectors/bilibili`, { method: 'DELETE' }),
+  bilibiliData: (spaceId: string, params: { tab: string; page?: number; mediaId?: string; refresh?: boolean }) => {
+    const search = new URLSearchParams({ tab: params.tab });
+    if (params.page) search.set('page', String(params.page));
+    if (params.mediaId) search.set('mediaId', params.mediaId);
+    if (params.refresh) search.set('refresh', '1');
+    return request<BilibiliDataResponse>(`/spaces/${spaceId}/bilibili?${search.toString()}`);
+  },
+  requestBilibiliAction: (
+    spaceId: string,
+    data: { kind: 'BILIBILI_LIKE' | 'BILIBILI_COIN' | 'BILIBILI_FAVORITE'; bvid: string; title: string; mediaId?: string; count?: number; requestId: string }
+  ) =>
+    request<{ action: SpaceActionRequest }>(`/spaces/${spaceId}/bilibili/action`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  bilibiliVideo: (spaceId: string, bvid: string) =>
+    request<BilibiliVideoResponse>(`/spaces/${spaceId}/bilibili/video?bvid=${encodeURIComponent(bvid)}`),
+  searchBilibili: (spaceId: string, query: string) =>
+    request<{ query: string; items: BilibiliVideoItem[] }>(
+      `/spaces/${spaceId}/bilibili/search?q=${encodeURIComponent(query)}`
+    ),
+  bilibiliHot: (limit = 20) =>
+    request<{ success: boolean; items: BilibiliHotItem[]; updatedAt?: string }>(
+      `/trending?source=bilibili&limit=${limit}`
+    ),
   createRun: (
     id: string,
     input: string,

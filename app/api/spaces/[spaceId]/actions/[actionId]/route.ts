@@ -5,6 +5,88 @@ import { ensureSpaceRoot } from '@/app/api/_lib/spaces';
 import { connectorActionDefinition } from '@/lib/connectors/registry.mjs';
 import { buildWechatDraftSnapshot, selectAutomatedWechatDraftFiles } from '@/lib/workspace/wechat/wechat-draft-snapshot';
 import { commitSpacePendingHistory } from '@/lib/space/space-pending-history.mjs';
+import { readBilibiliCredentials } from '@/lib/bilibili/credentials.mjs';
+import { runBilibiliAction } from '@/lib/bilibili/actions.mjs';
+
+async function handleBilibiliDecision(
+  spaceId: string,
+  actionId: string,
+  userId: string,
+  decision: 'approve' | 'reject',
+  reason: string
+) {
+  const action = await prisma.spaceActionRequest.findFirst({
+    where: { id: actionId, spaceId, space: { userId } },
+  });
+  if (!action) return NextResponse.json({ error: '动作请求不存在' }, { status: 404 });
+  if (action.status !== 'PENDING') return NextResponse.json({ error: '动作请求已经处理' }, { status: 409 });
+  const timestamp = new Date();
+
+  if (decision === 'reject') {
+    const updated = await prisma.spaceActionRequest.update({
+      where: { id: action.id },
+      data: { status: 'REJECTED', decidedBy: userId, decidedAt: timestamp, error: reason || null },
+    });
+    await prisma.spaceMessage.create({
+      data: {
+        spaceId,
+        role: 'assistant',
+        speakerAgentId: 'space-coordinator',
+        content: `已取消「${action.title}」${reason ? `：${reason}` : '。'}`,
+        attachments: [{ type: 'action_decision', actionId: action.id, decision, reason }],
+        sourceKey: `bilibili-action-decision:${action.id}`,
+      },
+    }).catch(() => null);
+    return NextResponse.json({ action: updated });
+  }
+
+  const connector = await prisma.spaceConnector.findUnique({
+    where: { spaceId_provider: { spaceId, provider: 'BILIBILI' } },
+  });
+  if (!connector?.enabled) return NextResponse.json({ error: 'B 站连接未启用' }, { status: 409 });
+
+  await prisma.spaceActionRequest.update({
+    where: { id: action.id },
+    data: { status: 'APPROVED', decidedBy: userId, decidedAt: timestamp },
+  });
+
+  try {
+    const credentials = readBilibiliCredentials(connector);
+    const result = await runBilibiliAction(action.kind, credentials, (action.payload as any) || {});
+    const updated = await prisma.spaceActionRequest.update({
+      where: { id: action.id },
+      data: { status: 'COMPLETED', result: result as any, completedAt: new Date(), error: null },
+    });
+    await prisma.spaceMessage.create({
+      data: {
+        spaceId,
+        role: 'assistant',
+        speakerAgentId: 'space-coordinator',
+        content: `已完成「${action.title}」。`,
+        attachments: [{ type: 'action_decision', actionId: action.id, decision: 'approve', result }],
+        sourceKey: `bilibili-action-result:${action.id}`,
+      },
+    }).catch(() => null);
+    return NextResponse.json({ action: updated });
+  } catch (error: any) {
+    const message = String(error?.message || '执行失败').slice(0, 500);
+    const updated = await prisma.spaceActionRequest.update({
+      where: { id: action.id },
+      data: { status: 'FAILED', error: message, completedAt: new Date() },
+    });
+    await prisma.spaceMessage.create({
+      data: {
+        spaceId,
+        role: 'assistant',
+        speakerAgentId: 'space-coordinator',
+        content: `「${action.title}」执行失败：${message}`,
+        attachments: [{ type: 'action_decision', actionId: action.id, decision: 'approve', error: message }],
+        sourceKey: `bilibili-action-result:${action.id}`,
+      },
+    }).catch(() => null);
+    return NextResponse.json({ action: updated, error: message });
+  }
+}
 
 async function prepareFinalizationFollowUp(
   actionId: string,
@@ -45,6 +127,13 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ sp
     const decision = body?.decision === 'approve' ? 'approve' : body?.decision === 'reject' ? 'reject' : null;
     const reason = typeof body?.reason === 'string' ? body.reason.trim().slice(0, 1000) : '';
     if (!decision) return NextResponse.json({ error: '审批决定无效' }, { status: 400 });
+    const probe = await prisma.spaceActionRequest.findFirst({
+      where: { id: actionId, spaceId, space: { userId } },
+      select: { kind: true },
+    });
+    if (probe?.kind?.startsWith('BILIBILI_')) {
+      return handleBilibiliDecision(spaceId, actionId, userId, decision, reason);
+    }
     const preparedFollowUp = decision === 'approve'
       ? await prepareFinalizationFollowUp(actionId, spaceId, userId)
       : null;

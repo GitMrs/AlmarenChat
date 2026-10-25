@@ -15,6 +15,7 @@ import {
 } from '@/app/api/_lib/spaces';
 import { describeWorkspaceArtifact, executeWorkspaceTool, workspaceToolSchemas } from '@/lib/agents/runtime/runtime-tools.mjs';
 import { createChatWebTools } from '@/lib/web/auto-web';
+import { createBilibiliAgentTools } from '@/lib/bilibili/agent-tools.mjs';
 import { collectChatCompletionStream, runToolLoop } from '@/lib/agents/runtime/tool-loop.mjs';
 import { normalizeTaskProposalSteps, taskProposalCapabilities, taskProposalNeedsClarification, taskProposalWithTurnNetworkAuthorization } from '@/lib/space/task-proposals';
 import { professionalDeliverableNeedsTask } from '@/lib/space/task-proposal-policy.mjs';
@@ -303,6 +304,32 @@ async function syncPiWorkspaceFiles(userId: string, spaceId: string, paths: Iter
   return changed;
 }
 
+function createSpaceBilibiliTools(userId: string, spaceId: string, space: { templateId?: string | null }) {
+  if (space.templateId !== 'bilibili-creator') return null;
+  return createBilibiliAgentTools({
+    userId,
+    spaceId,
+    projectRoot: process.cwd(),
+    loadConnector: () => prisma.spaceConnector.findFirst({
+      where: { spaceId, provider: 'BILIBILI', space: { userId } },
+      select: {
+        id: true,
+        spaceId: true,
+        enabled: true,
+        status: true,
+        publicConfig: true,
+        credentialCiphertext: true,
+      },
+    }),
+    markExpired: async () => {
+      await prisma.spaceConnector.updateMany({
+        where: { spaceId, provider: 'BILIBILI' },
+        data: { status: 'EXPIRED', lastError: '登录已失效，请重新扫码', lastCheckedAt: new Date() },
+      });
+    },
+  });
+}
+
 async function handlePiMessage(options: {
   userId: string;
   spaceId: string;
@@ -375,6 +402,7 @@ async function handlePiMessage(options: {
         try { controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`)); } catch { /* Pi continues and persists after a client disconnect */ }
       };
       const web = createChatWebTools({ apiKey: settings.tavilyApiKey, defaultWeatherLocation: settings.defaultWeatherLocation, onStatus: (label: string) => send({ type: 'status', label }) });
+      const bilibili = allowWebSearch ? createSpaceBilibiliTools(userId, spaceId, space) : null;
       try {
         let result;
         let coordinationRequest: Record<string, unknown> | null = null;
@@ -407,9 +435,10 @@ async function handlePiMessage(options: {
               coordinationRequest = request;
               return true;
             },
-            queryTools: web.tools,
-            queryGuidance: web.guidance,
-            queryTool: (name: string, args: any, signal: AbortSignal) => web.execute(name, args, signal),
+            queryTools: [...web.tools, ...(bilibili?.tools || [])],
+            queryGuidance: [web.guidance, bilibili?.guidance].filter(Boolean).join('\n\n'),
+            queryTool: (name: string, args: any, signal: AbortSignal) =>
+              bilibili?.owns(name) ? bilibili.execute(name, args, signal) : web.execute(name, args, signal),
             onMutation: (relativePath: string) => changedPaths.add(relativePath),
             onTextDelta: (delta: string) => send({ type: 'text_delta', delta }),
             onTextReset: () => send({ type: 'text_reset' }),
@@ -849,9 +878,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
     let reportQueryStatus: ((label: string) => void) | undefined;
     let spaceMessageRuntime: Awaited<ReturnType<typeof prepareSpaceMessageRuntime>>;
     const web = createChatWebTools({ apiKey: settings.tavilyApiKey, defaultWeatherLocation: settings.defaultWeatherLocation, history: rawHistory, signal: request.signal, onStatus: (label: string) => reportQueryStatus?.(label), cryptoContext: (data: any) => spaceMessageRuntime?.marketContext?.(data) || '' });
+    const bilibili = !useIsolatedContext ? createSpaceBilibiliTools(userId, spaceId, space) : null;
     const availableTools = [
       ...(selectedWork ? workspaceToolSchemas.filter((tool: any) => READ_ONLY_WORKSPACE_TOOLS.has(tool.function.name)) : []),
       ...(allowWebSearch ? web.tools : []),
+      ...(bilibili ? bilibili.tools : []),
       ...(!isMultiReply ? [TASK_PROPOSAL_TOOL] : []),
       ...(relayTool ? [relayTool] : []),
       ...(discussionTool ? [discussionTool] : []),
@@ -946,6 +977,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
         relayTool ? '用户明确要求多个成员按顺序参与同一件事时，调用 start_relay；这包含让大家依次参与、每个人分别回应、轮流处理、接力推进、相互审阅或持续改进同一份文字成果。只有明确的逐员参与或顺序推进要求才启动，泛泛征询意见不自动启动。用户说“大家”“所有成员”或“全员”时，participantIds 必须包含全部可用普通成员；用户只要求几位成员时才选择子集。需要文件、联网、命令、浏览器或专业交付时仍调用 propose_task。接力开始后会按接力规则推进并在最后验收。' : '',
         discussionTool ? '用户说“大家聊聊”“自然接话”“互相讨论”“一起聊”或类似表达时，调用 start_group_chat，创建真正的多人闲聊讨论；不要调用 start_relay。闲聊讨论由成员根据前序发言动态选择接话者，用户可以随后插话、暂停或继续。用户说“大家”“所有成员”或“全员”时必须包含全部可用普通成员；用户只点名几位成员时只选择这些成员。' : '',
         allowWebSearch ? web.guidance : '当前为隔离互动场景，不提供联网工具，不得声称已查询外部资料。',
+        bilibili?.guidance || '',
         !isMultiReply ? '如果品种、单位、范围、输入文件、输出要求等关键信息不足，先在普通对话中追问；获得用户回答前不得调用 propose_task，也不得把“询问用户、确认用户信息、等待用户补充”写成后台执行步骤。' : '',
         '普通聊天按需查询公开资料，不要仅为联网创建任务。后台任务仍遵守各自的能力授权和 Skill 网络策略。',
         !isMultiReply ? '仅在用户明确要求创建或修改文件、网页、代码或文档时，才把写入工作区列入任务。只有任务确实需要运行已注册 Skill 的 Python/Node 入口时才申请 code_execute；普通文件编辑和静态检查不得申请。' : '',
@@ -1020,6 +1052,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
               });
             },
             executeTool: async (name: string, args: Record<string, unknown>) => {
+              if (bilibili?.owns(name)) return bilibili.execute(name, args, abortController.signal);
               if (web.tools.some((tool) => tool.function.name === name)) return allowWebSearch ? web.execute(name, args, abortController.signal) : { ok: false, error: '隔离互动场景不提供联网工具' };
               if (name === 'propose_task') {
                 if (taskProposal) return { ok: false, error: '本轮已经生成任务方案' };

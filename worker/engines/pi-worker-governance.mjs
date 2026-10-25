@@ -45,6 +45,10 @@ const TOOL_LABELS = {
   generate_image: '生成图片',
   web_search: '联网搜索',
   web_fetch: '读取网页',
+  bilibili_account: '读取 B 站账号',
+  bilibili_search: '搜索 B 站',
+  bilibili_discover: '发现 B 站视频',
+  bilibili_video: '读取 B 站视频',
 };
 
 function safeId(value, label) {
@@ -432,6 +436,27 @@ async function createPiCapabilityTools(request, skill, state) {
       }
     }));
   }
+  const bilibiliTools = request.context?.bilibiliTools;
+  if (bilibiliTools) {
+    for (const schema of bilibiliTools.tools) {
+      tools.push(schemaTool(schema, async (_toolCallId, args, signal) => {
+        try {
+          const result = await bilibiliTools.execute(schema.function.name, args, signal);
+          request.emit?.(request.run.id, 'TOOL_COMPLETED', `${request.agent?.name || '成员'}${TOOL_LABELS[schema.function.name] || '使用 B 站工具'}`, {
+            taskId: request.task.id,
+            agentId: request.agent?.id || null,
+            attempt: request.task.attempt,
+            tool: schema.function.name,
+            engine: 'pi',
+            ...(result?.ok === false ? { error: String(result.error || '').slice(0, 500) } : {}),
+          });
+          return toolResult(result, result?.ok === false);
+        } catch (error) {
+          return toolResult({ error: error instanceof Error ? error.message : String(error) }, true);
+        }
+      }));
+    }
+  }
   return tools;
 }
 
@@ -479,6 +504,7 @@ function taskPrompt(request, skill) {
       authorizationAllowsCapability(request.context?.authorization, 'web_research')
         ? '当目标提供具体 HTTPS 网页或 JSON 地址时，优先使用 web_fetch 直接读取；只有需要发现资料或补充来源时才使用 web_search。'
         : '',
+      request.context?.bilibiliTools?.guidance || '',
     ].filter(Boolean).join('\n\n'),
     message: [
       `总目标：${request.run?.input || request.run?.goal || ''}`,
@@ -529,7 +555,7 @@ export function createPiWorkerGovernance({
     const requestInputTool = defineTool({
       name: 'request_user_input',
       label: '请求用户补充',
-      description: '只有缺少无法推断且继续执行必需的信息时，暂停步骤并询问用户。',
+      description: '只有缺少无法推断且继续执行必需的信息，或需要用户明确确认耗时/有副作用的操作时，暂停步骤并询问用户。',
       parameters: Type.Object({
         question: Type.String({ minLength: 1, maxLength: 1000 }),
         reason: Type.String({ minLength: 1, maxLength: 1000 }),

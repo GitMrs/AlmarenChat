@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Activity, ArrowLeft, BookOpen, Flame, CalendarClock, Check, CheckCircle2, ChevronRight, Code2, Copy, Cpu, Database, Download, ExternalLink, FilePenLine, FileText, Gamepad2, Globe2, History, Image as ImageIcon, ListTodo, Loader2, MessagesSquare, Newspaper, PackagePlus, Paperclip, Play, Plus, RotateCcw, Save, Send, Settings2, ShieldCheck, SkipForward, Sliders, SlidersHorizontal, Square, Trash2, TrendingUp, UploadCloud, UsersRound, X } from 'lucide-react';
+import { Activity, ArrowLeft, BookOpen, Flame, CalendarClock, Check, CheckCircle2, ChevronRight, Code2, Copy, Cpu, Database, Download, ExternalLink, FilePenLine, FileText, Gamepad2, Globe2, History, Image as ImageIcon, ListTodo, Loader2, MessagesSquare, Newspaper, PackagePlus, Paperclip, Play, Plus, RotateCcw, Save, Send, Settings2, ShieldCheck, SkipForward, Sliders, SlidersHorizontal, Square, Trash2, TrendingUp, Tv, UploadCloud, UsersRound, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import AppShell from '@/components/layout/AppShell';
@@ -21,6 +21,7 @@ import SpaceMemberModelDialog from '@/components/spaces/SpaceMemberModelDialog';
 import SpaceDiscussionSettingsDialog from '@/components/spaces/SpaceDiscussionSettingsDialog';
 import KnowledgeManager from '@/components/agent/KnowledgeManager';
 import SpaceGameCenter from '@/components/spaces/game/SpaceGameCenter';
+import BilibiliPanel from '@/components/spaces/BilibiliPanel';
 import SpaceCryptoCenter from '@/components/spaces/SpaceCryptoCenter';
 import SpaceDiscussionStatus from '@/components/spaces/SpaceDiscussionStatus';
 import SpaceRelayStatus from '@/components/spaces/game/SpaceRelayStatus';
@@ -28,6 +29,8 @@ import SpaceOperationsCenter, { type SpaceOperationsTab } from '@/components/spa
 import TrendingTopicPicker from '@/components/trending/TrendingTopicPicker';
 import { CompressionStatusPanel } from '@/components/spaces/CompressionStatusPanel';
 import { agentRuns as agentRunsApi, agents as agentsApi, cryptoSentinel as cryptoSentinelApi, spaces as spacesApi, streamSpaceMessage } from '@/lib/client/api';
+import type { BilibiliProfile, BilibiliVideoItem } from '@/lib/client/api';
+import { BILIBILI_AUTOMATION_TEMPLATES, type BilibiliAutomationTemplate } from '@/lib/space/bilibili-automation-templates';
 import { getBuiltInAgents } from '@/lib/agents/data/agents-data';
 import { useTTS } from '@/hooks/useTTS';
 import { latestRunInRetryChain } from '@/lib/agents/runtime/agent-run-retry-chain.mjs';
@@ -527,6 +530,9 @@ export default function SpaceDetailPage() {
   const [operationsSummary, setOperationsSummary] = useState<SpaceOperationsSummary | null>(null);
   const [operationOutcomes, setOperationOutcomes] = useState<SpaceOperationOutcome[]>([]);
   const [operationsLoading, setOperationsLoading] = useState(false);
+  const [bilibiliProfile, setBilibiliProfile] = useState<BilibiliProfile | null>(null);
+  const [bilibiliVideos, setBilibiliVideos] = useState<BilibiliVideoItem[]>([]);
+  const [bilibiliGrowthLoading, setBilibiliGrowthLoading] = useState(false);
   const [connectors, setConnectors] = useState<SpaceConnector[]>([]);
   const [mcpServers, setMcpServers] = useState<SpaceMcpServer[]>([]);
   const [webhooks, setWebhooks] = useState<SpaceWebhook[]>([]);
@@ -576,7 +582,7 @@ export default function SpaceDetailPage() {
   const [relays, setRelays] = useState<SpaceRelay[]>([]);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [mode, setMode] = useState<'chat' | 'task'>('chat');
-  const [workspaceView, setWorkspaceView] = useState<'chat' | 'files' | 'operations' | 'games' | 'crypto'>('chat');
+  const [workspaceView, setWorkspaceView] = useState<'chat' | 'files' | 'operations' | 'games' | 'crypto' | 'bilibili'>('chat');
   const [gameCenterInitialGame, setGameCenterInitialGame] = useState<'gomoku' | 'undercover' | 'trpg' | 'live' | 'turtlesoup' | null>(null);
   const [gameCenterInitialGomokuMode, setGameCenterInitialGomokuMode] = useState<'pve' | 'eve'>('pve');
   const [gameCenterInitialBlackId, setGameCenterInitialBlackId] = useState<string | undefined>(undefined);
@@ -703,6 +709,17 @@ export default function SpaceDetailPage() {
   const ignoreInputUntilRef = useRef(0);
   const composerToolsRef = useRef<HTMLDivElement>(null);
   const wechatConnector = connectors.find((connector) => connector.provider === 'WECHAT_OFFICIAL_ACCOUNT') || null;
+  const bilibiliConnector = connectors.find((connector) => connector.provider === 'BILIBILI') || null;
+  const bilibiliAnalysisCount = useMemo(
+    () => files.filter((file) => /^BV[0-9A-Za-z]{10}-/.test(file.fileName || '')).length,
+    [files]
+  );
+
+  useEffect(() => {
+    setBilibiliProfile(null);
+    setBilibiliVideos([]);
+    setBilibiliGrowthLoading(false);
+  }, [spaceId]);
 
   const agentById = useMemo(() => new Map(agents.map((agent) => [agent.id, agent])), [agents]);
   const memberAgents = useMemo(
@@ -2164,6 +2181,29 @@ export default function SpaceDetailPage() {
     setAutomationEnableOnCreate(false);
   };
 
+  const applyAutomationTemplate = (template: BilibiliAutomationTemplate) => {
+    setAutomationName(template.name);
+    setAutomationPrompt(template.prompt);
+    setAutomationInterval(template.intervalMinutes || 1440);
+    setAutomationScheduleType(template.scheduleType);
+    setAutomationTimeZone('Asia/Shanghai');
+    const hour = String(template.scheduleHour ?? 9).padStart(2, '0');
+    const minute = String(template.scheduleMinute ?? 0).padStart(2, '0');
+    setAutomationTime(`${hour}:${minute}`);
+    setAutomationWeekdays(template.weekdays?.length ? template.weekdays : [1, 2, 3, 4, 5]);
+    setAutomationWorkStrategy(template.workStrategy);
+    setAutomationExecutionMode('PROMPT');
+    setAutomationScriptPath('');
+    setAutomationNetworkPolicy(template.networkPolicy);
+    setAutomationCompletionAction('NONE');
+  };
+
+  const openAutomationFromTemplate = (template: BilibiliAutomationTemplate) => {
+    resetAutomationForm();
+    applyAutomationTemplate(template);
+    setSidePanel('automation');
+  };
+
   const openEditAutomation = (automation: SpaceAutomation) => {
     setEditingAutomationId(automation.id);
     setAutomationName(automation.name);
@@ -2353,6 +2393,27 @@ export default function SpaceDetailPage() {
     }
   };
 
+  const loadBilibiliGrowth = async (connectorOverride?: SpaceConnector | null, refresh = false) => {
+    if (space?.templateId !== 'bilibili-creator') return;
+    const connector = connectorOverride === undefined ? bilibiliConnector : connectorOverride;
+    if (!connector?.configured || !connector.enabled) {
+      setBilibiliProfile(null);
+      setBilibiliVideos([]);
+      return;
+    }
+    setBilibiliGrowthLoading(true);
+    try {
+      const profileResult = await spacesApi.bilibiliData(spaceId, { tab: 'profile', refresh }).catch(() => null);
+      if (profileResult?.profile) setBilibiliProfile(profileResult.profile);
+      else setBilibiliProfile(null);
+      const videosResult = await spacesApi.bilibiliData(spaceId, { tab: 'videos', refresh }).catch(() => null);
+      if (videosResult?.items) setBilibiliVideos(videosResult.items);
+      else setBilibiliVideos([]);
+    } finally {
+      setBilibiliGrowthLoading(false);
+    }
+  };
+
   const openOperations = async () => {
     setSidePanel(null);
     setWorkspaceView('operations');
@@ -2360,9 +2421,20 @@ export default function SpaceDetailPage() {
     setOperationsLoading(true);
     setError('');
     try {
-      const result = await spacesApi.operations(spaceId);
+      const [result, connectorResult] = await Promise.all([
+        spacesApi.operations(spaceId),
+        spacesApi.connectors(spaceId).catch(() => null),
+      ]);
       setOperationsSummary(result.summary);
       setOperationOutcomes(result.recentOutcomes);
+      const freshConnectors = connectorResult?.connectors;
+      if (freshConnectors) setConnectors(freshConnectors);
+      if (space?.templateId === 'bilibili-creator') {
+        const freshBilibili = freshConnectors
+          ? freshConnectors.find((connector) => connector.provider === 'BILIBILI') || null
+          : bilibiliConnector;
+        void loadBilibiliGrowth(freshBilibili);
+      }
     } catch (err: any) {
       setError(err.message || '读取运营概览失败');
     } finally {
@@ -3455,6 +3527,7 @@ export default function SpaceDetailPage() {
                   { id: 'chat' as const, label: '对话', icon: MessagesSquare },
                   ...(space.templateId === 'crypto-contract-trading' ? [{ id: 'crypto' as const, label: '作战中心', icon: TrendingUp }] : []),
                   ...(space.templateId === 'gaming-room' ? [{ id: 'games' as const, label: '游戏中心', icon: Gamepad2 }] : []),
+                  ...(space.templateId === 'bilibili-creator' ? [{ id: 'bilibili' as const, label: 'B 站', icon: Tv }] : []),
                   { id: 'files' as const, label: '成果', icon: FileText, count: files.length },
                   { id: 'operations' as const, label: '运营', icon: Activity, count: actionRequests.filter((action) => action.status === 'PENDING').length },
                 ].map((item) => {
@@ -3630,17 +3703,37 @@ export default function SpaceDetailPage() {
                 publications={wechatPublicationActions}
                 publicationsLoading={wechatPublicationsLoading}
                 connector={wechatConnector}
+                bilibiliConnector={bilibiliConnector}
+                bilibiliProfile={bilibiliProfile}
+                bilibiliVideos={bilibiliVideos}
+                bilibiliAnalysisCount={bilibiliAnalysisCount}
+                bilibiliGrowthLoading={bilibiliGrowthLoading}
+                channel={
+                  space?.templateId === 'wechat-article'
+                    ? 'wechat'
+                    : space?.templateId === 'bilibili-creator'
+                      ? 'bilibili'
+                      : 'generic'
+                }
                 learning={learning}
                 learningReadme={learningReadme}
                 learningActionId={learningActionId}
-                isWechatSpace={space?.templateId === 'wechat-article'}
+                onOpenBilibili={() => {
+                  setSidePanel(null);
+                  setWorkspaceView('bilibili');
+                }}
                 onTabChange={(tab) => {
                   setOperationsTab(tab);
                   if (tab === 'overview') openOperations();
                   if (tab === 'publishing') openWechatPublications();
+                  if (tab === 'growth' && space?.templateId === 'bilibili-creator' && !bilibiliProfile && !bilibiliGrowthLoading) {
+                    void loadBilibiliGrowth();
+                  }
                 }}
                 onRefreshOverview={openOperations}
                 onRefreshPublications={openWechatPublications}
+                onRefreshBilibiliGrowth={() => { void loadBilibiliGrowth(undefined, true); }}
+                onUseAutomationTemplate={openAutomationFromTemplate}
                 onOpenAutomationEditor={() => { resetAutomationForm(); setSidePanel('automation'); }}
                 onEditAutomation={openEditAutomation}
                 onOpenConnectorSettings={() => setSidePanel('connector')}
@@ -3677,6 +3770,15 @@ export default function SpaceDetailPage() {
                 messages={messages}
                 onBackToChat={() => setWorkspaceView('chat')}
                 onShareToSpace={(text) => {
+                  setWorkspaceView('chat');
+                  void sendMessage(text);
+                }}
+              />
+            ) : !isPiSpace && space?.templateId === 'bilibili-creator' && workspaceView === 'bilibili' ? (
+              <BilibiliPanel
+                spaceId={spaceId}
+                onBackToChat={() => setWorkspaceView('chat')}
+                onSendMessage={(text) => {
                   setWorkspaceView('chat');
                   void sendMessage(text);
                 }}
@@ -5691,6 +5793,28 @@ export default function SpaceDetailPage() {
                           </div>
                           <span className="shrink-0 text-xs font-black text-slate-400">{automations.length} 条</span>
                         </div>
+
+                        {space?.templateId === 'bilibili-creator' && (
+                          <div className="mt-4 rounded-lg border border-black/[0.06] bg-white p-3">
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="text-xs font-black text-slate-600">B 站模板</div>
+                              <div className="text-[10px] font-semibold text-slate-400">点击填入，可继续修改</div>
+                            </div>
+                            <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
+                              {BILIBILI_AUTOMATION_TEMPLATES.map((template) => (
+                                <button
+                                  key={template.id}
+                                  type="button"
+                                  onClick={() => applyAutomationTemplate(template)}
+                                  className="w-40 shrink-0 rounded-lg border border-black/[0.06] bg-[#fbfaf7] p-2 text-left transition hover:border-slate-300 hover:bg-white"
+                                >
+                                  <div className="text-[11px] font-black leading-4 text-slate-800">{template.name}</div>
+                                  <div className="mt-1 line-clamp-2 text-[10px] font-semibold leading-4 text-slate-400">{template.description}</div>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
 
                         <div className="mt-4 space-y-3 border-y border-black/[0.06] py-4">
                           <input

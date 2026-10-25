@@ -18,6 +18,7 @@ import {
   Settings2,
   ShieldCheck,
   Trash2,
+  Tv,
 } from 'lucide-react';
 import type {
   SpaceActionRequest,
@@ -28,6 +29,8 @@ import type {
   SpaceOperationOutcome,
   SpaceOperationsSummary,
 } from '@/types';
+import type { BilibiliProfile, BilibiliVideoItem } from '@/lib/client/api';
+import { BILIBILI_AUTOMATION_TEMPLATES, type BilibiliAutomationTemplate } from '@/lib/space/bilibili-automation-templates';
 
 export type SpaceOperationsTab = 'overview' | 'automations' | 'growth' | 'publishing';
 
@@ -43,13 +46,21 @@ type Props = {
   publications: SpaceActionRequest[];
   publicationsLoading: boolean;
   connector: SpaceConnector | null;
+  bilibiliConnector: SpaceConnector | null;
+  bilibiliProfile: BilibiliProfile | null;
+  bilibiliVideos: BilibiliVideoItem[];
+  bilibiliAnalysisCount: number;
+  bilibiliGrowthLoading: boolean;
+  channel: 'wechat' | 'bilibili' | 'generic';
   learning: SpaceLearning | null;
   learningReadme: string;
   learningActionId: string;
-  isWechatSpace: boolean;
   onTabChange: (tab: SpaceOperationsTab) => void;
   onRefreshOverview: () => void;
   onRefreshPublications: () => void;
+  onRefreshBilibiliGrowth: () => void;
+  onOpenBilibili: () => void;
+  onUseAutomationTemplate: (template: BilibiliAutomationTemplate) => void;
   onOpenAutomationEditor: () => void;
   onEditAutomation: (automation: SpaceAutomation) => void;
   onOpenConnectorSettings: () => void;
@@ -97,14 +108,70 @@ function actionValue(value: unknown) {
   return typeof value === 'string' && value.trim() ? value.trim() : '';
 }
 
+function actionApproveLabel(kind: string) {
+  switch (kind) {
+    case 'BILIBILI_LIKE':
+      return '确认点赞';
+    case 'BILIBILI_COIN':
+      return '确认投币';
+    case 'BILIBILI_FAVORITE':
+      return '确认收藏';
+    case 'WECHAT_CREATE_DRAFT':
+      return '创建草稿';
+    case 'WECHAT_PUBLISH':
+      return '正式发布';
+    case 'FINALIZE_WORK':
+      return '确认定稿';
+    default:
+      return '确认';
+  }
+}
+
+function actionRejectLabel(kind: string) {
+  if (kind === 'FINALIZE_WORK') return '暂不定稿';
+  if (kind.startsWith('BILIBILI_')) return '拒绝';
+  return '取消';
+}
+
+function formatCount(value: number) {
+  const count = Number(value) || 0;
+  if (count >= 100_000_000) return `${(count / 100_000_000).toFixed(1).replace(/\.0$/, '')}亿`;
+  if (count >= 10_000) return `${(count / 10_000).toFixed(1).replace(/\.0$/, '')}万`;
+  return String(count);
+}
+
+function templateScheduleLabel(template: BilibiliAutomationTemplate) {
+  const hour = String(template.scheduleHour ?? 9).padStart(2, '0');
+  const minute = String(template.scheduleMinute ?? 0).padStart(2, '0');
+  if (template.scheduleType === 'WEEKLY') {
+    const days = (template.weekdays || []).map((value) => WEEKDAYS.find((day) => day.value === value)?.label).filter(Boolean).join('、');
+    return `每周${days || '一'} ${hour}:${minute}`;
+  }
+  if (template.scheduleType === 'INTERVAL') return `每 ${template.intervalMinutes || 1440} 分钟`;
+  return `每天 ${hour}:${minute}`;
+}
+
 export default function SpaceOperationsCenter(props: Props) {
+  const isBilibili = props.channel === 'bilibili';
+  const bilibiliConnected = Boolean(props.bilibiliConnector?.configured && props.bilibiliConnector.enabled);
+  const bilibiliConfigured = Boolean(props.bilibiliConnector?.configured);
   const pendingActions = props.actions.filter((action) => action.status === 'PENDING');
   const processingActions = props.actions.filter((action) => action.status === 'APPROVED');
+  const pendingBilibiliActions = pendingActions.filter((action) => action.kind.startsWith('BILIBILI_'));
+  const recentBilibiliActions = props.actions
+    .filter((action) => action.kind.startsWith('BILIBILI_'))
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .slice(0, 4);
+  const bilibiliTotalPlay = props.bilibiliVideos.reduce((sum, video) => sum + (Number(video.play) || 0), 0);
+  const bilibiliAveragePlay = props.bilibiliVideos.length > 0 ? Math.round(bilibiliTotalPlay / props.bilibiliVideos.length) : 0;
+  const bilibiliTopVideos = [...props.bilibiliVideos]
+    .sort((a, b) => (Number(b.play) || 0) - (Number(a.play) || 0))
+    .slice(0, 5);
   const tabs: Array<{ id: SpaceOperationsTab; label: string; icon: typeof Activity; count?: number }> = [
     { id: 'overview', label: '概览', icon: Activity, count: pendingActions.length || undefined },
     { id: 'automations', label: '自动化', icon: CalendarClock, count: props.automations.length || undefined },
     { id: 'growth', label: '成长', icon: BookOpen, count: props.learning?.proposals.filter((item) => item.status === 'pending').length || undefined },
-    ...(props.isWechatSpace ? [{ id: 'publishing' as const, label: '发布', icon: Newspaper }] : []),
+    ...(props.channel === 'wechat' ? [{ id: 'publishing' as const, label: '发布', icon: Newspaper }] : []),
   ];
 
   return (
@@ -113,7 +180,9 @@ export default function SpaceOperationsCenter(props: Props) {
         <div className="flex flex-col gap-4 border-b border-black/[0.07] pb-5 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h2 className="text-xl font-black text-slate-950">空间运营</h2>
-            <div className="mt-1 text-xs font-semibold text-slate-400">持续任务、审批和外部发布</div>
+            <div className="mt-1 text-xs font-semibold text-slate-400">
+              {isBilibili ? '持续任务、审批和 B 站互动' : '持续任务、审批和外部发布'}
+            </div>
           </div>
           <div className={`grid w-full ${tabs.length === 4 ? 'grid-cols-4' : 'grid-cols-3'} rounded-lg border border-black/[0.08] bg-white p-1 sm:flex sm:w-auto`}>
             {tabs.map((item) => {
@@ -147,16 +216,20 @@ export default function SpaceOperationsCenter(props: Props) {
                   {pendingActions.map((action) => (
                     <div key={action.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
                       <div className="min-w-0 flex-1">
-                        <div className="text-[11px] font-black text-amber-700">{action.riskLevel === 'HIGH' ? '高风险动作' : '需要确认'}</div>
+                        <div className="text-[11px] font-black text-amber-700">
+                          {action.kind.startsWith('BILIBILI_')
+                            ? 'B 站写操作'
+                            : action.riskLevel === 'HIGH' ? '高风险动作' : '需要确认'}
+                        </div>
                         <div className="mt-1 text-sm font-black text-slate-800">{action.title}</div>
                       </div>
                       <div className="flex shrink-0 justify-end gap-2">
                         <button type="button" onClick={() => props.onDecideAction(action, 'reject')} disabled={Boolean(props.actionBusyId)} className="h-9 px-3 text-xs font-black text-slate-500 disabled:text-slate-300">
-                          {action.kind === 'FINALIZE_WORK' ? '暂不定稿' : '取消'}
+                          {actionRejectLabel(action.kind)}
                         </button>
                         <button type="button" onClick={() => props.onDecideAction(action, 'approve')} disabled={Boolean(props.actionBusyId)} className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-slate-950 px-3 text-xs font-black text-white disabled:bg-slate-200">
                           {props.actionBusyId === action.id ? <Loader2 className="animate-spin" size={13} /> : <CheckCircle2 size={13} />}
-                          {action.kind === 'WECHAT_CREATE_DRAFT' ? '创建草稿' : action.kind === 'WECHAT_PUBLISH' ? '正式发布' : '确认定稿'}
+                          {actionApproveLabel(action.kind)}
                         </button>
                       </div>
                     </div>
@@ -177,6 +250,70 @@ export default function SpaceOperationsCenter(props: Props) {
                     </div>
                   ))}
                 </div>
+              </section>
+            )}
+
+            {isBilibili && (
+              <section>
+                <div className="mb-3 flex items-center justify-between">
+                  <h3 className="flex items-center gap-2 text-sm font-black text-slate-800">
+                    <Tv size={16} /> B 站账号与互动
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={props.onOpenBilibili}
+                    className="inline-flex h-8 items-center gap-1.5 px-2 text-xs font-black text-slate-400 hover:text-slate-900"
+                  >
+                    打开 B 站面板 <ExternalLink size={12} />
+                  </button>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="rounded-lg border border-black/[0.07] bg-white p-4">
+                    <div className="text-[11px] font-black text-slate-400">账号</div>
+                    <div className="mt-1 truncate text-sm font-black text-slate-900">
+                      {bilibiliConnected
+                        ? (props.bilibiliConnector?.publicConfig?.uname || '已连接')
+                        : bilibiliConfigured ? '已连接，未启用' : '未连接'}
+                    </div>
+                    <div className={`mt-1 text-[11px] font-semibold ${bilibiliConnected ? 'text-emerald-700' : bilibiliConfigured ? 'text-amber-600' : 'text-slate-400'}`}>
+                      {bilibiliConnected
+                        ? (props.bilibiliConnector?.status === 'READY' ? '连接正常' : (props.bilibiliConnector?.status || '已启用'))
+                        : bilibiliConfigured ? '在 B 站面板启用连接' : '去 B 站面板扫码或粘贴 Cookie'}
+                    </div>
+                    {props.bilibiliProfile && (
+                      <div className="mt-2 text-[11px] font-semibold text-slate-400">
+                        粉丝 {formatCount(props.bilibiliProfile.follower || 0)} · 关注 {formatCount(props.bilibiliProfile.following || 0)}
+                      </div>
+                    )}
+                  </div>
+                  <div className="rounded-lg border border-black/[0.07] bg-white p-4">
+                    <div className="text-[11px] font-black text-slate-400">待审批互动</div>
+                    <div className="mt-1 text-2xl font-black text-slate-900">{pendingBilibiliActions.length}</div>
+                    <div className="mt-1 text-[11px] font-semibold text-slate-400">点赞 / 投币 / 收藏</div>
+                  </div>
+                  <div className="rounded-lg border border-black/[0.07] bg-white p-4">
+                    <div className="text-[11px] font-black text-slate-400">拆解成果</div>
+                    <div className="mt-1 text-2xl font-black text-slate-900">{props.bilibiliAnalysisCount}</div>
+                    <div className="mt-1 text-[11px] font-semibold text-slate-400">已存到空间的视频笔记</div>
+                  </div>
+                </div>
+                {recentBilibiliActions.length > 0 && (
+                  <div className="mt-4">
+                    <div className="mb-2 text-[11px] font-black text-slate-400">最近 B 站动作</div>
+                    <div className="overflow-hidden rounded-lg border border-black/[0.07] bg-white">
+                      <div className="divide-y divide-black/[0.06] px-4">
+                        {recentBilibiliActions.map((action) => (
+                          <div key={action.id} className="flex items-center gap-3 py-2.5">
+                            <span className="min-w-0 flex-1 truncate text-xs font-bold text-slate-700">{action.title}</span>
+                            <span className={`shrink-0 text-[11px] font-black ${action.status === 'FAILED' ? 'text-rose-600' : action.status === 'COMPLETED' ? 'text-emerald-700' : 'text-slate-400'}`}>
+                              {ACTION_STATUS[action.status] || action.status}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </section>
             )}
 
@@ -203,7 +340,7 @@ export default function SpaceOperationsCenter(props: Props) {
                     ))}
                   </div>
                 </section>
-                {props.isWechatSpace && (
+                {props.channel === 'wechat' && (
                   <section>
                     <h3 className="mb-3 text-sm font-black text-slate-800">微信发布</h3>
                     <div className="grid grid-cols-2 gap-y-5 border-y border-black/[0.07] py-5 sm:grid-cols-4">
@@ -238,6 +375,28 @@ export default function SpaceOperationsCenter(props: Props) {
               <div><h3 className="text-sm font-black text-slate-800">自动化规则</h3><div className="mt-1 text-xs font-semibold text-slate-400">{props.automations.length} 条规则</div></div>
               <button type="button" onClick={props.onOpenAutomationEditor} className="inline-flex h-10 shrink-0 items-center gap-2 rounded-lg bg-slate-950 px-4 text-xs font-black text-white"><Plus size={14} />新建自动化</button>
             </div>
+            {isBilibili && (
+              <section className="mb-5 rounded-lg border border-black/[0.07] bg-white p-4">
+                <div>
+                  <h4 className="text-xs font-black text-slate-700">B 站自动化模板</h4>
+                  <p className="mt-1 text-[11px] font-semibold leading-5 text-slate-400">选一个模板填入编辑器，时间、提示词和联网策略都可以继续改。</p>
+                </div>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  {BILIBILI_AUTOMATION_TEMPLATES.map((template) => (
+                    <button
+                      key={template.id}
+                      type="button"
+                      onClick={() => props.onUseAutomationTemplate(template)}
+                      className="rounded-lg border border-black/[0.06] bg-[#fbfaf7] p-3 text-left transition hover:border-slate-300 hover:bg-white"
+                    >
+                      <div className="text-xs font-black text-slate-800">{template.name}</div>
+                      <div className="mt-1 line-clamp-2 text-[11px] font-semibold leading-5 text-slate-500">{template.description}</div>
+                      <div className="mt-2 text-[10px] font-black text-slate-400">{templateScheduleLabel(template)}</div>
+                    </button>
+                  ))}
+                </div>
+              </section>
+            )}
             {props.automations.length === 0 ? (
               <div className="border-y border-dashed border-slate-200 py-16 text-center text-sm font-semibold text-slate-400">暂无自动化规则</div>
             ) : (
@@ -287,6 +446,69 @@ export default function SpaceOperationsCenter(props: Props) {
 
         {props.tab === 'growth' && (
           <div className="mt-6 space-y-6">
+            {isBilibili && (
+              <section>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-black text-slate-800">B 站账号成长</h3>
+                    <p className="mt-1 text-xs font-semibold leading-5 text-slate-400">基于当前账号快照，不做增长率推断。</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={props.onRefreshBilibiliGrowth}
+                    disabled={props.bilibiliGrowthLoading}
+                    className="inline-flex h-8 shrink-0 items-center gap-1.5 px-2 text-xs font-black text-slate-400 hover:text-slate-900 disabled:text-slate-300"
+                  >
+                    {props.bilibiliGrowthLoading ? <Loader2 className="animate-spin" size={13} /> : <RotateCcw size={13} />}
+                    刷新
+                  </button>
+                </div>
+                {!bilibiliConnected ? (
+                  <div className="mt-4 rounded-lg border border-dashed border-slate-200 py-8 text-center">
+                    <div className="text-sm font-semibold text-slate-400">
+                      {bilibiliConfigured ? '在 B 站面板启用连接后显示成长快照' : '连接 B 站账号后显示成长快照'}
+                    </div>
+                    <button type="button" onClick={props.onOpenBilibili} className="mt-2 text-xs font-black text-slate-700 hover:text-slate-950">
+                      {bilibiliConfigured ? '去 B 站面板启用 →' : '去 B 站面板连接 →'}
+                    </button>
+                  </div>
+                ) : props.bilibiliGrowthLoading && !props.bilibiliProfile ? (
+                  <div className="mt-4 flex items-center justify-center gap-2 py-8 text-xs font-black text-slate-400"><Loader2 className="animate-spin" size={15} />正在读取账号数据</div>
+                ) : props.bilibiliProfile ? (
+                  <>
+                    <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                      {[
+                        ['粉丝', formatCount(props.bilibiliProfile.follower || 0)],
+                        ['近期稿件', String(props.bilibiliVideos.length)],
+                        ['近期总播放', formatCount(bilibiliTotalPlay)],
+                        ['平均播放', formatCount(bilibiliAveragePlay)],
+                      ].map(([label, value]) => (
+                        <div key={label} className="rounded-lg border border-black/[0.07] bg-white p-3">
+                          <div className="text-lg font-black text-slate-800">{value}</div>
+                          <div className="mt-1 text-[11px] font-bold text-slate-400">{label}</div>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="mt-2 text-[10px] font-semibold text-slate-400">近期稿件取最近 30 条；播放为当前快照，不含历史增长。</div>
+                    {bilibiliTopVideos.length > 0 && (
+                      <div className="mt-3 overflow-hidden rounded-lg border border-black/[0.07] bg-white">
+                        <div className="border-b border-black/[0.06] px-4 py-2.5 text-[11px] font-black text-slate-400">近期稿件表现</div>
+                        <div className="divide-y divide-black/[0.06] px-4">
+                          {bilibiliTopVideos.map((video) => (
+                            <div key={video.bvid} className="flex items-center gap-3 py-2.5">
+                              <span className="min-w-0 flex-1 truncate text-xs font-bold text-slate-700">{video.title}</span>
+                              <span className="shrink-0 text-[11px] font-black text-slate-400">{formatCount(video.play)} 播放</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="mt-4 rounded-lg border border-dashed border-slate-200 py-8 text-center text-sm font-semibold text-slate-400">暂时读不到账号数据，请检查连接状态后刷新。</div>
+                )}
+              </section>
+            )}
             <section>
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -337,7 +559,7 @@ export default function SpaceOperationsCenter(props: Props) {
           </div>
         )}
 
-        {props.tab === 'publishing' && props.isWechatSpace && (
+        {props.tab === 'publishing' && props.channel === 'wechat' && (
           <div className="mt-6">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <div>
