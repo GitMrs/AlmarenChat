@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { Phone, PhoneCall, PhoneOff, Mic, MicOff, ChevronDown, ChevronUp, Sparkles, MessageSquare } from 'lucide-react';
 import type { CompanionCharacter, CompanionSkin } from '@/lib/companion/catalog';
 
-export type CallPhase = 'idle' | 'dialing' | 'connected' | 'ended';
+export type CallPhase = 'idle' | 'dialing' | 'answering' | 'connected' | 'ended';
 
 export interface CallOverlayProps {
   character: CompanionCharacter;
@@ -14,6 +14,7 @@ export interface CallOverlayProps {
   isMuted: boolean;
   onToggleMute: () => void;
   onHangUp: () => void;
+  onInterrupt: () => void;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
   hearingText: string;
@@ -22,6 +23,7 @@ export interface CallOverlayProps {
   transcript: Array<{ id: string; sender: 'user' | 'companion'; text: string }>;
   isReplying: boolean;
   isSpeaking: boolean;
+  isPreparingAudio?: boolean;
   isUserSpeaking: boolean;
   onManualSend?: (text: string) => void;
   onDismissEnded?: () => void;
@@ -41,6 +43,7 @@ export default function CallOverlay({
   isMuted,
   onToggleMute,
   onHangUp,
+  onInterrupt,
   isCollapsed,
   onToggleCollapse,
   hearingText,
@@ -49,12 +52,17 @@ export default function CallOverlay({
   transcript,
   isReplying,
   isSpeaking,
+  isPreparingAudio = false,
   isUserSpeaking,
   onManualSend,
   onDismissEnded,
 }: CallOverlayProps) {
   const [showInput, setShowInput] = useState(false);
   const [inputText, setInputText] = useState('');
+  // 临时收音和回复状态也占一个位置，舞台上总共最多两条。
+  const historySlots = Math.max(0, 2 - Number(isReplying) - Number(Boolean(hearingText)));
+  const visibleMessages = historySlots ? transcript.slice(-historySlots) : [];
+  const canInterrupt = !isReplying && (isSpeaking || isPreparingAudio);
 
   if (phase === 'idle') return null;
 
@@ -101,32 +109,29 @@ export default function CallOverlay({
       <div className="companion-call-backdrop" onClick={phase === 'ended' ? onDismissEnded : undefined} />
 
       {/* 1. 拨号状态 (Dialing) */}
-      {phase === 'dialing' && (
+      {(phase === 'dialing' || phase === 'answering') && (
         <div className="companion-call-modal companion-call-dialing">
-          <div className="companion-call-avatar-outer">
-            <div className="companion-call-ripple-ring ring-1" />
-            <div className="companion-call-ripple-ring ring-2" />
-            <div className="companion-call-avatar-box">
-              <span className="companion-call-avatar-letter">{character.name[0]}</span>
+          <div className="companion-call-dial-center" role="status" aria-live="polite">
+            <div className="companion-call-dial-emblem" aria-hidden="true">
+              <Phone size={34} strokeWidth={2.6} />
+            </div>
+            <p className="companion-call-dial-caption">
+              {phase === 'answering' ? '已接通' : `正在呼叫${character.name}`}
+            </p>
+            <div className="companion-call-dial-stars" aria-hidden="true">
+              <span>✧</span><span>✧</span><span>✧</span>
             </div>
           </div>
 
-          <h3 className="companion-call-title">{character.name}</h3>
-          <p className="companion-call-status-tip">
-            <span className="companion-call-status-dot" />
-            正在呼叫 {character.name} · 嘟……嘟……
-          </p>
-
-          <div className="companion-call-actions">
+          <div className="companion-call-dial-actions">
             <button
               type="button"
-              className="companion-call-btn companion-call-btn--hangup"
+              className="companion-call-dial-cancel"
               onClick={onHangUp}
-              aria-label="取消呼叫"
-              title="取消呼叫"
+              aria-label={phase === 'answering' ? '挂断电话' : '取消呼叫'}
+              title={phase === 'answering' ? '挂断电话' : '取消呼叫'}
             >
-              <PhoneOff size={24} />
-              <span className="companion-call-action-label">取消</span>
+              <Phone size={22} fill="currentColor" strokeWidth={1.5} aria-hidden="true" />
             </button>
           </div>
         </div>
@@ -157,7 +162,7 @@ export default function CallOverlay({
 
           {/* 中部字幕互动区 */}
           <div className="companion-call-body">
-            {transcript.map(message => (
+            {visibleMessages.map(message => (
               <div key={message.id} className={`companion-call-bubble companion-call-bubble--${message.sender} ${message.sender === 'companion' && message.id === transcript[transcript.length - 1]?.id && isSpeaking ? 'is-speaking' : ''}`}>
                 <div className="companion-call-bubble-header">
                   {message.sender === 'companion' ? (
@@ -231,6 +236,16 @@ export default function CallOverlay({
 
           {/* 底部功能控制托盘 */}
           <div className="companion-call-footer">
+            {!showInput && (
+              <button type="button" className="companion-call-activity" aria-live="polite"
+                disabled={!canInterrupt} onClick={onInterrupt}
+                data-active={!isMuted && !isReplying && !isPreparingAudio}>
+                <span className="companion-call-activity-icon" aria-hidden="true">
+                  <span /><span /><span /><span /><span />
+                </span>
+                <span>{canInterrupt ? '点按打断' : isReplying ? `${character.name}正在回复` : isMuted ? '麦克风已静音' : `${character.name}在听`}</span>
+              </button>
+            )}
             <button
               type="button"
               className={`companion-call-circle-btn ${isMuted ? 'is-muted' : ''}`}

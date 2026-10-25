@@ -395,6 +395,23 @@
   pointer-events: none;
   z-index: 0;
   animation: companion-fade-in 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  transform-origin: 50% 35%;
+  transform: translateY(0) scale(1);
+  transition: transform 1000ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* 通话推进的是场景：背景以较小幅度跟随人物近景，保留前后层次。
+   ended/idle 回到基础 transform，取消拨号也可从当前画面自然退回。 */
+.companion-page[data-call-phase="answering"] .companion-scene-backdrop,
+.companion-page[data-call-phase="dialing"] .companion-scene-backdrop,
+.companion-page[data-call-phase="connected"] .companion-scene-backdrop {
+  transform: translateY(1%) scale(1.10);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .companion-scene-backdrop {
+    transition: none;
+  }
 }
 
 .companion-scene-backdrop--cherry {
@@ -3571,7 +3588,7 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  color: rgba(255, 255, 255, 0.72);
+  color: inherit;
   font-size: 13px;
 }
 
@@ -3903,10 +3920,157 @@
   color: #4a3427;
 }
 
-.companion-call-layer[data-phase="dialing"] .companion-call-modal,
 .companion-call-layer[data-phase="ended"] .companion-call-modal {
   justify-content: center;
 }
+
+/* 拨号直接叠在人物舞台上；独立选择器避免继承 H5 电话卡片样式。 */
+.companion-call-layer[data-phase="answering"],
+.companion-call-layer[data-phase="dialing"] {
+  align-items: stretch;
+  justify-content: stretch;
+}
+
+.companion-call-layer[data-phase="answering"] .companion-call-backdrop,
+.companion-call-layer[data-phase="dialing"] .companion-call-backdrop {
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.companion-call-layer[data-phase="answering"] .companion-call-dialing,
+.companion-call-layer[data-phase="dialing"] .companion-call-dialing {
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  animation: none;
+}
+
+.companion-call-dial-center {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 28px;
+}
+
+.companion-call-dial-emblem {
+  display: grid;
+  place-items: center;
+  width: 108px;
+  height: 108px;
+  box-sizing: border-box;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: linear-gradient(145deg, #fbe5ef, #f6c9df);
+  color: #be3979;
+  box-shadow: 0 6px 0 #d889b0, 0 10px 24px rgba(126, 47, 87, 0.16);
+  animation: companion-dial-breathe 2.2s ease-in-out infinite;
+}
+
+.companion-call-dial-emblem svg {
+  animation: companion-dial-ring 1.8s ease-in-out infinite;
+  transform-origin: 50% 65%;
+}
+
+.companion-call-dial-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.companion-call-dial-dots > span {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: companion-dial-dot 1.2s ease-in-out infinite;
+}
+
+.companion-call-dial-dots > span:nth-child(2) { animation-delay: 150ms; }
+.companion-call-dial-dots > span:nth-child(3) { animation-delay: 300ms; }
+
+@keyframes companion-dial-breathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.035); }
+}
+
+@keyframes companion-dial-ring {
+  0%, 36%, 100% { transform: rotate(0deg); }
+  6%, 18% { transform: rotate(-10deg); }
+  12%, 24% { transform: rotate(10deg); }
+  30% { transform: rotate(-4deg); }
+}
+
+@keyframes companion-dial-dot {
+  0%, 70%, 100% { opacity: 0.3; transform: translateY(0); }
+  35% { opacity: 1; transform: translateY(-2px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .companion-call-dial-emblem,
+  .companion-call-dial-emblem svg,
+  .companion-call-dial-dots > span {
+    animation: none;
+  }
+}
+
+.companion-call-dial-caption {
+  margin: 0;
+  padding: 11px 19px;
+  border: 1px solid rgba(255, 255, 255, 0.95);
+  border-radius: 24px;
+  background: linear-gradient(180deg, #fffdf7, #f8e7dc);
+  box-shadow: 0 4px 0 rgba(205, 160, 153, 0.45), 0 6px 14px rgba(91, 40, 60, 0.12);
+  color: #8e285c;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.companion-call-dial-actions {
+  position: absolute;
+  left: 50%;
+  bottom: max(16px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+}
+
+.companion-call-dial-cancel {
+  display: grid;
+  place-items: center;
+  width: 66px;
+  height: 66px;
+  border: 1px solid #a92b49;
+  border-radius: 50%;
+  background: linear-gradient(160deg, #ff8496, #ed526b);
+  color: #fff;
+  box-shadow: 0 5px 0 #b9304c, 0 8px 18px rgba(135, 40, 62, 0.22);
+  cursor: pointer;
+  transition: transform 150ms ease, box-shadow 150ms ease;
+}
+
+.companion-call-dial-cancel svg { transform: rotate(135deg); }
+.companion-call-dial-cancel:hover { transform: translateY(-2px); }
+.companion-call-dial-cancel:active { transform: translateY(3px); box-shadow: 0 2px 0 #b9304c; }
+.companion-call-dial-cancel:focus-visible { outline: 3px solid #fff; outline-offset: 4px; }
 
 .companion-call-connected {
   justify-content: initial;
@@ -4035,9 +4199,11 @@
 }
 
 /* 通话 HUD 接管舞台顶部，避免和衣橱、语音等普通场景按钮重叠。 */
+.companion-page[data-call-phase="answering"] .companion-stage-desktop-hud,
 .companion-page[data-call-phase="dialing"] .companion-stage-desktop-hud,
 .companion-page[data-call-phase="connected"] .companion-stage-desktop-hud,
 .companion-page[data-call-phase="ended"] .companion-stage-desktop-hud,
+.companion-page[data-call-phase="answering"] .companion-floating-hud,
 .companion-page[data-call-phase="dialing"] .companion-floating-hud,
 .companion-page[data-call-phase="connected"] .companion-floating-hud,
 .companion-page[data-call-phase="ended"] .companion-floating-hud {
@@ -4045,99 +4211,152 @@
   pointer-events: none;
 }
 
-/* H5 电话层使用独立的居中通话面板，不继承 PC 舞台 HUD 的全屏定位。 */
+/* H5 复用舞台通话，只适配屏幕尺寸和安全区，不再切换旧电话卡片。 */
 @media (max-width: 1023px) {
-  .companion-call-layer {
-    align-items: center;
-    justify-content: center;
-  }
-
-  .companion-call-backdrop {
-    background: radial-gradient(circle at center, rgba(30, 20, 32, 0.72) 0%, rgba(15, 10, 18, 0.88) 100%);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    pointer-events: auto;
-  }
-
-  .companion-call-modal {
-    width: 90%;
-    max-width: 440px;
-    height: auto;
-    min-height: 0;
-    padding: 24px;
-    border: 1px solid rgba(255, 255, 255, 0.22);
-    border-radius: 28px;
-    background: rgba(255, 255, 255, 0.12);
-    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.25);
-    color: #ffffff;
-    backdrop-filter: blur(28px);
-    -webkit-backdrop-filter: blur(28px);
-  }
-
-  .companion-call-connected {
-    width: 92%;
-    max-width: 480px;
-    min-height: 380px;
-    padding: 18px 20px 22px;
+  .companion-page[data-call-expanded="true"] .companion-chat-layer,
+  .companion-page[data-call-expanded="true"] .companion-dockbar,
+  .companion-page[data-call-expanded="true"] .companion-quick-reactions {
+    display: none;
   }
 
   .companion-call-header {
-    position: static;
-    width: 100%;
-    margin-bottom: 16px;
+    top: max(12px, env(safe-area-inset-top));
+    left: 12px;
+    right: 12px;
+    gap: 8px;
   }
 
   .companion-call-header-pill {
-    background: rgba(0, 0, 0, 0.35);
-    border-color: rgba(255, 255, 255, 0.16);
-    color: #fff;
+    gap: 6px;
+    min-width: 0;
+    font-size: 12px;
   }
 
-  .companion-call-timer,
   .companion-call-peer-name {
-    color: rgba(255, 255, 255, 0.9);
-  }
-
-  .companion-call-body {
-    position: static;
-    transform: none;
-    width: 100%;
-    max-height: 42vh;
-    margin-bottom: 20px;
-    overflow: auto;
-  }
-
-  .companion-call-bubble {
-    max-width: 92%;
-    background: rgba(0, 0, 0, 0.4);
-    border-color: rgba(255, 255, 255, 0.14);
-  }
-
-  .companion-call-bubble-name,
-  .companion-call-bubble-text {
-    color: #fff;
-  }
-
-  .companion-call-bubble--user {
-    background: rgba(16, 185, 129, 0.16);
+    max-width: 28vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .companion-call-footer {
-    position: static;
-    transform: none;
-    width: 100%;
-    gap: 18px;
-    padding-top: 10px;
+    bottom: max(16px, env(safe-area-inset-bottom));
+    gap: 16px;
   }
 
-  .companion-call-btn-label {
-    display: block;
+  .companion-call-body {
+    bottom: calc(max(16px, env(safe-area-inset-bottom)) + 148px);
+    width: calc(100% - 24px);
+    max-height: 36%;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .companion-call-bubble {
+    flex-shrink: 0;
+    max-width: 92%;
+    box-sizing: border-box;
   }
 
   .companion-call-text-tray {
-    position: static;
-    transform: none;
-    width: 100%;
-    margin-bottom: 16px;
+    bottom: calc(max(16px, env(safe-area-inset-bottom)) + 78px);
+    width: calc(100% - 24px);
   }
+
+  .companion-call-text-input {
+    min-width: 0;
+    font-size: 16px;
+  }
+}
+
+.companion-call-layer[data-phase="answering"] .companion-call-dial-emblem {
+  background: linear-gradient(155deg, #7ce3ac, #45b76e);
+  border-color: #a6f0c2;
+  color: #fff;
+  box-shadow: 0 6px 0 #338b51, 0 10px 24px rgba(38, 115, 67, 0.2);
+  animation: none;
+}
+
+.companion-call-layer[data-phase="answering"] .companion-call-dial-emblem svg {
+  animation: none;
+  fill: currentColor;
+}
+
+.companion-call-dial-stars {
+  display: flex;
+  gap: 9px;
+  margin-top: -14px;
+  color: #96395b;
+  font-size: 19px;
+  line-height: 1;
+}
+
+.companion-call-dial-stars > span {
+  animation: companion-dial-dot 1.2s ease-in-out infinite;
+}
+.companion-call-dial-stars > span:nth-child(2) { animation-delay: 200ms; }
+.companion-call-dial-stars > span:nth-child(3) { animation-delay: 400ms; }
+
+.companion-call-activity {
+  position: absolute;
+  bottom: calc(100% + 14px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 15px;
+  border: 1px solid #fff;
+  border-radius: 20px;
+  background: linear-gradient(#fffdf7, #fae9df);
+  box-shadow: 0 4px 0 rgba(194, 151, 141, 0.45), 0 5px 14px rgba(91, 40, 60, 0.1);
+  color: #8e285c;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.companion-call-activity-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  width: 27px;
+  height: 27px;
+  border: 1px solid #d9b7a5;
+  border-radius: 50%;
+  background: #fffdf8;
+  color: #cf3975;
+}
+
+.companion-call-activity:not(:disabled) { cursor: pointer; }
+.companion-call-activity:not(:disabled):hover { background: #fff4f3; }
+.companion-call-activity:disabled { opacity: 1; }
+.companion-call-activity:focus-visible { outline: 3px solid #cf3975; outline-offset: 3px; }
+
+.companion-call-activity-icon > span {
+  width: 2px;
+  height: 6px;
+  border-radius: 2px;
+  background: currentColor;
+}
+.companion-call-activity-icon > span:nth-child(2n) { height: 12px; }
+.companion-call-activity-icon > span:nth-child(3) { height: 16px; }
+.companion-call-activity[data-active="true"] .companion-call-activity-icon > span {
+  animation: companion-call-level 1s ease-in-out infinite alternate;
+}
+.companion-call-activity-icon > span:nth-child(2n) { animation-delay: -350ms; }
+.companion-call-activity-icon > span:nth-child(3) { animation-delay: -650ms; }
+@keyframes companion-call-level {
+  from { transform: scaleY(0.45); }
+  to { transform: scaleY(1); }
+}
+
+@media (min-width: 1024px) {
+  .companion-call-body { bottom: 168px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .companion-call-activity-icon > span { animation: none !important; }
+  .companion-call-dial-stars > span { animation: none; }
 }

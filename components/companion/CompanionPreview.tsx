@@ -1179,7 +1179,7 @@ function CompanionSession({
   };
 
   const handleStartCall = () => {
-    if (callPhase === 'dialing' || callPhase === 'connected') return;
+    if (callPhase === 'dialing' || callPhase === 'answering' || callPhase === 'connected') return;
     stopPlayback();
     setCallPhase('dialing');
     setCallDuration(0);
@@ -1197,21 +1197,26 @@ function CompanionSession({
     callSoundsRef.current.playRing();
     triggerListeningMotion();
     // 必须在用户点击的同步调用链里启动识别，否则浏览器可能拒绝麦克风权限。
-    // 拨号动画仍然延迟 2 秒接通，但权限申请提前完成。
+    // 每次呼叫随机等待 5～10 秒接通，但麦克风权限申请提前完成。
     startCallVoiceRecognition();
 
     if (callDialTimerRef.current) clearTimeout(callDialTimerRef.current);
     callDialTimerRef.current = setTimeout(() => {
       if (!sessionActiveRef.current) return;
       callSoundsRef.current?.playConnect();
-      setCallPhase('connected');
+      setCallPhase('answering');
       setCallReplying(false);
-
-      if (callTimerRef.current) clearInterval(callTimerRef.current);
-      callTimerRef.current = setInterval(() => {
-        setCallDuration(d => d + 1);
+      callDialTimerRef.current = setTimeout(() => {
+        if (!sessionActiveRef.current) return;
+        setCallPhase('connected');
       }, 1000);
+    }, 5_000 + Math.floor(Math.random() * 5_001));
+  };
 
+  // 接通确认展示完毕后再播放问候，使用当前 connected 状态的播放链路。
+  useEffect(() => {
+    if (callPhase !== 'connected') return;
+    callTimerRef.current = setInterval(() => setCallDuration(d => d + 1), 1000);
       const greeting = character.id === 'yume'
         ? '喂喂~ 是你呀！今天有什么悄悄话要跟我说吗？✨'
         : '喂~ 收到你的电话啦！今天过得顺心吗，快跟我说说吧🌸';
@@ -1224,8 +1229,10 @@ function CompanionSession({
       };
       setCallTranscript([{ id: pseudoReply.id, sender: 'companion', text: greeting }]);
       void playChatReply(pseudoReply);
-    }, 3000);
-  };
+    return () => {
+      if (callTimerRef.current) clearInterval(callTimerRef.current);
+    };
+  }, [callPhase]);
 
   const handleHangUp = () => {
     if (callDialTimerRef.current) {
@@ -1238,7 +1245,7 @@ function CompanionSession({
     }
     callVoiceRecRef.current?.stop();
     callSoundsRef.current?.playHangUp();
-    setCallPhase('ended');
+    setCallPhase('idle');
     setCallReplying(false);
     stopPlayback();
   };
@@ -1357,6 +1364,7 @@ function CompanionSession({
       className="companion-page companion-page--embedded"
       data-character={character.id}
       data-call-phase={callPhase}
+      data-call-expanded={callPhase === 'dialing' || callPhase === 'answering' || (callPhase === 'connected' && !isCallCollapsed)}
     >
       <div
         className={`companion-workspace ${panelCollapsed ? 'is-collapsed' : ''}`}
@@ -1500,7 +1508,7 @@ function CompanionSession({
             speed={speed}
             zoom={zoom}
             focusOffsetY={focusOffsetY}
-            framingMode={callPhase === 'dialing' || callPhase === 'connected' ? 'half' : framingMode}
+            framingMode={callPhase === 'dialing' || callPhase === 'answering' || callPhase === 'connected' ? 'half' : framingMode}
             autoBlink={autoBlink}
             lookAt={lookAt}
             speaking={isSpeaking}
@@ -1630,6 +1638,7 @@ function CompanionSession({
             isMuted={isCallMuted}
             onToggleMute={handleToggleCallMute}
             onHangUp={handleHangUp}
+            onInterrupt={stopPlayback}
             isCollapsed={isCallCollapsed}
             onToggleCollapse={handleToggleCallCollapse}
             hearingText={callHearing}
@@ -1638,6 +1647,7 @@ function CompanionSession({
             transcript={callTranscript}
             isReplying={callPhase === 'connected' && (isStreaming || callReplying)}
             isSpeaking={isSpeaking}
+            isPreparingAudio={chatVoiceNotice?.status === 'preparing'}
             isUserSpeaking={Boolean(callHearing)}
             onManualSend={handleCallManualSend}
             onDismissEnded={handleDismissCallEnded}
