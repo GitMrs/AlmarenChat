@@ -9,7 +9,7 @@ import { smartFetch } from '../../web/proxy.ts';
 import { EVENT_MARKET_INSTRUMENT, getEventMarketResult, type EventMarketObservation, type EventMarketWindow } from './event-market.ts';
 
 // 与 CLI 共用项目数据文件，不能使用打包后 import.meta.url 指向的静态副本。
-const JSON_PATH = path.join(process.cwd(), 'lib', 'crypto', 'crypto-events.json');
+const JSON_PATH = path.join(process.cwd(), 'lib', 'workspace', 'crypto', 'crypto-events.json');
 const CALENDAR_URL = 'https://nfs.faireconomy.media/ff_calendar_thisweek.json';
 
 // 常用宏观指标的系统中文名与交易指引映射（评级和指引均非来源原文）
