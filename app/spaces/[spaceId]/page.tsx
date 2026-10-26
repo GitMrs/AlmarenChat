@@ -5130,8 +5130,8 @@ export default function SpaceDetailPage() {
                             key={run.id}
                             type="button"
                             onClick={() => {
+                              // 保留历史任务抽屉，关闭任务详情后可以直接回到原列表和滚动位置。
                               openTaskRun(run.id);
-                              setSidePanel(null);
                             }}
                             className={`w-full border-b border-black/[0.06] px-2 py-4 text-left transition last:border-b-0 ${selected ? 'bg-[#fbfaf7]' : 'hover:bg-[#fbfaf7]'}`}
                           >
