@@ -20,6 +20,7 @@ import BilibiliDiscoveryCard from './BilibiliDiscoveryCard';
 
 type Tab = 'history' | 'likes' | 'favorites' | 'videos' | 'hot';
 type ActionKind = 'BILIBILI_LIKE' | 'BILIBILI_COIN' | 'BILIBILI_FAVORITE';
+type VideoListContext = 'likes' | 'favorites' | 'default';
 
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'history', label: '最近看过' },
@@ -137,7 +138,7 @@ export default function BilibiliPanel({
   const [searchResults, setSearchResults] = useState<BilibiliVideoItem[] | null>(null);
   const [searchLoading, setSearchLoading] = useState(false);
 
-  const [detail, setDetail] = useState<{ bvid: string; loading: boolean; data?: BilibiliVideoResponse; error?: string } | null>(null);
+  const [detail, setDetail] = useState<{ bvid: string; loading: boolean; source: VideoListContext; data?: BilibiliVideoResponse; error?: string } | null>(null);
 
   const [pending, setPending] = useState<SpaceActionRequest[]>([]);
   const [intent, setIntent] = useState<{ kind: ActionKind; item: BilibiliVideoItem; mediaId?: string } | null>(null);
@@ -406,15 +407,15 @@ export default function BilibiliPanel({
     setQuery('');
   };
 
-  const openDetail = async (bvid: string) => {
+  const openDetail = async (bvid: string, source: VideoListContext = 'default') => {
     setNotice('');
     setError('');
-    setDetail({ bvid, loading: true });
+    setDetail({ bvid, loading: true, source });
     try {
       const data = await spacesApi.bilibiliVideo(spaceId, bvid);
-      setDetail({ bvid, loading: false, data });
+      setDetail({ bvid, loading: false, source, data });
     } catch (err: any) {
-      setDetail({ bvid, loading: false, error: err?.message || '解析视频失败' });
+      setDetail({ bvid, loading: false, source, error: err?.message || '解析视频失败' });
     }
   };
 
@@ -522,7 +523,8 @@ export default function BilibiliPanel({
 
   const favoriteFolders = useMemo(() => folders.filter((folder) => folder.id), [folders]);
 
-  const renderVideoList = (list: BilibiliVideoItem[], emptyText: string) => (
+  // 点赞/收藏列表里的条目已经处于对应状态，不再展示重复的写操作入口。
+  const renderVideoList = (list: BilibiliVideoItem[], emptyText: string, context: VideoListContext = 'default') => (
     <div className="space-y-3">
       {list.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-black/[0.08] bg-white p-10 text-center text-xs font-semibold text-slate-400">
@@ -533,7 +535,7 @@ export default function BilibiliPanel({
         <article key={item.bvid} className="flex gap-3 rounded-2xl border border-black/[0.06] bg-white p-3 transition hover:border-slate-200">
           <button
             type="button"
-            onClick={() => void openDetail(item.bvid)}
+            onClick={() => void openDetail(item.bvid, context)}
             className="relative block h-[74px] w-[132px] shrink-0 overflow-hidden rounded-xl bg-slate-100"
           >
             {item.cover ? (
@@ -547,7 +549,7 @@ export default function BilibiliPanel({
             <div className="flex items-start gap-2">
               <button
                 type="button"
-                onClick={() => void openDetail(item.bvid)}
+                onClick={() => void openDetail(item.bvid, context)}
                 className="line-clamp-2 flex-1 text-left text-sm font-black leading-5 text-slate-900 hover:underline"
               >
                 {item.title}
@@ -568,13 +570,15 @@ export default function BilibiliPanel({
               {item.pubdate ? <span>{formatDate(item.pubdate)}</span> : null}
             </div>
             <div className="mt-2 flex flex-wrap gap-2">
-              <ActionButton
-                icon={<Heart size={12} />}
-                label="点赞"
-                disabled={busy || pendingFor.has(`BILIBILI_LIKE:${item.bvid}`)}
-                pending={pendingFor.has(`BILIBILI_LIKE:${item.bvid}`)}
-                onClick={() => setIntent({ kind: 'BILIBILI_LIKE', item })}
-              />
+              {context !== 'likes' ? (
+                <ActionButton
+                  icon={<Heart size={12} />}
+                  label="点赞"
+                  disabled={busy || pendingFor.has(`BILIBILI_LIKE:${item.bvid}`)}
+                  pending={pendingFor.has(`BILIBILI_LIKE:${item.bvid}`)}
+                  onClick={() => setIntent({ kind: 'BILIBILI_LIKE', item })}
+                />
+              ) : null}
               <ActionButton
                 icon={<Coins size={12} />}
                 label="投币"
@@ -582,13 +586,15 @@ export default function BilibiliPanel({
                 pending={pendingFor.has(`BILIBILI_COIN:${item.bvid}`)}
                 onClick={() => setIntent({ kind: 'BILIBILI_COIN', item })}
               />
-              <ActionButton
-                icon={<Star size={12} />}
-                label="收藏"
-                disabled={busy || pendingFor.has(`BILIBILI_FAVORITE:${item.bvid}`)}
-                pending={pendingFor.has(`BILIBILI_FAVORITE:${item.bvid}`)}
-                onClick={() => setIntent({ kind: 'BILIBILI_FAVORITE', item, mediaId: favoriteFolders[0]?.id })}
-              />
+              {context !== 'favorites' ? (
+                <ActionButton
+                  icon={<Star size={12} />}
+                  label="收藏"
+                  disabled={busy || pendingFor.has(`BILIBILI_FAVORITE:${item.bvid}`)}
+                  pending={pendingFor.has(`BILIBILI_FAVORITE:${item.bvid}`)}
+                  onClick={() => setIntent({ kind: 'BILIBILI_FAVORITE', item, mediaId: favoriteFolders[0]?.id })}
+                />
+              ) : null}
             </div>
           </div>
         </article>
@@ -946,7 +952,11 @@ export default function BilibiliPanel({
                   </div>
                 ) : null}
 
-                {renderVideoList(items, emptyTextForTab(tab))}
+                {renderVideoList(
+                  items,
+                  emptyTextForTab(tab),
+                  tab === 'likes' ? 'likes' : tab === 'favorites' ? 'favorites' : 'default'
+                )}
 
                 {dataLoading ? (
                   <div className="flex justify-center py-6"><Loader2 className="animate-spin text-slate-300" size={20} /></div>
@@ -1106,13 +1116,15 @@ export default function BilibiliPanel({
                 </div>
 
                 <div className="flex flex-wrap gap-2">
-                  <ActionButton
-                    icon={<Heart size={12} />}
-                    label="点赞"
-                    disabled={busy || pendingFor.has(`BILIBILI_LIKE:${detailVideo.bvid}`)}
-                    pending={pendingFor.has(`BILIBILI_LIKE:${detailVideo.bvid}`)}
-                    onClick={() => setIntent({ kind: 'BILIBILI_LIKE', item: detailVideo })}
-                  />
+                  {detail?.source !== 'likes' ? (
+                    <ActionButton
+                      icon={<Heart size={12} />}
+                      label="点赞"
+                      disabled={busy || pendingFor.has(`BILIBILI_LIKE:${detailVideo.bvid}`)}
+                      pending={pendingFor.has(`BILIBILI_LIKE:${detailVideo.bvid}`)}
+                      onClick={() => setIntent({ kind: 'BILIBILI_LIKE', item: detailVideo })}
+                    />
+                  ) : null}
                   <ActionButton
                     icon={<Coins size={12} />}
                     label="投币"
@@ -1120,13 +1132,15 @@ export default function BilibiliPanel({
                     pending={pendingFor.has(`BILIBILI_COIN:${detailVideo.bvid}`)}
                     onClick={() => setIntent({ kind: 'BILIBILI_COIN', item: detailVideo })}
                   />
-                  <ActionButton
-                    icon={<Star size={12} />}
-                    label="收藏"
-                    disabled={busy || pendingFor.has(`BILIBILI_FAVORITE:${detailVideo.bvid}`)}
-                    pending={pendingFor.has(`BILIBILI_FAVORITE:${detailVideo.bvid}`)}
-                    onClick={() => setIntent({ kind: 'BILIBILI_FAVORITE', item: detailVideo, mediaId: favoriteFolders[0]?.id })}
-                  />
+                  {detail?.source !== 'favorites' ? (
+                    <ActionButton
+                      icon={<Star size={12} />}
+                      label="收藏"
+                      disabled={busy || pendingFor.has(`BILIBILI_FAVORITE:${detailVideo.bvid}`)}
+                      pending={pendingFor.has(`BILIBILI_FAVORITE:${detailVideo.bvid}`)}
+                      onClick={() => setIntent({ kind: 'BILIBILI_FAVORITE', item: detailVideo, mediaId: favoriteFolders[0]?.id })}
+                    />
+                  ) : null}
                 </div>
 
                 {detailVideo.desc ? (
