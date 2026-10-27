@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { archiveAgentChat } from '@/app/api/_lib/agent-personal-memory';
+import { withMessageReasoning } from '@/lib/chat/reasoning.mjs';
 
 export async function GET(
   request: Request,
@@ -49,7 +50,7 @@ export async function POST(
   try {
     const userId = requireAuth(request);
     const { conversationId } = await params;
-    const { content, role = 'user', attachments } = await request.json();
+    const { content, role = 'user', attachments, reasoning } = await request.json();
 
     if (typeof content !== 'string' || (role !== 'user' && role !== 'assistant')) {
       return NextResponse.json({ error: 'Invalid message' }, { status: 400 });
@@ -68,7 +69,7 @@ export async function POST(
         conversationId,
         role,
         content,
-        attachments: Array.isArray(attachments) && attachments.length > 0 ? attachments : undefined,
+        attachments: withMessageReasoning(attachments, role === 'assistant' ? reasoning : '') as any,
       },
     });
 

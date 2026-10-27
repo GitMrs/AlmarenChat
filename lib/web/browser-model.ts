@@ -1,3 +1,5 @@
+import { getReasoningDelta } from '../chat/reasoning.mjs';
+
 export type BrowserModelSource = 'ONLINE' | 'OLLAMA';
 export type BrowserModelScope = 'GLOBAL' | 'CONVERSATION';
 
@@ -109,7 +111,7 @@ function completionUrl(baseUrl: string) {
   return normalized.endsWith('/chat/completions') ? normalized : `${normalized}/chat/completions`;
 }
 
-function parseStreamLine(line: string) {
+function parseStreamLine(line: string, onReasoning?: (text: string) => void) {
   const trimmed = line.trim();
   if (!trimmed.startsWith('data:')) return '';
   const data = trimmed.slice(5).trim();
@@ -117,7 +119,10 @@ function parseStreamLine(line: string) {
 
   try {
     const chunk = JSON.parse(data);
-    return chunk.choices?.[0]?.delta?.content || '';
+    const delta = chunk.choices?.[0]?.delta;
+    const reasoning = getReasoningDelta(delta);
+    if (reasoning) onReasoning?.(reasoning);
+    return typeof delta?.content === 'string' ? delta.content : '';
   } catch {
     return '';
   }
@@ -127,10 +132,12 @@ export async function streamBrowserModel({
   config,
   messages,
   signal,
+  onReasoning,
 }: {
   config: BrowserModelConfig;
   messages: ModelMessage[];
   signal?: AbortSignal;
+  onReasoning?: (text: string) => void;
 }): Promise<ReadableStream<Uint8Array>> {
   let response: Response;
   try {
@@ -170,14 +177,14 @@ export async function streamBrowserModel({
           buffer = lines.pop() || '';
 
           for (const line of lines) {
-            const content = parseStreamLine(line);
+            const content = parseStreamLine(line, onReasoning);
             if (content) controller.enqueue(encoder.encode(content));
           }
 
           if (done) break;
         }
 
-        const content = parseStreamLine(buffer);
+        const content = parseStreamLine(buffer, onReasoning);
         if (content) controller.enqueue(encoder.encode(content));
         controller.close();
       } catch (error) {

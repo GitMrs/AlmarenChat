@@ -10,6 +10,7 @@ import { createAgentGrowthTools } from '@/lib/agents/growth/agent-growth';
 import { formatKnowledgeContext, getKnowledgeHits } from '@/lib/knowledge/knowledge';
 import { createModelClient, resolveModelName } from '@/lib/core/model-client';
 import { reserveChatQuota } from '@/lib/chat/chat-quota';
+import { withMessageReasoning } from '@/lib/chat/reasoning.mjs';
 import { loadAgentMemoryContext } from '@/lib/agents/memory/agent-memory';
 import { currentTimeContext } from '@/lib/agents/memory/current-time-context.mjs';
 import { archiveAgentChat } from '@/app/api/_lib/agent-personal-memory';
@@ -245,6 +246,7 @@ export async function POST(request: Request) {
       });
     }
     let fullContent = '';
+    let fullReasoning = '';
     const encoder = new TextEncoder();
     const abortController = new AbortController();
     const readable = new ReadableStream({
@@ -269,6 +271,10 @@ export async function POST(request: Request) {
             callTool: growth?.execute,
             signal: abortController.signal,
             onText: (text: string) => emitText(parser ? parser.push(text) : text),
+            onReasoning: (text: string) => {
+              fullReasoning += text;
+              emit({ type: 'reasoning_delta', text });
+            },
           });
           if (parser) emitText(parser.finish());
           if (!fullContent.trim()) throw new Error('模型没有返回正文');
@@ -276,7 +282,7 @@ export async function POST(request: Request) {
           // Persist assistant message after stream completes
           if (resolvedConversationId && fullContent) {
             await prisma.message.create({
-              data: { conversationId: resolvedConversationId, role: 'assistant', content: fullContent, attachments: web.attachments() as any },
+              data: { conversationId: resolvedConversationId, role: 'assistant', content: fullContent, attachments: withMessageReasoning(web.attachments(), fullReasoning) as any },
             });
             await prisma.conversation.update({
               where: { id: resolvedConversationId },

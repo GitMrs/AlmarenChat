@@ -17,11 +17,13 @@ import { primeChatAudio } from '@/lib/companion/chat-audio';
 import { tts } from '@/lib/client/api';
 import { cleanMarkdownForTTS } from '@/lib/tts/markdown-cleaner';
 import { playChunkedMp3 } from '@/lib/companion/stream-audio';
+import MessageReasoning from '@/components/chat/MessageReasoning';
 
 interface CompanionDisplayMessage {
   id: string;
   sender: 'user' | 'companion';
   text: string;
+  reasoning?: string;
   isSticker?: boolean;
 }
 
@@ -71,10 +73,11 @@ export interface CompanionPreviewProps {
   embedded?: boolean;
   onBackToChat?: () => void;
   onCompanionSkinChange?: (skin: CompanionSkin) => void;
-  externalMessages?: Array<{ id: string; role: 'user' | 'assistant' | 'system' | string; content: string }>;
+  externalMessages?: Array<{ id: string; role: 'user' | 'assistant' | 'system' | string; content: string; reasoning?: string }>;
   onSendMessage?: (content: string) => Promise<void>;
   isStreaming?: boolean;
   streamingContent?: string;
+  streamingReasoning?: string;
   draftValue?: string;
   onDraftChange?: (value: string) => void;
   reply?: CompanionReply | null;
@@ -89,6 +92,7 @@ export default function CompanionPreview({
   onSendMessage,
   isStreaming = false,
   streamingContent = '',
+  streamingReasoning = '',
   draftValue = '',
   onDraftChange,
   reply,
@@ -105,6 +109,7 @@ export default function CompanionPreview({
       onSendMessage={onSendMessage}
       isStreaming={isStreaming}
       streamingContent={streamingContent}
+      streamingReasoning={streamingReasoning}
       draftValue={draftValue}
       onDraftChange={onDraftChange}
       reply={reply}
@@ -117,10 +122,11 @@ interface CompanionSessionProps {
   character: CompanionCharacter;
   onBackToChat?: () => void;
   onCompanionSkinChange?: (skin: CompanionSkin) => void;
-  externalMessages?: Array<{ id: string; role: 'user' | 'assistant' | 'system' | string; content: string }>;
+  externalMessages?: Array<{ id: string; role: 'user' | 'assistant' | 'system' | string; content: string; reasoning?: string }>;
   onSendMessage?: (content: string) => Promise<void>;
   isStreaming?: boolean;
   streamingContent?: string;
+  streamingReasoning?: string;
   draftValue?: string;
   onDraftChange?: (value: string) => void;
   reply?: CompanionReply | null;
@@ -135,6 +141,7 @@ function CompanionSession({
   onSendMessage,
   isStreaming = false,
   streamingContent = '',
+  streamingReasoning = '',
   draftValue: messageText = '',
   onDraftChange,
   reply,
@@ -156,16 +163,18 @@ function CompanionSession({
         id: m.id,
         sender: m.role === 'user' ? 'user' : 'companion',
         text: m.content,
+        reasoning: m.role === 'assistant' ? m.reasoning : undefined,
       }));
-    if (isStreaming && streamingContent) {
+    if (isStreaming && (streamingContent || streamingReasoning)) {
       base.push({
         id: 'streaming-assistant',
         sender: 'companion',
         text: streamingContent,
+        reasoning: streamingReasoning,
       });
     }
     return base;
-  }, [externalMessages, isStreaming, streamingContent]);
+  }, [externalMessages, isStreaming, streamingContent, streamingReasoning]);
 
   const effectiveIsReplying = isStreaming;
   const [playing, setPlaying] = useState(true);
@@ -1623,11 +1632,12 @@ function CompanionSession({
                     className={`companion-bubble companion-bubble--${msg.sender} ${msg.isSticker ? 'companion-bubble--sticker' : ''}`}
                     role="status"
                   >
+                    <MessageReasoning reasoning={msg.reasoning} thinking={msg.id === 'streaming-assistant' && !msg.text} />
                     <span>{msg.text}</span>
                   </div>
                 </div>
               ))}
-              {effectiveIsReplying && (
+              {effectiveIsReplying && !streamingContent && !streamingReasoning && (
                 <div className="companion-bubble-row companion-bubble-row--companion">
                   <div className="companion-bubble companion-bubble--companion companion-bubble--typing">
                     <span className="companion-typing-dot" />
@@ -1845,11 +1855,12 @@ function CompanionSession({
                 {activeMessages.map(msg => (
                   <div key={msg.id} className={`companion-bubble-row companion-bubble-row--${msg.sender}`}>
                     <div className={`companion-bubble companion-bubble--${msg.sender} ${msg.isSticker ? 'companion-bubble--sticker' : ''}`}>
+                      <MessageReasoning reasoning={msg.reasoning} thinking={msg.id === 'streaming-assistant' && !msg.text} />
                       <span>{msg.text}</span>
                     </div>
                   </div>
                 ))}
-                {effectiveIsReplying && (
+                {effectiveIsReplying && !streamingContent && !streamingReasoning && (
                   <div className="companion-bubble-row companion-bubble-row--companion">
                     <div className="companion-bubble companion-bubble--companion companion-bubble--typing">
                       <span className="companion-typing-dot" />

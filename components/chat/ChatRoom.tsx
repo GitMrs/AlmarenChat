@@ -16,6 +16,8 @@ import CompanionPreview from '@/components/companion/CompanionPreview';
 import type { CompanionSkin } from '@/lib/companion/catalog';
 import ChatComposer from '@/components/chat/ChatComposer';
 import { MessageItem } from '@/components/chat/ChatMessageItem';
+import MessageReasoning from '@/components/chat/MessageReasoning';
+import { getMessageReasoning } from '@/lib/chat/reasoning.mjs';
 import MemorySuggestionDialog, { type MemorySuggestion } from '@/components/chat/MemorySuggestionDialog';
 import { useTTS } from '@/hooks/useTTS';
 import { getBuiltInAgents } from '@/lib/agents/data/agents-data';
@@ -104,6 +106,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingContent, setStreamingContent] = useState('');
+  const [streamingReasoning, setStreamingReasoning] = useState('');
   const [draft, setDraft] = useState('');
   const [companionDraft, setCompanionDraft] = useState('');
   const [companionSkinPrompt, setCompanionSkinPrompt] = useState('');
@@ -390,11 +393,12 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
             forceScrollToBottomRef.current = true;
             setHasMoreMessages(Boolean(hasMore));
             setMessages(
-              existingMessages.filter((msg: any) => !(msg.role === 'assistant' && !String(msg.content || '').trim())).map((msg: any) => ({
+              existingMessages.filter((msg: any) => !(msg.role === 'assistant' && !String(msg.content || '').trim() && !getMessageReasoning(msg.attachments))).map((msg: any) => ({
                 id: msg.id,
                 role: msg.role,
                 content: msg.content,
                 attachments: msg.attachments || [],
+                reasoning: getMessageReasoning(msg.attachments),
                 createdAt: msg.createdAt,
               }))
             );
@@ -615,7 +619,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
 
       container.scrollTo({ top: container.scrollHeight, behavior: isStreaming ? 'auto' : 'smooth' });
     });
-  }, [messages.length, streamingContent, isStreaming, shouldStickToBottom, viewportHeight, viewportOffsetTop]);
+  }, [messages.length, streamingContent, streamingReasoning, isStreaming, shouldStickToBottom, viewportHeight, viewportOffsetTop]);
 
   useEffect(() => {
     const previous = pendingPrependScrollRef.current;
@@ -638,19 +642,20 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
     role: msg.role,
     content: msg.content,
     attachments: msg.attachments || [],
+    reasoning: getMessageReasoning(msg.attachments),
     createdAt: msg.createdAt,
   });
 
   const syncConversationMessages = async (id: string, localPendingMessages: ChatMessage[] = []) => {
     const { messages: latestMessages, hasMore } = await conversationsApi.getMessages(id, { limit: MESSAGE_PAGE_SIZE });
     setHasMoreMessages(Boolean(hasMore));
-    const serverMessages = latestMessages.filter((message: any) => !(message.role === 'assistant' && !String(message.content || '').trim())).map(toChatMessage);
+    const serverMessages = latestMessages.filter((message: any) => !(message.role === 'assistant' && !String(message.content || '').trim() && !getMessageReasoning(message.attachments))).map(toChatMessage);
     const serverMessageKeys = new Set(
-      serverMessages.map((message) => `${message.role}|${message.content}|${message.attachments?.map((attachment) => attachment.url).join(',') || ''}`)
+      serverMessages.map((message) => `${message.role}|${message.content}|${message.attachments?.map((attachment) => attachment.url).filter(Boolean).join(',') || ''}`)
     );
     const pendingMessages = localPendingMessages.filter((message) => {
       if (!message.id.startsWith('user-') && !message.id.startsWith('assistant-') && !message.id.startsWith('error-')) return false;
-      const key = `${message.role}|${message.content}|${message.attachments?.map((attachment) => attachment.url).join(',') || ''}`;
+      const key = `${message.role}|${message.content}|${message.attachments?.map((attachment) => attachment.url).filter(Boolean).join(',') || ''}`;
       return !serverMessageKeys.has(key);
     });
     const nextMessages = [...serverMessages, ...pendingMessages];
@@ -685,6 +690,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
           role: msg.role,
           content: msg.content,
           attachments: msg.attachments || [],
+          reasoning: getMessageReasoning(msg.attachments),
           createdAt: msg.createdAt,
         })), ...current]);
 
@@ -817,11 +823,18 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
     stopTTS();
     setIsStreaming(true);
     setStreamingContent('');
+    setStreamingReasoning('');
     setWebStatus('');
 
+    let fullReasoning = '';
+    const onReasoning = (text: string) => {
+      if (abortRef.current?.signal.aborted) return;
+      fullReasoning += text;
+      setStreamingReasoning(fullReasoning);
+    };
     try {
       const historySource = options.historyOverride || nextLocalMessages;
-      const history = historySource.map((message) => ({
+      const history = historySource.filter(message => message.role !== 'assistant' || message.content.trim()).map((message) => ({
         role: message.role,
         content: message.content,
       }));
@@ -896,7 +909,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
         }
 
         const modelMessages: { role: 'system' | 'user' | 'assistant'; content: any }[] = historySource
-          .filter((message) => !message.id.startsWith('error-'))
+          .filter((message) => !message.id.startsWith('error-') && (message.role !== 'assistant' || message.content.trim()))
           .slice(-contextMessageLimit)
           .map((message) => ({
             role: message.role,
@@ -950,6 +963,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
             config: activeBrowserModelConfig,
             messages: modelMessages,
             signal: controller.signal,
+            onReasoning,
           }),
           conversationId: localConversationId,
         };
@@ -972,6 +986,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
           knowledgeEnabled: true,
           companionMode: isCompanionSend,
           onCompanionCue: (emotion) => { replyEmotion = emotion; },
+          onReasoning,
           agentSnapshot,
           ...(userSettings?.apiBaseUrl && userSettings.apiKey && userSettings.modelName
             ? {
@@ -1009,6 +1024,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
         id: `assistant-${Date.now()}`,
         role: 'assistant',
         content: fullContent,
+        reasoning: fullReasoning,
         createdAt: new Date().toISOString(),
       };
 
@@ -1020,7 +1036,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
 
       if (result.conversationId) {
         if (usesBrowserModel && fullContent) {
-          await conversationsApi.sendMessage(result.conversationId, fullContent, { role: 'assistant' });
+          await conversationsApi.sendMessage(result.conversationId, fullContent, { role: 'assistant', reasoning: fullReasoning });
         }
         if (isCompanionSend && activeViewRef.current === 'companion' && requestChat === activeChatRef.current && replyRequest === replyRequestRef.current && !controller.signal.aborted && fullContent.trim()) {
           setCompanionReply({ id: assistantMessage.id, content: fullContent, emotion: replyEmotion });
@@ -1040,21 +1056,23 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
             id: `error-${Date.now()}`,
             role: 'assistant',
             content: errorContent,
+            reasoning: fullReasoning,
             createdAt: new Date().toISOString(),
           },
         ]);
       }
     } finally {
       setIsStreaming(false);
+      setStreamingReasoning('');
     }
   };
 
   const handleStop = () => {
     abortRef.current?.abort();
     setIsStreaming(false);
-    if (streamingContent) {
+    if (streamingContent || streamingReasoning) {
       if (modelSource === 'OLLAMA' && conversationId) {
-        conversationsApi.sendMessage(conversationId, streamingContent, { role: 'assistant' }).catch(() => {});
+        conversationsApi.sendMessage(conversationId, streamingContent, { role: 'assistant', reasoning: streamingReasoning }).catch(() => {});
       }
       setMessages((prev) => [
         ...prev,
@@ -1062,10 +1080,12 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
           id: `assistant-${Date.now()}`,
           role: 'assistant',
           content: streamingContent,
+          reasoning: streamingReasoning,
           createdAt: new Date().toISOString(),
         },
       ]);
       setStreamingContent('');
+      setStreamingReasoning('');
     }
   };
 
@@ -1316,6 +1336,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
             }}
             isStreaming={isStreaming}
             streamingContent={streamingContent}
+            streamingReasoning={streamingReasoning}
             draftValue={companionDraft}
             onDraftChange={setCompanionDraft}
             reply={companionReply}
@@ -1394,19 +1415,22 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
                 />
               ))}
             {isLoggedIn && isStreaming && webStatus && <div className="text-xs text-slate-500" role="status">{webStatus}</div>}
-            {isLoggedIn && isStreaming && streamingContent && (
+            {isLoggedIn && isStreaming && (streamingContent || streamingReasoning) && (
               <div className="flex justify-start gap-3">
                 <Avatar src={displayAgent.avatar} alt={displayAgent.name} size="sm" className="mt-1 shrink-0" />
                 <div className="min-w-0 max-w-[82%] rounded-[24px] rounded-bl-md border border-black/[0.06] bg-white px-5 py-4 text-slate-800 shadow-sm">
-                  <div className="markdown-body min-w-0 max-w-full overflow-hidden text-sm leading-7">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{streamingContent}</ReactMarkdown>
-                  </div>
-                  <span className="ml-1 inline-block h-4 w-2 animate-pulse rounded-sm bg-slate-300" />
+                  <MessageReasoning reasoning={streamingReasoning} thinking={!streamingContent} />
+                  {streamingContent && (
+                    <div className="markdown-body min-w-0 max-w-full overflow-hidden text-sm leading-7">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{streamingContent}</ReactMarkdown>
+                    </div>
+                  )}
+                  {streamingContent && <span className="ml-1 inline-block h-4 w-2 animate-pulse rounded-sm bg-slate-300" />}
                 </div>
               </div>
             )}
 
-            {isLoggedIn && isStreaming && !streamingContent && (
+            {isLoggedIn && isStreaming && !streamingContent && !streamingReasoning && (
               <div className="flex justify-start gap-3">
                 <Avatar src={displayAgent.avatar} alt={displayAgent.name} size="sm" className="mt-1 shrink-0" />
                 <div className="rounded-[24px] rounded-bl-md border border-black/[0.06] bg-white px-5 py-4 shadow-sm">

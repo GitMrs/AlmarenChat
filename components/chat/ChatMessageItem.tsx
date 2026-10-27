@@ -4,12 +4,14 @@ import { memo } from 'react';
 import MessageActions from '@/components/chat/MessageActions';
 import MessageBubbleFrame from '@/components/chat/MessageBubbleFrame';
 import MessageContent from '@/components/chat/MessageContent';
+import MessageReasoning from '@/components/chat/MessageReasoning';
 import type { MessageAttachment } from '@/types';
 
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
+  reasoning?: string;
   attachments?: MessageAttachment[];
   createdAt: string;
 }
@@ -83,6 +85,7 @@ export const MessageItem = memo(function MessageItem({
         />
       ) : null}
     >
+      {message.role === 'assistant' && <MessageReasoning reasoning={message.reasoning} />}
       <MessageContent
         role={message.role}
         content={message.content}

@@ -520,6 +520,7 @@ export const conversations = {
     content: string,
     options?: {
       role?: 'user' | 'assistant';
+      reasoning?: string;
       attachments?: { type: 'image'; url: string; name?: string; mimeType?: string; size?: number }[];
     }
   ) =>
@@ -1246,6 +1247,7 @@ export async function streamChat(data: {
   knowledgeEnabled?: boolean;
   companionMode?: boolean;
   onCompanionCue?: (emotion: string) => void;
+  onReasoning?: (text: string) => void;
   signal?: AbortSignal;
 }): Promise<{ stream: ReadableStream<Uint8Array>; conversationId?: string }> {
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
@@ -1266,7 +1268,7 @@ export async function streamChat(data: {
   }
 
   const conversationId = res.headers.get('x-conversation-id') || undefined;
-  return { stream: decodeChatBody(res, data.onStatus, data.onCompanionCue)!, conversationId };
+  return { stream: decodeChatBody(res, data.onStatus, data.onCompanionCue, data.onReasoning)!, conversationId };
 }
 
 export async function generateConversationImage(data: {
