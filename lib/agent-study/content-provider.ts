@@ -50,10 +50,11 @@ function normalizeText(value: string) {
  */
 async function fetchVideoStudyContent(
   base: StudyContent,
-  videoRef: { platform: 'bilibili' | 'youtube'; id: string }
+  videoRef: { platform: 'bilibili' | 'youtube'; id: string },
+  options: { bilibiliCookie?: string } = {}
 ): Promise<StudyContent> {
   try {
-    const video = await withTimeout(fetchVideoContent(base.url), FETCH_TIMEOUT_MS);
+    const video = await withTimeout(fetchVideoContent(base.url, { cookie: options.bilibiliCookie }), FETCH_TIMEOUT_MS);
     if (!video) return { ...base, reason: 'video_meta_failed' };
 
     let text = normalizeText(video.subtitleText || '');
@@ -62,7 +63,10 @@ async function fetchVideoStudyContent(
     if (text.length < MIN_KNOWLEDGE_CONTENT_CHARS && isVideoAsrEnabled()) {
       const asr =
         videoRef.platform === 'bilibili'
-          ? await transcribeBilibiliVideo({ bvid: videoRef.id, cid: video.cid, duration: video.duration })
+          ? await transcribeBilibiliVideo(
+              { bvid: videoRef.id, cid: video.cid, duration: video.duration },
+              { cookie: options.bilibiliCookie } as any,
+            )
           : await transcribeYouTubeVideo({ videoId: videoRef.id, duration: video.duration });
       if (asr?.text) {
         text = normalizeText(asr.text);
@@ -160,7 +164,8 @@ async function fetchGitHubReadme(owner: string, repo: string) {
  * 视频/娱乐/时事来源直接返回 fetched=false，只保留为“见闻”（经历），不进入知识库。
  */
 export async function fetchStudyContent(
-  item: Pick<CandidateStudyItem, 'id' | 'source' | 'url' | 'title'>
+  item: Pick<CandidateStudyItem, 'id' | 'source' | 'url' | 'title'>,
+  options: { bilibiliCookie?: string } = {}
 ): Promise<StudyContent> {
   const base: StudyContent = {
     id: item.id,
@@ -179,7 +184,7 @@ export async function fetchStudyContent(
   // 绝不回退 Readability——视频页提取出的"正文"是推荐流垃圾，会污染知识库。
   const videoRef = parseVideoUrl(item.url) as { platform: 'bilibili' | 'youtube'; id: string } | null;
   if (videoRef) {
-    return fetchVideoStudyContent(base, videoRef);
+    return fetchVideoStudyContent(base, videoRef, options);
   }
 
   // 仓库类来源优先走 GitHub README，页面本身往往只有一句简介

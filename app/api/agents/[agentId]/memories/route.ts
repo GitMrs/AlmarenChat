@@ -12,9 +12,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ agen
     await requireAgentMemoryAccess(userId, agentId);
     const [memories, experiences, growthEvents] = await Promise.all([
       prisma.agentMemoryItem.findMany({ where: { userId, agentId, status: { not: 'DELETED' } }, orderBy: { updatedAt: 'desc' } }),
-      // 这是个人 Agent 档案，只展示没有空间归属的经历；空间经历由空间接口按 spaceId 读取。
-      prisma.agentExperience.findMany({ where: { userId, agentId, spaceId: null, outcome: 'ACCEPTED', status: { not: 'DELETED' } }, orderBy: { updatedAt: 'desc' }, take: 50 }),
-      prisma.agentGrowthEvent.findMany({ where: { userId, agentId, scope: 'PERSONAL' }, orderBy: { createdAt: 'desc' }, take: 50 }),
+      // Agent 详情面板没有额外的空间上下文，因此这里返回该 Agent 的完整成长履历。
+      prisma.agentExperience.findMany({ where: { userId, agentId, outcome: 'ACCEPTED', status: { not: 'DELETED' } }, orderBy: { updatedAt: 'desc' }, take: 50 }),
+      prisma.agentGrowthEvent.findMany({ where: { userId, agentId }, orderBy: { createdAt: 'desc' }, take: 50 }),
     ]);
     return NextResponse.json({ memories, experiences, growthEvents, growthState: deriveAgentGrowthState(growthEvents) }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (error: any) {

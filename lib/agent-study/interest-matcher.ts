@@ -206,6 +206,8 @@ export async function matchAgentStudyCandidates(
     knowledgeQuota?: number;
     /** 是否启用 B 站实时主动搜索（默认 true） */
     enableBilibiliSearch?: boolean;
+    /** 当前用户为该 Agent 配置的 B 站登录态 */
+    bilibiliCookie?: string;
   } = {}
 ): Promise<CandidateStudyItem[]> {
   const limit = options.limit || 3;
@@ -230,7 +232,11 @@ export async function matchAgentStudyCandidates(
       const queries = buildAgentBilibiliSearchQueries(agent, profile);
       // 每个 query 查 6 条高赞/高播放视频，提供充足的候选池
       const searchTasks = queries.map((query) =>
-        searchBilibiliVideos(query, { limit: 6, sort: 'totalrank' }).catch(() => [])
+        searchBilibiliVideos(query, {
+          limit: 6,
+          sort: 'totalrank',
+          cookie: options.bilibiliCookie,
+        }).catch(() => [])
       );
       const videoLists = await Promise.all(searchTasks);
       return videoLists.flat();

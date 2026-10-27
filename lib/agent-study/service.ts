@@ -15,6 +15,16 @@ import type { AgentDailyStudyRecord } from './types';
 import { readdir } from 'node:fs/promises';
 import path from 'node:path';
 
+async function loadAgentBilibiliCookie(userId: string, agentId: string) {
+  try {
+    const module = await import('./bilibili-connection');
+    return await module.getAgentBilibiliCookie(userId, agentId);
+  } catch {
+    // Legacy/offline test runners may not provide the database-backed connection module.
+    return '';
+  }
+}
+
 const STUDY_ROOT = path.join(process.cwd(), 'data', 'agent-study');
 
 export interface GetDailyStudyOptions {
@@ -62,12 +72,16 @@ async function getOrGenerateDailyStudyInternal(
 ): Promise<AgentDailyStudyRecord> {
   const date = options.date || getLocalISODate();
   const existing = await loadDailyStudyRecord(agentId, date, userId);
+  const sourceMode = options.sourceMode || (await getAgentStudySourceMode(agentId, userId));
+  const bilibiliCookie = sourceMode === 'bilibili' && userId
+    ? await loadAgentBilibiliCookie(userId, agentId)
+    : '';
 
   // 1. 若未强制刷新，优先从持久化缓存读取（保证日内稳定一致，极速 0ms）
   if (!options.forceRefresh) {
     if (existing) {
       // 当天已生成但知识尚未沉淀时，后台补齐（不阻塞卡片渲染）
-      if (userId) scheduleStudyKnowledgeIngestion(existing, options.modelConfig);
+      if (userId) scheduleStudyKnowledgeIngestion(existing, options.modelConfig, { bilibiliCookie });
       return existing;
     }
   }
@@ -79,7 +93,6 @@ async function getOrGenerateDailyStudyInternal(
   }
 
   // 判定模式：'internal'（纯走内部全网热点）或 'bilibili'（走 B 站主动搜索）
-  const sourceMode = options.sourceMode || (await getAgentStudySourceMode(agentId, userId));
   const enableBilibiliSearch = sourceMode === 'bilibili';
 
   // 3. 根据 Agent 偏好与候选源匹配 3 条候选，加载近期已研习过的素材 ID，严防重复研习
@@ -94,6 +107,7 @@ async function getOrGenerateDailyStudyInternal(
     limit: 3,
     knowledgeQuota: 1,
     enableBilibiliSearch,
+    bilibiliCookie,
     excludeIds,
   });
   // 若候选数不足 3 条，尝试放宽知识配额（允许资讯/热搜补充），但仍严格遵守历史去重
@@ -102,6 +116,7 @@ async function getOrGenerateDailyStudyInternal(
       limit: 3,
       knowledgeQuota: 0,
       enableBilibiliSearch,
+      bilibiliCookie,
       excludeIds,
     });
   }
@@ -130,7 +145,7 @@ async function getOrGenerateDailyStudyInternal(
   if (userId) {
     await syncStudyToAgentExperience(userId, record);
     // 7. 后台沉淀：知识进知识库、稳定事实进记忆
-    scheduleStudyKnowledgeIngestion(record, options.modelConfig);
+    scheduleStudyKnowledgeIngestion(record, options.modelConfig, { bilibiliCookie });
     // 8. 落库开关行，让后台调度器能发现该 Agent（不覆盖用户显式关闭）
     void ensureStudyEnabledObserved(agentId, userId).catch(() => {});
   }

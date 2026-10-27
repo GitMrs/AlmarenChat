@@ -280,8 +280,6 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
     try {
       setStudySourceMode(mode);
       await agentsApi.setDailyStudySourceMode(targetAgentId, mode);
-      // 切换模式后自动触发一次今日自学刷新以应用新模式
-      await loadDailyStudy(targetAgentId, true);
     } catch (err) {
       console.warn('[ChatRoom] setDailyStudySourceMode failed:', err);
     }

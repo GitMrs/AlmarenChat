@@ -23,7 +23,13 @@ function executionLabel(automation: SpaceAutomation | null) {
   const execution = automation?.executions?.[0];
   if (!execution) return automation?.enabled ? '等待第一次运行' : '还没跑过';
   if (execution.status === 'TRIGGERED') return '正在发现';
-  if (execution.status === 'COMPLETED') return `上次完成 · ${formatDateTime(execution.updatedAt)}`;
+  if (execution.status === 'COMPLETED') {
+    if (execution.deliveryStatus === 'FAILED') return `上次完成 · 推送失败 · ${formatDateTime(execution.updatedAt)}`;
+    if (execution.deliveryStatus === 'PENDING' || execution.deliveryStatus === 'DELIVERING') {
+      return `上次完成 · 推送中 · ${formatDateTime(execution.updatedAt)}`;
+    }
+    return `上次完成 · ${formatDateTime(execution.updatedAt)}`;
+  }
   if (execution.status === 'FAILED' || execution.status === 'FAILED_VALIDATION') {
     return `上次失败 · ${formatDateTime(execution.updatedAt)}`;
   }
@@ -70,9 +76,14 @@ export default function BilibiliDiscoveryCard({ spaceId }: { spaceId: string }) 
         spacesApi.webhooks(spaceId).catch(() => ({ webhooks: [] as SpaceWebhook[] })),
       ]);
       const found =
-        automationResult.automations.find(
-          (item) => item.prompt.includes(BILIBILI_DISCOVERY_MARKER) || item.name === template?.name
-        ) || null;
+        automationResult.automations
+          .filter(
+            (item) => item.prompt.includes(BILIBILI_DISCOVERY_MARKER) || item.name === template?.name
+          )
+          .sort((left, right) => {
+            if (left.enabled !== right.enabled) return left.enabled ? -1 : 1;
+            return new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime();
+          })[0] || null;
       applyAutomation(found);
       const currentWebhookId = found?.completionConfig?.webhookId;
       setWebhooks(

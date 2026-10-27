@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowLeft, BookOpen, ChevronDown, ChevronUp, Cpu, Database, MessageSquarePlus, SlidersHorizontal, Sparkles, X } from 'lucide-react';
+import { ArrowLeft, BookOpen, ChevronDown, ChevronUp, Cpu, Database, Loader2, MessageSquarePlus, QrCode, RefreshCw, SlidersHorizontal, Sparkles, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -16,6 +16,14 @@ import type { DisplayAgent } from '@/components/chat/ChatMessageItem';
 import type { AgentExperience, AgentGrowthEvent, AgentGrowthState, AgentMemoryItem } from '@/types';
 import type { AgentModelSettingsResponse } from '@/types';
 import type { AgentDailyStudyRecord, AgentStudyItem } from '@/lib/agent-study/types';
+import type { BilibiliProfile } from '@/lib/client/api';
+
+const DEFAULT_DAILY_STUDY_SCHEDULE = {
+  startHour: 8,
+  endHour: 24,
+  maxAttempts: 2,
+  retryBackoffMinutes: 30,
+};
 
 type AgentDetailsPanelProps = {
   displayAgent: DisplayAgent;
@@ -139,7 +147,7 @@ export default function AgentDetailsPanel({
   const [conversationDrawerOpen, setConversationDrawerOpen] = useState(false);
   const [memoryDrawerOpen, setMemoryDrawerOpen] = useState(false);
   const [studyDrawerOpen, setStudyDrawerOpen] = useState(false);
-  const [memoryTab, setMemoryTab] = useState<'memories' | 'experiences'>('memories');
+  const [memoryTab, setMemoryTab] = useState<'memories' | 'experiences' | 'growthEvents'>('memories');
   const [renameMemoryTarget, setRenameMemoryTarget] = useState<AgentMemoryItem | null>(null);
   const [renamingMemory, setRenamingMemory] = useState(false);
   const [deleteMemoryTarget, setDeleteMemoryTarget] = useState<AgentMemoryItem | null>(null);
@@ -160,10 +168,103 @@ export default function AgentDetailsPanel({
   const [knowledgeDocCount, setKnowledgeDocCount] = useState<number | null>(null);
   const [modelDialogOpen, setModelDialogOpen] = useState(false);
   const [modelProfile, setModelProfile] = useState<AgentModelSettingsResponse | null>(null);
+  const [studySchedule, setStudySchedule] = useState(DEFAULT_DAILY_STUDY_SCHEDULE);
+  const [studyScheduleOpen, setStudyScheduleOpen] = useState(false);
+  const [savingStudySchedule, setSavingStudySchedule] = useState(false);
+  const [studyScheduleSaved, setStudyScheduleSaved] = useState(false);
+  const [studyScheduleError, setStudyScheduleError] = useState('');
+  const [bilibiliConnection, setBilibiliConnection] = useState<{
+    connected: boolean;
+    profile?: BilibiliProfile | null;
+    lastError?: string | null;
+  } | null>(null);
+  const [bilibiliQr, setBilibiliQr] = useState<{ url: string; key: string } | null>(null);
+  const [bilibiliQrImage, setBilibiliQrImage] = useState('');
+  const [bilibiliQrStatus, setBilibiliQrStatus] = useState<'waiting' | 'scanned'>('waiting');
+  const [bilibiliLoginBusy, setBilibiliLoginBusy] = useState(false);
+  const [bilibiliLoginError, setBilibiliLoginError] = useState('');
+  const refreshDailyStudyRef = useRef(onRefreshDailyStudy);
+  refreshDailyStudyRef.current = onRefreshDailyStudy;
+
+  useEffect(() => {
+    let cancelled = false;
+    setBilibiliQr(null);
+    setBilibiliQrImage('');
+    setBilibiliLoginError('');
+    if (!isLoggedIn || !displayAgent.id || studySourceMode !== 'bilibili') {
+      setBilibiliConnection(null);
+      return () => { cancelled = true; };
+    }
+    agentsApi.dailyStudyBilibiliConnection(displayAgent.id)
+      .then((result) => { if (!cancelled) setBilibiliConnection(result); })
+      .catch(() => { if (!cancelled) setBilibiliConnection({ connected: false }); });
+    return () => { cancelled = true; };
+  }, [displayAgent.id, isLoggedIn, studySourceMode]);
+
+  useEffect(() => {
+    if (!bilibiliQr) {
+      setBilibiliQrImage('');
+      return;
+    }
+    let cancelled = false;
+    import('qrcode')
+      .then((mod: any) => (typeof mod?.toDataURL === 'function' ? mod : mod?.default).toDataURL(
+        bilibiliQr.url,
+        { width: 200, margin: 1, color: { dark: '#0f172a', light: '#ffffff' } },
+      ))
+      .then((url: string) => { if (!cancelled) setBilibiliQrImage(url); })
+      .catch(() => { if (!cancelled) setBilibiliQrImage(''); });
+    return () => { cancelled = true; };
+  }, [bilibiliQr]);
+
+  useEffect(() => {
+    if (!bilibiliQr || !displayAgent.id) return;
+    let stopped = false;
+    setBilibiliQrStatus('waiting');
+    const timer = setInterval(async () => {
+      try {
+        const result = await agentsApi.pollDailyStudyBilibiliQrCode(displayAgent.id, bilibiliQr.key);
+        if (stopped) return;
+        if (result.status === 'scanned') setBilibiliQrStatus('scanned');
+        if (result.status === 'expired') {
+          setBilibiliQr(null);
+          setBilibiliLoginError('二维码已过期，请重新生成');
+        }
+        if (result.status === 'success') {
+          setBilibiliQr(null);
+          setBilibiliConnection({ connected: true, profile: result.profile, lastError: result.warning || null });
+          refreshDailyStudyRef.current?.();
+        }
+      } catch (error: any) {
+        if (!stopped && error?.status >= 500) {
+          setBilibiliQr(null);
+          setBilibiliLoginError(error.message || '扫码状态查询失败，请重试');
+        }
+      }
+    }, 2000);
+    return () => { stopped = true; clearInterval(timer); };
+  }, [bilibiliQr, displayAgent.id]);
+
+  const startBilibiliQr = async () => {
+    setBilibiliLoginBusy(true);
+    setBilibiliLoginError('');
+    try {
+      const result = await agentsApi.createDailyStudyBilibiliQrCode(displayAgent.id);
+      setBilibiliQr(result);
+    } catch (error: any) {
+      setBilibiliLoginError(error?.message || '生成二维码失败');
+    } finally {
+      setBilibiliLoginBusy(false);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
     setModelProfile(null);
+    setStudySchedule(DEFAULT_DAILY_STUDY_SCHEDULE);
+    setStudyScheduleOpen(false);
+    setStudyScheduleSaved(false);
+    setStudyScheduleError('');
     setModelDialogOpen(false);
     if (isLoggedIn && displayAgent.id) {
       agentsApi.modelSettings(displayAgent.id).then(result => {
@@ -172,6 +273,17 @@ export default function AgentDetailsPanel({
     }
     return () => { cancelled = true; };
   }, [displayAgent.id, isLoggedIn]);
+
+  useEffect(() => {
+    const settings = modelProfile?.settings;
+    if (!settings) return;
+    setStudySchedule({
+      startHour: settings.dailyStudyStartHour ?? DEFAULT_DAILY_STUDY_SCHEDULE.startHour,
+      endHour: settings.dailyStudyWindowEndHour ?? DEFAULT_DAILY_STUDY_SCHEDULE.endHour,
+      maxAttempts: settings.dailyStudyMaxAttempts ?? DEFAULT_DAILY_STUDY_SCHEDULE.maxAttempts,
+      retryBackoffMinutes: settings.dailyStudyRetryBackoffMinutes ?? DEFAULT_DAILY_STUDY_SCHEDULE.retryBackoffMinutes,
+    });
+  }, [modelProfile]);
 
   useEffect(() => {
     let cancelled = false;
@@ -321,6 +433,27 @@ export default function AgentDetailsPanel({
         : '设置默认模型'}</span>
     </button>
   );
+
+  const saveStudySchedule = async () => {
+    if (savingStudySchedule) return;
+    setSavingStudySchedule(true);
+    setStudyScheduleSaved(false);
+    setStudyScheduleError('');
+    try {
+      const result = await agentsApi.updateModelSettings(displayAgent.id, {
+        dailyStudyStartHour: studySchedule.startHour,
+        dailyStudyWindowEndHour: studySchedule.endHour,
+        dailyStudyMaxAttempts: studySchedule.maxAttempts,
+        dailyStudyRetryBackoffMinutes: studySchedule.retryBackoffMinutes,
+      });
+      setModelProfile(result);
+      setStudyScheduleSaved(true);
+    } catch (error: any) {
+      setStudyScheduleError(error?.message || '保存每日学习设置失败');
+    } finally {
+      setSavingStudySchedule(false);
+    }
+  };
 
   const memoryWidget = memoryEnabled && (
     <button
@@ -523,6 +656,145 @@ export default function AgentDetailsPanel({
                 </div>
               </button>
             </div>
+            {studySourceMode === 'bilibili' && (
+              <div className="mt-2.5 rounded-xl border border-rose-200 bg-white p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5 text-xs font-black text-slate-900">
+                      <QrCode size={14} className="text-rose-500" />
+                      {bilibiliConnection?.connected ? 'B 站已连接' : '先连接 B 站账号'}
+                    </div>
+                    <p className="mt-1 text-[11px] leading-4 text-slate-500">
+                      {bilibiliConnection?.connected
+                        ? `每日学习将使用${bilibiliConnection.profile?.uname ? `「${bilibiliConnection.profile.uname}」` : '当前账号'}的登录态读取字幕与音频。`
+                        : '需要扫码登录后，Agent 才能搜索并读取 B 站内容。'}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={startBilibiliQr}
+                    disabled={bilibiliLoginBusy}
+                    className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-slate-950 px-2.5 py-1.5 text-[11px] font-black text-white disabled:opacity-50"
+                  >
+                    {bilibiliLoginBusy ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+                    {bilibiliConnection?.connected ? '重新扫码' : '扫码登录'}
+                  </button>
+                </div>
+                {bilibiliQr && (
+                  <div className="mt-2 flex items-center gap-3 rounded-lg bg-slate-50 p-2">
+                    {bilibiliQrImage ? <img src={bilibiliQrImage} alt="B 站登录二维码" className="h-28 w-28 rounded bg-white" /> : <div className="h-28 w-28 animate-pulse rounded bg-slate-200" />}
+                    <div className="text-[11px] leading-5 text-slate-500">
+                      <div className="font-bold text-slate-700">请用 B 站 App 扫码</div>
+                      <div>{bilibiliQrStatus === 'scanned' ? '已扫码，请在手机上确认登录' : '等待扫码确认…'}</div>
+                    </div>
+                  </div>
+                )}
+                {(bilibiliLoginError || bilibiliConnection?.lastError) && (
+                  <div className="mt-2 text-[11px] leading-4 text-rose-600">
+                    {bilibiliLoginError || bilibiliConnection?.lastError}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {studyEnabled && (
+          <div className="mt-2.5 rounded-2xl border border-amber-200/80 bg-amber-50/30 p-3.5">
+            <button
+              type="button"
+              onClick={() => setStudyScheduleOpen((open) => !open)}
+              className="flex w-full items-center justify-between gap-2 text-left"
+              aria-expanded={studyScheduleOpen}
+            >
+              <div>
+                <div className="text-xs font-black text-slate-900">每日学习调度</div>
+                <div className="mt-0.5 text-[10px] font-medium text-slate-500">只在这个时间段运行，达到尝试上限后当天停止</div>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <span className="text-[10px] font-bold text-slate-500">
+                  {studySchedule.startHour}:00–{studySchedule.endHour === 24 ? '24:00' : `${studySchedule.endHour}:00`} · 最多 {studySchedule.maxAttempts} 次
+                </span>
+                {studyScheduleOpen ? <ChevronUp size={15} className="text-slate-500" /> : <ChevronDown size={15} className="text-slate-500" />}
+              </div>
+            </button>
+            {studyScheduleOpen && <div className="mt-3 grid grid-cols-2 gap-2">
+              <label className="rounded-xl border border-black/[0.06] bg-white px-2.5 py-2">
+                <span className="block text-[10px] font-bold text-slate-400">开始时间</span>
+                <div className="mt-1 flex items-center gap-1 text-xs font-black text-slate-800">
+                  <input
+                    type="number"
+                    min={0}
+                    max={23}
+                    value={studySchedule.startHour}
+                    onChange={(event) => setStudySchedule((current) => ({ ...current, startHour: Number(event.target.value) }))}
+                    className="h-7 w-14 rounded-lg border border-black/[0.08] bg-slate-50 px-1.5 text-center outline-none focus:border-amber-400"
+                  />
+                  <span>点</span>
+                </div>
+              </label>
+              <label className="rounded-xl border border-black/[0.06] bg-white px-2.5 py-2">
+                <span className="block text-[10px] font-bold text-slate-400">结束时间</span>
+                <div className="mt-1 flex items-center gap-1 text-xs font-black text-slate-800">
+                  <input
+                    type="number"
+                    min={1}
+                    max={24}
+                    value={studySchedule.endHour}
+                    onChange={(event) => setStudySchedule((current) => ({ ...current, endHour: Number(event.target.value) }))}
+                    className="h-7 w-14 rounded-lg border border-black/[0.08] bg-slate-50 px-1.5 text-center outline-none focus:border-amber-400"
+                  />
+                  <span>点</span>
+                </div>
+              </label>
+              <label className="rounded-xl border border-black/[0.06] bg-white px-2.5 py-2">
+                <span className="block text-[10px] font-bold text-slate-400">当天尝试上限</span>
+                <div className="mt-1 flex items-center gap-1 text-xs font-black text-slate-800">
+                  <input
+                    type="number"
+                    min={1}
+                    max={10}
+                    value={studySchedule.maxAttempts}
+                    onChange={(event) => setStudySchedule((current) => ({ ...current, maxAttempts: Number(event.target.value) }))}
+                    className="h-7 w-14 rounded-lg border border-black/[0.08] bg-slate-50 px-1.5 text-center outline-none focus:border-amber-400"
+                  />
+                  <span>次</span>
+                </div>
+              </label>
+              <label className="rounded-xl border border-black/[0.06] bg-white px-2.5 py-2">
+                <span className="block text-[10px] font-bold text-slate-400">失败重试间隔</span>
+                <div className="mt-1 flex items-center gap-1 text-xs font-black text-slate-800">
+                  <input
+                    type="number"
+                    min={1}
+                    max={1440}
+                    value={studySchedule.retryBackoffMinutes}
+                    onChange={(event) => setStudySchedule((current) => ({ ...current, retryBackoffMinutes: Number(event.target.value) }))}
+                    className="h-7 w-14 rounded-lg border border-black/[0.08] bg-slate-50 px-1.5 text-center outline-none focus:border-amber-400"
+                  />
+                  <span>分钟</span>
+                </div>
+              </label>
+            </div>}
+            {studyScheduleOpen && (studySchedule.endHour <= studySchedule.startHour || studyScheduleError) && (
+              <div className="mt-2 text-[11px] font-semibold text-rose-600">
+                {studyScheduleError || '结束时间必须晚于开始时间'}
+              </div>
+            )}
+            {studyScheduleOpen && <div className="mt-3 flex items-center justify-between gap-2">
+              <span className="text-[10px] font-medium text-slate-400">
+                {studyScheduleSaved ? '已保存，下一轮调度生效' : '按当前 Agent 单独生效'}
+              </span>
+              <button
+                type="button"
+                onClick={saveStudySchedule}
+                disabled={savingStudySchedule || studySchedule.endHour <= studySchedule.startHour}
+                className="inline-flex items-center gap-1 rounded-lg bg-slate-950 px-3 py-1.5 text-[11px] font-black text-white disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {savingStudySchedule && <Loader2 size={12} className="animate-spin" />}
+                保存调度设置
+              </button>
+            </div>}
           </div>
         )}
 
@@ -617,12 +889,12 @@ export default function AgentDetailsPanel({
           </button>
         </div>
         {/* Tab 切换 */}
-        <div className="mt-4 flex rounded-2xl bg-slate-100 p-1">
+        <div className="mt-4 grid grid-cols-3 rounded-2xl bg-slate-100 p-1">
           <button
             type="button"
             onClick={() => setMemoryTab('memories')}
             className={cn(
-              'flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-black transition-all cursor-pointer',
+              'flex items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-black transition-all cursor-pointer',
               memoryTab === 'memories'
                 ? 'bg-white text-slate-900 shadow-xs'
                 : 'text-slate-500 hover:text-slate-800'
@@ -642,20 +914,40 @@ export default function AgentDetailsPanel({
             type="button"
             onClick={() => setMemoryTab('experiences')}
             className={cn(
-              'flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-black transition-all cursor-pointer',
+              'flex items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-black transition-all cursor-pointer',
               memoryTab === 'experiences'
                 ? 'bg-white text-slate-900 shadow-xs'
                 : 'text-slate-500 hover:text-slate-800'
             )}
           >
-            <span>成长经历流水</span>
+            <span>工作履历</span>
             <span
               className={cn(
                 'rounded-full px-1.5 py-0.5 text-[10px] font-bold',
                 memoryTab === 'experiences' ? 'bg-indigo-100 text-indigo-800' : 'bg-slate-200/70 text-slate-500'
               )}
             >
-              {agentExperiences.length + agentGrowthEvents.length}
+              {agentExperiences.length}
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setMemoryTab('growthEvents')}
+            className={cn(
+              'flex items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-black transition-all cursor-pointer',
+              memoryTab === 'growthEvents'
+                ? 'bg-white text-slate-900 shadow-xs'
+                : 'text-slate-500 hover:text-slate-800'
+            )}
+          >
+            <span>成长事件</span>
+            <span
+              className={cn(
+                'rounded-full px-1.5 py-0.5 text-[10px] font-bold',
+                memoryTab === 'growthEvents' ? 'bg-indigo-100 text-indigo-800' : 'bg-slate-200/70 text-slate-500'
+              )}
+            >
+              {agentGrowthEvents.length}
             </span>
           </button>
         </div>
@@ -722,58 +1014,22 @@ export default function AgentDetailsPanel({
               )}
             </div>
           </>
-        ) : (
+        ) : memoryTab === 'experiences' ? (
           <>
-            {agentGrowthState && agentGrowthState.eventCount > 0 && (
-              <div className="mt-3 rounded-2xl border border-indigo-100 bg-indigo-50/60 p-3.5">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-xs font-black text-indigo-900">当前成长阶段</p>
-                    <p className="mt-1 text-base font-black text-slate-900">第 {agentGrowthState.stage} 阶段 · {agentGrowthState.stageName}</p>
-                  </div>
-                  <Sparkles size={18} className="shrink-0 text-indigo-500" />
-                </div>
-                <div className="mt-3 grid grid-cols-3 gap-2 text-center">
-                  <div className="rounded-xl bg-white/75 px-2 py-2"><p className="text-sm font-black text-slate-800">{agentGrowthState.days}</p><p className="text-[10px] font-bold text-slate-400">成长天数</p></div>
-                  <div className="rounded-xl bg-white/75 px-2 py-2"><p className="text-sm font-black text-slate-800">{agentGrowthState.eventCount}</p><p className="text-[10px] font-bold text-slate-400">经历次数</p></div>
-                  <div className="rounded-xl bg-white/75 px-2 py-2"><p className="text-sm font-black text-slate-800">{Number(agentGrowthState.counts?.BELIEF || 0) + Number(agentGrowthState.counts?.REVISION || 0)}</p><p className="text-[10px] font-bold text-slate-400">判断与修正</p></div>
-                </div>
-                <p className="mt-2 text-[11px] font-semibold text-indigo-700/70">
-                  判断 {Number(agentGrowthState.counts?.BELIEF || 0)} · 修正 {Number(agentGrowthState.counts?.REVISION || 0)} · 反思 {Number(agentGrowthState.counts?.REFLECTION || 0)} · 拒绝 {Number(agentGrowthState.counts?.REFUSAL || 0)}
-                </p>
-              </div>
-            )}
             <p className="mt-3 text-[11px] font-medium text-slate-400">
-              Agent 在单聊、学习、空间任务与协作中沉淀的经历记录，用于背景认知。成长事件会作为历史保留，不能直接修改或删除。
+              Agent 已完成并验收的任务、空间活动与学习履历，可在这里纠正、停用或遗忘。
             </p>
 
             <div className="mt-3 flex-1 space-y-3 overflow-y-auto pr-1">
               {memoryLoading ? (
                 <p className="py-8 text-center text-sm font-semibold text-slate-400">加载中...</p>
-              ) : agentExperiences.length === 0 && agentGrowthEvents.length === 0 ? (
+              ) : agentExperiences.length === 0 ? (
                 <div className="py-12 text-center">
-                  <p className="text-sm font-bold text-slate-500">还没有已记录的成长经历</p>
-                  <p className="mt-1 text-xs text-slate-400">当 Agent 在空间协作或完成任务后，会自动在这里沉淀要点。</p>
+                  <p className="text-sm font-bold text-slate-500">还没有工作履历</p>
+                  <p className="mt-1 text-xs text-slate-400">Agent 完成并通过验收的任务会自动沉淀在这里。</p>
                 </div>
               ) : (
-                <>
-                  {agentGrowthEvents.map((event) => {
-                    const labels: Record<string, string> = { OBSERVATION: '观察', BELIEF: '形成判断', REVISION: '修正判断', REFLECTION: '自我反思', REFUSAL: '拒绝', DIARY: '日记', STUDY: '自主学习' };
-                    const payload = event.payload || {};
-                    return (
-                      <article key={event.id} className="rounded-2xl border border-indigo-100 bg-indigo-50/40 p-3.5">
-                        <div className="flex items-center justify-between gap-2">
-                          <p className="text-sm font-bold text-slate-800">{String(payload.title || labels[event.type] || event.type)}</p>
-                          <span className="shrink-0 rounded-md bg-indigo-100 px-2 py-0.5 text-[10px] font-bold text-indigo-700">{labels[event.type] || event.type}</span>
-                        </div>
-                        <p className="mt-1.5 whitespace-pre-wrap text-sm leading-6 text-slate-600">{String(payload.content || payload.summary || payload.thoughts || '')}</p>
-                        <div className="mt-2 border-t border-indigo-100 pt-2 text-[11px] font-semibold text-slate-400">
-                          {event.scope === 'SPACE' ? '空间成长 · ' : '个人成长 · '}{new Date(event.createdAt).toLocaleDateString('zh-CN')}
-                        </div>
-                      </article>
-                    );
-                  })}
-                  {agentExperiences.map((experience) => (
+                agentExperiences.map((experience) => (
                     <article
                       key={experience.id}
                       className={cn(
@@ -801,8 +1057,59 @@ export default function AgentDetailsPanel({
                         </div>
                       </div>
                     </article>
-                  ))}
-                </>
+                  ))
+              )}
+            </div>
+          </>
+        ) : (
+          <>
+            {agentGrowthState && agentGrowthState.eventCount > 0 && (
+              <div className="mt-3 rounded-2xl border border-indigo-100 bg-indigo-50/60 p-3.5">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-black text-indigo-900">当前成长阶段</p>
+                    <p className="mt-1 text-base font-black text-slate-900">第 {agentGrowthState.stage} 阶段 · {agentGrowthState.stageName}</p>
+                  </div>
+                  <Sparkles size={18} className="shrink-0 text-indigo-500" />
+                </div>
+                <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+                  <div className="rounded-xl bg-white/75 px-2 py-2"><p className="text-sm font-black text-slate-800">{agentGrowthState.days}</p><p className="text-[10px] font-bold text-slate-400">成长天数</p></div>
+                  <div className="rounded-xl bg-white/75 px-2 py-2"><p className="text-sm font-black text-slate-800">{agentGrowthState.eventCount}</p><p className="text-[10px] font-bold text-slate-400">事件次数</p></div>
+                  <div className="rounded-xl bg-white/75 px-2 py-2"><p className="text-sm font-black text-slate-800">{Number(agentGrowthState.counts?.BELIEF || 0) + Number(agentGrowthState.counts?.REVISION || 0)}</p><p className="text-[10px] font-bold text-slate-400">判断与修正</p></div>
+                </div>
+                <p className="mt-2 text-[11px] font-semibold text-indigo-700/70">
+                  判断 {Number(agentGrowthState.counts?.BELIEF || 0)} · 修正 {Number(agentGrowthState.counts?.REVISION || 0)} · 反思 {Number(agentGrowthState.counts?.REFLECTION || 0)} · 拒绝 {Number(agentGrowthState.counts?.REFUSAL || 0)}
+                </p>
+              </div>
+            )}
+            <p className="mt-3 text-[11px] font-medium text-slate-400">
+              Agent 在对话、学习和空间协作中形成的观察、判断与反思，只读保留，用于展示成长轨迹。
+            </p>
+            <div className="mt-3 flex-1 space-y-3 overflow-y-auto pr-1">
+              {memoryLoading ? (
+                <p className="py-8 text-center text-sm font-semibold text-slate-400">加载中...</p>
+              ) : agentGrowthEvents.length === 0 ? (
+                <div className="py-12 text-center">
+                  <p className="text-sm font-bold text-slate-500">还没有成长事件</p>
+                  <p className="mt-1 text-xs text-slate-400">Agent 形成值得保留的观察、判断或反思后，会自动记录在这里。</p>
+                </div>
+              ) : (
+                agentGrowthEvents.map((event) => {
+                  const labels: Record<string, string> = { OBSERVATION: '观察', BELIEF: '形成判断', REVISION: '修正判断', REFLECTION: '自我反思', REFUSAL: '拒绝', DIARY: '日记', STUDY: '自主学习' };
+                  const payload = event.payload || {};
+                  return (
+                    <article key={event.id} className="rounded-2xl border border-indigo-100 bg-indigo-50/40 p-3.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm font-bold text-slate-800">{String(payload.title || labels[event.type] || event.type)}</p>
+                        <span className="shrink-0 rounded-md bg-indigo-100 px-2 py-0.5 text-[10px] font-bold text-indigo-700">{labels[event.type] || event.type}</span>
+                      </div>
+                      <p className="mt-1.5 whitespace-pre-wrap text-sm leading-6 text-slate-600">{String(payload.content || payload.summary || payload.thoughts || '')}</p>
+                      <div className="mt-2 border-t border-indigo-100 pt-2 text-[11px] font-semibold text-slate-400">
+                        {event.scope === 'SPACE' ? '空间成长 · ' : '个人成长 · '}{new Date(event.createdAt).toLocaleDateString('zh-CN')}
+                      </div>
+                    </article>
+                  );
+                })
               )}
             </div>
           </>

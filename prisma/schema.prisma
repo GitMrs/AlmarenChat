@@ -87,6 +87,20 @@ model AgentModelSetting {
   dailyStudyEnabled Boolean?
   /** 研习渠道模式：'internal'（全网热搜）或 'bilibili'（B站主动搜索） */
   dailyStudySourceMode String? @default("internal")
+  /** 单 Agent 每日学习使用的 B 站登录态（加密保存） */
+  dailyStudyBilibiliCredentialCiphertext String?
+  dailyStudyBilibiliProfile Json?
+  dailyStudyBilibiliLastCheckedAt DateTime?
+  dailyStudyBilibiliLastError String?
+  /** 每日学习调度尝试状态，用于失败冷却和当天上限 */
+  dailyStudyAttemptDate String?
+  dailyStudyAttemptCount Int @default(0)
+  dailyStudyNextAttemptAt DateTime?
+  /** 每日学习调度设置；为空时回退到环境默认值 */
+  dailyStudyStartHour Int?
+  dailyStudyWindowEndHour Int?
+  dailyStudyMaxAttempts Int?
+  dailyStudyRetryBackoffMinutes Int?
   updatedAt  DateTime @updatedAt
 
   @@unique([userId, agentId])

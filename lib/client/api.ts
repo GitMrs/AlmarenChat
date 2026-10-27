@@ -448,6 +448,18 @@ export const agents = {
       method: 'POST',
       body: JSON.stringify({ action: 'set_source_mode', sourceMode }),
     }),
+  dailyStudyBilibiliConnection: (id: string) =>
+    request<{ connected: boolean; profile?: BilibiliProfile | null; lastCheckedAt?: string | null; lastError?: string | null }>(
+      `/agents/${encodeURIComponent(id)}/daily-study/bilibili`,
+    ),
+  createDailyStudyBilibiliQrCode: (id: string) =>
+    request<{ url: string; key: string }>(`/agents/${encodeURIComponent(id)}/daily-study/bilibili`, { method: 'POST' }),
+  pollDailyStudyBilibiliQrCode: (id: string, key: string) =>
+    request<{ status: string; connected?: boolean; profile?: BilibiliProfile | null; warning?: string }>(
+      `/agents/${encodeURIComponent(id)}/daily-study/bilibili?key=${encodeURIComponent(key)}`,
+    ),
+  disconnectDailyStudyBilibili: (id: string) =>
+    request<{ success: true }>(`/agents/${encodeURIComponent(id)}/daily-study/bilibili`, { method: 'DELETE' }),
   markDailyStudyShared: (id: string, date?: string) =>
     request<{ success: boolean; study: AgentDailyStudyRecord }>(`/agents/${encodeURIComponent(id)}/daily-study`, {
       method: 'POST',

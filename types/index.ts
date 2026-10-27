@@ -51,10 +51,14 @@ export interface Agent {
 }
 
 export interface AgentModelFields {
-  modelName: string | null;
-  apiBaseUrl: string | null;
-  apiKey: string | null;
+  modelName?: string | null;
+  apiBaseUrl?: string | null;
+  apiKey?: string | null;
   dailyStudyEnabled?: boolean | null;
+  dailyStudyStartHour?: number | null;
+  dailyStudyWindowEndHour?: number | null;
+  dailyStudyMaxAttempts?: number | null;
+  dailyStudyRetryBackoffMinutes?: number | null;
 }
 
 export interface AgentModelSettingsResponse {

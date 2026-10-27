@@ -99,7 +99,8 @@ async function writeStudyMemory(
  */
 export async function ingestStudyKnowledge(
   record: AgentDailyStudyRecord,
-  modelConfig?: StudyModelConfig
+  modelConfig?: StudyModelConfig,
+  options: { bilibiliCookie?: string } = {}
 ): Promise<StudyIngestResult> {
   const result: StudyIngestResult = {
     knowledgeIds: {},
@@ -111,7 +112,7 @@ export async function ingestStudyKnowledge(
   if (!record.userId || record.items.length === 0) return result;
 
   // 1. 为可沉淀来源抓取正文；视频/娱乐来源直接跳过
-  const contents = await Promise.all(record.items.map((item) => fetchStudyContent(item)));
+  const contents = await Promise.all(record.items.map((item) => fetchStudyContent(item, options)));
   const fetched = contents.filter((content) => content.fetched);
   for (const content of contents) {
     if (!content.fetched) {
@@ -256,7 +257,8 @@ export async function ingestStudyKnowledge(
  */
 export function scheduleStudyKnowledgeIngestion(
   record: AgentDailyStudyRecord,
-  modelConfig?: StudyModelConfig
+  modelConfig?: StudyModelConfig,
+  options: { bilibiliCookie?: string } = {}
 ) {
   if (!record.userId || record.items.length === 0 || record.knowledgeIngestedAt) return;
   // 失败重试冷却：上次沉淀失败（只有诊断、没有完成标记）时，1 小时内不重复尝试
@@ -270,7 +272,7 @@ export function scheduleStudyKnowledgeIngestion(
   if (inFlight.has(key)) return;
   inFlight.add(key);
 
-  void ingestStudyKnowledge(record, modelConfig)
+  void ingestStudyKnowledge(record, modelConfig, options)
     .then(async (result) => {
       const latest = await loadDailyStudyRecord(record.agentId, record.date, record.userId);
       if (!latest) return;
