@@ -55,7 +55,36 @@ export function recordAcceptedAgentExperiences(db, { run, tasks, accepted, times
       timestamp,
       timestamp
     );
+
+    // 任务验收通过后留下空间复盘。它记录已确认的结果，供后续 Agent 在空间中继续反思；
+    // 通过 eventKey 保证 Worker 重试不会重复追加成长历史。旧测试数据库可能尚未建此表，兼容跳过。
+    if (accepted && task.status === 'COMPLETED' && hasGrowthEventTable(db)) {
+      const result = cleanText(task.result, 1_200);
+      db.prepare(
+        `INSERT OR IGNORE INTO "AgentGrowthEvent"
+          ("id", "userId", "agentId", "spaceId", "scope", "type", "sourceType", "sourceId", "eventKey", "payload", "createdAt")
+         VALUES (?, ?, ?, ?, 'SPACE', 'REFLECTION', 'TASK', ?, ?, ?, ?)`
+      ).run(
+        randomUUID(),
+        run.userId,
+        task.agentId,
+        run.spaceId,
+        task.id,
+        `task-review:${run.userId}:${task.agentId}:${run.spaceId}:${task.id}`,
+        JSON.stringify({
+          title: `任务复盘：${cleanText(task.title, 120) || '未命名任务'}`,
+          content: `本次空间任务已验收完成。结果记录：${result}`,
+          outcome: 'ACCEPTED',
+          taskId: task.id,
+        }),
+        timestamp
+      );
+    }
   }
+}
+
+function hasGrowthEventTable(db) {
+  return Boolean(db.prepare(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'AgentGrowthEvent' LIMIT 1`).get());
 }
 
 export function recordSpaceAgentExperiences(db, { userId, spaceId, sourceType, sourceId, topic, summary, entries, timestamp }) {

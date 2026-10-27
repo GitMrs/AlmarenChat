@@ -4,6 +4,8 @@ import { requireAuth } from '@/app/api/_lib/auth';
 import { encryptConnectorCredential } from '@/lib/connectors/credentials.mjs';
 import { serializeConnector } from '@/lib/connectors/registry.mjs';
 import { fetchNav, parseCookieString } from '@/lib/bilibili/auth.mjs';
+import { ensureSpaceRoot } from '@/app/api/_lib/spaces';
+import { clearCache } from '@/lib/bilibili/cache.mjs';
 
 export const runtime = 'nodejs';
 
@@ -76,6 +78,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ spac
         accessTokenExpiresAt: null,
       },
     });
+    await clearCache(await ensureSpaceRoot(userId, spaceId));
     return NextResponse.json({ connector: serializeConnector(connector), profile });
   } catch (error: any) {
     if (error.message === 'Unauthorized') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -96,6 +99,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ sp
       where: { id: connector.id },
       data: { enabled: body.enabled, status: body.enabled ? (connector.status === 'DISABLED' ? 'READY' : connector.status) : 'DISABLED', lastError: null },
     });
+    await clearCache(await ensureSpaceRoot(userId, spaceId));
     return NextResponse.json({ connector: serializeConnector(updated) });
   } catch (error: any) {
     if (error.message === 'Unauthorized') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -109,6 +113,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ s
     const { spaceId } = await params;
     const deleted = await prisma.spaceConnector.deleteMany({ where: { spaceId, provider: PROVIDER, space: { userId } } });
     if (deleted.count === 0) return NextResponse.json({ error: 'B 站连接不存在' }, { status: 404 });
+    await clearCache(await ensureSpaceRoot(userId, spaceId));
     return NextResponse.json({ success: true });
   } catch (error: any) {
     if (error.message === 'Unauthorized') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

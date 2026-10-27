@@ -40,6 +40,7 @@ model User {
   chatUsages    DailyChatUsage[]
   agentRuns     AgentRun[]
   agentExperiences AgentExperience[]
+  agentGrowthEvents AgentGrowthEvent[]
   agentMemories AgentMemoryItem[]
   agentMemoryRules AgentMemoryRule[]
   agentModelSettings AgentModelSetting[]
@@ -126,6 +127,26 @@ model AgentExperience {
 
   @@unique([userId, agentId, taskId])
   @@index([userId, agentId, createdAt])
+}
+
+/// Agent 的成长历史。事件只追加，当前状态由这些事件派生。
+model AgentGrowthEvent {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agentId     String
+  spaceId     String?
+  scope       String   @default("PERSONAL")
+  type        String
+  sourceType  String   @default("CHAT")
+  sourceId    String?
+  eventKey    String   @unique
+  payload     Json
+  createdAt   DateTime @default(now())
+
+  @@index([userId, agentId, createdAt])
+  @@index([userId, agentId, scope, createdAt])
+  @@index([userId, agentId, spaceId, createdAt])
 }
 
 model AgentMemoryRule {

@@ -6,6 +6,7 @@ import { requireAuth } from '@/app/api/_lib/auth';
 import { findCompanionAgent } from '@/lib/companion/agents';
 import { companionReplyInstruction, createCompanionReplyParser } from '@/lib/companion/reply-protocol.mjs';
 import { createChatWebTools, runAutoWebChat } from '@/lib/web/auto-web';
+import { createAgentGrowthTools } from '@/lib/agents/growth/agent-growth';
 import { formatKnowledgeContext, getKnowledgeHits } from '@/lib/knowledge/knowledge';
 import { createModelClient, resolveModelName } from '@/lib/core/model-client';
 import { reserveChatQuota } from '@/lib/chat/chat-quota';
@@ -252,13 +253,25 @@ export async function POST(request: Request) {
       async start(controller) {
         const emit = (event: Record<string, unknown>) => controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
         const web = createChatWebTools({ apiKey: userSettings.tavilyApiKey, defaultWeatherLocation: userSettings.defaultWeatherLocation, history: sourceHistory, signal: abortController.signal, onStatus: (label: string) => emit({ type: 'status', label }) });
+        const growth = usesAgentMemory && memoryAgentId
+          ? createAgentGrowthTools({ userId, agentId: memoryAgentId })
+          : null;
         try {
           const parser = companionReply ? createCompanionReplyParser() : null;
           const emitText = (text: string) => {
             fullContent += text;
             if (text) emit({ type: 'text_delta', text });
           };
-          await runAutoWebChat({ client, model, messages: openaiMessages, web, signal: abortController.signal, onText: (text: string) => emitText(parser ? parser.push(text) : text) });
+          await runAutoWebChat({
+            client,
+            model,
+            messages: openaiMessages,
+            web,
+            extraTools: growth?.tools || [],
+            callTool: growth?.execute,
+            signal: abortController.signal,
+            onText: (text: string) => emitText(parser ? parser.push(text) : text),
+          });
           if (parser) emitText(parser.finish());
           if (!fullContent.trim()) throw new Error('模型没有返回正文');
 

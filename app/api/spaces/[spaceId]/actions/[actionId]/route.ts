@@ -23,10 +23,12 @@ async function handleBilibiliDecision(
   const timestamp = new Date();
 
   if (decision === 'reject') {
-    const updated = await prisma.spaceActionRequest.update({
-      where: { id: action.id },
+    const claimed = await prisma.spaceActionRequest.updateMany({
+      where: { id: action.id, spaceId, status: 'PENDING' },
       data: { status: 'REJECTED', decidedBy: userId, decidedAt: timestamp, error: reason || null },
     });
+    if (claimed.count !== 1) return NextResponse.json({ error: '动作请求已经处理' }, { status: 409 });
+    const updated = await prisma.spaceActionRequest.findUnique({ where: { id: action.id } });
     await prisma.spaceMessage.create({
       data: {
         spaceId,
@@ -45,10 +47,11 @@ async function handleBilibiliDecision(
   });
   if (!connector?.enabled) return NextResponse.json({ error: 'B 站连接未启用' }, { status: 409 });
 
-  await prisma.spaceActionRequest.update({
-    where: { id: action.id },
+  const claimed = await prisma.spaceActionRequest.updateMany({
+    where: { id: action.id, spaceId, status: 'PENDING' },
     data: { status: 'APPROVED', decidedBy: userId, decidedAt: timestamp },
   });
+  if (claimed.count !== 1) return NextResponse.json({ error: '动作请求已经处理' }, { status: 409 });
 
   try {
     const credentials = readBilibiliCredentials(connector);

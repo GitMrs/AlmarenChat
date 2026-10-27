@@ -4,6 +4,8 @@ import { requireAuth } from '@/app/api/_lib/auth';
 import { encryptConnectorCredential } from '@/lib/connectors/credentials.mjs';
 import { serializeConnector } from '@/lib/connectors/registry.mjs';
 import { buildCookieHeader, createQrCode, fetchNav, pollQrCode } from '@/lib/bilibili/auth.mjs';
+import { ensureSpaceRoot } from '@/app/api/_lib/spaces';
+import { clearCache } from '@/lib/bilibili/cache.mjs';
 
 export const runtime = 'nodejs';
 
@@ -77,6 +79,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ spac
         lastError: warning || null,
       },
     });
+    await clearCache(await ensureSpaceRoot(userId, spaceId));
     return NextResponse.json({
       status: 'success',
       connector: serializeConnector(connector),

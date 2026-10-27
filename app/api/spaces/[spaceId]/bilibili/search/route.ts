@@ -25,19 +25,19 @@ export async function GET(request: Request, { params }: { params: Promise<{ spac
       select: { id: true, credentialCiphertext: true, spaceId: true, enabled: true },
     });
 
-    let sessdata = '';
+    let cookie = '';
     if (connector?.enabled) {
       try {
-        sessdata = readBilibiliCredentials(connector).sessdata;
+        cookie = readBilibiliCredentials(connector).cookie;
       } catch {
-        sessdata = '';
+        cookie = '';
       }
     }
 
     // 浏览场景不做研习的时长过滤：短视频、长合集都要能被搜到。
     const results = await searchBilibiliVideos(query, {
       limit: 24,
-      sessdata,
+      cookie,
       maxDurationSeconds: 0,
       minDurationSeconds: 0,
     });

@@ -321,6 +321,32 @@ export async function syncStudyToAgentExperience(
       `来源平台：${item.sourceName} | 原链接：${item.url}`,
     ].join('\n\n');
 
+    if (db?.agentGrowthEvent?.upsert) {
+      await db.agentGrowthEvent.upsert({
+        where: { eventKey: `${userId}:${record.agentId}:study:${record.date}:${item.id}` },
+        create: {
+          userId,
+          agentId: record.agentId,
+          scope: 'PERSONAL',
+          type: 'STUDY',
+          sourceType: 'STUDY',
+          sourceId: item.id,
+          eventKey: `${userId}:${record.agentId}:study:${record.date}:${item.id}`,
+          payload: {
+            title: item.title,
+            summary: item.summary,
+            thoughts: item.thoughts,
+            sourceName: item.sourceName,
+            url: item.url,
+            date: record.date,
+          },
+        },
+        update: {},
+      }).catch((error: any) => {
+        console.warn(`[AgentStudy] Failed to append growth event for ${item.id}:`, error?.message || error);
+      });
+    }
+
     try {
       await db.agentExperience.upsert({
         where: {

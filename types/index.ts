@@ -98,6 +98,40 @@ export interface AgentGrowthProfile {
   experiences: AgentExperience[];
 }
 
+export type AgentGrowthEventType = 'OBSERVATION' | 'BELIEF' | 'REVISION' | 'REFLECTION' | 'REFUSAL' | 'DIARY' | 'STUDY';
+
+export interface AgentGrowthEvent {
+  id: string;
+  userId: string;
+  agentId: string;
+  spaceId?: string | null;
+  scope: 'PERSONAL' | 'SPACE';
+  type: AgentGrowthEventType;
+  sourceType?: string;
+  sourceId?: string | null;
+  eventKey: string;
+  payload: {
+    title?: string;
+    content?: string;
+    summary?: string;
+    thoughts?: string;
+    previousBelief?: string;
+    [key: string]: unknown;
+  };
+  createdAt: string;
+}
+
+export interface AgentGrowthState {
+  stage: number;
+  stageName: string;
+  days: number;
+  eventCount: number;
+  counts: Record<string, number>;
+  recentBeliefs: Array<{ title: string; content: string; createdAt: string }>;
+  recentRevisions: Array<{ title: string; content: string; createdAt: string }>;
+  recentReflections: Array<{ title: string; content: string; createdAt: string }>;
+}
+
 export interface Conversation {
   id: string;
   userId: string;

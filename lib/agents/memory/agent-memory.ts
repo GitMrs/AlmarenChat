@@ -1,18 +1,23 @@
 import prisma from '@/app/api/_lib/db';
 import { agentMemoryContext } from '@/lib/agents/memory/agent-memory-policy.mjs';
 import { personalMemoryContext } from '@/lib/agents/memory/agent-personal-memory.mjs';
+import { loadAgentGrowthContext } from '@/lib/agents/growth/agent-growth';
 
 export async function loadAgentMemoryContext(options: {
   userId: string;
   agentId?: string | null;
   query: string;
+  spaceId?: string | null;
 }) {
   if (!options.agentId) return '';
   const agent = await prisma.agent.findFirst({
     where: { id: options.agentId },
     select: { id: true, agentType: true },
   });
-  const [memories, rules, experiences] = await Promise.all([
+  const experienceScope = options.spaceId
+    ? { OR: [{ spaceId: null }, { spaceId: options.spaceId }] }
+    : { spaceId: null };
+  const [memories, rules, experiences, growth] = await Promise.all([
     prisma.agentMemoryItem.findMany({
       where: { userId: options.userId, agentId: options.agentId, status: 'ACTIVE' },
       orderBy: { updatedAt: 'desc' }, take: 60,
@@ -25,11 +30,12 @@ export async function loadAgentMemoryContext(options: {
         })
       : Promise.resolve([]),
     prisma.agentExperience.findMany({
-      where: { userId: options.userId, agentId: options.agentId, outcome: 'ACCEPTED', status: 'ACTIVE' },
+      where: { userId: options.userId, agentId: options.agentId, outcome: 'ACCEPTED', status: 'ACTIVE', ...experienceScope },
       orderBy: { updatedAt: 'desc' },
       take: 30,
       select: { title: true, summary: true, outcome: true, spaceId: true, sourceType: true, createdAt: true },
     }),
+    loadAgentGrowthContext({ userId: options.userId, agentId: options.agentId, spaceId: options.spaceId, query: options.query }),
   ]);
-  return [personalMemoryContext(memories, options.query), agentMemoryContext({ rules, experiences, query: options.query })].filter(Boolean).join('\n\n');
+  return [personalMemoryContext(memories, options.query), agentMemoryContext({ rules, experiences, query: options.query }), growth].filter(Boolean).join('\n\n');
 }

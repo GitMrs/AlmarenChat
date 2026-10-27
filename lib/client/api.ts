@@ -2,7 +2,7 @@ import { decodeChatBody } from '../chat/chat-stream.mjs';
 import type { EvaluatedEvent } from '../workspace/crypto/event-temporal';
 import type { AgentModelFields, AgentModelSettingsResponse, AgentMemoryItem, AgentExperience } from '@/types';
 import type { AgentDailyStudyRecord } from '@/lib/agent-study/types';
-import type { AgentGrowthProfile, AgentRun, AssistantContextStats, AssistantConversationSummary, AssistantExperience, AssistantExperienceMessage, AssistantMemoryItem, AssistantQQBinding, AssistantReminder, AssistantReminderCandidate, Message, MessageAttachment, PersonalAssistantBootstrap, PersonalAssistantProfile, SpaceActionRequest, SpaceAutomation, SpaceConnector, SpaceDiscussion, SpaceDiscussionSettings, SpaceFileShare, SpaceOperationOutcome, SpaceOperationsSummary, SpaceRelay, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal, SpaceWork, SpaceWorkVersion, SpaceMcpServer, SpaceWebhook, AssistantMcpServer, McpProbeResult } from '@/types';
+import type { AgentGrowthEvent, AgentGrowthProfile, AgentGrowthState, AgentRun, AssistantContextStats, AssistantConversationSummary, AssistantExperience, AssistantExperienceMessage, AssistantMemoryItem, AssistantQQBinding, AssistantReminder, AssistantReminderCandidate, Message, MessageAttachment, PersonalAssistantBootstrap, PersonalAssistantProfile, SpaceActionRequest, SpaceAutomation, SpaceConnector, SpaceDiscussion, SpaceDiscussionSettings, SpaceFileShare, SpaceOperationOutcome, SpaceOperationsSummary, SpaceRelay, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal, SpaceWork, SpaceWorkVersion, SpaceMcpServer, SpaceWebhook, AssistantMcpServer, McpProbeResult } from '@/types';
 
 export interface BilibiliProfile {
   mid: string;
@@ -143,7 +143,7 @@ export const auth = {
 };
 
 export const agentMemories = {
-  get: (agentId: string) => request<{ memories: AgentMemoryItem[]; experiences: AgentExperience[] }>(`/agents/${encodeURIComponent(agentId)}/memories`),
+  get: (agentId: string) => request<{ memories: AgentMemoryItem[]; experiences: AgentExperience[]; growthEvents: AgentGrowthEvent[]; growthState: AgentGrowthState }>(`/agents/${encodeURIComponent(agentId)}/memories`),
   add: (agentId: string, data: { content: string; category?: string; conversationId?: string }) => request<{ memory: AgentMemoryItem }>(`/agents/${encodeURIComponent(agentId)}/memories`, { method: 'POST', body: JSON.stringify(data) }),
   update: (agentId: string, id: string, data: { content?: string; status?: 'ACTIVE' | 'DISABLED' }) => request<{ memory: AgentMemoryItem }>(`/agents/${encodeURIComponent(agentId)}/memories/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(data) }),
   remove: (agentId: string, id: string) => request<{ success: boolean }>(`/agents/${encodeURIComponent(agentId)}/memories/${encodeURIComponent(id)}`, { method: 'DELETE' }),

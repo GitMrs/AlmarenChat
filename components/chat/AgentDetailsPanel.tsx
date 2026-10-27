@@ -13,8 +13,7 @@ import AgentDailyStudyCard from '@/components/chat/AgentDailyStudyCard';
 import { agentMemories as agentMemoryApi, agents as agentsApi } from '@/lib/client/api';
 import { cn } from '@/lib/client/utils';
 import type { DisplayAgent } from '@/components/chat/ChatMessageItem';
-import type { AgentMemoryItem } from '@/types';
-import type { AgentExperience } from '@/types';
+import type { AgentExperience, AgentGrowthEvent, AgentGrowthState, AgentMemoryItem } from '@/types';
 import type { AgentModelSettingsResponse } from '@/types';
 import type { AgentDailyStudyRecord, AgentStudyItem } from '@/lib/agent-study/types';
 
@@ -148,6 +147,8 @@ export default function AgentDetailsPanel({
   const [togglingMemory, setTogglingMemory] = useState(false);
   const [agentMemories, setAgentMemories] = useState<AgentMemoryItem[]>([]);
   const [agentExperiences, setAgentExperiences] = useState<AgentExperience[]>([]);
+  const [agentGrowthEvents, setAgentGrowthEvents] = useState<AgentGrowthEvent[]>([]);
+  const [agentGrowthState, setAgentGrowthState] = useState<AgentGrowthState | null>(null);
   const [editExperience, setEditExperience] = useState<AgentExperience | null>(null);
   const [experienceAction, setExperienceAction] = useState<{ experience: AgentExperience; status: 'ACTIVE' | 'DISABLED' | 'DELETED' } | null>(null);
   const [savingExperience, setSavingExperience] = useState(false);
@@ -176,6 +177,8 @@ export default function AgentDetailsPanel({
     let cancelled = false;
     setAgentMemories([]);
     setAgentExperiences([]);
+    setAgentGrowthEvents([]);
+    setAgentGrowthState(null);
     setMemoryDrawerOpen(false);
     setMemoryTab('memories');
     setNewMemory('');
@@ -189,6 +192,9 @@ export default function AgentDetailsPanel({
       agentMemoryApi.get(displayAgent.id).then((res) => {
         if (cancelled) return;
         setAgentMemories((res.memories || []).filter((m) => m.agentId === displayAgent.id));
+        setAgentExperiences(res.experiences || []);
+        setAgentGrowthEvents(res.growthEvents || []);
+        setAgentGrowthState(res.growthState || null);
       }).catch(() => {});
     }
     agentsApi.knowledge(displayAgent.id).then((res) => {
@@ -208,7 +214,9 @@ export default function AgentDetailsPanel({
       const memoryResult = await agentMemoryApi.get(displayAgent.id);
       if (activeAgentId.current !== agentId || !activeMemoryEnabled.current) return;
       setAgentMemories(memoryResult.memories.filter((memory) => memory.agentId === displayAgent.id));
-      setAgentExperiences(memoryResult.experiences);
+      setAgentExperiences(memoryResult.experiences || []);
+      setAgentGrowthEvents(memoryResult.growthEvents || []);
+      setAgentGrowthState(memoryResult.growthState || null);
     } finally {
       setMemoryLoading(false);
     }
@@ -647,7 +655,7 @@ export default function AgentDetailsPanel({
                 memoryTab === 'experiences' ? 'bg-indigo-100 text-indigo-800' : 'bg-slate-200/70 text-slate-500'
               )}
             >
-              {agentExperiences.length}
+              {agentExperiences.length + agentGrowthEvents.length}
             </span>
           </button>
         </div>
@@ -716,56 +724,85 @@ export default function AgentDetailsPanel({
           </>
         ) : (
           <>
+            {agentGrowthState && agentGrowthState.eventCount > 0 && (
+              <div className="mt-3 rounded-2xl border border-indigo-100 bg-indigo-50/60 p-3.5">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-black text-indigo-900">当前成长阶段</p>
+                    <p className="mt-1 text-base font-black text-slate-900">第 {agentGrowthState.stage} 阶段 · {agentGrowthState.stageName}</p>
+                  </div>
+                  <Sparkles size={18} className="shrink-0 text-indigo-500" />
+                </div>
+                <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+                  <div className="rounded-xl bg-white/75 px-2 py-2"><p className="text-sm font-black text-slate-800">{agentGrowthState.days}</p><p className="text-[10px] font-bold text-slate-400">成长天数</p></div>
+                  <div className="rounded-xl bg-white/75 px-2 py-2"><p className="text-sm font-black text-slate-800">{agentGrowthState.eventCount}</p><p className="text-[10px] font-bold text-slate-400">经历次数</p></div>
+                  <div className="rounded-xl bg-white/75 px-2 py-2"><p className="text-sm font-black text-slate-800">{Number(agentGrowthState.counts?.BELIEF || 0) + Number(agentGrowthState.counts?.REVISION || 0)}</p><p className="text-[10px] font-bold text-slate-400">判断与修正</p></div>
+                </div>
+                <p className="mt-2 text-[11px] font-semibold text-indigo-700/70">
+                  判断 {Number(agentGrowthState.counts?.BELIEF || 0)} · 修正 {Number(agentGrowthState.counts?.REVISION || 0)} · 反思 {Number(agentGrowthState.counts?.REFLECTION || 0)} · 拒绝 {Number(agentGrowthState.counts?.REFUSAL || 0)}
+                </p>
+              </div>
+            )}
             <p className="mt-3 text-[11px] font-medium text-slate-400">
-              Agent 在空间任务、讨论、协作或单聊中沉淀的经历记录，用于背景认知。
+              Agent 在单聊、学习、空间任务与协作中沉淀的经历记录，用于背景认知。成长事件会作为历史保留，不能直接修改或删除。
             </p>
 
             <div className="mt-3 flex-1 space-y-3 overflow-y-auto pr-1">
               {memoryLoading ? (
                 <p className="py-8 text-center text-sm font-semibold text-slate-400">加载中...</p>
-              ) : agentExperiences.length === 0 ? (
+              ) : agentExperiences.length === 0 && agentGrowthEvents.length === 0 ? (
                 <div className="py-12 text-center">
                   <p className="text-sm font-bold text-slate-500">还没有已记录的成长经历</p>
                   <p className="mt-1 text-xs text-slate-400">当 Agent 在空间协作或完成任务后，会自动在这里沉淀要点。</p>
                 </div>
               ) : (
-                agentExperiences.map((experience) => (
-                  <article
-                    key={experience.id}
-                    className={cn(
-                      'rounded-2xl border p-3.5 transition',
-                      experience.status === 'DISABLED'
-                        ? 'border-dashed border-slate-200 bg-slate-50/60 opacity-60'
-                        : 'border-black/[0.06] bg-[#fbfaf7]'
-                    )}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-sm font-bold text-slate-800">{experience.title}</p>
-                      <span className="shrink-0 rounded-md bg-slate-200/60 px-2 py-0.5 text-[10px] font-bold text-slate-600">
-                        {({ CHAT: '单聊', TASK: '任务', DISCUSSION: '讨论', RELAY: '接力', GAME: '游戏', COORDINATION: '成员协作', STUDY: '自主研习' } as Record<string, string>)[experience.sourceType || 'TASK'] || '空间活动'}
-                      </span>
-                    </div>
-                    <p className={experience.status === 'DISABLED' ? 'mt-1.5 whitespace-pre-wrap text-sm leading-6 text-slate-400 line-through' : 'mt-1.5 whitespace-pre-wrap text-sm leading-6 text-slate-600 font-normal'}>
-                      {experience.summary}
-                    </p>
-                    <div className="mt-2.5 flex items-center justify-between border-t border-black/[0.04] pt-2 text-[11px] font-semibold text-slate-400">
-                      <span className="truncate">
-                        {experience.spaceId ? '来源空间：' + experience.spaceId + ' · ' : ''}
-                        {new Date(experience.createdAt).toLocaleDateString('zh-CN')}
-                        {experience.edited ? ' · 已纠正' : ''}
-                      </span>
-                      <div className="flex shrink-0 gap-3 text-xs font-bold text-slate-400">
-                        <button type="button" onClick={() => setEditExperience(experience)} className="hover:text-slate-900 cursor-pointer">纠正</button>
-                        <button type="button" onClick={() => setExperienceAction({ experience, status: experience.status === 'DISABLED' ? 'ACTIVE' : 'DISABLED' })} className="hover:text-slate-900 cursor-pointer">
-                          {experience.status === 'DISABLED' ? '启用' : '停用'}
-                        </button>
-                        <button type="button" onClick={() => setExperienceAction({ experience, status: 'DELETED' })} className="text-rose-500 hover:text-rose-700 cursor-pointer">
-                          遗忘
-                        </button>
+                <>
+                  {agentGrowthEvents.map((event) => {
+                    const labels: Record<string, string> = { OBSERVATION: '观察', BELIEF: '形成判断', REVISION: '修正判断', REFLECTION: '自我反思', REFUSAL: '拒绝', DIARY: '日记', STUDY: '自主学习' };
+                    const payload = event.payload || {};
+                    return (
+                      <article key={event.id} className="rounded-2xl border border-indigo-100 bg-indigo-50/40 p-3.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-sm font-bold text-slate-800">{String(payload.title || labels[event.type] || event.type)}</p>
+                          <span className="shrink-0 rounded-md bg-indigo-100 px-2 py-0.5 text-[10px] font-bold text-indigo-700">{labels[event.type] || event.type}</span>
+                        </div>
+                        <p className="mt-1.5 whitespace-pre-wrap text-sm leading-6 text-slate-600">{String(payload.content || payload.summary || payload.thoughts || '')}</p>
+                        <div className="mt-2 border-t border-indigo-100 pt-2 text-[11px] font-semibold text-slate-400">
+                          {event.scope === 'SPACE' ? '空间成长 · ' : '个人成长 · '}{new Date(event.createdAt).toLocaleDateString('zh-CN')}
+                        </div>
+                      </article>
+                    );
+                  })}
+                  {agentExperiences.map((experience) => (
+                    <article
+                      key={experience.id}
+                      className={cn(
+                        'rounded-2xl border p-3.5 transition',
+                        experience.status === 'DISABLED'
+                          ? 'border-dashed border-slate-200 bg-slate-50/60 opacity-60'
+                          : 'border-black/[0.06] bg-[#fbfaf7]'
+                      )}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm font-bold text-slate-800">{experience.title}</p>
+                        <span className="shrink-0 rounded-md bg-slate-200/60 px-2 py-0.5 text-[10px] font-bold text-slate-600">
+                          {({ CHAT: '单聊', TASK: '任务', DISCUSSION: '讨论', RELAY: '接力', GAME: '游戏', COORDINATION: '成员协作', STUDY: '自主研习' } as Record<string, string>)[experience.sourceType || 'TASK'] || '空间活动'}
+                        </span>
                       </div>
-                    </div>
-                  </article>
-                ))
+                      <p className={experience.status === 'DISABLED' ? 'mt-1.5 whitespace-pre-wrap text-sm leading-6 text-slate-400 line-through' : 'mt-1.5 whitespace-pre-wrap text-sm leading-6 text-slate-600 font-normal'}>
+                        {experience.summary}
+                      </p>
+                      <div className="mt-2.5 flex items-center justify-between border-t border-black/[0.04] pt-2 text-[11px] font-semibold text-slate-400">
+                        <span className="truncate">{experience.spaceId ? '来源空间：' + experience.spaceId + ' · ' : ''}{new Date(experience.createdAt).toLocaleDateString('zh-CN')}{experience.edited ? ' · 已纠正' : ''}</span>
+                        <div className="flex shrink-0 gap-3 text-xs font-bold text-slate-400">
+                          <button type="button" onClick={() => setEditExperience(experience)} className="hover:text-slate-900 cursor-pointer">纠正</button>
+                          <button type="button" onClick={() => setExperienceAction({ experience, status: experience.status === 'DISABLED' ? 'ACTIVE' : 'DISABLED' })} className="hover:text-slate-900 cursor-pointer">{experience.status === 'DISABLED' ? '启用' : '停用'}</button>
+                          <button type="button" onClick={() => setExperienceAction({ experience, status: 'DELETED' })} className="text-rose-500 hover:text-rose-700 cursor-pointer">遗忘</button>
+                        </div>
+                      </div>
+                    </article>
+                  ))}
+                </>
               )}
             </div>
           </>

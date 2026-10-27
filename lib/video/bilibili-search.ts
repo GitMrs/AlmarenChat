@@ -26,6 +26,8 @@ export interface SearchBilibiliVideosOptions {
   page?: number;
   sort?: BilibiliSearchSort;
   timeoutMs?: number;
+  /** 完整的 B 站 Cookie 头；用于空间连接器登录态。 */
+  cookie?: string;
   sessdata?: string;
   /** 最大视频时长（秒）。超过该长度的视频直接过滤（例如合集/几百小时教程） */
   maxDurationSeconds?: number;
@@ -93,9 +95,12 @@ export async function searchBilibiliVideos(
     Referer: 'https://www.bilibili.com/',
   };
 
-  const sessdata = options.sessdata || process.env.BILIBILI_SESSDATA;
-  if (sessdata) {
-    headers.Cookie = `SESSDATA=${sessdata}`;
+  const cookie = String(options.cookie || '').trim();
+  if (cookie) {
+    headers.Cookie = cookie;
+  } else {
+    const sessdata = options.sessdata || process.env.BILIBILI_SESSDATA;
+    if (sessdata) headers.Cookie = `SESSDATA=${sessdata}`;
   }
 
   try {

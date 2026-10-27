@@ -4,14 +4,17 @@ import { requireAuth } from '@/app/api/_lib/auth';
 import { serializeConnector } from '@/lib/connectors/registry.mjs';
 import { readBilibiliCredentials } from '@/lib/bilibili/credentials.mjs';
 import { fetchNav } from '@/lib/bilibili/auth.mjs';
+import { ensureSpaceRoot } from '@/app/api/_lib/spaces';
+import { clearCache } from '@/lib/bilibili/cache.mjs';
 
 export const runtime = 'nodejs';
 
 const PROVIDER = 'BILIBILI';
 
 export async function POST(request: Request, { params }: { params: Promise<{ spaceId: string }> }) {
+  let userId = '';
   try {
-    const userId = requireAuth(request);
+    userId = requireAuth(request);
     const { spaceId } = await params;
     const connector = await prisma.spaceConnector.findFirst({
       where: { spaceId, provider: PROVIDER, space: { userId } },
@@ -29,6 +32,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
         publicConfig: { mid: profile.mid, uname: profile.uname, face: profile.face, level: profile.level },
       },
     });
+    await clearCache(await ensureSpaceRoot(userId, spaceId));
     return NextResponse.json({ connector: serializeConnector(updated), profile });
   } catch (error: any) {
     if (error.message === 'Unauthorized') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -38,6 +42,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
         where: { spaceId, provider: PROVIDER },
         data: { status: 'EXPIRED', lastError: '登录已失效，请重新扫码', lastCheckedAt: new Date() },
       }).catch(() => null);
+      await clearCache(await ensureSpaceRoot(userId, spaceId)).catch(() => null);
       return NextResponse.json({ error: 'B 站登录已失效，请重新扫码' }, { status: 409 });
     }
     return NextResponse.json({ error: error.message || '校验失败' }, { status: 500 });

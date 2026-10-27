@@ -3,17 +3,20 @@ import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { requireAgentMemoryAccess } from '@/app/api/_lib/agent-personal-memory';
 import { isDuplicateMemory } from '@/lib/personal-assistant/memory-dedup.mjs';
+import { deriveAgentGrowthState } from '@/lib/agents/growth/state.mjs';
 
 export async function GET(request: Request, { params }: { params: Promise<{ agentId: string }> }) {
   try {
     const userId = requireAuth(request);
     const { agentId } = await params;
     await requireAgentMemoryAccess(userId, agentId);
-    const [memories, experiences] = await Promise.all([
+    const [memories, experiences, growthEvents] = await Promise.all([
       prisma.agentMemoryItem.findMany({ where: { userId, agentId, status: { not: 'DELETED' } }, orderBy: { updatedAt: 'desc' } }),
-      prisma.agentExperience.findMany({ where: { userId, agentId, outcome: 'ACCEPTED', status: { not: 'DELETED' } }, orderBy: { updatedAt: 'desc' }, take: 50 }),
+      // 这是个人 Agent 档案，只展示没有空间归属的经历；空间经历由空间接口按 spaceId 读取。
+      prisma.agentExperience.findMany({ where: { userId, agentId, spaceId: null, outcome: 'ACCEPTED', status: { not: 'DELETED' } }, orderBy: { updatedAt: 'desc' }, take: 50 }),
+      prisma.agentGrowthEvent.findMany({ where: { userId, agentId, scope: 'PERSONAL' }, orderBy: { createdAt: 'desc' }, take: 50 }),
     ]);
-    return NextResponse.json({ memories, experiences }, { headers: { 'Cache-Control': 'no-store' } });
+    return NextResponse.json({ memories, experiences, growthEvents, growthState: deriveAgentGrowthState(growthEvents) }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: error.message === 'Unauthorized' ? 401 : error.message === 'Agent not found' ? 404 : 500 });
   }

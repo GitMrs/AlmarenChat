@@ -16,6 +16,7 @@ import {
 import { describeWorkspaceArtifact, executeWorkspaceTool, workspaceToolSchemas } from '@/lib/agents/runtime/runtime-tools.mjs';
 import { createChatWebTools } from '@/lib/web/auto-web';
 import { createBilibiliAgentTools } from '@/lib/bilibili/agent-tools.mjs';
+import { createAgentGrowthTools } from '@/lib/agents/growth/agent-growth';
 import { collectChatCompletionStream, runToolLoop } from '@/lib/agents/runtime/tool-loop.mjs';
 import { normalizeTaskProposalSteps, taskProposalCapabilities, taskProposalNeedsClarification, taskProposalWithTurnNetworkAuthorization } from '@/lib/space/task-proposals';
 import { professionalDeliverableNeedsTask } from '@/lib/space/task-proposal-policy.mjs';
@@ -688,7 +689,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
     const normalizedInteractionMode = ['multi_reply', 'coordinated_turn', 'coordination_summary'].includes(interactionMode)
       ? interactionMode
       : 'chat';
-    const agentMemory = await loadAgentMemoryContext({ userId, agentId: targetAgent.id, query: textMessage });
+    const agentMemory = await loadAgentMemoryContext({ userId, agentId: targetAgent.id, spaceId, query: textMessage });
     const selectedSkill = skillId
       ? await getSpaceSkill({ projectRoot: process.cwd(), userId, spaceId, skillId: String(skillId) })
       : null;
@@ -879,10 +880,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
     let spaceMessageRuntime: Awaited<ReturnType<typeof prepareSpaceMessageRuntime>>;
     const web = createChatWebTools({ apiKey: settings.tavilyApiKey, defaultWeatherLocation: settings.defaultWeatherLocation, history: rawHistory, signal: request.signal, onStatus: (label: string) => reportQueryStatus?.(label), cryptoContext: (data: any) => spaceMessageRuntime?.marketContext?.(data) || '' });
     const bilibili = !useIsolatedContext ? createSpaceBilibiliTools(userId, spaceId, space) : null;
+    const growth = targetAgent.id !== SPACE_COORDINATOR.id
+      ? createAgentGrowthTools({ userId, agentId: targetAgent.id, spaceId })
+      : null;
     const availableTools = [
       ...(selectedWork ? workspaceToolSchemas.filter((tool: any) => READ_ONLY_WORKSPACE_TOOLS.has(tool.function.name)) : []),
       ...(allowWebSearch ? web.tools : []),
       ...(bilibili ? bilibili.tools : []),
+      ...(growth ? growth.tools : []),
       ...(!isMultiReply ? [TASK_PROPOSAL_TOOL] : []),
       ...(relayTool ? [relayTool] : []),
       ...(discussionTool ? [discussionTool] : []),
@@ -1052,6 +1057,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
               });
             },
             executeTool: async (name: string, args: Record<string, unknown>) => {
+              if (growth?.owns(name)) return growth.execute(name, args);
               if (bilibili?.owns(name)) return bilibili.execute(name, args, abortController.signal);
               if (web.tools.some((tool) => tool.function.name === name)) return allowWebSearch ? web.execute(name, args, abortController.signal) : { ok: false, error: '隔离互动场景不提供联网工具' };
               if (name === 'propose_task') {
