@@ -1,3 +1,4 @@
+import { reviewAcceptedTaskExperiences } from './runtime/agent-growth-review.mjs';
 import 'dotenv/config';
 import { randomUUID } from 'node:crypto';
 import { resolveAgentModelConfig } from '../lib/agents/model/agent-model-config.mjs';
@@ -1695,6 +1696,12 @@ async function processRun(run) {
         accepted: acceptance.accepted && outcome.status === 'COMPLETED',
         timestamp,
       });
+      if (!fakeMode && acceptance.accepted && outcome.status === 'COMPLETED') {
+        await reviewAcceptedTaskExperiences(db, {
+          run, timestamp,
+          complete: (agentId, messages) => completeMessage(context.agents.find(agent => agent.id === agentId)?.model || context.model, messages, [], { runId: run.id, agentId, signal: AbortSignal.timeout(25_000) }),
+        });
+      }
     } catch (memoryError) {
       console.warn('[agent-worker] failed to record agent experience', {
         runId: run.id,

@@ -36,7 +36,7 @@ const AGENT_MEMORY_CATEGORY_LABELS: Record<string, string> = {
 };
 
 const ACTIVITY_SOURCE_LABELS: Record<string, string> = {
-  CHAT: '对话归档', TASK: '任务', DISCUSSION: '讨论', RELAY: '接力', GAME: '游戏', COORDINATION: '成员协作', STUDY: '自主研习',
+  CHAT_REVIEW: '聊天复盘', TASK_REVIEW: '任务复盘', CHAT: '对话归档', TASK: '任务', DISCUSSION: '讨论', RELAY: '接力', GAME: '游戏', COORDINATION: '成员协作', STUDY: '自主研习',
 };
 
 function ActivityText({ content }: { content: string }) {
@@ -1159,6 +1159,7 @@ export default function AgentDetailsPanel({
                         <span className="shrink-0 rounded-md bg-indigo-100 px-2 py-0.5 text-[10px] font-bold text-indigo-700">{label}</span>
                       </div>
                       <ActivityText content={String(payload.content || payload.summary || payload.thoughts || '')} />
+                      {typeof payload.behaviorChange === 'string' && payload.behaviorChange && <div className="mt-2 rounded-xl bg-white/75 p-3 text-xs leading-5 text-slate-600"><p className="font-bold">后续调整</p><p className="mt-1 whitespace-pre-wrap">{payload.behaviorChange}</p></div>}
                       {typeof payload.previousBelief === 'string' && payload.previousBelief && <div className="mt-3 rounded-xl bg-white/75 p-3 text-xs leading-5 text-slate-500"><p className="mb-1 font-bold text-slate-600">原有判断</p><p className="whitespace-pre-wrap break-words">{payload.previousBelief}</p></div>}
                       {typeof payload.evidence === 'string' && payload.evidence && (
                         <details className="mt-2 text-[11px] leading-5 text-slate-500">

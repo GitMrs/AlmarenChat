@@ -140,12 +140,17 @@ test('worker recalls personal and current-space activities without leaking other
   db.close();
 });
 
-test('successful task acceptance records activity without inventing a reflection', () => {
+test('task acceptance alone does not invent cognitive change', () => {
   const db = database();
   db.exec(`CREATE TABLE "AgentGrowthEvent" (
     "id" TEXT, "userId" TEXT, "agentId" TEXT, "spaceId" TEXT, "scope" TEXT, "type" TEXT,
     "sourceType" TEXT, "sourceId" TEXT, "eventKey" TEXT UNIQUE, "payload" TEXT, "createdAt" TEXT
   )`);
+  recordAcceptedAgentExperiences(db, {
+    run: { id: 'run-1', userId: 'user-1', spaceId: 'space-a' },
+    tasks: [{ id: 'task-1', agentId: 'writer', title: '写文章', result: '文章已交付', status: 'COMPLETED' }],
+    accepted: true, timestamp: '2026-10-27T00:00:00Z',
+  });
   recordAcceptedAgentExperiences(db, {
     run: { id: 'run-1', userId: 'user-1', spaceId: 'space-a' },
     tasks: [{ id: 'task-1', agentId: 'writer', title: '写文章', result: '文章已交付', status: 'COMPLETED' }],

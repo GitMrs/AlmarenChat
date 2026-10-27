@@ -33,9 +33,9 @@ export async function loadAgentMemoryContext(options: {
       where: { userId: options.userId, agentId: options.agentId, outcome: 'ACCEPTED', status: 'ACTIVE', ...experienceScope },
       orderBy: { updatedAt: 'desc' },
       take: 30,
-      select: { title: true, summary: true, outcome: true, spaceId: true, sourceType: true, createdAt: true },
+      select: { id: true, title: true, summary: true, outcome: true, spaceId: true, sourceType: true, createdAt: true },
     }),
     loadAgentGrowthContext({ userId: options.userId, agentId: options.agentId, spaceId: options.spaceId, query: options.query }),
   ]);
-  return [personalMemoryContext(memories, options.query), agentMemoryContext({ rules, experiences, query: options.query }), growth].filter(Boolean).join('\n\n');
+  return [experiences.length ? `可引用的经历证据 ID：${experiences.map(e => e.id).join(', ')}` : '', personalMemoryContext(memories, options.query), agentMemoryContext({ rules, experiences, query: options.query }), growth].filter(Boolean).join('\n\n');
 }

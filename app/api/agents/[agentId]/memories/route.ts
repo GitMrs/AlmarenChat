@@ -13,9 +13,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ agen
     const [memories, activities, archives, growthEvents] = await Promise.all([
       prisma.agentMemoryItem.findMany({ where: { userId, agentId, status: { not: 'DELETED' } }, orderBy: { updatedAt: 'desc' } }),
       // 分别保留近期活动和归档，避免大量对话归档挤占活动的展示数量。
-      prisma.agentExperience.findMany({ where: { userId, agentId, outcome: 'ACCEPTED', status: { not: 'DELETED' }, sourceType: { not: 'CHAT' } }, orderBy: { createdAt: 'desc' }, take: 50 }),
-      prisma.agentExperience.findMany({ where: { userId, agentId, outcome: 'ACCEPTED', status: { not: 'DELETED' }, sourceType: 'CHAT' }, orderBy: { createdAt: 'desc' }, take: 50 }),
-      prisma.agentGrowthEvent.findMany({ where: { userId, agentId }, orderBy: { createdAt: 'desc' }, take: 50 }),
+      prisma.agentExperience.findMany({ where: { userId, agentId, spaceId: null, outcome: 'ACCEPTED', status: { not: 'DELETED' }, sourceType: { not: 'CHAT' } }, orderBy: { createdAt: 'desc' }, take: 50 }),
+      prisma.agentExperience.findMany({ where: { userId, agentId, spaceId: null, outcome: 'ACCEPTED', status: { not: 'DELETED' }, sourceType: 'CHAT' }, orderBy: { createdAt: 'desc' }, take: 50 }),
+      prisma.agentGrowthEvent.findMany({ where: { userId, agentId, scope: 'PERSONAL' }, orderBy: { createdAt: 'desc' }, take: 50 }),
     ]);
     const experiences = [...activities, ...archives].sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime());
     return NextResponse.json({ memories, experiences, growthEvents, growthState: deriveAgentGrowthState(growthEvents) }, { headers: { 'Cache-Control': 'no-store' } });

@@ -1,3 +1,5 @@
+import { after } from 'next/server';
+import { reviewAgentChatArchive } from '@/lib/agents/growth/chat-review';
 import prisma from '@/app/api/_lib/db';
 import { resolveAgent } from '@/app/api/_lib/spaces';
 import { buildSpaceExperience } from '@/lib/agents/memory/agent-personal-memory.mjs';
@@ -175,5 +177,14 @@ export async function archiveAgentChat(userId: string, agentId: string, conversa
       update: {},
     });
   });
+  try {
+    after(async () => {
+      try { await reviewAgentChatArchive(experience.id); }
+      catch (error) { console.warn('[agent-growth] chat archive review failed', experience.id, error); }
+    });
+  } catch (error) {
+    // 归档已提交，调度复盘失败也不能让归档请求失败。
+    console.warn('[agent-growth] unable to schedule chat review', experience.id, error);
+  }
   return { experience, archivedCount: batch.length, remainingCount: messages.length - batch.length };
 }

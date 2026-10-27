@@ -1,3 +1,4 @@
+import { activeGrowthEvents } from '../../lib/agents/growth/cognition.mjs';
 import { randomUUID } from 'node:crypto';
 import { agentMemoryContext } from '../../lib/agents/memory/agent-memory-policy.mjs';
 import { personalMemoryContext, buildSpaceExperience } from '../../lib/agents/memory/agent-personal-memory.mjs';
@@ -27,7 +28,12 @@ export function loadAgentMemoryContextSync(db, { userId, agentId, query, spaceId
        AND ("spaceId" IS NULL OR "spaceId" = ?)
      ORDER BY "updatedAt" DESC LIMIT 30`
   ).all(userId, agentId, spaceId);
-  return [personalMemoryContext(memories, query), agentMemoryContext({ rules, experiences, query })].filter(Boolean).join('\n\n');
+  const growth = db.prepare(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'AgentGrowthEvent'`).get()
+    ? activeGrowthEvents(db.prepare(`SELECT * FROM "AgentGrowthEvent" WHERE "userId" = ? AND "agentId" = ? AND ("scope" = 'PERSONAL' OR ("scope" = 'SPACE' AND "spaceId" = ?)) ORDER BY "createdAt" DESC`).all(userId, agentId, spaceId).map(e => ({ ...e, payload: JSON.parse(e.payload) })))
+      .filter(e => ['BELIEF', 'REVISION', 'REFLECTION'].includes(e.type) && (e.payload?.beliefKey || e.payload?.evidence))
+      .slice(0, 8).map(e => `- [判断 ID:${e.id}] ${e.payload.content}；后续行为：${e.payload.behaviorChange || '依据原记录的适用条件'}`).join('\n')
+    : '';
+  return [growth ? `当前有效判断（有适用条件，不是用户约定）：\n${growth}` : '', personalMemoryContext(memories, query), agentMemoryContext({ rules, experiences, query })].filter(Boolean).join('\n\n');
 }
 
 export function recordAcceptedAgentExperiences(db, { run, tasks, accepted, timestamp }) {
@@ -56,6 +62,8 @@ export function recordAcceptedAgentExperiences(db, { run, tasks, accepted, times
       timestamp,
       timestamp
     );
+
+
   }
 }
 
