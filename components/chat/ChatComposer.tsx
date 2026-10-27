@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Check, Cloud, Cpu, Flame, Image as ImageIcon, ImagePlus, Loader2, Plus, Send, Square, Trash2, X } from 'lucide-react';
+import { Brain, Check, Cloud, Cpu, Flame, Image as ImageIcon, ImagePlus, Loader2, Plus, Send, Square, Trash2, X } from 'lucide-react';
 import ComposerShell from '@/components/chat/ComposerShell';
 import { cn } from '@/lib/client/utils';
 import type { MessageAttachment } from '@/types';
@@ -37,6 +37,7 @@ type ChatComposerProps = {
   ollamaAvailable: boolean;
   onModelSourceChange: (source: BrowserModelSource) => void;
   onOpenTrending?: () => void;
+  onOpenContext?: () => void;
 };
 
 export default function ChatComposer({
@@ -69,6 +70,7 @@ export default function ChatComposer({
   ollamaAvailable,
   onModelSourceChange,
   onOpenTrending,
+  onOpenContext,
 }: ChatComposerProps) {
   const [toolsOpen, setToolsOpen] = useState(false);
   const toolsRef = useRef<HTMLDivElement>(null);
@@ -128,8 +130,8 @@ export default function ChatComposer({
         )}
         <ComposerShell
           rowClassName="gap-3"
-          toolbar={(mode === 'image' || ollamaAvailable) ? (
-            <div className="flex flex-wrap items-center gap-2">
+          toolbar={(mode === 'image' || ollamaAvailable || onOpenContext) ? (
+            <div className="flex w-full flex-wrap items-center gap-2">
               {ollamaAvailable && (
                 <div className="inline-flex h-8 items-center rounded-lg bg-white p-0.5 text-[11px] font-black shadow-sm" role="group" aria-label="模型来源">
                   <button
@@ -166,6 +168,11 @@ export default function ChatComposer({
                     <X size={12} />
                   </button>
                 </div>
+              )}
+              {onOpenContext && (
+                <button type="button" onClick={onOpenContext} disabled={isStreaming} aria-label="查看上下文与记忆" title="查看上下文与记忆" className="ml-auto inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-bold text-slate-500 transition hover:bg-white hover:text-slate-900 disabled:opacity-40">
+                  <Brain size={14} />上下文与记忆
+                </button>
               )}
             </div>
           ) : undefined}

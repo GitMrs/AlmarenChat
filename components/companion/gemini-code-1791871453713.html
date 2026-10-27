@@ -1,0 +1,917 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>白萝小仙 • 高精眼动与对口型形象 | Radish Avatar</title>
+    <style>
+        :root {
+            --bg-grad-1: #eef9f2;
+            --bg-grad-2: #edf2f7;
+            --bg-grad-3: #fef5ea;
+            --panel-bg: rgba(255, 255, 255, 0.92);
+            --primary: #48bb78;
+            --accent: #ed8936;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+            background: linear-gradient(135deg, var(--bg-grad-1) 0%, var(--bg-grad-2) 50%, var(--bg-grad-3) 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #2d3748;
+            padding: 24px 16px;
+            overflow-x: hidden;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 920px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 22px;
+        }
+
+        /* Avatar Stage Card */
+        .stage-card {
+            position: relative;
+            width: 360px;
+            height: 440px;
+            background: radial-gradient(circle at 50% 35%, #ffffff 0%, #f1f8f4 65%, #e1eee7 100%);
+            border-radius: 38px;
+            box-shadow: 0 20px 42px rgba(72, 187, 120, 0.14), 0 8px 16px rgba(0, 0, 0, 0.04);
+            border: 4px solid #ffffff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            cursor: pointer;
+        }
+
+        #avatar-svg {
+            width: 100%;
+            height: 100%;
+            filter: drop-shadow(0 14px 26px rgba(45, 90, 60, 0.09));
+            z-index: 1;
+        }
+
+        /* Dynamic Emotional Atmosphere Halo */
+        .aura-halo {
+            position: absolute;
+            width: 260px;
+            height: 260px;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(72, 187, 120, 0.28) 0%, transparent 70%);
+            z-index: 0;
+            transition: background 0.6s ease;
+            pointer-events: none;
+        }
+
+        /* Control Panel */
+        .control-panel {
+            width: 100%;
+            max-width: 660px;
+            background: var(--panel-bg);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.85);
+            border-radius: 26px;
+            padding: 22px 26px;
+            box-shadow: 0 14px 30px rgba(0, 0, 0, 0.05);
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .section-header {
+            font-size: 13px;
+            font-weight: 700;
+            color: #718096;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .emotion-btn {
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            padding: 8px 16px;
+            border-radius: 12px;
+            font-size: 14px;
+            font-weight: 600;
+            color: #4a5568;
+            cursor: pointer;
+            transition: all 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .emotion-btn:hover {
+            transform: translateY(-2px);
+            border-color: #cbd5e0;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+        }
+
+        .emotion-btn.active {
+            background: #48bb78;
+            color: #ffffff;
+            border-color: #38a169;
+            box-shadow: 0 4px 14px rgba(72, 187, 120, 0.38);
+        }
+
+        .voice-box {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .action-btn {
+            background: #ed8936;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 14px;
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.25s ease;
+            box-shadow: 0 6px 16px rgba(237, 137, 54, 0.3);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .action-btn:hover {
+            background: #dd6b20;
+            transform: translateY(-2px);
+        }
+
+        .action-btn.active {
+            background: #e53e3e;
+            box-shadow: 0 6px 16px rgba(229, 62, 62, 0.35);
+        }
+
+        .slider-container {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            min-width: 220px;
+        }
+
+        .slider-container input[type="range"] {
+            flex: 1;
+            accent-color: #48bb78;
+            cursor: pointer;
+        }
+
+        .status-badge {
+            font-size: 12px;
+            font-weight: 600;
+            padding: 5px 12px;
+            border-radius: 20px;
+            background: #edf2f7;
+            color: #718096;
+            transition: all 0.3s ease;
+        }
+
+        .status-badge.speaking {
+            background: #feebc8;
+            color: #c05621;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="stage-card" id="stage-card" title="在卡片内移动鼠标，萝卜眼神会自然跟随～">
+        <div class="aura-halo" id="aura"></div>
+        <svg id="avatar-svg" viewBox="0 0 400 480">
+            <defs>
+                <!-- Body Gradient -->
+                <linearGradient id="body-gradient" x1="50%" y1="0%" x2="50%" y2="100%">
+                    <stop offset="0%" stop-color="#e8f8ec" />
+                    <stop offset="18%" stop-color="#f7faf8" />
+                    <stop offset="60%" stop-color="#ffffff" />
+                    <stop offset="95%" stop-color="#fdfbf7" />
+                    <stop offset="100%" stop-color="#f7efe2" />
+                </linearGradient>
+
+                <!-- Body Rim Shading -->
+                <radialGradient id="body-shading" cx="35%" cy="35%" r="65%">
+                    <stop offset="0%" stop-color="#ffffff" stop-opacity="1" />
+                    <stop offset="70%" stop-color="#f0fdf4" stop-opacity="0.8" />
+                    <stop offset="100%" stop-color="#cbd5e1" stop-opacity="0.55" />
+                </radialGradient>
+
+                <!-- Foliage Gradients -->
+                <linearGradient id="leaf-grad-1" x1="0%" y1="100%" x2="0%" y2="0%">
+                    <stop offset="0%" stop-color="#2f855a" />
+                    <stop offset="50%" stop-color="#48bb78" />
+                    <stop offset="100%" stop-color="#9ae6b4" />
+                </linearGradient>
+
+                <linearGradient id="leaf-grad-2" x1="0%" y1="100%" x2="0%" y2="0%">
+                    <stop offset="0%" stop-color="#276749" />
+                    <stop offset="60%" stop-color="#38a169" />
+                    <stop offset="100%" stop-color="#68d391" />
+                </linearGradient>
+
+                <!-- Blush Gradient -->
+                <radialGradient id="blush-grad" cx="50%" cy="50%" r="50%">
+                    <stop offset="0%" stop-color="#ff7b90" stop-opacity="0.75" />
+                    <stop offset="70%" stop-color="#ff9baa" stop-opacity="0.28" />
+                    <stop offset="100%" stop-color="#ffb3be" stop-opacity="0" />
+                </radialGradient>
+
+                <!-- ================= NEW EYE SHADERS ================= -->
+                <!-- Deep Glossy Iris Gradient -->
+                <linearGradient id="iris-gradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                    <stop offset="0%" stop-color="#141824" />
+                    <stop offset="55%" stop-color="#232b3e" />
+                    <stop offset="85%" stop-color="#343f56" />
+                    <stop offset="100%" stop-color="#475569" />
+                </linearGradient>
+
+                <!-- Eye Bottom Glassy Bounce Light -->
+                <radialGradient id="eye-bounce-glow" cx="50%" cy="85%" r="60%">
+                    <stop offset="0%" stop-color="#68d391" stop-opacity="0.65" />
+                    <stop offset="50%" stop-color="#48bb78" stop-opacity="0.25" />
+                    <stop offset="100%" stop-color="#2d3748" stop-opacity="0" />
+                </radialGradient>
+
+                <!-- Eye Sclera Soft Warm Background -->
+                <radialGradient id="eye-sclera-base" cx="45%" cy="40%" r="65%">
+                    <stop offset="0%" stop-color="#ffffff" />
+                    <stop offset="85%" stop-color="#f8fafc" />
+                    <stop offset="100%" stop-color="#e2e8f0" />
+                </radialGradient>
+
+                <!-- Eye Clipping Masks for Smooth Eyelid Animation -->
+                <clipPath id="eye-clip-l">
+                    <path d="M -16, -18 C -7, -24 7, -24 16, -18 C 19, -4 19, 14 15, 18 C 7, 23 -7, 23 -15, 18 C -19, 14 -19, -4 -16, -18 Z" />
+                </clipPath>
+                <clipPath id="eye-clip-r">
+                    <path d="M -16, -18 C -7, -24 7, -24 16, -18 C 19, -4 19, 14 15, 18 C 7, 23 -7, 23 -15, 18 C -19, 14 -19, -4 -16, -18 Z" />
+                </clipPath>
+
+                <!-- Floor Shadow -->
+                <radialGradient id="floor-shadow" cx="50%" cy="50%" r="50%">
+                    <stop offset="0%" stop-color="#4a5568" stop-opacity="0.25" />
+                    <stop offset="60%" stop-color="#718096" stop-opacity="0.08" />
+                    <stop offset="100%" stop-color="#a0aec0" stop-opacity="0" />
+                </radialGradient>
+
+                <linearGradient id="sweat-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+                    <stop offset="0%" stop-color="#90cdf4" stop-opacity="0.9" />
+                    <stop offset="100%" stop-color="#3182ce" stop-opacity="0.8" />
+                </linearGradient>
+            </defs>
+
+            <!-- Ground Shadow -->
+            <ellipse id="ground-shadow" cx="200" cy="435" rx="75" ry="12" fill="url(#floor-shadow)" />
+
+            <!-- Rootlet Legs -->
+            <g id="legs-group">
+                <path id="leg-left" d="M 185, 410 Q 182, 430 178, 432" stroke="#ecd9c6" stroke-width="6" stroke-linecap="round" fill="none" />
+                <path id="leg-right" d="M 215, 410 Q 218, 430 222, 432" stroke="#ecd9c6" stroke-width="6" stroke-linecap="round" fill="none" />
+            </g>
+
+            <!-- Leaf Foliage Crown -->
+            <g id="leaf-crown" transform="translate(200, 150)">
+                <path id="leaf-back-l" d="M 0, 0 C -40, -40 -65, -110 -35, -150 C -15, -145 -15, -100 0, 0" fill="url(#leaf-grad-2)" opacity="0.9" />
+                <path id="leaf-back-r" d="M 0, 0 C 40, -40 65, -110 35, -150 C 15, -145 15, -100 0, 0" fill="url(#leaf-grad-2)" opacity="0.9" />
+                <path id="leaf-center" d="M 0, 0 C -25, -60 -20, -135 0, -170 C 20, -135 25, -60 0, 0" fill="url(#leaf-grad-1)" />
+                <path d="M 0, -10 L 0, -165" stroke="#276749" stroke-width="2.5" stroke-linecap="round" opacity="0.3" />
+                <path id="leaf-front-l" d="M 0, 0 C -30, -20 -60, -60 -50, -85 C -30, -75 -15, -45 0, 0" fill="url(#leaf-grad-1)" />
+                <path id="leaf-front-r" d="M 0, 0 C 30, -20 60, -60 50, -85 C 30, -75 15, -45 0, 0" fill="url(#leaf-grad-1)" />
+                <circle cx="0" cy="-2" r="5" fill="#f6e05e" />
+            </g>
+
+            <!-- Main Chubby Radish Body -->
+            <g id="body-root" transform="translate(200, 290)">
+                <path id="body-path" d="M 0, -145 
+                         C 78, -145 98, -80 96, 0 
+                         C 94, 60 75, 115 32, 142 
+                         C 12, 153 0, 155 0, 155 
+                         C 0, 155 -12, 153 -32, 142 
+                         C -75, 115 -94, 60 -96, 0 
+                         C -98, -80 -78, -145 0, -145 Z" 
+                      fill="url(#body-gradient)" stroke="#e2ece4" stroke-width="2.5" />
+
+                <path d="M 0, -145 
+                         C 78, -145 98, -80 96, 0 
+                         C 94, 60 75, 115 32, 142 
+                         C 12, 153 0, 155 0, 155 
+                         C 0, 155 -12, 153 -32, 142 
+                         C -75, 115 -94, 60 -96, 0 
+                         C -98, -80 -78, -145 0, -145 Z" 
+                      fill="url(#body-shading)" />
+
+                <!-- Wrinkle accents -->
+                <path d="M -45, -30 Q -40, -28 -32, -30" stroke="#d5e3da" stroke-width="1.8" stroke-linecap="round" fill="none" />
+                <path d="M 38, 25 Q 44, 27 50, 24" stroke="#d5e3da" stroke-width="1.8" stroke-linecap="round" fill="none" />
+                <path d="M -20, 95 Q -14, 97 -8, 95" stroke="#d5e3da" stroke-width="1.8" stroke-linecap="round" fill="none" />
+
+                <!-- Sprout Hands -->
+                <path id="hand-left" d="M -82, 15 C -105, 18 -118, 38 -108, 48 C -98, 56 -80, 36 -74, 28" fill="#fdfefe" stroke="#dbe7df" stroke-width="2" />
+                <path id="hand-right" d="M 82, 15 C 105, 18 118, 38 108, 48 C 98, 56 80, 36 74, 28" fill="#fdfefe" stroke="#dbe7df" stroke-width="2" />
+
+                <!-- Soft Blushing Cheeks -->
+                <ellipse id="blush-left" cx="-52" cy="18" rx="17" ry="11" fill="url(#blush-grad)" />
+                <ellipse id="blush-right" cx="52" cy="18" rx="17" ry="11" fill="url(#blush-grad)" />
+
+                <!-- ================= NATURAL REVAMPED EYE RIG ================= -->
+                <!-- LEFT EYE -->
+                <g id="eye-anchor-left" transform="translate(-36, -8)">
+                    <!-- Eye Base Contour Socket -->
+                    <g id="eye-scale-group-l">
+                        <!-- Sclera Base -->
+                        <ellipse cx="0" cy="0" rx="15" ry="18" fill="url(#eye-sclera-base)" stroke="#cbd5e1" stroke-width="0.8" />
+
+                        <!-- Iris & Pupil (Clipped to eye boundary, moves with gaze) -->
+                        <g clip-path="url(#eye-clip-l)">
+                            <g id="pupil-group-l" transform="translate(0, 0)">
+                                <!-- Large Rounded Anime Iris -->
+                                <ellipse cx="0" cy="0" rx="13.2" ry="16.5" fill="url(#iris-gradient)" />
+                                <!-- Core Dark Pupil -->
+                                <circle cx="0" cy="1" r="7.5" fill="#0f172a" />
+                                <!-- Bottom Corneal Ambient Bounce Light -->
+                                <ellipse cx="0" cy="7.5" rx="10" ry="7" fill="url(#eye-bounce-glow)" />
+
+                                <!-- Multi-point Glass Highlights -->
+                                <!-- Main Big Soft Highlight -->
+                                <circle id="glint-main-l" cx="-4.5" cy="-5.5" r="4.8" fill="#ffffff" opacity="0.95" />
+                                <!-- Secondary Sub Highlight -->
+                                <circle id="glint-sub-l" cx="4.2" cy="4.5" r="2.2" fill="#ffffff" opacity="0.85" />
+                                <!-- Tiny Starlet Sparkle -->
+                                <circle cx="-2.5" cy="4" r="1.2" fill="#ffffff" opacity="0.6" />
+                            </g>
+                        </g>
+
+                        <!-- Anime Upper Lash Line Frame (Gives cute defining curvature) -->
+                        <path id="lash-line-l" d="M -16, -2 C -11, -19 11, -19 16, -2" fill="none" stroke="#242c3d" stroke-width="3.5" stroke-linecap="round" />
+                    </g>
+
+                    <!-- Closed Eye Crescent Arch (Used during blink & cute excitement) -->
+                    <path id="eye-closed-l" d="M -14, 2 Q 0, 10 14, 2" fill="none" stroke="#242c3d" stroke-width="3.6" stroke-linecap="round" style="display:none;" />
+                </g>
+
+                <!-- RIGHT EYE -->
+                <g id="eye-anchor-right" transform="translate(36, -8)">
+                    <g id="eye-scale-group-r">
+                        <ellipse cx="0" cy="0" rx="15" ry="18" fill="url(#eye-sclera-base)" stroke="#cbd5e1" stroke-width="0.8" />
+
+                        <g clip-path="url(#eye-clip-r)">
+                            <g id="pupil-group-r" transform="translate(0, 0)">
+                                <ellipse cx="0" cy="0" rx="13.2" ry="16.5" fill="url(#iris-gradient)" />
+                                <circle cx="0" cy="1" r="7.5" fill="#0f172a" />
+                                <ellipse cx="0" cy="7.5" rx="10" ry="7" fill="url(#eye-bounce-glow)" />
+
+                                <circle id="glint-main-r" cx="-4.5" cy="-5.5" r="4.8" fill="#ffffff" opacity="0.95" />
+                                <circle id="glint-sub-r" cx="4.2" cy="4.5" r="2.2" fill="#ffffff" opacity="0.85" />
+                                <circle cx="-2.5" cy="4" r="1.2" fill="#ffffff" opacity="0.6" />
+                            </g>
+                        </g>
+
+                        <path id="lash-line-r" d="M -16, -2 C -11, -19 11, -19 16, -2" fill="none" stroke="#242c3d" stroke-width="3.5" stroke-linecap="round" />
+                    </g>
+
+                    <path id="eye-closed-r" d="M -14, 2 Q 0, 10 14, 2" fill="none" stroke="#242c3d" stroke-width="3.6" stroke-linecap="round" style="display:none;" />
+                </g>
+
+                <!-- Eyebrows -->
+                <path id="eyebrow-left" d="M -48, -32 Q -36, -38 -24, -34" fill="none" stroke="#334155" stroke-width="3" stroke-linecap="round" />
+                <path id="eyebrow-right" d="M 24, -34 Q 36, -38 48, -32" fill="none" stroke="#334155" stroke-width="3" stroke-linecap="round" />
+
+                <!-- Emotional Accent FX -->
+                <g id="fx-accents">
+                    <path id="fx-sweat" d="M 65, -85 C 65, -85 75, -72 75, -65 C 75, -58 68, -54 62, -58 C 57, -63 60, -74 65, -85 Z" fill="url(#sweat-grad)" opacity="0" />
+                    <path id="fx-tear-l" d="M -45, 12 Q -48, 30 -42, 42" stroke="#63b3ed" stroke-width="3.5" stroke-linecap="round" fill="none" opacity="0" />
+                    <path id="fx-tear-r" d="M 45, 12 Q 48, 30 42, 42" stroke="#63b3ed" stroke-width="3.5" stroke-linecap="round" fill="none" opacity="0" />
+                </g>
+
+                <!-- Parametric LipSync Mouth -->
+                <g id="mouth-container" transform="translate(0, 18)">
+                    <path id="mouth-cavity" d="M -12, 0 Q 0, 0 12, 0 Z" fill="#e53e3e" />
+                    <ellipse id="mouth-tongue" cx="0" cy="5" rx="6" ry="4" fill="#fc8181" opacity="0" />
+                    <path id="mouth-lip" d="M -12, 0 Q 0, 7 12, 0" fill="none" stroke="#2d3748" stroke-width="3.5" stroke-linecap="round" />
+                    <polygon id="mouth-tooth" points="-3,-1 0,3 3,-1" fill="#ffffff" opacity="0" />
+                </g>
+            </g>
+        </svg>
+    </div>
+
+    <!-- HUD Controls -->
+    <div class="control-panel">
+        <div class="section-header">
+            <span>🎭</span> 情绪感知与模拟切换 (Emotion States)
+        </div>
+        <div class="btn-group">
+            <button class="emotion-btn active" data-emotion="happy"><span>😊</span> 开心友好</button>
+            <button class="emotion-btn" data-emotion="excited"><span>🤩</span> 兴奋雀跃</button>
+            <button class="emotion-btn" data-emotion="sad"><span>🥺</span> 委屈难过</button>
+            <button class="emotion-btn" data-emotion="angry"><span>😤</span> 傲娇气鼓</button>
+            <button class="emotion-btn" data-emotion="thinking"><span>🤔</span> 疑惑思考</button>
+            <button class="emotion-btn" data-emotion="shy"><span>😳</span> 害羞脸红</button>
+            <button class="emotion-btn" data-emotion="sleepy"><span>😴</span> 困倦发呆</button>
+        </div>
+
+        <div class="section-header" style="margin-top: 6px;">
+            <span>🎙️</span> 语音嘴型联动引擎 (LipSync Engine)
+        </div>
+        <div class="voice-box">
+            <button class="action-btn" id="talk-btn">
+                <span id="talk-icon">▶</span>
+                <span id="talk-label">模拟说话对口型</span>
+            </button>
+            <button class="emotion-btn" id="mic-btn" title="通过麦克风音量实时驱动嘴型">
+                <span>🎤</span> 麦克风实时驱动
+            </button>
+            <div class="slider-container">
+                <span style="font-size: 13px; color: #718096;">嘴部开合幅度:</span>
+                <input type="range" id="mouth-slider" min="0" max="1" step="0.05" value="0">
+            </div>
+            <span class="status-badge" id="status-badge">静止候命</span>
+        </div>
+    </div>
+</div>
+
+<script>
+/**
+ * DAIKON AVATAR ENGINE v2.0
+ * 增强特性：
+ * 1. 深度瞳孔玻璃球反光与高光结构
+ * 2. 真实非对称生理眨眼运动学 (Fast-in, Ease-out)
+ * 3. 眼神自然空闲扫视 (Saccades) 与鼠标轻量级视线跟随 (Eye tracking)
+ * 4. 情绪化眼神与嘴型联合解算
+ */
+const RadishAvatar = (function () {
+    const stageCard = document.getElementById('stage-card');
+    const bodyRoot = document.getElementById('body-root');
+    const leafCrown = document.getElementById('leaf-crown');
+
+    // Eye Elements
+    const eyeScaleGroupL = document.getElementById('eye-scale-group-l');
+    const eyeScaleGroupR = document.getElementById('eye-scale-group-r');
+    const pupilGroupL = document.getElementById('pupil-group-l');
+    const pupilGroupR = document.getElementById('pupil-group-r');
+    const eyeClosedL = document.getElementById('eye-closed-l');
+    const eyeClosedR = document.getElementById('eye-closed-r');
+
+    const eyebrowL = document.getElementById('eyebrow-left');
+    const eyebrowR = document.getElementById('eyebrow-right');
+    const blushL = document.getElementById('blush-left');
+    const blushR = document.getElementById('blush-right');
+    const fxSweat = document.getElementById('fx-sweat');
+    const fxTearL = document.getElementById('fx-tear-l');
+    const fxTearR = document.getElementById('fx-tear-r');
+    const mouthCavity = document.getElementById('mouth-cavity');
+    const mouthTongue = document.getElementById('mouth-tongue');
+    const mouthLip = document.getElementById('mouth-lip');
+    const mouthTooth = document.getElementById('mouth-tooth');
+    const handLeft = document.getElementById('hand-left');
+    const handRight = document.getElementById('hand-right');
+    const aura = document.getElementById('aura');
+
+    // Engine States
+    let currentEmotion = 'happy';
+    let isSpeaking = false;
+    let mouthOpenRatio = 0.0;
+    let speechTimer = null;
+    let audioContext = null;
+    let micStream = null;
+    let analyserNode = null;
+
+    // Gaze & Saccade Physics
+    let targetGazeX = 0, targetGazeY = 0;
+    let currentGazeX = 0, currentGazeY = 0;
+    let saccadeTimer = 2.0;
+
+    // Blink Engine (Asymmetric Curve)
+    let blinkTimer = 2.8;
+    let blinkState = 'idle'; // 'idle', 'closing', 'opening'
+    let blinkProgress = 0;   // 0 = fully open, 1 = fully closed
+
+    let lastTime = performance.now();
+    let breathPhase = 0;
+
+    // -------------------------------------------------------------
+    // 1. 眼睛与视线追踪解算
+    // -------------------------------------------------------------
+    function updateEyes(dt) {
+        // A. 情绪对基础视线意图的影响
+        let baseOffsetX = 0, baseOffsetY = 0;
+        let emotionEyeScaleY = 1.0;
+
+        if (currentEmotion === 'thinking') {
+            baseOffsetX = 3.8;
+            baseOffsetY = -3.2; // 疑惑思考往右上瞟
+        } else if (currentEmotion === 'shy') {
+            baseOffsetY = 3.5;  // 害羞往下垂
+            baseOffsetX = Math.sin(breathPhase) * 0.8;
+        } else if (currentEmotion === 'sad') {
+            baseOffsetY = 2.8;  // 委屈低落
+        }
+
+        // B. 自发生理微眼震 (Saccades)
+        saccadeTimer -= dt;
+        if (saccadeTimer <= 0) {
+            saccadeTimer = 2.0 + Math.random() * 3.5;
+            if (currentEmotion === 'happy' || currentEmotion === 'excited') {
+                targetGazeX = (Math.random() - 0.5) * 4.5;
+                targetGazeY = (Math.random() - 0.5) * 3.0;
+            } else {
+                targetGazeX = 0;
+                targetGazeY = 0;
+            }
+        }
+
+        // C. 平滑缓动插值
+        currentGazeX += (targetGazeX + baseOffsetX - currentGazeX) * (dt * 7.5);
+        currentGazeY += (targetGazeY + baseOffsetY - currentGazeY) * (dt * 7.5);
+
+        pupilGroupL.setAttribute('transform', `translate(${currentGazeX.toFixed(2)}, ${currentGazeY.toFixed(2)})`);
+        pupilGroupR.setAttribute('transform', `translate(${currentGazeX.toFixed(2)}, ${currentGazeY.toFixed(2)})`);
+
+        // D. 眨眼动力学 (非对称正弦加急解算)
+        if (currentEmotion === 'excited') {
+            // 兴奋：持续开心的月牙弯眼
+            eyeScaleGroupL.style.display = 'none';
+            eyeScaleGroupR.style.display = 'none';
+            eyeClosedL.style.display = 'block';
+            eyeClosedR.style.display = 'block';
+            eyeClosedL.setAttribute('d', 'M -14, 2 Q 0, -10 14, 2');
+            eyeClosedR.setAttribute('d', 'M -14, 2 Q 0, -10 14, 2');
+            return;
+        }
+
+        // 困倦状态：眼皮持续半垂
+        if (currentEmotion === 'sleepy') {
+            emotionEyeScaleY = 0.45;
+        }
+
+        // 正常状态眨眼循环
+        blinkTimer -= dt;
+        if (blinkState === 'idle' && blinkTimer <= 0) {
+            blinkState = 'closing';
+            blinkProgress = 0;
+        }
+
+        if (blinkState === 'closing') {
+            blinkProgress += dt * 14.0; // 极速合上 (~70ms)
+            if (blinkProgress >= 1.0) {
+                blinkProgress = 1.0;
+                blinkState = 'opening';
+            }
+        } else if (blinkState === 'opening') {
+            blinkProgress -= dt * 8.5;  // 优雅睁开 (~120ms)
+            if (blinkProgress <= 0) {
+                blinkProgress = 0;
+                blinkState = 'idle';
+                blinkTimer = 2.4 + Math.random() * 4.2; // 随机下一次眨眼
+            }
+        }
+
+        const effectiveScaleY = Math.max(0.04, (1.0 - blinkProgress) * emotionEyeScaleY);
+
+        if (effectiveScaleY < 0.12) {
+            // 闭拢瞬间显示柔和月牙睫毛线
+            eyeScaleGroupL.style.display = 'none';
+            eyeScaleGroupR.style.display = 'none';
+            eyeClosedL.style.display = 'block';
+            eyeClosedR.style.display = 'block';
+            eyeClosedL.setAttribute('d', 'M -14, 1 Q 0, 8 14, 1');
+            eyeClosedR.setAttribute('d', 'M -14, 1 Q 0, 8 14, 1');
+        } else {
+            eyeScaleGroupL.style.display = 'block';
+            eyeScaleGroupR.style.display = 'block';
+            eyeClosedL.style.display = 'none';
+            eyeClosedR.style.display = 'none';
+            eyeScaleGroupL.setAttribute('transform', `scale(1, ${effectiveScaleY.toFixed(3)})`);
+            eyeScaleGroupR.setAttribute('transform', `scale(1, ${effectiveScaleY.toFixed(3)})`);
+        }
+    }
+
+    // -------------------------------------------------------------
+    // 2. 嘴型与情绪联合渲染
+    // -------------------------------------------------------------
+    function updateMouth(ratio) {
+        ratio = Math.max(0, Math.min(1, ratio));
+
+        if (currentEmotion === 'sad') {
+            const down = 6 + ratio * 10;
+            mouthLip.setAttribute('d', `M -10, ${down} Q 0, ${down - 8} 10, ${down}`);
+            mouthCavity.setAttribute('d', `M -10, ${down} Q 0, ${down + ratio * 14} 10, ${down} Z`);
+            mouthCavity.setAttribute('fill', ratio > 0.2 ? '#b91c1c' : 'none');
+            mouthTongue.setAttribute('opacity', ratio > 0.4 ? '1' : '0');
+            return;
+        }
+
+        if (currentEmotion === 'angry') {
+            const mouthY = ratio * 12;
+            mouthLip.setAttribute('d', `M -12, 4 Q -6, ${-2 + mouthY} 0, 4 Q 6, ${-2 + mouthY} 12, 4`);
+            mouthCavity.setAttribute('d', `M -12, 4 Q 0, ${4 + mouthY * 1.5} 12, 4 Z`);
+            mouthCavity.setAttribute('fill', ratio > 0.3 ? '#991b1b' : 'none');
+            return;
+        }
+
+        if (ratio < 0.05) {
+            mouthLip.setAttribute('d', 'M -12, 0 Q 0, 8 12, 0');
+            mouthCavity.setAttribute('d', 'M -12, 0 Q 0, 0 12, 0 Z');
+            mouthTongue.setAttribute('opacity', '0');
+            mouthTooth.setAttribute('opacity', '0');
+        } else {
+            const width = 12 + ratio * 6;
+            const openDepth = 6 + ratio * 24;
+            const bottomBulge = 12 + ratio * 20;
+
+            mouthLip.setAttribute('d', `M ${-width}, 0 Q 0, -2 ${width}, 0 Q 0, ${bottomBulge} ${-width}, 0`);
+            mouthCavity.setAttribute('d', `M ${-width}, 0 Q 0, -2 ${width}, 0 Q 0, ${openDepth} ${-width}, 0 Z`);
+            mouthCavity.setAttribute('fill', '#e53e3e');
+
+            if (ratio > 0.3) {
+                mouthTongue.setAttribute('opacity', '1');
+                mouthTongue.setAttribute('cy', `${openDepth * 0.55}`);
+                mouthTongue.setAttribute('rx', `${width * 0.45}`);
+                mouthTongue.setAttribute('ry', `${openDepth * 0.3}`);
+                mouthTooth.setAttribute('opacity', '1');
+            } else {
+                mouthTongue.setAttribute('opacity', '0');
+                mouthTooth.setAttribute('opacity', '0');
+            }
+        }
+    }
+
+    function setEmotion(emotionName) {
+        currentEmotion = emotionName;
+        fxSweat.setAttribute('opacity', '0');
+        fxTearL.setAttribute('opacity', '0');
+        fxTearR.setAttribute('opacity', '0');
+
+        switch (emotionName) {
+            case 'happy':
+                eyebrowL.setAttribute('d', 'M -48, -32 Q -36, -38 -24, -34');
+                eyebrowR.setAttribute('d', 'M 24, -34 Q 36, -38 48, -32');
+                blushL.setAttribute('rx', '17');
+                blushR.setAttribute('rx', '17');
+                aura.style.background = 'radial-gradient(circle, rgba(72, 187, 120, 0.28) 0%, transparent 70%)';
+                handLeft.setAttribute('d', 'M -82, 15 C -105, 18 -118, 38 -108, 48 C -98, 56 -80, 36 -74, 28');
+                handRight.setAttribute('d', 'M 82, 15 C 105, 18 118, 38 108, 48 C 98, 56 80, 36 74, 28');
+                break;
+
+            case 'excited':
+                eyebrowL.setAttribute('d', 'M -48, -38 Q -36, -46 -24, -40');
+                eyebrowR.setAttribute('d', 'M 24, -40 Q 36, -46 48, -38');
+                blushL.setAttribute('rx', '22');
+                blushR.setAttribute('rx', '22');
+                aura.style.background = 'radial-gradient(circle, rgba(237, 137, 54, 0.36) 0%, transparent 70%)';
+                handLeft.setAttribute('d', 'M -82, -5 C -108, -25 -125, -15 -118, 5 C -108, 18 -85, 8 -76, 5');
+                handRight.setAttribute('d', 'M 82, -5 C 108, -25 125, -15 118, 5 C 108, 18 85, 8 76, 5');
+                break;
+
+            case 'sad':
+                eyebrowL.setAttribute('d', 'M -48, -40 Q -36, -34 -24, -30');
+                eyebrowR.setAttribute('d', 'M 24, -30 Q 36, -34 48, -40');
+                fxTearL.setAttribute('opacity', '0.85');
+                fxTearR.setAttribute('opacity', '0.85');
+                blushL.setAttribute('rx', '10');
+                blushR.setAttribute('rx', '10');
+                aura.style.background = 'radial-gradient(circle, rgba(66, 153, 225, 0.28) 0%, transparent 70%)';
+                handLeft.setAttribute('d', 'M -80, 30 C -95, 45 -105, 60 -95, 68 C -85, 72 -75, 52 -72, 40');
+                handRight.setAttribute('d', 'M 80, 30 C 95, 45 105, 60 95, 68 C 85, 72 75, 52 72, 40');
+                break;
+
+            case 'angry':
+                eyebrowL.setAttribute('d', 'M -48, -30 Q -36, -36 -24, -44');
+                eyebrowR.setAttribute('d', 'M 24, -44 Q 36, -36 48, -30');
+                blushL.setAttribute('rx', '22');
+                blushR.setAttribute('rx', '22');
+                aura.style.background = 'radial-gradient(circle, rgba(245, 101, 101, 0.35) 0%, transparent 70%)';
+                handLeft.setAttribute('d', 'M -82, 10 C -105, 20 -105, 40 -85, 38 C -75, 36 -72, 24 -72, 18');
+                handRight.setAttribute('d', 'M 82, 10 C 105, 20 105, 40 85, 38 C 75, 36 72, 24 72, 18');
+                break;
+
+            case 'thinking':
+                eyebrowL.setAttribute('d', 'M -48, -42 Q -36, -46 -24, -40');
+                eyebrowR.setAttribute('d', 'M 24, -30 Q 36, -34 48, -28');
+                fxSweat.setAttribute('opacity', '0.85');
+                aura.style.background = 'radial-gradient(circle, rgba(159, 122, 234, 0.28) 0%, transparent 70%)';
+                handRight.setAttribute('d', 'M 78, 15 C 80, 0 65, -15 50, -5 C 45, 5 65, 25 72, 28');
+                break;
+
+            case 'shy':
+                eyebrowL.setAttribute('d', 'M -48, -34 Q -36, -38 -24, -36');
+                eyebrowR.setAttribute('d', 'M 24, -36 Q 36, -38 48, -34');
+                blushL.setAttribute('rx', '26');
+                blushR.setAttribute('rx', '26');
+                aura.style.background = 'radial-gradient(circle, rgba(237, 100, 166, 0.32) 0%, transparent 70%)';
+                handLeft.setAttribute('d', 'M -78, 18 C -70, 5 -55, 5 -50, 18 C -48, 28 -68, 36 -74, 30');
+                handRight.setAttribute('d', 'M 78, 18 C 70, 5 55, 5 50, 18 C 48, 28 68, 36 74, 30');
+                break;
+
+            case 'sleepy':
+                eyebrowL.setAttribute('d', 'M -48, -28 Q -36, -32 -24, -28');
+                eyebrowR.setAttribute('d', 'M 24, -28 Q 36, -32 48, -28');
+                aura.style.background = 'radial-gradient(circle, rgba(203, 213, 225, 0.3) 0%, transparent 70%)';
+                break;
+        }
+
+        updateMouth(mouthOpenRatio);
+    }
+
+    // -------------------------------------------------------------
+    // 3. 拟真语音播报与麦克风对口型
+    // -------------------------------------------------------------
+    function startSimulatedSpeech() {
+        if (isSpeaking) return;
+        isSpeaking = true;
+        document.getElementById('status-badge').textContent = '语音播报中...';
+        document.getElementById('status-badge').classList.add('speaking');
+        document.getElementById('talk-btn').classList.add('active');
+        document.getElementById('talk-icon').textContent = '⏹';
+        document.getElementById('talk-label').textContent = '停止说话';
+
+        let step = 0;
+        speechTimer = setInterval(() => {
+            step++;
+            const isPause = (step % 12 === 0 || step % 17 === 0);
+            if (isPause) {
+                mouthOpenRatio = 0.05;
+            } else {
+                const rawAmp = Math.sin(step * 0.8) * 0.5 + Math.cos(step * 1.7) * 0.3 + 0.4;
+                mouthOpenRatio = Math.max(0.1, Math.min(0.95, rawAmp));
+            }
+            updateMouth(mouthOpenRatio);
+            document.getElementById('mouth-slider').value = mouthOpenRatio;
+        }, 85);
+    }
+
+    function stopSimulatedSpeech() {
+        isSpeaking = false;
+        clearInterval(speechTimer);
+        mouthOpenRatio = 0;
+        updateMouth(0);
+        document.getElementById('status-badge').textContent = '静止候命';
+        document.getElementById('status-badge').classList.remove('speaking');
+        document.getElementById('talk-btn').classList.remove('active');
+        document.getElementById('talk-icon').textContent = '▶';
+        document.getElementById('talk-label').textContent = '模拟说话对口型';
+        document.getElementById('mouth-slider').value = 0;
+    }
+
+    async function toggleMicrophone() {
+        const micBtn = document.getElementById('mic-btn');
+        if (micStream) {
+            micStream.getTracks().forEach(t => t.stop());
+            micStream = null;
+            if (audioContext) audioContext.close();
+            audioContext = null;
+            micBtn.classList.remove('active');
+            micBtn.innerHTML = '<span>🎤</span> 麦克风实时驱动';
+            document.getElementById('status-badge').textContent = '静止候命';
+            updateMouth(0);
+            return;
+        }
+
+        try {
+            micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const source = audioContext.createMediaStreamSource(micStream);
+            analyserNode = audioContext.createAnalyser();
+            analyserNode.fftSize = 256;
+            source.connect(analyserNode);
+
+            micBtn.classList.add('active');
+            micBtn.innerHTML = '<span>🔴</span> 监听麦克风中...';
+            document.getElementById('status-badge').textContent = '麦克风已连接';
+
+            const pcmData = new Uint8Array(analyserNode.frequencyBinCount);
+            function readMic() {
+                if (!micStream) return;
+                analyserNode.getByteFrequencyData(pcmData);
+                let sum = 0;
+                for (let i = 0; i < pcmData.length; i++) sum += pcmData[i];
+                const avgVolume = sum / pcmData.length;
+                const mappedOpen = Math.min(1.0, Math.max(0, (avgVolume - 12) / 60));
+                mouthOpenRatio = mappedOpen;
+                updateMouth(mappedOpen);
+                document.getElementById('mouth-slider').value = mappedOpen;
+                requestAnimationFrame(readMic);
+            }
+            readMic();
+        } catch (err) {
+            alert('获取麦克风失败或未获权限：' + err.message);
+        }
+    }
+
+    // -------------------------------------------------------------
+    // 4. 主渲染循环 (生命感呼吸 + 眼动更新)
+    // -------------------------------------------------------------
+    function mainLoop(timestamp) {
+        const dt = Math.min((timestamp - lastTime) / 1000, 0.1);
+        lastTime = timestamp;
+
+        // 呼吸动作
+        breathPhase += dt * 2.2;
+        const breathY = Math.sin(breathPhase) * 3.5;
+        const breathScaleX = 1 + Math.sin(breathPhase + 1.2) * 0.015;
+        const breathScaleY = 1 - Math.sin(breathPhase + 1.2) * 0.015;
+        bodyRoot.setAttribute('transform', `translate(200, ${290 + breathY}) scale(${breathScaleX}, ${breathScaleY})`);
+
+        // 叶子晃动
+        let leafWiggleAngle = Math.sin(breathPhase * 1.5) * 4;
+        if (currentEmotion === 'excited') leafWiggleAngle = Math.sin(timestamp * 0.012) * 14;
+        if (currentEmotion === 'sad') leafWiggleAngle = Math.sin(timestamp * 0.002) * 2;
+        if (currentEmotion === 'angry') leafWiggleAngle = Math.sin(timestamp * 0.02) * 8;
+        leafCrown.setAttribute('transform', `translate(200, ${150 + breathY}) rotate(${leafWiggleAngle})`);
+
+        // 核心眼球运动与生理眨眼解算
+        updateEyes(dt);
+
+        requestAnimationFrame(mainLoop);
+    }
+
+    // 视线微跟随交互
+    function bindMouseFollow() {
+        stageCard.addEventListener('mousemove', (e) => {
+            const rect = stageCard.getBoundingClientRect();
+            const mouseX = (e.clientX - rect.left) / rect.width - 0.5;  // -0.5 ~ 0.5
+            const mouseY = (e.clientY - rect.top) / rect.height - 0.5;
+            targetGazeX = mouseX * 7.5;
+            targetGazeY = mouseY * 5.0;
+        });
+
+        stageCard.addEventListener('mouseleave', () => {
+            targetGazeX = 0;
+            targetGazeY = 0;
+        });
+    }
+
+    function init() {
+        document.querySelectorAll('.emotion-btn[data-emotion]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.emotion-btn[data-emotion]').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                setEmotion(btn.dataset.emotion);
+            });
+        });
+
+        const talkBtn = document.getElementById('talk-btn');
+        talkBtn.addEventListener('click', () => {
+            if (isSpeaking) {
+                stopSimulatedSpeech();
+            } else {
+                startSimulatedSpeech();
+            }
+        });
+
+        document.getElementById('mic-btn').addEventListener('click', toggleMicrophone);
+
+        const slider = document.getElementById('mouth-slider');
+        slider.addEventListener('input', (e) => {
+            mouthOpenRatio = parseFloat(e.target.value);
+            updateMouth(mouthOpenRatio);
+        });
+
+        bindMouseFollow();
+        setEmotion('happy');
+        requestAnimationFrame(mainLoop);
+    }
+
+    return {
+        init,
+        setEmotion,
+        setMouthOpen: (val) => { mouthOpenRatio = val; updateMouth(val); },
+        startSpeaking: startSimulatedSpeech,
+        stopSpeaking: stopSimulatedSpeech
+    };
+})();
+
+window.addEventListener('DOMContentLoaded', RadishAvatar.init);
+</script>
+
+</body>
+</html>

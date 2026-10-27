@@ -11,9 +11,10 @@ import { formatKnowledgeContext, getKnowledgeHits } from '@/lib/knowledge/knowle
 import { createModelClient, resolveModelName } from '@/lib/core/model-client';
 import { reserveChatQuota } from '@/lib/chat/chat-quota';
 import { withMessageReasoning } from '@/lib/chat/reasoning.mjs';
+import { stripHistoryRetrievalNotices } from '@/lib/personal-assistant/retrieval-notice.mjs';
 import { loadAgentMemoryContext } from '@/lib/agents/memory/agent-memory';
 import { currentTimeContext } from '@/lib/agents/memory/current-time-context.mjs';
-import { archiveAgentChat } from '@/app/api/_lib/agent-personal-memory';
+import { agentChatArchiveState, archiveAgentChat } from '@/app/api/_lib/agent-personal-memory';
 import { compressConversationContext, estimateMessagesTokens } from '@/lib/agents/memory/context-compression';
 import { conversationContextTargetTokens } from '@/lib/core/model-limits.mjs';
 import { loadAgentWorldContext } from '@/lib/world/context';
@@ -151,23 +152,25 @@ export async function POST(request: Request) {
     }
     const contextLimit = requestedContextLimit || conversationSettings?.contextMessageLimit || userSettings?.contextMessageLimit || 40;
     const companionReply = companionMode === true && Boolean(findCompanionAgent(conversationSettings?.agentId || agentId));
+    const archiveState = resolvedConversationId && conversationSettings?.agentMode === 'MAIN' && conversationSettings.agentId
+      ? await agentChatArchiveState(userId, conversationSettings.agentId, resolvedConversationId) : null;
 
     const persistedHistory =
       resolvedConversationId
         ? await prisma.message.findMany({
-            where: { conversationId: resolvedConversationId },
-            orderBy: { createdAt: 'desc' },
+            where: archiveState?.where || { conversationId: resolvedConversationId },
+            orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
             take: contextLimit,
           })
         : [];
 
     const fallbackHistory = Array.isArray(history) ? history : [];
-    const rawHistory = persistedHistory.length > 0 ? persistedHistory.reverse() : fallbackHistory.slice(-contextLimit);
+    const rawHistory = resolvedConversationId ? persistedHistory.reverse() : fallbackHistory.slice(-contextLimit);
     const normalizedHistory = rawHistory.map((msg: any, index: number) => ({
       ...msg,
       id: String(msg.id || `history-${index}`),
       role: String(msg.role || 'assistant'),
-      content: String(msg.content || ''),
+      content: msg.role === 'assistant' ? stripHistoryRetrievalNotices(msg.content) : String(msg.content || ''),
     }));
     const historyTargetTokens = conversationContextTargetTokens(
       modelConfig.modelName,

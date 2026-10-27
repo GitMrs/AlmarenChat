@@ -15,6 +15,7 @@ import {
 } from '@/app/api/_lib/spaces';
 import { describeWorkspaceArtifact, executeWorkspaceTool, workspaceToolSchemas } from '@/lib/agents/runtime/runtime-tools.mjs';
 import { createChatWebTools } from '@/lib/web/auto-web';
+import { stripHistoryRetrievalNotices } from '@/lib/personal-assistant/retrieval-notice.mjs';
 import { createBilibiliAgentTools } from '@/lib/bilibili/agent-tools.mjs';
 import { createAgentGrowthTools } from '@/lib/agents/growth/agent-growth';
 import { collectChatCompletionStream, runToolLoop } from '@/lib/agents/runtime/tool-loop.mjs';
@@ -811,11 +812,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
       createdAt: checkpoint.updatedAt,
     } : null;
     const persistedMessages = checkpoint ? persistedHistory : [...persistedHistory].reverse();
-    const rawHistory = useIsolatedContext
+    const rawHistory = (useIsolatedContext
       ? fallbackHistory.slice(-settings.contextMessageLimit * 2)
       : persistedMessages.length > 0
       ? (checkpointMessage ? [checkpointMessage, ...persistedMessages] : persistedMessages)
-      : fallbackHistory.slice(-settings.contextMessageLimit * 2);
+      : fallbackHistory.slice(-settings.contextMessageLimit * 2))
+      .map((item: any) => item.role === 'assistant' ? { ...item, content: stripHistoryRetrievalNotices(item.content) } : item);
     const pendingProposalMessage = [...rawHistory].reverse().find((item: { attachments?: unknown }) => pendingTaskProposal(item.attachments));
     const currentPendingProposal = pendingTaskProposal(pendingProposalMessage?.attachments);
 

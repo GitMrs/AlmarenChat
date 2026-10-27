@@ -1,6 +1,6 @@
 import { decodeChatBody } from '../chat/chat-stream.mjs';
 import type { EvaluatedEvent } from '../workspace/crypto/event-temporal';
-import type { AgentModelFields, AgentModelSettingsResponse, AgentMemoryItem, AgentExperience } from '@/types';
+import type { AgentModelFields, AgentModelSettingsResponse, AgentMemoryItem, AgentExperience, ChatContextStats } from '@/types';
 import type { AgentDailyStudyRecord } from '@/lib/agent-study/types';
 import type { AgentGrowthEvent, AgentGrowthProfile, AgentGrowthState, AgentRun, AssistantContextStats, AssistantConversationSummary, AssistantExperience, AssistantExperienceMessage, AssistantMemoryItem, AssistantQQBinding, AssistantReminder, AssistantReminderCandidate, Message, MessageAttachment, PersonalAssistantBootstrap, PersonalAssistantProfile, SpaceActionRequest, SpaceAutomation, SpaceConnector, SpaceDiscussion, SpaceDiscussionSettings, SpaceFileShare, SpaceOperationOutcome, SpaceOperationsSummary, SpaceRelay, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal, SpaceWork, SpaceWorkVersion, SpaceMcpServer, SpaceWebhook, AssistantMcpServer, McpProbeResult } from '@/types';
 
@@ -148,7 +148,7 @@ export const agentMemories = {
   update: (agentId: string, id: string, data: { content?: string; category?: string; status?: 'ACTIVE' | 'DISABLED' }) => request<{ memory: AgentMemoryItem }>(`/agents/${encodeURIComponent(agentId)}/memories/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(data) }),
   remove: (agentId: string, id: string) => request<{ success: boolean }>(`/agents/${encodeURIComponent(agentId)}/memories/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   extract: (agentId: string, data: { conversationId: string; userMessage: string; assistantMessage: string; localOnly?: boolean; localResponse?: string }) => request<{ suggestions: Array<{ content: string; category: string }>; modelMessages?: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> }>(`/agents/${encodeURIComponent(agentId)}/memories/extract`, { method: 'POST', body: JSON.stringify(data) }),
-  context: (agentId: string, conversationId: string, query: string, signal?: AbortSignal) => request<{ context: string }>(`/agents/${encodeURIComponent(agentId)}/memories/context`, { method: 'POST', body: JSON.stringify({ conversationId, query }), signal }),
+  context: (agentId: string, conversationId: string, query: string, signal?: AbortSignal) => request<{ context: string; archivedThrough?: { id: string; createdAt: string } | null }>(`/agents/${encodeURIComponent(agentId)}/memories/context`, { method: 'POST', body: JSON.stringify({ conversationId, query }), signal }),
   updateExperience: (agentId: string, id: string, data: { summary?: string; status?: 'ACTIVE' | 'DISABLED' | 'DELETED' }) => request<{ experience: AgentExperience }>(`/agents/${encodeURIComponent(agentId)}/experiences/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(data) }),
 };
 
@@ -515,6 +515,11 @@ export const conversations = {
     const query = params.toString();
     return request<{ messages: any[]; hasMore?: boolean }>(`/conversations/${id}/messages${query ? `?${query}` : ''}`);
   },
+  getContextStats: (id: string) => request<ChatContextStats>(`/conversations/${encodeURIComponent(id)}/context`),
+  archiveContext: (data: { conversationId: string; preserveRecent: number }) =>
+    request<{ experience: AssistantExperience; archivedCount: number; remainingCount: number }>(`/conversations/${encodeURIComponent(data.conversationId)}/context`, { method: 'POST', body: JSON.stringify({ preserveRecent: data.preserveRecent }) }),
+  getContextExperience: (id: string, conversationId: string) =>
+    request<{ experience: { messages: AssistantExperienceMessage[] } }>(`/conversations/${encodeURIComponent(conversationId)}/context/${encodeURIComponent(id)}`),
   sendMessage: (
     id: string,
     content: string,

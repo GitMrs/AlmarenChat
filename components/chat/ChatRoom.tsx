@@ -17,6 +17,7 @@ import type { CompanionSkin } from '@/lib/companion/catalog';
 import ChatComposer from '@/components/chat/ChatComposer';
 import { MessageItem } from '@/components/chat/ChatMessageItem';
 import MessageReasoning from '@/components/chat/MessageReasoning';
+import AgentContextModal from '@/components/chat/AgentContextModal';
 import { getMessageReasoning } from '@/lib/chat/reasoning.mjs';
 import MemorySuggestionDialog, { type MemorySuggestion } from '@/components/chat/MemorySuggestionDialog';
 import { useTTS } from '@/hooks/useTTS';
@@ -107,6 +108,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingContent, setStreamingContent] = useState('');
   const [streamingReasoning, setStreamingReasoning] = useState('');
+  const [contextOpen, setContextOpen] = useState(false);
   const [draft, setDraft] = useState('');
   const [companionDraft, setCompanionDraft] = useState('');
   const [companionSkinPrompt, setCompanionSkinPrompt] = useState('');
@@ -899,6 +901,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
           });
           localConversationId = created.conversation.id;
           setConversationId(localConversationId);
+          await conversationsApi.update(localConversationId, { contextMessageLimit });
         }
 
         if (!options.reuseLastUserMessage) {
@@ -908,8 +911,13 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
           });
         }
 
+        const memoryState = conversationMode === 'MAIN'
+          ? await agentMemories.context(displayAgent?.id || agentId, localConversationId, content, controller.signal)
+          : { context: '', archivedThrough: null };
+        const archivedThrough = memoryState.archivedThrough;
         const modelMessages: { role: 'system' | 'user' | 'assistant'; content: any }[] = historySource
           .filter((message) => !message.id.startsWith('error-') && (message.role !== 'assistant' || message.content.trim()))
+          .filter(message => !archivedThrough || new Date(message.createdAt).getTime() > new Date(archivedThrough.createdAt).getTime() || (new Date(message.createdAt).getTime() === new Date(archivedThrough.createdAt).getTime() && message.id > archivedThrough.id))
           .slice(-contextMessageLimit)
           .map((message) => ({
             role: message.role,
@@ -937,9 +945,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
             worldContext = WORLD_EVENTS_UNAVAILABLE_CONTEXT;
           }
         }
-        const memoryContext = conversationMode === 'MAIN'
-          ? (await agentMemories.context(displayAgent?.id || agentId, localConversationId, content, controller.signal)).context
-          : '';
+        const memoryContext = memoryState.context;
         let knowledgeContext = '';
         if (content.trim()) {
           try {
@@ -1153,15 +1159,10 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
     if (!isLoggedIn) return;
 
     const nextLimit = Math.max(1, Math.min(MAX_CONTEXT_MESSAGE_LIMIT, Math.round(value || 1)));
-    setContextMessageLimit(nextLimit);
-
-    if (!conversationId) return;
-
-    try {
+    if (conversationId) {
       await conversationsApi.update(conversationId, { contextMessageLimit: nextLimit });
-    } catch (error) {
-      console.error('Update context message limit failed:', error);
     }
+    setContextMessageLimit(nextLimit);
   };
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -1290,13 +1291,10 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
         detailsOpen={detailsOpen}
         mobileDetailsOpen={mobileDetailsOpen}
         isLoggedIn={isLoggedIn}
-        contextMessageLimit={contextMessageLimit}
-        maxContextMessageLimit={MAX_CONTEXT_MESSAGE_LIMIT}
         onBack={() => router.back()}
         onToggleDetails={() => setDetailsOpen((value) => !value)}
         onOpenMobileDetails={() => setMobileDetailsOpen(true)}
         onCloseMobileDetails={() => setMobileDetailsOpen(false)}
-        onContextMessageLimitChange={updateContextMessageLimit}
         conversationMode={conversationMode}
         onOpenMainConversation={openMainConversation}
         onCreateTemporaryConversation={createTemporaryConversation}
@@ -1337,6 +1335,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
             isStreaming={isStreaming}
             streamingContent={streamingContent}
             streamingReasoning={streamingReasoning}
+            onOpenContext={() => setContextOpen(true)}
             draftValue={companionDraft}
             onDraftChange={setCompanionDraft}
             reply={companionReply}
@@ -1489,6 +1488,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
             onStop={handleStop}
             mode={chatMode}
             onOpenTrending={() => setTrendingPickerOpen(true)}
+            onOpenContext={() => setContextOpen(true)}
             onClearMessages={() => setConfirmClearOpen(true)}
             canClearMessages={messages.length > 0}
             imageGenerationAvailable={Boolean(userSettings?.imageGenerationAvailable) && modelSource !== 'OLLAMA'}
@@ -1508,6 +1508,9 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
           />
         )}
       </main>
+      )}
+      {contextOpen && isLoggedIn && (
+        <AgentContextModal key={`${displayAgent.id}:${conversationId || 'new'}`} agentId={displayAgent.id} agentName={displayAgent.name} conversationId={conversationId} conversationMode={conversationMode} contextMessageLimit={contextMessageLimit} maxContextMessageLimit={MAX_CONTEXT_MESSAGE_LIMIT} onContextMessageLimitChange={updateContextMessageLimit} onClose={() => setContextOpen(false)} />
       )}
       <ConfirmDialog
         open={confirmClearOpen}

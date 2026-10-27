@@ -210,6 +210,12 @@ export interface AssistantContextStats {
   canArchive: boolean;
 }
 
+export interface ChatContextStats extends AssistantContextStats {
+  recentContextCount?: number;
+  recentContextTokens?: number;
+  memoryContext?: string;
+}
+
 export interface AssistantExperienceMessage {
   id: string;
   role: 'user' | 'assistant' | 'system';

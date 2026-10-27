@@ -1,4 +1,5 @@
 import { getReasoningDelta } from '../chat/reasoning.mjs';
+import { stripHistoryRetrievalNotices } from '../personal-assistant/retrieval-notice.mjs';
 
 export type BrowserModelSource = 'ONLINE' | 'OLLAMA';
 export type BrowserModelScope = 'GLOBAL' | 'CONVERSATION';
@@ -148,7 +149,13 @@ export async function streamBrowserModel({
         'Content-Type': 'application/json',
         ...(config.apiKey ? { Authorization: `Bearer ${config.apiKey}` } : {}),
       },
-      body: JSON.stringify({ model: config.model, messages, stream: true }),
+      body: JSON.stringify({
+        model: config.model,
+        messages: messages.map(message => message.role === 'assistant' && typeof message.content === 'string'
+          ? { ...message, content: stripHistoryRetrievalNotices(message.content) }
+          : message),
+        stream: true,
+      }),
       signal,
     });
   } catch (error: any) {

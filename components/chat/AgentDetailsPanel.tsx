@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowLeft, BookOpen, ChevronDown, ChevronUp, Cpu, Database, Info, Loader2, MessageSquarePlus, Plus, QrCode, RefreshCw, SlidersHorizontal, Sparkles, X } from 'lucide-react';
+import { ArrowLeft, BookOpen, ChevronDown, ChevronUp, Cpu, Database, Info, Loader2, MessageSquarePlus, Plus, QrCode, RefreshCw, Sparkles, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -63,13 +63,10 @@ type AgentDetailsPanelProps = {
   detailsOpen: boolean;
   mobileDetailsOpen: boolean;
   isLoggedIn: boolean;
-  contextMessageLimit: number;
-  maxContextMessageLimit: number;
   onBack: () => void;
   onToggleDetails: () => void;
   onOpenMobileDetails: () => void;
   onCloseMobileDetails: () => void;
-  onContextMessageLimitChange: (value: number) => void;
   conversationMode: 'MAIN' | 'TEMPORARY';
   onOpenMainConversation: () => void;
   onCreateTemporaryConversation: () => void;
@@ -89,36 +86,6 @@ type AgentDetailsPanelProps = {
   onRefreshDailyStudy?: () => void;
   onDiscussDailyStudy?: (item: AgentStudyItem) => void;
 };
-
-function ContextLimitControl({
-  value,
-  max,
-  onChange,
-}: {
-  value: number;
-  max: number;
-  onChange: (value: number) => void;
-}) {
-  return (
-    <div className="mb-4 flex items-center justify-between gap-3 rounded-2xl bg-[#fbfaf7] px-3 py-2">
-      <div className="flex min-w-0 items-center gap-2 text-xs font-black text-slate-500">
-        <SlidersHorizontal size={15} />
-        <span>近期上下文</span>
-      </div>
-      <div className="flex shrink-0 items-center gap-2">
-        <input
-          type="number"
-          min={1}
-          max={max}
-          value={value}
-          onChange={(event) => onChange(Number(event.target.value))}
-          className="h-8 w-16 rounded-xl border border-black/[0.06] bg-white px-2 text-center text-sm font-black text-slate-800 outline-none focus:border-slate-300"
-        />
-        <div className="whitespace-nowrap text-xs font-semibold text-slate-400">/ {max} 条</div>
-      </div>
-    </div>
-  );
-}
 
 function AgentDetailBody({ displayAgent }: { displayAgent: DisplayAgent }) {
   return (
@@ -147,13 +114,10 @@ export default function AgentDetailsPanel({
   detailsOpen,
   mobileDetailsOpen,
   isLoggedIn,
-  contextMessageLimit,
-  maxContextMessageLimit,
   onBack,
   onToggleDetails,
   onOpenMobileDetails,
   onCloseMobileDetails,
-  onContextMessageLimitChange,
   conversationMode,
   onOpenMainConversation,
   onCreateTemporaryConversation,
@@ -1324,13 +1288,6 @@ export default function AgentDetailsPanel({
             {activityWidget}
             {knowledgeWidget}
           </div>
-          {isLoggedIn && (
-            <ContextLimitControl
-              value={contextMessageLimit}
-              max={maxContextMessageLimit}
-              onChange={onContextMessageLimitChange}
-            />
-          )}
 
           <button onClick={onToggleDetails} className="flex w-full items-center justify-between text-left">
             <div>
@@ -1407,13 +1364,6 @@ export default function AgentDetailsPanel({
             </div>
 
             <div className="max-h-[calc(82dvh-73px)] space-y-4 overflow-y-auto p-5">
-              {isLoggedIn && (
-                <ContextLimitControl
-                  value={contextMessageLimit}
-                  max={maxContextMessageLimit}
-                  onChange={onContextMessageLimitChange}
-                />
-              )}
               <div className="border-b border-black/[0.06] pb-4">
                 {conversationSwitcher}
                 {studyWidget}

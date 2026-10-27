@@ -121,30 +121,59 @@ export async function recordGameExperienceRollup(options: {
   return recorded;
 }
 
-export async function archiveAgentChat(userId: string, agentId: string, conversationId: string) {
-  const conversation = await prisma.conversation.findFirst({ where: { id: conversationId, userId, agentId, kind: 'AGENT', agentMode: 'MAIN' }, select: { id: true } });
-  if (!conversation) return;
+export async function agentChatArchiveState(userId: string, agentId: string, conversationId: string) {
   const prefix = `chat:${conversationId}:`;
   const previous = await prisma.agentExperience.findFirst({ where: { userId, agentId, sourceType: 'CHAT', taskId: { startsWith: prefix } }, orderBy: [{ createdAt: 'desc' }, { taskId: 'desc' }] });
   const tags = Array.isArray(previous?.tags) ? previous.tags.map(String) : [];
   const throughId = tags.find(tag => tag.startsWith('through-id:'))?.slice(11);
   const throughTime = tags.find(tag => tag.startsWith('through-time:'))?.slice(13);
-  const messages = await prisma.message.findMany({
+  return {
+    previous,
+    prefix,
+    archivedThrough: throughId && throughTime ? { id: throughId, createdAt: throughTime } : null,
     where: { conversationId, role: { in: ['user', 'assistant'] }, ...(throughTime && throughId ? { OR: [{ createdAt: { gt: new Date(throughTime) } }, { createdAt: new Date(throughTime), id: { gt: throughId } }] } : {}) },
-    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], take: 64,
+  };
+}
+
+export async function archiveAgentChat(userId: string, agentId: string, conversationId: string, options?: {
+  preserveRecent: number;
+  summarize?: (prompt: string) => Promise<string | null>;
+}) {
+  const conversation = await prisma.conversation.findFirst({ where: { id: conversationId, userId, agentId, kind: 'AGENT', agentMode: 'MAIN' }, select: { id: true } });
+  if (!conversation) return;
+  const { prefix, previous, where } = await agentChatArchiveState(userId, agentId, conversationId);
+  const messages = await prisma.message.findMany({
+    where,
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], ...(options ? {} : { take: 64 }),
   });
-  if (messages.length < 64) return;
-  const batch = messages.slice(0, 48);
+  const preserveRecent = options ? Math.max(2, Math.min(20, Math.floor(options.preserveRecent))) : 16;
+  if (messages.length < (options ? preserveRecent + 1 : 64)) return;
+  const batch = options ? messages.slice(0, -preserveRecent) : messages.slice(0, 48);
   const last = batch[batch.length - 1];
   const title = `与用户的对话：${(batch.find(item => item.role === 'user')?.content || '').replace(/\s+/g, ' ').slice(0, 60)}`;
   const introduction = '这是当时的对话记录；用户陈述与我的回应需要区分，回应中的建议和推测不等于已发生的事实。';
-  const snippetLimit = Math.floor((2_000 - introduction.length) / batch.length) - 7;
-  const summary = [introduction,
+  const snippetLimit = Math.max(12, Math.floor((2_000 - introduction.length) / batch.length) - 7);
+  let summary = [introduction,
     ...batch.map(item => `${item.role === 'user' ? '用户当时说' : '我当时回应'}：${item.content.replace(/\s+/g, ' ').slice(0, snippetLimit)}`),
-  ].join('\n');
-  await prisma.agentExperience.upsert({
-    where: { userId_agentId_taskId: { userId, agentId, taskId: `${prefix}${last.id}` } },
-    create: { userId, agentId, taskId: `${prefix}${last.id}`, title, summary, sourceType: 'CHAT', outcome: 'ACCEPTED', createdAt: last.createdAt, tags: [`through-id:${last.id}`, `through-time:${last.createdAt.toISOString()}`, ...batch.map(item => `message:${item.id}`)] },
-    update: {},
+  ].join('\n').slice(0, 2_000);
+  if (options?.summarize) {
+    const transcriptLimit = Math.max(20, Math.min(1_200, Math.floor(50_000 / batch.length)));
+    const transcript = batch.map(item => `[${item.createdAt.toISOString()}] ${item.role === 'user' ? '用户当时说' : 'Agent 当时回应'}：${item.content.slice(0, transcriptLimit)}`).join('\n');
+    try {
+      const result = await options.summarize(`请把下列历史对话整理为300～800字的中文归档摘要。只保留明确表达的事实、约定、结论与待办；区分用户陈述与Agent建议，推测和建议不能写成事实；时间敏感内容保留发生时间，不得当成当前状态。直接输出摘要，不要额外建议。\n\n${transcript}`);
+      if (result?.trim()) summary = `${introduction}\n${result.trim()}`.slice(0, 2_000);
+    } catch {
+      // 模型不可用时保留原有的对话片段归档。
+    }
+  }
+  const experience = await prisma.$transaction(async tx => {
+    const current = await tx.agentExperience.findFirst({ where: { userId, agentId, sourceType: 'CHAT', taskId: { startsWith: prefix } }, orderBy: [{ createdAt: 'desc' }, { taskId: 'desc' }] });
+    if (current?.taskId !== previous?.taskId) throw new Error('对话归档已更新，请刷新后重试');
+    return tx.agentExperience.upsert({
+      where: { userId_agentId_taskId: { userId, agentId, taskId: `${prefix}${last.id}` } },
+      create: { userId, agentId, taskId: `${prefix}${last.id}`, title, summary, sourceType: 'CHAT', outcome: 'ACCEPTED', createdAt: last.createdAt, tags: [`from-time:${batch[0].createdAt.toISOString()}`, `through-id:${last.id}`, `through-time:${last.createdAt.toISOString()}`, ...batch.map(item => `message:${item.id}`)] },
+      update: {},
+    });
   });
+  return { experience, archivedCount: batch.length, remainingCount: messages.length - batch.length };
 }

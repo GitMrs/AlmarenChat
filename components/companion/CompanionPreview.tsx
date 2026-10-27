@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Check, ChevronDown, ChevronRight, ChevronUp, Eye, LayoutGrid, Loader2, MessageCircle, Mic, MicOff, Pause, PhoneCall, PhoneOff, Play, RotateCcw, SendHorizonal, Settings, Shirt, Sliders, Smile, Sparkles, Volume2, VolumeX, X } from 'lucide-react';
+import { Brain, Check, ChevronDown, ChevronRight, ChevronUp, Eye, LayoutGrid, Loader2, MessageCircle, Mic, MicOff, Pause, PhoneCall, PhoneOff, Play, RotateCcw, SendHorizonal, Settings, Shirt, Sliders, Smile, Sparkles, Volume2, VolumeX, X } from 'lucide-react';
 import CompanionStage, { type FramingMode, type StageHandle, type StageSnapshot } from './CompanionStage';
 import CallOverlay, { type CallPhase } from './CallOverlay';
 import { CallSoundManager, VoiceRecognitionManager } from '@/lib/companion/call-audio';
@@ -75,6 +75,7 @@ export interface CompanionPreviewProps {
   onCompanionSkinChange?: (skin: CompanionSkin) => void;
   externalMessages?: Array<{ id: string; role: 'user' | 'assistant' | 'system' | string; content: string; reasoning?: string }>;
   onSendMessage?: (content: string) => Promise<void>;
+  onOpenContext?: () => void;
   isStreaming?: boolean;
   streamingContent?: string;
   streamingReasoning?: string;
@@ -90,6 +91,7 @@ export default function CompanionPreview({
   onCompanionSkinChange,
   externalMessages,
   onSendMessage,
+  onOpenContext,
   isStreaming = false,
   streamingContent = '',
   streamingReasoning = '',
@@ -107,6 +109,7 @@ export default function CompanionPreview({
       onCompanionSkinChange={onCompanionSkinChange}
       externalMessages={externalMessages}
       onSendMessage={onSendMessage}
+      onOpenContext={onOpenContext}
       isStreaming={isStreaming}
       streamingContent={streamingContent}
       streamingReasoning={streamingReasoning}
@@ -124,6 +127,7 @@ interface CompanionSessionProps {
   onCompanionSkinChange?: (skin: CompanionSkin) => void;
   externalMessages?: Array<{ id: string; role: 'user' | 'assistant' | 'system' | string; content: string; reasoning?: string }>;
   onSendMessage?: (content: string) => Promise<void>;
+  onOpenContext?: () => void;
   isStreaming?: boolean;
   streamingContent?: string;
   streamingReasoning?: string;
@@ -139,6 +143,7 @@ function CompanionSession({
   onCompanionSkinChange,
   externalMessages,
   onSendMessage,
+  onOpenContext,
   isStreaming = false,
   streamingContent = '',
   streamingReasoning = '',
@@ -1719,6 +1724,7 @@ function CompanionSession({
           {/* 灵动胶囊底栏 (Candy Dockbar: 表情互动 + 消息输入 + 发送) */}
           <div className="companion-dockbar" role="toolbar" aria-label="伴侣快捷交互栏">
             <div className="companion-dock" data-character={character.id}>
+              {onOpenContext && <button type="button" onClick={onOpenContext} disabled={isStreaming} className="companion-dock-btn" aria-label="查看上下文与记忆" title="查看上下文与记忆"><Brain size={18} /></button>}
               {/* 1. 表情/快捷互动切换按钮 */}
               <button
                 type="button"
@@ -1892,6 +1898,7 @@ function CompanionSession({
               {/* 桌面端高质感输入栏 */}
               <div className="companion-desktop-composer-box">
                 <form onSubmit={handleSendMessage} className="companion-desktop-composer-form">
+                  {onOpenContext && <button type="button" onClick={onOpenContext} disabled={isStreaming} className="companion-dock-btn mr-2" aria-label="查看上下文与记忆" title="查看上下文与记忆"><Brain size={16} /></button>}
                   <input
                     type="text"
                     className="companion-desktop-composer-input"
