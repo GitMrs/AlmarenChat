@@ -12,7 +12,11 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ ag
     const content = body.content === undefined ? undefined : typeof body.content === 'string' ? body.content.trim() : '';
     if (content !== undefined && (!content || content.length > 500)) return NextResponse.json({ error: '记忆内容需为 1～500 字' }, { status: 400 });
     if (body.status !== undefined && !['ACTIVE', 'DISABLED'].includes(body.status)) return NextResponse.json({ error: '无效的记忆状态' }, { status: 400 });
-    const updated = await prisma.agentMemoryItem.updateMany({ where: { id: memoryId, userId, agentId, status: { not: 'DELETED' } }, data: { ...(content !== undefined ? { content } : {}), ...(body.status ? { status: body.status } : {}) } });
+    if (body.category !== undefined && !['preference', 'tech', 'rule', 'project', 'fact'].includes(body.category)) return NextResponse.json({ error: '无效的记忆类型' }, { status: 400 });
+    const updated = await prisma.agentMemoryItem.updateMany({
+      where: { id: memoryId, userId, agentId, status: { not: 'DELETED' }, ...(body.category !== undefined ? { category: { not: 'skill' } } : {}) },
+      data: { ...(content !== undefined ? { content } : {}), ...(body.category !== undefined ? { category: body.category } : {}), ...(body.status ? { status: body.status } : {}) },
+    });
     if (!updated.count) return NextResponse.json({ error: '记忆不存在' }, { status: 404 });
     return NextResponse.json({ memory: await prisma.agentMemoryItem.findFirst({ where: { id: memoryId, userId, agentId } }) });
   } catch (error: any) {

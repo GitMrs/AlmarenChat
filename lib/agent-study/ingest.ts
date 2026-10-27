@@ -1,13 +1,14 @@
 import prisma from '@/app/api/_lib/db';
 import { indexKnowledgeText } from '@/lib/knowledge/knowledge';
-import { isDuplicateMemory } from '@/lib/personal-assistant/memory-dedup.mjs';
+import { appendAgentGrowthEvent } from '@/lib/agents/growth/agent-growth';
 import { fetchStudyContent } from './content-provider';
 import { assessStudyContents, synthesizeKnowledgeDocument } from './knowledge-assessor';
 import {
   buildStudyKnowledgeMarkdown,
-  extractStudySkillMemory,
   MIN_ACTIVE_CONFIDENCE,
   shouldIngestAsKnowledge,
+  validateStudyGrowth,
+  type StudyPreviousBelief,
 } from './content-kind';
 import { loadDailyStudyRecord, saveDailyStudyRecord } from './storage';
 import type { AgentDailyStudyRecord } from './types';
@@ -60,42 +61,12 @@ async function resolveAgentProfile(agentId: string, fallbackName: string) {
   };
 }
 
-async function writeStudyMemory(
-  userId: string,
-  agentId: string,
-  content: string,
-  category: 'fact' | 'skill' = 'fact'
-) {
-  const cleaned = String(content || '').replace(/\s+/g, ' ').trim().slice(0, 500);
-  if (!cleaned) return false;
-
-  const db = resolveRepository();
-  if (!db?.agentMemoryItem?.findMany || !db?.agentMemoryItem?.create) return false;
-  const existing = await db.agentMemoryItem.findMany({
-    where: { userId, agentId, status: 'ACTIVE' },
-    select: { content: true },
-    orderBy: { updatedAt: 'desc' },
-    take: 200,
-  });
-  if (isDuplicateMemory(cleaned, existing.map((item: { content: string }) => item.content))) return false;
-
-  await db.agentMemoryItem.create({
-    data: {
-      userId,
-      agentId,
-      category,
-      content: cleaned,
-      status: 'ACTIVE',
-    },
-  });
-  return true;
-}
-
 /**
  * 把当天的研习成果按内容类型分流：
- * - knowledge      → 结合当前 Agent 人设深度提炼重构，生成专业 Markdown 笔记沉淀入库（严把门槛），并同步提炼角色专属技能卡（category: 'skill'）
- * - personal_fact  → 长期记忆（相似度去重）
- * - news / opinion → 只保留在 AgentExperience，作为角色的“今日见闻与话题”
+ * - knowledge → 结合当前 Agent 人设提炼知识与方法，统一保存为可检索的知识笔记
+ * - 外部材料不写入用户个人记忆
+ * - 有证据的认知变化 → 成长事件；普通阅读只保留经历
+ * - news / opinion → 不进知识库，作为角色的“今日见闻与话题”
  */
 export async function ingestStudyKnowledge(
   record: AgentDailyStudyRecord,
@@ -111,7 +82,7 @@ export async function ingestStudyKnowledge(
   };
   if (!record.userId || record.items.length === 0) return result;
 
-  // 1. 为可沉淀来源抓取正文；视频/娱乐来源直接跳过
+  // 1. 抓取正文或字幕；没有可用内容时只保留学习经历。
   const contents = await Promise.all(record.items.map((item) => fetchStudyContent(item, options)));
   const fetched = contents.filter((content) => content.fetched);
   for (const content of contents) {
@@ -124,10 +95,23 @@ export async function ingestStudyKnowledge(
   // 获取当前 Agent 的人设信息，让知识评估与提炼真正结合角色视角
   const agentProfile = await resolveAgentProfile(record.agentId, record.agentName);
 
-  // 2. 结合 Agent 人设与定位，一次性判定资讯 / 观点 / 知识 / 稳定事实
+  const db = resolveRepository();
+  const previousBeliefs: StudyPreviousBelief[] = db?.agentGrowthEvent?.findMany
+    ? (await db.agentGrowthEvent.findMany({
+        where: { userId: record.userId, agentId: record.agentId, scope: 'PERSONAL', type: { in: ['BELIEF', 'REVISION'] } },
+        orderBy: { createdAt: 'desc' }, take: 20,
+        select: { id: true, payload: true },
+      })).map((event: { id: string; payload: any }) => ({
+        id: event.id,
+        content: String(event.payload?.content || event.payload?.summary || '').slice(0, 1200),
+      })).filter((event: StudyPreviousBelief) => event.content)
+    : [];
+
+  // 2. 结合 Agent 人设与定位，一次性判定内容类型和有证据的认知变化。
   const itemById = new Map(record.items.map((item) => [item.id, item]));
   const assessments = await assessStudyContents({
     agent: agentProfile,
+    previousBeliefs,
     items: fetched
       .map((content) => {
         const item = itemById.get(content.id);
@@ -145,10 +129,21 @@ export async function ingestStudyKnowledge(
     if (!assessment) continue;
     result.kinds[item.id] = assessment.contentKind;
 
-    if (assessment.contentKind === 'personal_fact' && assessment.summary) {
-      const created = await writeStudyMemory(record.userId, record.agentId, assessment.summary, 'fact');
-      if (created) result.memoryCount += 1;
-      continue;
+    const growth = validateStudyGrowth(assessment.growth, content.text, previousBeliefs);
+    if (growth) {
+      try {
+        const eventKey = `${record.userId}:${record.agentId}:study-growth:${record.date}:${item.id}`;
+        await appendAgentGrowthEvent({
+          userId: record.userId, agentId: record.agentId,
+          type: growth.type, sourceType: 'STUDY', sourceId: item.id, eventKey,
+          payload: {
+            ...growth, sourceName: item.sourceName, url: item.url, date: record.date,
+            ...(growth.previousEventId ? { previousBelief: previousBeliefs.find((belief) => belief.id === growth.previousEventId)?.content } : {}),
+          },
+        });
+      } catch (error: any) {
+        result.errors.push(`${item.id}:growth:${error?.message || 'write_failed'}`);
+      }
     }
 
     if (!shouldIngestAsKnowledge({ source: content.source, content: content.text, assessment })) {
@@ -208,24 +203,6 @@ export async function ingestStudyKnowledge(
       );
       result.knowledgeIds[item.id] = indexed.document.id;
 
-      // 4b. 归档成功后自动提炼「角色专属技能卡」存入 AgentMemoryItem (category: 'skill')，供对话实时触发
-      if (synthesized && isReadyForActive) {
-        const skillCard = extractStudySkillMemory({
-          title: assessment.title || item.title,
-          summary: assessment.summary,
-          keyPoints: assessment.keyPoints,
-          synthesizedContent: synthesized,
-        });
-        if (skillCard) {
-          const skillCreated = await writeStudyMemory(
-            record.userId,
-            record.agentId,
-            skillCard,
-            'skill'
-          );
-          if (skillCreated) result.memoryCount += 1;
-        }
-      }
     } catch (error: any) {
       result.errors.push(`${item.id}:${error?.message || 'index_failed'}`);
       console.warn('[AgentStudy] Knowledge ingestion failed:', item.id, error?.message);

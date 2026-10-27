@@ -1,5 +1,4 @@
 import prisma from '@/app/api/_lib/db';
-import { deriveAgentGrowthState, formatAgentGrowthState } from './state.mjs';
 import { randomUUID } from 'node:crypto';
 
 export type AgentGrowthScope = 'PERSONAL' | 'SPACE';
@@ -98,9 +97,13 @@ export function formatAgentGrowthContext(events: Array<{
   createdAt: Date | string;
 }>, query = '') {
   const terms = String(query || '').toLocaleLowerCase().match(/[\p{L}\p{N}]{2,}/gu) || [];
-  const scored = events.map((event, index) => {
+  const scored = events.filter(event => {
     const payload = event.payload && typeof event.payload === 'object' ? event.payload as Record<string, unknown> : {};
-    const text = `${payload.title || ''} ${payload.summary || ''} ${payload.thoughts || ''}`.toLocaleLowerCase();
+    // 旧版阅读流水和任务验收记录保留在历史中，不再作为认知变化召回。
+    return event.type !== 'STUDY' && !(event.sourceType === 'TASK' && event.type === 'REFLECTION' && payload.outcome === 'ACCEPTED' && payload.taskId);
+  }).map((event, index) => {
+    const payload = event.payload && typeof event.payload === 'object' ? event.payload as Record<string, unknown> : {};
+    const text = `${payload.title || ''} ${payload.content || ''} ${payload.summary || ''} ${payload.thoughts || ''}`.toLocaleLowerCase();
     let score = 1;
     if (terms.length) {
       score = 0;
@@ -114,8 +117,6 @@ export function formatAgentGrowthContext(events: Array<{
     .slice(0, 8);
   if (!scored.length) return '';
 
-  const state = deriveAgentGrowthState(events);
-
   const lines = scored.map(({ event, payload }) => {
     const title = String(payload.title || payload.topic || event.type).replace(/\s+/g, ' ').trim().slice(0, 160);
     const summary = String(payload.summary || payload.thoughts || payload.content || '').replace(/\s+/g, ' ').trim().slice(0, 500);
@@ -123,10 +124,9 @@ export function formatAgentGrowthContext(events: Array<{
     return `- [${event.type} · ${date}] ${title}${summary ? `：${summary}` : ''}`;
   });
   return [
-    '【当前 Agent 的成长经历】',
-    formatAgentGrowthState(state),
+    '【当前 Agent 活动中的判断与反思】',
     ...lines,
-    '这些是经历记录，不等于已经确认的事实；只有稳定结论才应进入长期记忆。',
+    '这些是当时的判断与反思，不是已验证的能力或用户约定。涉及用户个人信息时，仍需用户确认后才能写入个人记忆。',
   ].join('\n');
 }
 

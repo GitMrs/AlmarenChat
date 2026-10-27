@@ -417,6 +417,7 @@ function loadRunContext(run) {
         model: agentModel,
         memoryContext: loadAgentMemoryContextSync(db, {
               userId: run.userId,
+              spaceId: run.spaceId,
               agentId: agent.id,
               query: agentMemoryQuery,
             }),
@@ -1041,6 +1042,7 @@ async function executeTask(run, task, context, previousResults) {
         ...assignedAgent,
         memoryContext: loadAgentMemoryContextSync(db, {
           userId: run.userId,
+          spaceId: run.spaceId,
           agentId: assignedAgent.id,
           query: `${task.title}\n${task.instruction}\n${task.acceptanceCriteria || ''}`,
         }),

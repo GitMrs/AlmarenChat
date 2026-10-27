@@ -1,19 +1,20 @@
 'use client';
 
-import { ArrowLeft, BookOpen, ChevronDown, ChevronUp, Cpu, Database, Loader2, MessageSquarePlus, QrCode, RefreshCw, SlidersHorizontal, Sparkles, X } from 'lucide-react';
+import { ArrowLeft, BookOpen, ChevronDown, ChevronUp, Cpu, Database, Info, Loader2, MessageSquarePlus, Plus, QrCode, RefreshCw, SlidersHorizontal, Sparkles, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import Avatar from '@/components/shared/Avatar';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
-import TextInputDialog from '@/components/shared/TextInputDialog';
 import KnowledgeManager from '@/components/agent/KnowledgeManager';
 import SpaceMemberModelDialog from '@/components/spaces/SpaceMemberModelDialog';
 import AgentDailyStudyCard from '@/components/chat/AgentDailyStudyCard';
+import AgentMemoryEditor from '@/components/chat/AgentMemoryEditor';
+import AgentExperienceEditor from '@/components/chat/AgentExperienceEditor';
 import { agentMemories as agentMemoryApi, agents as agentsApi } from '@/lib/client/api';
 import { cn } from '@/lib/client/utils';
 import type { DisplayAgent } from '@/components/chat/ChatMessageItem';
-import type { AgentExperience, AgentGrowthEvent, AgentGrowthState, AgentMemoryItem } from '@/types';
+import type { AgentExperience, AgentGrowthEvent, AgentMemoryItem } from '@/types';
 import type { AgentModelSettingsResponse } from '@/types';
 import type { AgentDailyStudyRecord, AgentStudyItem } from '@/lib/agent-study/types';
 import type { BilibiliProfile } from '@/lib/client/api';
@@ -24,6 +25,37 @@ const DEFAULT_DAILY_STUDY_SCHEDULE = {
   maxAttempts: 2,
   retryBackoffMinutes: 30,
 };
+
+const AGENT_MEMORY_CATEGORY_LABELS: Record<string, string> = {
+  preference: '偏好习惯',
+  rule: '交互约定',
+  tech: '技术选型',
+  project: '项目背景',
+  fact: '已知事实',
+  skill: '旧版研习参考',
+};
+
+const ACTIVITY_SOURCE_LABELS: Record<string, string> = {
+  CHAT: '对话归档', TASK: '任务', DISCUSSION: '讨论', RELAY: '接力', GAME: '游戏', COORDINATION: '成员协作', STUDY: '自主研习',
+};
+
+function ActivityText({ content }: { content: string }) {
+  const body = (
+    <div className="markdown-body break-words text-sm leading-6 text-slate-600 [&_p]:my-2 [&_p]:whitespace-pre-wrap [&_pre]:overflow-x-auto">
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ a: ({ children, ...props }) => <a {...props} target="_blank" rel="noopener noreferrer" className="text-indigo-600 underline underline-offset-2">{children}</a> }}>{content}</ReactMarkdown>
+    </div>
+  );
+  if (content.length <= 240 && content.split('\n').length <= 6) return body;
+  return (
+    <details className="group mt-2">
+      <summary className="cursor-pointer list-none text-xs font-bold text-indigo-600">
+        <span className="mb-2 line-clamp-3 break-words text-sm font-normal leading-6 text-slate-600 group-open:hidden">{content.replace(/\s+/g, ' ')}</span>
+        <span className="group-open:hidden">展开完整内容</span><span className="hidden group-open:inline">收起完整内容</span>
+      </summary>
+      {body}
+    </details>
+  );
+}
 
 type AgentDetailsPanelProps = {
   displayAgent: DisplayAgent;
@@ -147,23 +179,28 @@ export default function AgentDetailsPanel({
   const [conversationDrawerOpen, setConversationDrawerOpen] = useState(false);
   const [memoryDrawerOpen, setMemoryDrawerOpen] = useState(false);
   const [studyDrawerOpen, setStudyDrawerOpen] = useState(false);
-  const [memoryTab, setMemoryTab] = useState<'memories' | 'experiences' | 'growthEvents'>('memories');
+  const [memoryTab, setMemoryTab] = useState<'memories' | 'experiences' | 'growthEvents' | 'archives'>('memories');
+  const [activityHelpTab, setActivityHelpTab] = useState<'experiences' | 'growthEvents' | 'archives' | null>(null);
+  const [memoryHelpOpen, setMemoryHelpOpen] = useState(false);
   const [renameMemoryTarget, setRenameMemoryTarget] = useState<AgentMemoryItem | null>(null);
-  const [renamingMemory, setRenamingMemory] = useState(false);
+  const [memoryEditorOpen, setMemoryEditorOpen] = useState(false);
+  const [memoryNotice, setMemoryNotice] = useState('');
+  const [memoryError, setMemoryError] = useState('');
   const [deleteMemoryTarget, setDeleteMemoryTarget] = useState<AgentMemoryItem | null>(null);
   const [toggleMemoryTarget, setToggleMemoryTarget] = useState<{ memory: AgentMemoryItem; nextStatus: 'ACTIVE' | 'DISABLED' } | null>(null);
   const [togglingMemory, setTogglingMemory] = useState(false);
   const [agentMemories, setAgentMemories] = useState<AgentMemoryItem[]>([]);
   const [agentExperiences, setAgentExperiences] = useState<AgentExperience[]>([]);
   const [agentGrowthEvents, setAgentGrowthEvents] = useState<AgentGrowthEvent[]>([]);
-  const [agentGrowthState, setAgentGrowthState] = useState<AgentGrowthState | null>(null);
   const [editExperience, setEditExperience] = useState<AgentExperience | null>(null);
   const [experienceAction, setExperienceAction] = useState<{ experience: AgentExperience; status: 'ACTIVE' | 'DISABLED' | 'DELETED' } | null>(null);
   const [savingExperience, setSavingExperience] = useState(false);
+  const savingExperienceRef = useRef(false);
+  const [experienceActionError, setExperienceActionError] = useState('');
+  const [activityNotice, setActivityNotice] = useState<{ tab: 'experiences' | 'archives'; message: string } | null>(null);
   const activeAgentId = useRef(displayAgent.id);
   activeAgentId.current = displayAgent.id;
   const [memoryLoading, setMemoryLoading] = useState(false);
-  const [newMemory, setNewMemory] = useState('');
   const [knowledgeModalOpen, setKnowledgeModalOpen] = useState(false);
   const [knowledgeDocCount, setKnowledgeDocCount] = useState<number | null>(null);
   const [modelDialogOpen, setModelDialogOpen] = useState(false);
@@ -290,15 +327,18 @@ export default function AgentDetailsPanel({
     setAgentMemories([]);
     setAgentExperiences([]);
     setAgentGrowthEvents([]);
-    setAgentGrowthState(null);
     setMemoryDrawerOpen(false);
     setMemoryTab('memories');
-    setNewMemory('');
+    setMemoryEditorOpen(false);
+    setMemoryNotice('');
+    setMemoryError('');
     setRenameMemoryTarget(null);
     setDeleteMemoryTarget(null);
     setToggleMemoryTarget(null);
     setEditExperience(null);
     setExperienceAction(null);
+    setExperienceActionError('');
+    setActivityNotice(null);
     if (!displayAgent?.id) return;
     if (memoryEnabled) {
       agentMemoryApi.get(displayAgent.id).then((res) => {
@@ -306,7 +346,6 @@ export default function AgentDetailsPanel({
         setAgentMemories((res.memories || []).filter((m) => m.agentId === displayAgent.id));
         setAgentExperiences(res.experiences || []);
         setAgentGrowthEvents(res.growthEvents || []);
-        setAgentGrowthState(res.growthState || null);
       }).catch(() => {});
     }
     agentsApi.knowledge(displayAgent.id).then((res) => {
@@ -316,54 +355,44 @@ export default function AgentDetailsPanel({
     return () => { cancelled = true; };
   }, [displayAgent?.id, isLoggedIn, memoryEnabled]);
 
-  const openMemoryDrawer = async () => {
+  const openMemoryDrawer = async (tab: 'memories' | 'experiences' = 'memories') => {
     if (!memoryEnabled) return;
     const agentId = displayAgent.id;
-    setMemoryTab('memories');
+    setMemoryTab(tab);
+    setActivityHelpTab(null);
+    setMemoryHelpOpen(false);
     setMemoryDrawerOpen(true);
     setMemoryLoading(true);
+    setMemoryError('');
     try {
       const memoryResult = await agentMemoryApi.get(displayAgent.id);
       if (activeAgentId.current !== agentId || !activeMemoryEnabled.current) return;
       setAgentMemories(memoryResult.memories.filter((memory) => memory.agentId === displayAgent.id));
       setAgentExperiences(memoryResult.experiences || []);
       setAgentGrowthEvents(memoryResult.growthEvents || []);
-      setAgentGrowthState(memoryResult.growthState || null);
+    } catch (error: any) {
+      if (activeAgentId.current === agentId) setMemoryError(error?.message || '加载失败，请重新打开重试。');
     } finally {
       setMemoryLoading(false);
     }
   };
 
-  const addAgentMemory = async () => {
+  const saveAgentMemory = async (data: { content: string; category?: string }) => {
     const agentId = displayAgent.id;
-    const content = newMemory.trim();
-    if (!content) return;
-    const result = await agentMemoryApi.add(displayAgent.id, { content });
-    if (activeAgentId.current !== agentId) return;
+    const result = renameMemoryTarget
+      ? await agentMemoryApi.update(agentId, renameMemoryTarget.id, data)
+      : await agentMemoryApi.add(agentId, data);
+    if (activeAgentId.current !== agentId || !activeMemoryEnabled.current) return;
     setAgentMemories((items) => [result.memory, ...items.filter(item => item.id !== result.memory.id)]);
-    setNewMemory('');
+    setMemoryNotice('duplicate' in result && result.duplicate ? '这条记忆已经存在，已保留原记录。' : result.memory.status === 'DISABLED' ? '记忆已更新，仍处于停用状态。' : renameMemoryTarget ? '记忆已更新。' : '记忆已保存，后续主聊天会按需使用。');
+    setMemoryError('');
+    setMemoryEditorOpen(false);
+    setRenameMemoryTarget(null);
   };
 
   const renameAgentMemory = async (memory: AgentMemoryItem) => {
     setRenameMemoryTarget(memory);
-  };
-
-  const submitMemoryRename = async (content: string) => {
-    if (!renameMemoryTarget) return;
-    if (content === renameMemoryTarget.content) {
-      setRenameMemoryTarget(null);
-      return;
-    }
-    if (renamingMemory) return;
-    const memory = renameMemoryTarget;
-    setRenamingMemory(true);
-    try {
-      const result = await agentMemoryApi.update(displayAgent.id, memory.id, { content });
-      setAgentMemories((items) => items.map((item) => item.id === memory.id ? result.memory : item));
-      setRenameMemoryTarget(null);
-    } finally {
-      setRenamingMemory(false);
-    }
+    setMemoryEditorOpen(true);
   };
 
   const toggleAgentMemory = async (memory: AgentMemoryItem) => {
@@ -395,19 +424,45 @@ export default function AgentDetailsPanel({
   };
 
   const updateExperience = async (experience: AgentExperience, data: { summary?: string; status?: 'ACTIVE' | 'DISABLED' | 'DELETED' }) => {
-    if (savingExperience) return;
+    if (savingExperienceRef.current) throw new Error('上一项操作还在保存，请稍后重试。');
     const agentId = displayAgent.id;
+    savingExperienceRef.current = true;
     setSavingExperience(true);
     try {
       const result = await agentMemoryApi.updateExperience(agentId, experience.id, data);
-      if (activeAgentId.current !== agentId) return;
+      if (activeAgentId.current !== agentId || !activeMemoryEnabled.current) return;
       setAgentExperiences(items => data.status === 'DELETED'
         ? items.filter(item => item.id !== experience.id)
         : items.map(item => item.id === experience.id ? result.experience : item));
       setEditExperience(null);
       setExperienceAction(null);
+      setExperienceActionError('');
+      setActivityNotice({
+        tab: experience.sourceType === 'CHAT' ? 'archives' : 'experiences',
+        message: data.status === 'DELETED' ? '已遗忘这条记录。原始资料、知识笔记和独立的判断记录仍保留。'
+          : data.status === 'DISABLED' ? '记录已停用，不再参与后续回忆，可随时重新启用。'
+          : data.status === 'ACTIVE' ? '记录已启用，会按相关性用于后续回忆。'
+          : result.experience.status === 'DISABLED' ? '纠正已保存，记录仍保持停用。' : '纠正已保存，后续回忆会使用修改后的内容。',
+      });
     } finally {
+      savingExperienceRef.current = false;
       setSavingExperience(false);
+    }
+  };
+
+  const openExperienceAction = (experience: AgentExperience, status: 'ACTIVE' | 'DISABLED' | 'DELETED') => {
+    setExperienceActionError('');
+    setExperienceAction({ experience, status });
+  };
+
+  const confirmExperienceAction = async () => {
+    if (!experienceAction || savingExperienceRef.current) return;
+    const agentId = displayAgent.id;
+    setExperienceActionError('');
+    try {
+      await updateExperience(experienceAction.experience, { status: experienceAction.status });
+    } catch (error: any) {
+      if (activeAgentId.current === agentId && activeMemoryEnabled.current) setExperienceActionError(error?.message || '操作失败，请重试。');
     }
   };
   const conversationSwitcher = (
@@ -455,12 +510,18 @@ export default function AgentDetailsPanel({
     }
   };
 
+  const personalMemories = agentMemories.filter((memory) => memory.category !== 'skill');
+  const legacyStudyReferences = agentMemories.filter((memory) => memory.category === 'skill');
+  const activityExperiences = agentExperiences.filter((experience) => experience.sourceType !== 'CHAT');
+  const chatArchives = agentExperiences.filter((experience) => experience.sourceType === 'CHAT');
+  const visibleExperiences = memoryTab === 'archives' ? chatArchives : activityExperiences;
+
   const memoryWidget = memoryEnabled && (
     <button
       type="button"
-      onClick={openMemoryDrawer}
+      onClick={() => openMemoryDrawer()}
       className="mt-3 flex w-full items-center justify-between rounded-2xl border border-amber-200/80 bg-gradient-to-r from-amber-50/70 to-orange-50/40 p-2.5 text-left transition hover:border-amber-300 hover:shadow-xs group cursor-pointer"
-      title="查看与管理这个 Agent 掌握的专属认知"
+      title="管理你确认过的偏好、约定和背景"
     >
       <div className="flex min-w-0 items-center gap-2.5">
         <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-amber-500 text-white shadow-xs">
@@ -468,16 +529,33 @@ export default function AgentDetailsPanel({
         </div>
         <div className="min-w-0">
           <div className="text-xs font-black text-slate-900 group-hover:text-amber-950">
-            Agent 记忆档案
+            个人记忆
           </div>
           <div className="text-[11px] font-semibold text-slate-500 truncate">
-            {agentMemories.length > 0 ? `已建立 ${agentMemories.length} 条专属认知` : '点击查看或记录新偏好'}
+            {personalMemories.length > 0 ? `已保存 ${personalMemories.length} 条偏好、约定与背景` : '确认过的偏好、约定与背景'}
           </div>
         </div>
       </div>
       <span className="flex shrink-0 items-center rounded-full bg-white px-2 py-0.5 text-[11px] font-black text-amber-700 border border-amber-200/60 shadow-2xs">
-        {agentMemories.length}
+        {personalMemories.length}
       </span>
+    </button>
+  );
+
+  const activityWidget = memoryEnabled && (
+    <button
+      type="button"
+      onClick={() => openMemoryDrawer('experiences')}
+      className="mt-2.5 flex w-full items-center justify-between rounded-2xl border border-indigo-200/80 bg-indigo-50/50 p-2.5 text-left transition hover:border-indigo-300 cursor-pointer"
+    >
+      <div className="flex min-w-0 items-center gap-2.5">
+        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-indigo-500 text-white"><BookOpen size={14} /></div>
+        <div>
+          <div className="text-xs font-black text-slate-900">活动记录</div>
+          <div className="text-[11px] font-semibold text-slate-500">学习、任务、共同经历与成长</div>
+        </div>
+      </div>
+      <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-black text-indigo-700">{activityExperiences.length + agentGrowthEvents.length}</span>
     </button>
   );
 
@@ -494,7 +572,7 @@ export default function AgentDetailsPanel({
         </div>
         <div className="min-w-0">
           <div className="text-xs font-black text-slate-900 group-hover:text-sky-950">
-            Agent 专属知识库
+            知识库
           </div>
           <div className="text-[11px] font-semibold text-slate-500 truncate">
             {knowledgeDocCount !== null ? (knowledgeDocCount > 0 ? `已挂载 ${knowledgeDocCount} 篇文档` : '未挂载文档，点击上传') : '文档与章节向量'}
@@ -871,6 +949,41 @@ export default function AgentDetailsPanel({
           </div>
         </div>
   );
+  const memoryGroups = [
+    { title: '偏好与约定', items: agentMemories.filter((memory) => ['preference', 'rule'].includes(memory.category)) },
+    { title: '已知事实与背景', items: agentMemories.filter((memory) => !['preference', 'rule', 'skill'].includes(memory.category)) },
+  ];
+  const renderAgentMemory = (memory: AgentMemoryItem) => (
+    <div
+      key={memory.id}
+      className={cn(
+        'group rounded-2xl border p-3.5 transition',
+        memory.status === 'ACTIVE'
+          ? 'border-black/[0.06] bg-[#fbfaf7] hover:border-slate-300'
+          : 'border-dashed border-slate-200 bg-slate-50/60 opacity-60'
+      )}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <p className={memory.status === 'ACTIVE' ? 'min-w-0 whitespace-pre-wrap break-words text-sm leading-6 text-slate-700' : 'min-w-0 whitespace-pre-wrap break-words text-sm leading-6 text-slate-400 line-through'}>
+          {memory.content}
+        </p>
+        <span className="shrink-0 rounded-md bg-slate-200/70 px-1.5 py-0.5 text-[10px] font-bold text-slate-500">
+          {AGENT_MEMORY_CATEGORY_LABELS[memory.category] || '已知事实'}
+        </span>
+      </div>
+      <div className="mt-2.5 flex items-center justify-between border-t border-black/[0.04] pt-2 text-xs font-bold text-slate-400">
+        <span className="text-[11px] font-medium text-slate-400">
+          {memory.category !== 'skill' && <span className={memory.status === 'ACTIVE' ? 'mr-2 text-emerald-600' : 'mr-2 text-slate-400'}>{memory.status === 'ACTIVE' ? '已启用' : '已停用'}</span>}
+          更新于 {new Date(memory.updatedAt || memory.createdAt).toLocaleDateString('zh-CN')}
+        </span>
+        <div className="flex gap-3">
+          <button type="button" onClick={() => renameAgentMemory(memory)} className="hover:text-slate-900 cursor-pointer">修改</button>
+          {memory.category !== 'skill' && <button type="button" onClick={() => toggleAgentMemory(memory)} className="hover:text-slate-900 cursor-pointer">{memory.status === 'ACTIVE' ? '停用' : '启用'}</button>}
+          <button type="button" onClick={() => deleteAgentMemory(memory)} className="text-rose-500 hover:text-rose-700 cursor-pointer">删除</button>
+        </div>
+      </div>
+    </div>
+  );
   const memoryDrawer = memoryEnabled && memoryDrawerOpen && (
     <div className="fixed inset-0 z-[60] bg-slate-950/25" onClick={() => setMemoryDrawerOpen(false)}>
       <div className="absolute inset-y-0 right-0 flex w-[min(480px,92vw)] flex-col bg-white p-5 shadow-2xl" onClick={(event) => event.stopPropagation()}>
@@ -880,180 +993,179 @@ export default function AgentDetailsPanel({
               <Sparkles size={16} />
             </div>
             <div>
-              <h2 className="text-lg font-black text-slate-950">{displayAgent.name}的记忆档案</h2>
-              <p className="mt-0.5 text-xs font-semibold text-slate-400">只属于当前 Agent，会在对话中智能唤醒</p>
+              <div className="relative flex items-center gap-1">
+                <h2 className="text-lg font-black text-slate-950">{displayAgent.name}的{memoryTab === 'memories' ? '个人记忆' : '活动记录'}</h2>
+                {memoryTab === 'memories' && (
+                  <div
+                    className="shrink-0"
+                    onMouseEnter={() => setMemoryHelpOpen(true)}
+                    onMouseLeave={() => setMemoryHelpOpen(false)}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setMemoryHelpOpen(true)}
+                      onFocus={() => setMemoryHelpOpen(true)}
+                      onBlur={() => setMemoryHelpOpen(false)}
+                      onKeyDown={(event) => { if (event.key === 'Escape') setMemoryHelpOpen(false); }}
+                      aria-label="个人记忆说明与统计"
+                      aria-describedby={memoryHelpOpen ? 'agent-memory-help' : undefined}
+                      className="flex h-7 w-5 items-center justify-center rounded-full text-slate-400 transition hover:text-slate-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-400"
+                    >
+                      <Info size={14} />
+                    </button>
+                    {memoryHelpOpen && (
+                      <div className="absolute left-0 top-full z-20 w-64 max-w-[calc(100vw-4rem)] pt-1">
+                        <div id="agent-memory-help" role="tooltip" className="rounded-xl bg-slate-800 px-3 py-2 text-[11px] leading-5 text-white shadow-lg">
+                          <p className="font-bold">你希望我记住的事</p>
+                          <p>已启用 {personalMemories.filter((memory) => memory.status === 'ACTIVE').length} 条 · 已停用 {personalMemories.filter((memory) => memory.status === 'DISABLED').length} 条</p>
+                          <p className="mt-1 text-slate-300">你确认的偏好、约定和背景；可修改，停用或删除后不再用于对话。</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+              <p className="mt-0.5 text-xs font-semibold text-slate-400">{memoryTab === 'memories' ? '保存你确认过的偏好、约定和背景' : '回顾做过的事，以及有依据的判断与反思'}</p>
             </div>
           </div>
           <button type="button" onClick={() => setMemoryDrawerOpen(false)} className="rounded-full bg-[#fbfaf7] p-2 text-slate-500 hover:bg-slate-100 cursor-pointer">
             <X size={18} />
           </button>
         </div>
-        {/* Tab 切换 */}
-        <div className="mt-4 grid grid-cols-3 rounded-2xl bg-slate-100 p-1">
-          <button
-            type="button"
-            onClick={() => setMemoryTab('memories')}
-            className={cn(
-              'flex items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-black transition-all cursor-pointer',
-              memoryTab === 'memories'
-                ? 'bg-white text-slate-900 shadow-xs'
-                : 'text-slate-500 hover:text-slate-800'
-            )}
-          >
-            <span>我的偏好与约定</span>
-            <span
-              className={cn(
-                'rounded-full px-1.5 py-0.5 text-[10px] font-bold',
-                memoryTab === 'memories' ? 'bg-amber-100 text-amber-800' : 'bg-slate-200/70 text-slate-500'
-              )}
-            >
-              {agentMemories.length}
-            </span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setMemoryTab('experiences')}
-            className={cn(
-              'flex items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-black transition-all cursor-pointer',
-              memoryTab === 'experiences'
-                ? 'bg-white text-slate-900 shadow-xs'
-                : 'text-slate-500 hover:text-slate-800'
-            )}
-          >
-            <span>工作履历</span>
-            <span
-              className={cn(
-                'rounded-full px-1.5 py-0.5 text-[10px] font-bold',
-                memoryTab === 'experiences' ? 'bg-indigo-100 text-indigo-800' : 'bg-slate-200/70 text-slate-500'
-              )}
-            >
-              {agentExperiences.length}
-            </span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setMemoryTab('growthEvents')}
-            className={cn(
-              'flex items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-black transition-all cursor-pointer',
-              memoryTab === 'growthEvents'
-                ? 'bg-white text-slate-900 shadow-xs'
-                : 'text-slate-500 hover:text-slate-800'
-            )}
-          >
-            <span>成长事件</span>
-            <span
-              className={cn(
-                'rounded-full px-1.5 py-0.5 text-[10px] font-bold',
-                memoryTab === 'growthEvents' ? 'bg-indigo-100 text-indigo-800' : 'bg-slate-200/70 text-slate-500'
-              )}
-            >
-              {agentGrowthEvents.length}
-            </span>
-          </button>
-        </div>
+        {memoryTab !== 'memories' && (
+          <div className="mt-4 flex gap-1 rounded-2xl bg-slate-100 p-1">
+            {([
+              {
+                key: 'experiences', label: '活动', title: '学过什么，做过什么',
+                stats: `已启用 ${activityExperiences.filter((experience) => experience.status !== 'DISABLED').length} 条 · 已停用 ${activityExperiences.filter((experience) => experience.status === 'DISABLED').length} 条 · 最近最多 50 条`,
+                description: '自动记录学习与活动；知识看「知识库」，认知变化看「判断与反思」。',
+              },
+              {
+                key: 'growthEvents', label: '判断与反思', title: '经历带来的判断与变化',
+                stats: `共 ${agentGrowthEvents.length} 条 · 最近最多 50 条`,
+                description: '只读的判断、修正与反思，含旧版记录；学习和任务记录看「活动」。',
+              },
+              {
+                key: 'archives', label: '对话归档', title: '过去聊过的事',
+                stats: `已启用 ${chatArchives.filter((experience) => experience.status !== 'DISABLED').length} 条 · 已停用 ${chatArchives.filter((experience) => experience.status === 'DISABLED').length} 条 · 最近最多 50 条`,
+                description: '用于延续早期聊天，可纠正、停用或遗忘；清空聊天不会移除归档。',
+              },
+            ] as const).map((tab) => (
+              <div
+                key={tab.key}
+                className={cn('relative flex min-w-0 flex-1 items-center justify-center rounded-xl transition', memoryTab === tab.key ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-800')}
+              >
+                <button
+                  type="button"
+                  onClick={() => { setMemoryTab(tab.key); setActivityHelpTab(null); }}
+                  className="py-2 text-xs font-black cursor-pointer"
+                >
+                  {tab.label}
+                </button>
+                <div
+                  className="shrink-0"
+                  onMouseEnter={() => setActivityHelpTab(tab.key)}
+                  onMouseLeave={() => setActivityHelpTab(null)}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setActivityHelpTab(tab.key)}
+                    onFocus={() => setActivityHelpTab(tab.key)}
+                    onBlur={() => setActivityHelpTab(null)}
+                    onKeyDown={(event) => { if (event.key === 'Escape') setActivityHelpTab(null); }}
+                    aria-label={`${tab.label}说明与统计`}
+                    aria-describedby={activityHelpTab === tab.key ? `agent-${tab.key}-help` : undefined}
+                    className="flex h-7 w-5 items-center justify-center rounded-full text-slate-400 transition hover:text-slate-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-400"
+                  >
+                    <Info size={14} />
+                  </button>
+                  {activityHelpTab === tab.key && (
+                    <div className={cn('absolute top-full z-20 w-64 max-w-[calc(100vw-4rem)] pt-1', tab.key === 'experiences' ? 'left-0' : tab.key === 'archives' ? 'right-0' : 'left-1/2 -translate-x-1/2')}>
+                      <div id={`agent-${tab.key}-help`} role="tooltip" className="rounded-xl bg-slate-800 px-3 py-2 text-[11px] leading-5 text-white shadow-lg">
+                        <p className="font-bold">{tab.title}</p>
+                        <p>{tab.stats}</p>
+                        <p className="mt-1 text-slate-300">{tab.description}</p>
+                      </div>
+                      </div>
+                    )}
+                  </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {memoryError && <p role="alert" className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-600">{memoryError}</p>}
 
         {memoryTab === 'memories' ? (
           <>
-            <div className="mt-3 flex gap-2">
-              <input
-                value={newMemory}
-                onChange={(event) => setNewMemory(event.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') addAgentMemory();
-                }}
-                placeholder="告诉 Agent 你的称呼、偏好或回答习惯..."
-                className="min-w-0 flex-1 rounded-xl border border-black/[0.08] bg-[#fbfaf7] px-3.5 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-amber-400 focus:bg-white focus:ring-2 focus:ring-amber-200/60"
-              />
-              <button
-                type="button"
-                onClick={addAgentMemory}
-                disabled={!newMemory.trim()}
-                className="rounded-xl bg-slate-950 px-4 py-2 text-xs font-black text-white hover:bg-slate-800 disabled:bg-slate-200 disabled:text-slate-400 transition cursor-pointer"
-              >
-                添加
+            <div className="mt-4 flex justify-end">
+              <button type="button" onClick={() => { setRenameMemoryTarget(null); setMemoryEditorOpen(true); }} className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-slate-950 px-3 py-2.5 text-xs font-black text-white hover:bg-slate-800">
+                <Plus size={14} />新增记忆
               </button>
             </div>
-            <p className="mt-1.5 text-[11px] font-medium text-slate-400">
-              这些专属记忆只对当前 Agent 生效，主对话中可以随时修改或删除。
-            </p>
+            {memoryNotice && <p role="status" className="mt-3 text-xs font-semibold text-emerald-700">{memoryNotice}</p>}
 
             <div className="mt-3 flex-1 space-y-3 overflow-y-auto pr-1">
               {memoryLoading ? (
                 <p className="py-8 text-center text-sm font-semibold text-slate-400">加载中...</p>
-              ) : agentMemories.length === 0 ? (
+              ) : personalMemories.length === 0 ? (
                 <div className="py-12 text-center">
-                  <p className="text-sm font-bold text-slate-500">还没有专属偏好与约定</p>
-                  <p className="mt-1 text-xs text-slate-400">在上方输入框或对话中即可随时告诉 Agent 记住你的习惯。</p>
+                  <p className="text-sm font-bold text-slate-500">还没有 Agent 记忆</p>
+                  <p className="mt-1 text-xs text-slate-400">点击“新增记忆”填写，或在主聊天中提出并确认要记住的内容。</p>
                 </div>
               ) : (
-                agentMemories.map((memory) => (
-                  <div
-                    key={memory.id}
-                    className={cn(
-                      'group rounded-2xl border p-3.5 transition',
-                      memory.status === 'ACTIVE'
-                        ? 'border-black/[0.06] bg-[#fbfaf7] hover:border-slate-300'
-                        : 'border-dashed border-slate-200 bg-slate-50/60 opacity-60'
-                    )}
-                  >
-                    <p className={memory.status === 'ACTIVE' ? 'text-sm leading-6 text-slate-700' : 'text-sm leading-6 text-slate-400 line-through'}>
-                      {memory.content}
-                    </p>
-                    <div className="mt-2.5 flex items-center justify-between border-t border-black/[0.04] pt-2 text-xs font-bold text-slate-400">
-                      <span className="text-[11px] font-medium text-slate-400">
-                        {new Date(memory.updatedAt || memory.createdAt).toLocaleDateString('zh-CN')}
-                      </span>
-                      <div className="flex gap-3">
-                        <button type="button" onClick={() => renameAgentMemory(memory)} className="hover:text-slate-900 cursor-pointer">修改</button>
-                        <button type="button" onClick={() => toggleAgentMemory(memory)} className="hover:text-slate-900 cursor-pointer">{memory.status === 'ACTIVE' ? '停用' : '启用'}</button>
-                        <button type="button" onClick={() => deleteAgentMemory(memory)} className="text-rose-500 hover:text-rose-700 cursor-pointer">删除</button>
-                      </div>
-                    </div>
-                  </div>
-                ))
+                <>
+                  {memoryGroups.filter((group) => group.items.length > 0).map((group) => (
+                    <section key={group.title}>
+                      <div className="mb-2 text-[11px] font-black text-slate-500">{group.title} · {group.items.length}</div>
+                      <div className="space-y-3">{group.items.map(renderAgentMemory)}</div>
+                    </section>
+                  ))}
+                </>
               )}
             </div>
           </>
-        ) : memoryTab === 'experiences' ? (
+        ) : memoryTab !== 'growthEvents' ? (
           <>
-            <p className="mt-3 text-[11px] font-medium text-slate-400">
-              Agent 已完成并验收的任务、空间活动与学习履历，可在这里纠正、停用或遗忘。
-            </p>
+            {activityNotice?.tab === memoryTab && <p role="status" className="mt-3 text-xs leading-5 text-emerald-700">{activityNotice.message}</p>}
 
             <div className="mt-3 flex-1 space-y-3 overflow-y-auto pr-1">
               {memoryLoading ? (
                 <p className="py-8 text-center text-sm font-semibold text-slate-400">加载中...</p>
-              ) : agentExperiences.length === 0 ? (
+              ) : visibleExperiences.length === 0 ? (
                 <div className="py-12 text-center">
-                  <p className="text-sm font-bold text-slate-500">还没有工作履历</p>
-                  <p className="mt-1 text-xs text-slate-400">Agent 完成并通过验收的任务会自动沉淀在这里。</p>
+                  <p className="text-sm font-bold text-slate-500">{memoryTab === 'archives' ? '还没有对话归档' : '还没有活动记录'}</p>
+                  <p className="mt-2 text-xs leading-5 text-slate-400">{memoryTab === 'archives' ? '主聊天积累较多消息后，会自动归档较早的内容。' : '开启每日学习，或参与任务与空间活动后，这里会自动留下记录。'}</p>
                 </div>
               ) : (
-                agentExperiences.map((experience) => (
+                visibleExperiences.map((experience) => (
                     <article
                       key={experience.id}
                       className={cn(
                         'rounded-2xl border p-3.5 transition',
                         experience.status === 'DISABLED'
-                          ? 'border-dashed border-slate-200 bg-slate-50/60 opacity-60'
+                          ? 'border-dashed border-slate-200 bg-slate-50/60'
                           : 'border-black/[0.06] bg-[#fbfaf7]'
                       )}
                     >
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="text-sm font-bold text-slate-800">{experience.title}</p>
-                        <span className="shrink-0 rounded-md bg-slate-200/60 px-2 py-0.5 text-[10px] font-bold text-slate-600">
-                          {({ CHAT: '单聊', TASK: '任务', DISCUSSION: '讨论', RELAY: '接力', GAME: '游戏', COORDINATION: '成员协作', STUDY: '自主研习' } as Record<string, string>)[experience.sourceType || 'TASK'] || '空间活动'}
+                      <div className="flex flex-wrap items-center gap-2 text-[10px] font-bold">
+                        <span className="rounded-md bg-slate-200/60 px-2 py-0.5 text-slate-600">
+                          {ACTIVITY_SOURCE_LABELS[experience.sourceType || 'TASK'] || '空间活动'}
                         </span>
+                        <span className={experience.status === 'DISABLED' ? 'text-slate-400' : 'text-emerald-600'}>{experience.status === 'DISABLED' ? '已停用' : '已启用'}</span>
+                        {experience.edited && <span className="text-indigo-600">已纠正</span>}
                       </div>
-                      <p className={experience.status === 'DISABLED' ? 'mt-1.5 whitespace-pre-wrap text-sm leading-6 text-slate-400 line-through' : 'mt-1.5 whitespace-pre-wrap text-sm leading-6 text-slate-600 font-normal'}>
-                        {experience.summary}
-                      </p>
-                      <div className="mt-2.5 flex items-center justify-between border-t border-black/[0.04] pt-2 text-[11px] font-semibold text-slate-400">
-                        <span className="truncate">{experience.spaceId ? '来源空间：' + experience.spaceId + ' · ' : ''}{new Date(experience.createdAt).toLocaleDateString('zh-CN')}{experience.edited ? ' · 已纠正' : ''}</span>
-                        <div className="flex shrink-0 gap-3 text-xs font-bold text-slate-400">
-                          <button type="button" onClick={() => setEditExperience(experience)} className="hover:text-slate-900 cursor-pointer">纠正</button>
-                          <button type="button" onClick={() => setExperienceAction({ experience, status: experience.status === 'DISABLED' ? 'ACTIVE' : 'DISABLED' })} className="hover:text-slate-900 cursor-pointer">{experience.status === 'DISABLED' ? '启用' : '停用'}</button>
-                          <button type="button" onClick={() => setExperienceAction({ experience, status: 'DELETED' })} className="text-rose-500 hover:text-rose-700 cursor-pointer">遗忘</button>
+                      <h3 className="mt-2 break-words text-sm font-bold leading-6 text-slate-800">{experience.title}</h3>
+                      <ActivityText content={experience.summary} />
+                      <div className="mt-3 border-t border-black/[0.04] pt-2.5 text-[11px] text-slate-400">
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                          <time dateTime={experience.createdAt}>{new Date(experience.createdAt).toLocaleString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</time>
+                          {experience.spaceId && <a href={`/spaces/${encodeURIComponent(experience.spaceId)}`} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline">查看来源空间 ↗</a>}
+                        </div>
+                        <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold">
+                          <button type="button" onClick={() => setEditExperience(experience)} disabled={savingExperience} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-slate-600 hover:border-slate-300 disabled:opacity-40">纠正内容</button>
+                          <button type="button" onClick={() => openExperienceAction(experience, experience.status === 'DISABLED' ? 'ACTIVE' : 'DISABLED')} disabled={savingExperience} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-slate-600 hover:border-slate-300 disabled:opacity-40">{experience.status === 'DISABLED' ? '重新启用' : '暂停使用'}</button>
+                          <button type="button" onClick={() => openExperienceAction(experience, 'DELETED')} disabled={savingExperience} className="rounded-lg px-3 py-1.5 text-rose-500 hover:bg-rose-50 disabled:opacity-40">遗忘记录</button>
                         </div>
                       </div>
                     </article>
@@ -1063,28 +1175,6 @@ export default function AgentDetailsPanel({
           </>
         ) : (
           <>
-            {agentGrowthState && agentGrowthState.eventCount > 0 && (
-              <div className="mt-3 rounded-2xl border border-indigo-100 bg-indigo-50/60 p-3.5">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-xs font-black text-indigo-900">当前成长阶段</p>
-                    <p className="mt-1 text-base font-black text-slate-900">第 {agentGrowthState.stage} 阶段 · {agentGrowthState.stageName}</p>
-                  </div>
-                  <Sparkles size={18} className="shrink-0 text-indigo-500" />
-                </div>
-                <div className="mt-3 grid grid-cols-3 gap-2 text-center">
-                  <div className="rounded-xl bg-white/75 px-2 py-2"><p className="text-sm font-black text-slate-800">{agentGrowthState.days}</p><p className="text-[10px] font-bold text-slate-400">成长天数</p></div>
-                  <div className="rounded-xl bg-white/75 px-2 py-2"><p className="text-sm font-black text-slate-800">{agentGrowthState.eventCount}</p><p className="text-[10px] font-bold text-slate-400">事件次数</p></div>
-                  <div className="rounded-xl bg-white/75 px-2 py-2"><p className="text-sm font-black text-slate-800">{Number(agentGrowthState.counts?.BELIEF || 0) + Number(agentGrowthState.counts?.REVISION || 0)}</p><p className="text-[10px] font-bold text-slate-400">判断与修正</p></div>
-                </div>
-                <p className="mt-2 text-[11px] font-semibold text-indigo-700/70">
-                  判断 {Number(agentGrowthState.counts?.BELIEF || 0)} · 修正 {Number(agentGrowthState.counts?.REVISION || 0)} · 反思 {Number(agentGrowthState.counts?.REFLECTION || 0)} · 拒绝 {Number(agentGrowthState.counts?.REFUSAL || 0)}
-                </p>
-              </div>
-            )}
-            <p className="mt-3 text-[11px] font-medium text-slate-400">
-              Agent 在对话、学习和空间协作中形成的观察、判断与反思，只读保留，用于展示成长轨迹。
-            </p>
             <div className="mt-3 flex-1 space-y-3 overflow-y-auto pr-1">
               {memoryLoading ? (
                 <p className="py-8 text-center text-sm font-semibold text-slate-400">加载中...</p>
@@ -1095,17 +1185,29 @@ export default function AgentDetailsPanel({
                 </div>
               ) : (
                 agentGrowthEvents.map((event) => {
-                  const labels: Record<string, string> = { OBSERVATION: '观察', BELIEF: '形成判断', REVISION: '修正判断', REFLECTION: '自我反思', REFUSAL: '拒绝', DIARY: '日记', STUDY: '自主学习' };
+                  const labels: Record<string, string> = { OBSERVATION: '观察', BELIEF: '形成判断', REVISION: '修正判断', REFLECTION: '自我反思', REFUSAL: '拒绝', DIARY: '日记', STUDY: '旧版学习流水' };
                   const payload = event.payload || {};
+                  const label = event.sourceType === 'TASK' && event.type === 'REFLECTION' && payload.outcome === 'ACCEPTED' && payload.taskId ? '旧版任务记录' : labels[event.type] || event.type;
                   return (
                     <article key={event.id} className="rounded-2xl border border-indigo-100 bg-indigo-50/40 p-3.5">
                       <div className="flex items-center justify-between gap-2">
-                        <p className="text-sm font-bold text-slate-800">{String(payload.title || labels[event.type] || event.type)}</p>
-                        <span className="shrink-0 rounded-md bg-indigo-100 px-2 py-0.5 text-[10px] font-bold text-indigo-700">{labels[event.type] || event.type}</span>
+                        <h3 className="min-w-0 break-words text-sm font-bold text-slate-800">{String(payload.title || labels[event.type] || event.type)}</h3>
+                        <span className="shrink-0 rounded-md bg-indigo-100 px-2 py-0.5 text-[10px] font-bold text-indigo-700">{label}</span>
                       </div>
-                      <p className="mt-1.5 whitespace-pre-wrap text-sm leading-6 text-slate-600">{String(payload.content || payload.summary || payload.thoughts || '')}</p>
-                      <div className="mt-2 border-t border-indigo-100 pt-2 text-[11px] font-semibold text-slate-400">
-                        {event.scope === 'SPACE' ? '空间成长 · ' : '个人成长 · '}{new Date(event.createdAt).toLocaleDateString('zh-CN')}
+                      <ActivityText content={String(payload.content || payload.summary || payload.thoughts || '')} />
+                      {typeof payload.previousBelief === 'string' && payload.previousBelief && <div className="mt-3 rounded-xl bg-white/75 p-3 text-xs leading-5 text-slate-500"><p className="mb-1 font-bold text-slate-600">原有判断</p><p className="whitespace-pre-wrap break-words">{payload.previousBelief}</p></div>}
+                      {typeof payload.evidence === 'string' && payload.evidence && (
+                        <details className="mt-2 text-[11px] leading-5 text-slate-500">
+                          <summary className="cursor-pointer font-bold">查看判断依据</summary>
+                          <blockquote className="mt-2 whitespace-pre-wrap break-words border-l-2 border-indigo-200 pl-3">{payload.evidence}</blockquote>
+                        </details>
+                      )}
+                      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-indigo-100 pt-2.5 text-[11px] text-slate-400">
+                        <span>{ACTIVITY_SOURCE_LABELS[event.sourceType || 'CHAT'] || '活动'} · {event.scope === 'SPACE' ? '空间记录' : '个人记录'}</span>
+                        <time dateTime={event.createdAt}>{new Date(event.createdAt).toLocaleString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</time>
+                        {typeof payload.sourceName === 'string' && payload.sourceName && <span>来源：{payload.sourceName}</span>}
+                        {typeof payload.url === 'string' && /^https?:\/\//i.test(payload.url) && <a href={payload.url} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline">查看原资料 ↗</a>}
+                        {event.spaceId && <a href={`/spaces/${encodeURIComponent(event.spaceId)}`} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline">查看来源空间 ↗</a>}
                       </div>
                     </article>
                   );
@@ -1119,36 +1221,31 @@ export default function AgentDetailsPanel({
   );
   return (
     <>
-      <TextInputDialog
-        open={Boolean(editExperience)}
-        title="纠正个人经历"
-        label="经历内容（最多 2000 字）"
-        defaultValue={editExperience?.summary || ''}
-        loading={savingExperience}
-        onCancel={() => setEditExperience(null)}
-        onConfirm={summary => editExperience ? updateExperience(editExperience, { summary }) : undefined}
-      />
+      {editExperience && memoryEnabled && <AgentExperienceEditor key={editExperience.id} experience={editExperience} sourceLabel={ACTIVITY_SOURCE_LABELS[editExperience.sourceType || 'TASK'] || '空间活动'} onCancel={() => setEditExperience(null)} onSave={summary => updateExperience(editExperience, { summary })} />}
       <ConfirmDialog
         open={Boolean(experienceAction)}
-        title={experienceAction?.status === 'DELETED' ? '遗忘这段经历？' : experienceAction?.status === 'ACTIVE' ? '启用这段经历？' : '停用这段经历？'}
-        description={experienceAction?.status === 'DELETED' ? '此经历将不再被读取，重复同步也不会恢复。原始聊天和空间记录仍然保留。' : '这只影响当前 Agent 后续是否读取这段经历。'}
-        confirmText="确认"
+        title={experienceAction?.status === 'DELETED' ? '遗忘这条记录？' : experienceAction?.status === 'ACTIVE' ? '重新启用这条记录？' : '暂停使用这条记录？'}
+        description={<>
+          <p className="mb-3 break-words rounded-xl bg-slate-50 px-3 py-2 text-sm font-bold text-slate-700">{experienceAction?.experience.title}</p>
+          <p>{experienceAction?.status === 'DELETED' ? '这条记录将从列表移除，不再参与回忆，重复同步也不会恢复。原始聊天、任务结果、知识笔记和独立的判断记录仍保留；遗忘本条记录不会一并清除这些内容。' : experienceAction?.status === 'ACTIVE' ? '重新启用后，Agent 会按相关性使用这条记录回忆过去的经历。' : '暂停后，这条记录仍保留在列表，但不再用于后续回忆。你可以随时重新启用。'}</p>
+          {experienceActionError && <p role="alert" className="mt-3 text-xs font-semibold text-rose-600">{experienceActionError}</p>}
+        </>}
+        confirmText={experienceAction?.status === 'DELETED' ? '确认遗忘' : experienceAction?.status === 'ACTIVE' ? '重新启用' : '暂停使用'}
         cancelText="取消"
         destructive={experienceAction?.status === 'DELETED'}
         loading={savingExperience}
-        onCancel={() => setExperienceAction(null)}
-        onConfirm={() => experienceAction ? updateExperience(experienceAction.experience, { status: experienceAction.status }) : undefined}
+        onCancel={() => { setExperienceAction(null); setExperienceActionError(''); }}
+        onConfirm={confirmExperienceAction}
       />
-      <TextInputDialog
-        open={Boolean(renameMemoryTarget)}
-        title="修改 Agent 记忆"
-        label="记忆内容"
-        defaultValue={renameMemoryTarget?.content || ''}
-        placeholder="输入记忆内容"
-        loading={renamingMemory}
-        onCancel={() => setRenameMemoryTarget(null)}
-        onConfirm={submitMemoryRename}
-      />
+      {memoryEditorOpen && memoryEnabled && (
+        <AgentMemoryEditor
+          key={renameMemoryTarget?.id || 'new'}
+          agentName={displayAgent.name}
+          memory={renameMemoryTarget}
+          onCancel={() => { setMemoryEditorOpen(false); setRenameMemoryTarget(null); }}
+          onSave={saveAgentMemory}
+        />
+      )}
       <ConfirmDialog
         open={Boolean(toggleMemoryTarget)}
         title={toggleMemoryTarget?.nextStatus === 'ACTIVE' ? '启用这条 Agent 记忆？' : '停用这条 Agent 记忆？'}
@@ -1224,6 +1321,7 @@ export default function AgentDetailsPanel({
             {studyWidget}
             {modelWidget}
             {memoryWidget}
+            {activityWidget}
             {knowledgeWidget}
           </div>
           {isLoggedIn && (
@@ -1274,9 +1372,9 @@ export default function AgentDetailsPanel({
           )}
           {memoryEnabled && <button
             type="button"
-            onClick={openMemoryDrawer}
+            onClick={() => openMemoryDrawer()}
             className="inline-flex items-center gap-1 rounded-full border border-amber-200/80 bg-amber-50/80 px-2.5 py-1.5 text-xs font-black text-amber-800 shadow-2xs cursor-pointer"
-            title="查看与管理记忆档案"
+            title="查看与管理个人记忆"
           >
             <Sparkles size={12} className="text-amber-600 fill-amber-600" />
             <span>{agentMemories.length}</span>
@@ -1321,6 +1419,7 @@ export default function AgentDetailsPanel({
                 {studyWidget}
                 {modelWidget}
                 {memoryWidget}
+                {activityWidget}
                 {knowledgeWidget}
               </div>
               <p className="rounded-2xl bg-[#fbfaf7] p-4 text-sm leading-6 text-slate-600">
@@ -1348,6 +1447,13 @@ export default function AgentDetailsPanel({
             <KnowledgeManager
               agentId={displayAgent.id}
               agentName={displayAgent.name}
+              legacyReferences={legacyStudyReferences.length > 0 ? (
+                <details className="mb-5 rounded-2xl border border-slate-200 p-4">
+                  <summary className="cursor-pointer text-sm font-bold text-slate-600">旧版研习参考 · {legacyStudyReferences.length}</summary>
+                  <p className="my-3 text-xs leading-5 text-slate-500">旧版技能卡保留在这里供查看，不再作为个人记忆参与对话。后续学习的方法统一保存在知识笔记中，按问题检索。</p>
+                  <div className="space-y-3">{legacyStudyReferences.map(renderAgentMemory)}</div>
+                </details>
+              ) : null}
               onClose={() => {
                 setKnowledgeModalOpen(false);
                 if (displayAgent.id) {

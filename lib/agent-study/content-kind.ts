@@ -30,6 +30,45 @@ export const MIN_ACTIVE_CONFIDENCE = 0.75;
 
 export type StudyContentKind = 'news' | 'opinion' | 'knowledge' | 'personal_fact';
 
+export interface StudyGrowthCandidate {
+  type: 'BELIEF' | 'REFLECTION' | 'REVISION';
+  title: string;
+  content: string;
+  evidence: string;
+  confidence: number;
+  previousEventId?: string;
+}
+
+export interface StudyPreviousBelief {
+  id: string;
+  content: string;
+}
+
+/** AI 只能提出候选；证据必须来自原文，修正必须能对应已有判断。 */
+export function validateStudyGrowth(
+  raw: unknown,
+  source: string,
+  previousBeliefs: StudyPreviousBelief[] = [],
+): StudyGrowthCandidate | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return;
+  const value = raw as Record<string, unknown>;
+  if (!['BELIEF', 'REFLECTION', 'REVISION'].includes(String(value.type))) return;
+  if (typeof value.confidence !== 'number' || !Number.isFinite(value.confidence) || value.confidence < 0.8 || value.confidence > 1) return;
+  const clean = (input: unknown) => typeof input === 'string' ? input.trim() : '';
+  const title = clean(value.title);
+  const content = clean(value.content);
+  const evidence = clean(value.evidence);
+  if (!title || title.length > 160 || !content || content.length > 1200 || evidence.length < 10 || evidence.length > 500) return;
+  if (!source.replace(/\s+/g, '').includes(evidence.replace(/\s+/g, ''))) return;
+  const previousEventId = clean(value.previousEventId);
+  if (value.type === 'REVISION' && !previousBeliefs.some((belief) => belief.id === previousEventId)) return;
+  return {
+    type: value.type as StudyGrowthCandidate['type'], title, content, evidence,
+    confidence: value.confidence,
+    ...(value.type === 'REVISION' ? { previousEventId } : {}),
+  };
+}
+
 export interface StudyContentAssessment {
   id: string;
   contentKind: StudyContentKind;
@@ -38,6 +77,7 @@ export interface StudyContentAssessment {
   summary: string;
   keyPoints: string[];
   confidence: number;
+  growth?: StudyGrowthCandidate;
 }
 
 export function isKnowledgeEligibleSource(source: string) {

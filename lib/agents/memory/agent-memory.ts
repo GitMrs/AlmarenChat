@@ -19,7 +19,7 @@ export async function loadAgentMemoryContext(options: {
     : { spaceId: null };
   const [memories, rules, experiences, growth] = await Promise.all([
     prisma.agentMemoryItem.findMany({
-      where: { userId: options.userId, agentId: options.agentId, status: 'ACTIVE' },
+      where: { userId: options.userId, agentId: options.agentId, status: 'ACTIVE', category: { not: 'skill' } },
       orderBy: { updatedAt: 'desc' }, take: 60,
     }),
     agent?.agentType === 'EMPLOYEE'

@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
+import type { ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Bookmark, Check, ChevronDown, ChevronRight, Copy, Database, Download, FileText, Loader2, Search, Trash2, UploadCloud, X } from 'lucide-react';
+import { Check, ChevronDown, ChevronRight, Copy, Database, Download, FileText, Info, Loader2, Search, Trash2, UploadCloud, X } from 'lucide-react';
 import { agents, downloadKnowledgeFile, spaces } from '@/lib/client/api';
 import { cn } from '@/lib/client/utils';
 
@@ -61,12 +62,14 @@ export default function KnowledgeManager({
   spaceId,
   spaceName,
   onClose,
+  legacyReferences,
 }: {
   agentId?: string | null;
   agentName?: string;
   spaceId?: string | null;
   spaceName?: string;
   onClose?: () => void;
+  legacyReferences?: ReactNode;
 }) {
   const isSpace = Boolean(spaceId);
   const targetId = spaceId || agentId;
@@ -88,6 +91,8 @@ export default function KnowledgeManager({
   const [viewingDoc, setViewingDoc] = useState<{ id: string; fileName: string; content: string } | null>(null);
   const [loadingRawId, setLoadingRawId] = useState('');
   const [copied, setCopied] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const helpId = useId();
 
   const clearSearch = () => {
     setSearchQuery('');
@@ -240,10 +245,36 @@ export default function KnowledgeManager({
             <Database size={18} />
           </div>
           <div>
-            <div className="flex items-center gap-2">
+            <div className="relative flex items-center gap-2">
               <h2 className="text-xl font-black text-slate-950">
                 {isSpace ? '空间公共知识库' : '角色知识库维护'}
               </h2>
+              <div
+                className="shrink-0"
+                onMouseEnter={() => setHelpOpen(true)}
+                onMouseLeave={() => setHelpOpen(false)}
+              >
+                <button
+                  type="button"
+                  onClick={() => setHelpOpen(true)}
+                  onFocus={() => setHelpOpen(true)}
+                  onBlur={() => setHelpOpen(false)}
+                  onKeyDown={(event) => { if (event.key === 'Escape') setHelpOpen(false); }}
+                  aria-label="知识库说明"
+                  aria-describedby={helpOpen ? helpId : undefined}
+                  className="flex h-7 w-5 items-center justify-center rounded-full text-slate-400 transition hover:text-slate-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-400"
+                >
+                  <Info size={14} />
+                </button>
+                {helpOpen && (
+                  <div className="absolute left-0 top-full z-20 w-64 max-w-[calc(100vw-4rem)] pt-1">
+                    <div id={helpId} role="tooltip" className="rounded-xl bg-slate-800 px-3 py-2 text-[11px] leading-5 text-white shadow-lg">
+                      <p className="font-bold">资料与学习笔记</p>
+                      <p className="mt-1 text-slate-300">上传资料和每日学习笔记统一管理，聊天时按需检索。支持 .md / .txt，可查看章节与来源。</p>
+                    </div>
+                  </div>
+                )}
+              </div>
               {isSpace && (
                 <span className="rounded-full bg-sky-100 px-2.5 py-0.5 text-xs font-bold text-sky-800">
                   全员共享
@@ -291,15 +322,7 @@ export default function KnowledgeManager({
         </div>
       </div>
 
-      <div className="mb-5 flex flex-col gap-2 rounded-2xl bg-[#fbfaf7] p-4 text-xs leading-5 text-slate-600 sm:text-sm">
-        <div className="flex items-center gap-1.5 font-bold text-slate-800">
-          <Bookmark size={15} className="text-sky-600" />
-          <span>Markdown 章节感知特性：</span>
-        </div>
-        <p className="text-slate-500">
-          支持上传 <strong>.md</strong> 或 <strong>.txt</strong> 文档。系统会自动解析文档的一级至六级标题（<code># / ## / ###</code>），构建多层级章节面包屑并在分块时注入语义向量。在对话或多人接力时，AI 能准确掌握切片的章节上下文！
-        </p>
-      </div>
+      {legacyReferences}
 
       <div className="mb-5 rounded-2xl border border-black/[0.06] bg-white p-4 shadow-2xs">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">

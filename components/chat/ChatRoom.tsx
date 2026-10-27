@@ -22,7 +22,6 @@ import { getBuiltInAgents } from '@/lib/agents/data/agents-data';
 import { getCompanionCharacterId } from '@/lib/companion/agents';
 import { companionReplyInstruction, createCompanionReplyParser } from '@/lib/companion/reply-protocol.mjs';
 import type { CompanionReply } from '@/lib/companion/reply';
-import AgentDailyStudyCard from '@/components/chat/AgentDailyStudyCard';
 import type { AgentDailyStudyRecord, AgentStudyItem } from '@/lib/agent-study/types';
 import { agentMemories, generateConversationImage, streamChat, conversations as conversationsApi, agents as agentsApi, user as userApi, uploads } from '@/lib/client/api';
 import {
@@ -38,6 +37,7 @@ import type { ChatMessage, DisplayAgent } from '@/components/chat/ChatMessageIte
 import type { BrowserModelConfig, BrowserModelSource } from '@/lib/web/browser-model';
 import { shouldExtractMemorySuggestion } from '@/lib/personal-assistant/memory-intent.mjs';
 import { isWorldEventAgent, resolveWorldEventQuery, WORLD_EVENTS_UNAVAILABLE_CONTEXT } from '@/lib/world/agent-policy';
+import { formatKnowledgeContext } from '@/lib/knowledge/context';
 
 const promptMap: Record<string, string[]> = {
   写作: ['帮我把这段话改得更有吸引力', '生成 5 个标题', '把内容改成小红书风格'],
@@ -927,10 +927,20 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
         const memoryContext = conversationMode === 'MAIN'
           ? (await agentMemories.context(displayAgent?.id || agentId, localConversationId, content, controller.signal)).context
           : '';
+        let knowledgeContext = '';
+        if (content.trim()) {
+          try {
+            const { hits } = await agentsApi.searchKnowledge(displayAgent?.id || agentId, content, controller.signal);
+            knowledgeContext = formatKnowledgeContext(hits.filter((hit) => hit.score >= 0.35), { scopeLabel: '角色专属知识库' });
+          } catch (error) {
+            if (controller.signal.aborted) throw error;
+            console.warn('[chat/knowledge] Knowledge hit retrieval failed:', error);
+          }
+        }
         const companionSkinInstruction = isCompanionSend && companionSkinPrompt
           ? `当前换装的皮肤对话规则（只影响表达氛围，不改变核心人格）：${companionSkinPrompt}\n请在自然相关的回复中适度融入这些元素，偶尔使用对应意象或小口头禅即可；不要每句话都重复皮肤关键词，也不要把服装设定说成角色身份发生了改变。`
           : '';
-        const systemPrompt = [displayAgent?.systemPrompt, memoryContext, worldContext, isCompanionSend ? companionReplyInstruction : '', companionSkinInstruction].filter(Boolean).join('\n\n');
+        const systemPrompt = [displayAgent?.systemPrompt, memoryContext, knowledgeContext, worldContext, isCompanionSend ? companionReplyInstruction : '', companionSkinInstruction].filter(Boolean).join('\n\n');
         if (systemPrompt) {
           modelMessages.unshift({ role: 'system', content: systemPrompt });
         }
@@ -1341,16 +1351,6 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
               </div>
             )}
 
-            {isLoggedIn && displayAgent?.id && studyEnabled && dailyStudy && (
-              <AgentDailyStudyCard
-                study={dailyStudy}
-                loading={loadingDailyStudy}
-                onRefresh={() => loadDailyStudy(displayAgent.id, true)}
-                onDiscuss={handleDiscussStudyItem}
-                defaultCollapsed={messages.length > 2}
-              />
-            )}
-
             {isLoggedIn && messages.length <= 1 && !isStreaming && (
               <section className="rounded-[24px] bg-white/55 px-4 py-3">
                 <div className="mb-3 flex items-center gap-2 text-xs font-bold text-slate-400">
@@ -1485,6 +1485,20 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
         )}
       </main>
       )}
+      <ConfirmDialog
+        open={confirmClearOpen}
+        title="清空当前聊天消息？"
+        description={conversationMode === 'MAIN'
+          ? '原始消息将被删除，无法恢复。个人记忆、知识库、活动记录与对话归档仍会保留；如需遗忘，请到对应入口单独管理。'
+          : '当前聊天的原始消息将被删除，无法恢复。个人记忆、知识库和活动记录不受影响。'}
+        icon={<Trash2 size={20} />}
+        cancelText="先保留"
+        confirmText="确认清空"
+        destructive
+        loading={clearingMessages}
+        onCancel={() => setConfirmClearOpen(false)}
+        onConfirm={handleClearMessages}
+      />
       <ConfirmDialog
         open={Boolean(pendingArchiveConversation)}
         title="归档这个临时聊天？"
