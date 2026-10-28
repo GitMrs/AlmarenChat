@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowLeft, BookOpen, ChevronDown, ChevronUp, Cpu, Database, Info, Loader2, MessageSquarePlus, Plus, QrCode, RefreshCw, Sparkles, X } from 'lucide-react';
+import { ArrowLeft, BookOpen, Bot, ChevronDown, ChevronUp, Cpu, Database, Info, Loader2, MessageSquarePlus, Plus, QrCode, RefreshCw, Sparkles, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -11,10 +11,11 @@ import SpaceMemberModelDialog from '@/components/spaces/SpaceMemberModelDialog';
 import AgentDailyStudyCard from '@/components/chat/AgentDailyStudyCard';
 import AgentMemoryEditor from '@/components/chat/AgentMemoryEditor';
 import AgentExperienceEditor from '@/components/chat/AgentExperienceEditor';
+import AgentQQSettings from '@/components/chat/AgentQQSettings';
 import { agentMemories as agentMemoryApi, agents as agentsApi } from '@/lib/client/api';
 import { cn } from '@/lib/client/utils';
 import type { DisplayAgent } from '@/components/chat/ChatMessageItem';
-import type { AgentExperience, AgentGrowthEvent, AgentMemoryItem } from '@/types';
+import type { AgentExperience, AgentGrowthEvent, AgentMemoryItem, AgentQQBinding } from '@/types';
 import type { AgentModelSettingsResponse } from '@/types';
 import type { AgentDailyStudyRecord, AgentStudyItem } from '@/lib/agent-study/types';
 import type { BilibiliProfile } from '@/lib/client/api';
@@ -167,6 +168,9 @@ export default function AgentDetailsPanel({
   const [memoryLoading, setMemoryLoading] = useState(false);
   const [knowledgeModalOpen, setKnowledgeModalOpen] = useState(false);
   const [knowledgeDocCount, setKnowledgeDocCount] = useState<number | null>(null);
+  const [qqDialogOpen, setQqDialogOpen] = useState(false);
+  const [qqBinding, setQqBinding] = useState<AgentQQBinding | null>(null);
+  const [qqBindingLoading, setQqBindingLoading] = useState(false);
   const [modelDialogOpen, setModelDialogOpen] = useState(false);
   const [modelProfile, setModelProfile] = useState<AgentModelSettingsResponse | null>(null);
   const [studySchedule, setStudySchedule] = useState(DEFAULT_DAILY_STUDY_SCHEDULE);
@@ -186,6 +190,21 @@ export default function AgentDetailsPanel({
   const [bilibiliLoginError, setBilibiliLoginError] = useState('');
   const refreshDailyStudyRef = useRef(onRefreshDailyStudy);
   refreshDailyStudyRef.current = onRefreshDailyStudy;
+
+  useEffect(() => {
+    let cancelled = false;
+    setQqBinding(null);
+    if (!isLoggedIn || !displayAgent.id || qqDialogOpen) {
+      setQqBindingLoading(false);
+      return () => { cancelled = true; };
+    }
+    setQqBindingLoading(true);
+    agentsApi.getQQBinding(displayAgent.id)
+      .then((result) => { if (!cancelled) setQqBinding(result.binding); })
+      .catch(() => { if (!cancelled) setQqBinding(null); })
+      .finally(() => { if (!cancelled) setQqBindingLoading(false); });
+    return () => { cancelled = true; };
+  }, [displayAgent.id, isLoggedIn, qqDialogOpen]);
 
   useEffect(() => {
     let cancelled = false;
@@ -450,6 +469,51 @@ export default function AgentDetailsPanel({
       <span className="truncate text-[11px] text-slate-500">{modelProfile
         ? `${modelProfile.effective.source === 'AGENT' ? '角色默认' : modelProfile.effective.source === 'GLOBAL' ? '继承全局' : '系统默认'} · ${modelProfile.effective.modelName}`
         : '设置默认模型'}</span>
+    </button>
+  );
+
+  const qqWidget = isLoggedIn && (
+    <button
+      type="button"
+      onClick={() => setQqDialogOpen(true)}
+      className="group mt-2.5 flex w-full cursor-pointer items-center justify-between rounded-2xl border border-indigo-300 bg-gradient-to-r from-indigo-100 via-sky-50 to-cyan-50 p-2.5 text-left shadow-sm transition hover:border-indigo-400 hover:shadow-md"
+      title="为这个 Agent 接入独立的 Bot 通道"
+    >
+      <div className="flex min-w-0 items-center gap-2.5">
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-indigo-700 text-white shadow-sm">
+          <Bot size={14} />
+        </div>
+        <div className="min-w-0">
+          <div className="text-xs font-black text-slate-900 group-hover:text-indigo-950">接入 Bot 通道</div>
+          <div className="truncate text-[11px] font-semibold text-slate-600">独立消息入口 · 与其他 Agent 隔离</div>
+        </div>
+      </div>
+      <span className={cn(
+        'shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-black shadow-sm',
+        qqBindingLoading
+          ? 'border-slate-300 bg-white text-slate-500'
+          : qqBinding?.status === 'READY' && qqBinding.enabled
+            ? 'border-emerald-600 bg-emerald-600 text-white'
+            : qqBinding?.status === 'ERROR'
+              ? 'border-rose-600 bg-rose-600 text-white'
+              : qqBinding?.enabled
+                ? 'border-indigo-600 bg-indigo-600 text-white'
+                : qqBinding
+                  ? 'border-slate-400 bg-slate-500 text-white'
+            : 'border-indigo-600 bg-indigo-600 text-white',
+      )}>
+        {qqBindingLoading
+          ? '检查中'
+          : !qqBinding
+            ? '未配置'
+            : qqBinding.status === 'READY' && qqBinding.enabled
+              ? '已连接'
+              : qqBinding.status === 'ERROR'
+                ? '连接异常'
+                : qqBinding.enabled
+                  ? '已配置'
+                  : '已停用'}
+      </span>
     </button>
   );
 
@@ -1285,6 +1349,7 @@ export default function AgentDetailsPanel({
             {conversationSwitcher}
             {studyWidget}
             {modelWidget}
+            {qqWidget}
             {memoryWidget}
             {activityWidget}
             {knowledgeWidget}
@@ -1369,6 +1434,7 @@ export default function AgentDetailsPanel({
                 {conversationSwitcher}
                 {studyWidget}
                 {modelWidget}
+                {qqWidget}
                 {memoryWidget}
                 {activityWidget}
                 {knowledgeWidget}
@@ -1381,6 +1447,12 @@ export default function AgentDetailsPanel({
           </div>
         </div>
       )}
+      <AgentQQSettings
+        open={qqDialogOpen}
+        agentId={displayAgent.id}
+        agentName={displayAgent.name}
+        onClose={() => setQqDialogOpen(false)}
+      />
       <SpaceMemberModelDialog
         open={modelDialogOpen}
         scope="agent"

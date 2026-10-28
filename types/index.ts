@@ -265,6 +265,51 @@ export interface AssistantQQBinding {
   webhookLastUsedAt?: string | null;
 }
 
+export interface AgentQQBinding {
+  configured: true;
+  agentId: string;
+  botAccountId: string;
+  appId: string;
+  enabled: boolean;
+  peerBound: boolean;
+  status: 'PENDING' | 'CONNECTING' | 'READY' | 'ERROR' | 'DISABLED';
+  lastError?: string | null;
+  connectedAt?: string | null;
+  lastInboundAt?: string | null;
+  conversationId: string;
+  webhookConfigured?: boolean;
+  webhookCreatedAt?: string | null;
+  webhookLastUsedAt?: string | null;
+}
+
+export interface AgentQQBindingResponse {
+  binding: AgentQQBinding | null;
+  maxBots?: number;
+  webhookUrl?: string;
+}
+
+export interface BotBindingSummary {
+  id: string;
+  kind: 'PERSONAL' | 'AGENT';
+  provider: 'QQ';
+  appId: string;
+  enabled: boolean;
+  peerBound: boolean;
+  status: 'PENDING' | 'CONNECTING' | 'READY' | 'ERROR' | 'DISABLED';
+  lastError?: string | null;
+  connectedAt?: string | null;
+  lastInboundAt?: string | null;
+  updatedAt: string;
+  agentId?: string | null;
+  agentName?: string | null;
+  agentAvatar?: string | null;
+  conversationId: string;
+}
+
+export interface BotBindingListResponse {
+  bindings: BotBindingSummary[];
+}
+
 export interface AssistantConversationSummary {
   id: string;
   title: string | null;

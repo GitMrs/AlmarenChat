@@ -8,59 +8,62 @@ datasource db {
 }
 
 model User {
-  id           String         @id @default(uuid())
-  email        String         @unique
-  passwordHash String
-  name         String
-  avatar       String?
-  apiBaseUrl   String?
-  apiKey       String?
-  modelName    String?
-  modelContextWindow Int?
-  customModelEnabled Boolean @default(false)
-  imageModelEnabled Boolean @default(false)
-  imageModelName String?
-  imageModelSize String? @default("1024x1024")
-  imageModelProtocol String @default("OPENAI_IMAGES")
-  imageApiBaseUrl String?
-  imageApiKey  String?
-  tavilyApiKey String?
+  id                     String   @id @default(uuid())
+  email                  String   @unique
+  passwordHash           String
+  name                   String
+  avatar                 String?
+  apiBaseUrl             String?
+  apiKey                 String?
+  modelName              String?
+  modelContextWindow     Int?
+  customModelEnabled     Boolean  @default(false)
+  imageModelEnabled      Boolean  @default(false)
+  imageModelName         String?
+  imageModelSize         String?  @default("1024x1024")
+  imageModelProtocol     String   @default("OPENAI_IMAGES")
+  imageApiBaseUrl        String?
+  imageApiKey            String?
+  tavilyApiKey           String?
   defaultWeatherLocation Json?
-  assistantMcpServers Json?
-  defaultStyle String?
-  contextMessageLimit Int @default(40)
-  dailyChatLimit Int?
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
+  assistantMcpServers    Json?
+  defaultStyle           String?
+  contextMessageLimit    Int      @default(40)
+  dailyChatLimit         Int?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
 
-  conversations Conversation[]
-  agents        Agent[]
-  spaces        Space[]
-  favorites     FavoriteAgent[]
-  chatUsages    DailyChatUsage[]
-  agentRuns     AgentRun[]
-  agentExperiences AgentExperience[]
-  agentGrowthEvents AgentGrowthEvent[]
-  agentMemories AgentMemoryItem[]
-  agentMemoryRules AgentMemoryRule[]
-  agentModelSettings AgentModelSetting[]
-  discussions   SpaceDiscussion[]
-  relays        SpaceRelay[]
-  personalAssistant PersonalAssistantProfile?
-  assistantMemories AssistantMemoryItem[]
-  assistantExperiences AssistantExperience[]
-  assistantReminders AssistantReminder[]
+  conversations                Conversation[]
+  agents                       Agent[]
+  spaces                       Space[]
+  favorites                    FavoriteAgent[]
+  chatUsages                   DailyChatUsage[]
+  agentRuns                    AgentRun[]
+  agentExperiences             AgentExperience[]
+  agentGrowthEvents            AgentGrowthEvent[]
+  agentMemories                AgentMemoryItem[]
+  agentMemoryRules             AgentMemoryRule[]
+  agentModelSettings           AgentModelSetting[]
+  discussions                  SpaceDiscussion[]
+  relays                       SpaceRelay[]
+  personalAssistant            PersonalAssistantProfile?
+  assistantMemories            AssistantMemoryItem[]
+  assistantExperiences         AssistantExperience[]
+  assistantReminders           AssistantReminder[]
   assistantProactiveDeliveries AssistantProactiveDelivery[]
-  assistantQQBinding AssistantQQBinding?
-  assistantQQEvents AssistantQQEvent[]
-  studioWorkspaces  StudioWorkspace[]
-  trendingFavorites TrendingFavorite[]
+  assistantQQBinding           AssistantQQBinding?
+  assistantQQEvents            AssistantQQEvent[]
+  qqBotAccounts                QqBotAccount[]
+  qqUserIdentities             QqUserIdentity[]
+  agentQQBindings              AgentQQBinding[]
+  studioWorkspaces             StudioWorkspace[]
+  trendingFavorites            TrendingFavorite[]
 }
 
 model Agent {
-  id           String         @id @default(uuid())
+  id           String   @id @default(uuid())
   creatorId    String?
-  creator      User?          @relation(fields: [creatorId], references: [id])
+  creator      User?    @relation(fields: [creatorId], references: [id])
   name         String
   avatar       String?
   description  String?
@@ -70,38 +73,46 @@ model Agent {
   systemPrompt String?
   model        String?
   voice        String?
-  agentType    String         @default("BASIC")
-  isPublic     Boolean        @default(true)
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
+  agentType    String   @default("BASIC")
+  isPublic     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }
 
 model AgentModelSetting {
-  id         String   @id @default(uuid())
-  userId     String
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  agentId    String
-  modelName  String?
-  apiBaseUrl String?
-  apiKey     String?
-  dailyStudyEnabled Boolean?
-  /** 研习渠道模式：'internal'（全网热搜）或 'bilibili'（B站主动搜索） */
-  dailyStudySourceMode String? @default("internal")
-  /** 单 Agent 每日学习使用的 B 站登录态（加密保存） */
+  id                                     String    @id @default(uuid())
+  userId                                 String
+  user                                   User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agentId                                String
+  modelName                              String?
+  apiBaseUrl                             String?
+  apiKey                                 String?
+  dailyStudyEnabled                      Boolean?
+  /**
+   * 研习渠道模式：'internal'（全网热搜）或 'bilibili'（B站主动搜索）
+   */
+  dailyStudySourceMode                   String?   @default("internal")
+  /**
+   * 单 Agent 每日学习使用的 B 站登录态（加密保存）
+   */
   dailyStudyBilibiliCredentialCiphertext String?
-  dailyStudyBilibiliProfile Json?
-  dailyStudyBilibiliLastCheckedAt DateTime?
-  dailyStudyBilibiliLastError String?
-  /** 每日学习调度尝试状态，用于失败冷却和当天上限 */
-  dailyStudyAttemptDate String?
-  dailyStudyAttemptCount Int @default(0)
-  dailyStudyNextAttemptAt DateTime?
-  /** 每日学习调度设置；为空时回退到环境默认值 */
-  dailyStudyStartHour Int?
-  dailyStudyWindowEndHour Int?
-  dailyStudyMaxAttempts Int?
-  dailyStudyRetryBackoffMinutes Int?
-  updatedAt  DateTime @updatedAt
+  dailyStudyBilibiliProfile              Json?
+  dailyStudyBilibiliLastCheckedAt        DateTime?
+  dailyStudyBilibiliLastError            String?
+  /**
+   * 每日学习调度尝试状态，用于失败冷却和当天上限
+   */
+  dailyStudyAttemptDate                  String?
+  dailyStudyAttemptCount                 Int       @default(0)
+  dailyStudyNextAttemptAt                DateTime?
+  /**
+   * 每日学习调度设置；为空时回退到环境默认值
+   */
+  dailyStudyStartHour                    Int?
+  dailyStudyWindowEndHour                Int?
+  dailyStudyMaxAttempts                  Int?
+  dailyStudyRetryBackoffMinutes          Int?
+  updatedAt                              DateTime  @updatedAt
 
   @@unique([userId, agentId])
 }
@@ -122,22 +133,22 @@ model AgentMemoryItem {
 }
 
 model AgentExperience {
-  id        String   @id @default(uuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  agentId   String
-  spaceId   String?
-  runId     String?
-  taskId    String
-  title     String
-  summary   String
-  outcome   String
-  sourceType String @default("TASK")
-  status    String @default("ACTIVE")
-  edited    Boolean @default(false)
-  tags      Json?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agentId    String
+  spaceId    String?
+  runId      String?
+  taskId     String
+  title      String
+  summary    String
+  outcome    String
+  sourceType String   @default("TASK")
+  status     String   @default("ACTIVE")
+  edited     Boolean  @default(false)
+  tags       Json?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   @@unique([userId, agentId, taskId])
   @@index([userId, agentId, createdAt])
@@ -145,18 +156,18 @@ model AgentExperience {
 
 /// Agent 的成长历史。事件只追加，当前状态由这些事件派生。
 model AgentGrowthEvent {
-  id          String   @id @default(uuid())
-  userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  agentId     String
-  spaceId     String?
-  scope       String   @default("PERSONAL")
-  type        String
-  sourceType  String   @default("CHAT")
-  sourceId    String?
-  eventKey    String   @unique
-  payload     Json
-  createdAt   DateTime @default(now())
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agentId    String
+  spaceId    String?
+  scope      String   @default("PERSONAL")
+  type       String
+  sourceType String   @default("CHAT")
+  sourceId   String?
+  eventKey   String   @unique
+  payload    Json
+  createdAt  DateTime @default(now())
 
   @@index([userId, agentId, createdAt])
   @@index([userId, agentId, scope, createdAt])
@@ -183,91 +194,91 @@ model AgentMemoryRule {
 }
 
 model Space {
-  id          String   @id @default(uuid())
-  userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  name        String
-  description String?
-  instructions String?
-  runtimeType String @default("NATIVE")
-  executionEngine String @default("native")
-  executionMode String @default("REVIEW_DISPATCH")
-  hostAgentId String?
-  activeWorkId String?
-  templateId String?
-  templateVersion Int?
-  templateSnapshot Json?
+  id                 String   @id @default(uuid())
+  userId             String
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name               String
+  description        String?
+  instructions       String?
+  runtimeType        String   @default("NATIVE")
+  executionEngine    String   @default("native")
+  executionMode      String   @default("REVIEW_DISPATCH")
+  hostAgentId        String?
+  activeWorkId       String?
+  templateId         String?
+  templateVersion    Int?
+  templateSnapshot   Json?
   discussionSettings Json?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
-  members  SpaceMember[]
-  messages SpaceMessage[]
-  contextCheckpoint SpaceContextCheckpoint?
-  files    SpaceFile[]
-  runs     AgentRun[]
-  works    SpaceWork[]
-  automations SpaceAutomation[]
-  actionRequests SpaceActionRequest[]
-  connectors SpaceConnector[]
-  mcpServers SpaceMcpServer[]
-  webhooks   SpaceWebhook[]
-  discussions SpaceDiscussion[]
-  relays      SpaceRelay[]
-  memory      SpaceMemory?
+  members            SpaceMember[]
+  messages           SpaceMessage[]
+  contextCheckpoint  SpaceContextCheckpoint?
+  files              SpaceFile[]
+  runs               AgentRun[]
+  works              SpaceWork[]
+  automations        SpaceAutomation[]
+  actionRequests     SpaceActionRequest[]
+  connectors         SpaceConnector[]
+  mcpServers         SpaceMcpServer[]
+  webhooks           SpaceWebhook[]
+  discussions        SpaceDiscussion[]
+  relays             SpaceRelay[]
+  memory             SpaceMemory?
   knowledgeDocuments KnowledgeDocument[]
 
   @@index([userId, updatedAt])
 }
 
 model SpaceMcpServer {
-  id                   String   @id @default(uuid())
-  spaceId              String
-  space                Space    @relation(fields: [spaceId], references: [id], onDelete: Cascade)
-  name                 String
-  url                  String
-  headersCiphertext    String?
-  enabled              Boolean  @default(true)
-  lastError            String?
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  id                String   @id @default(uuid())
+  spaceId           String
+  space             Space    @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  name              String
+  url               String
+  headersCiphertext String?
+  enabled           Boolean  @default(true)
+  lastError         String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   @@unique([spaceId, name])
   @@index([spaceId, enabled])
 }
 
 model SpaceWebhook {
-  id           String   @id @default(uuid())
+  id           String    @id @default(uuid())
   spaceId      String
-  space        Space    @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  space        Space     @relation(fields: [spaceId], references: [id], onDelete: Cascade)
   name         String
   url          String
   bodyTemplate Json
-  enabled      Boolean  @default(true)
+  enabled      Boolean   @default(true)
   lastError    String?
   lastUsedAt   DateTime?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   @@unique([spaceId, name])
   @@index([spaceId, enabled])
 }
 
 model SpaceConnector {
-  id                        String    @id @default(uuid())
-  spaceId                   String
-  space                     Space     @relation(fields: [spaceId], references: [id], onDelete: Cascade)
-  provider                  String
-  enabled                   Boolean   @default(true)
-  status                    String    @default("CONFIGURED")
-  publicConfig              Json?
-  credentialCiphertext      String
-  accessTokenCiphertext     String?
-  accessTokenExpiresAt      DateTime?
-  lastCheckedAt             DateTime?
-  lastError                 String?
-  createdAt                 DateTime  @default(now())
-  updatedAt                 DateTime  @updatedAt
+  id                    String    @id @default(uuid())
+  spaceId               String
+  space                 Space     @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  provider              String
+  enabled               Boolean   @default(true)
+  status                String    @default("CONFIGURED")
+  publicConfig          Json?
+  credentialCiphertext  String
+  accessTokenCiphertext String?
+  accessTokenExpiresAt  DateTime?
+  lastCheckedAt         DateTime?
+  lastError             String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
 
   executions SpaceConnectorExecution[]
 
@@ -315,58 +326,58 @@ model SpaceWork {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  runs  AgentRun[]
-  files SpaceFile[]
+  runs           AgentRun[]
+  files          SpaceFile[]
   actionRequests SpaceActionRequest[]
-  versions SpaceWorkVersion[]
+  versions       SpaceWorkVersion[]
 
   @@index([spaceId, updatedAt])
   @@index([spaceId, status, updatedAt])
 }
 
 model SpaceWorkVersion {
-  id            String    @id @default(uuid())
-  workId        String
-  work          SpaceWork @relation(fields: [workId], references: [id], onDelete: Cascade)
-  version       Int
-  summary       String?
-  manifest      Json
-  sourceRunId   String?
-  sourceTaskId  String?
-  createdAt     DateTime  @default(now())
+  id           String    @id @default(uuid())
+  workId       String
+  work         SpaceWork @relation(fields: [workId], references: [id], onDelete: Cascade)
+  version      Int
+  summary      String?
+  manifest     Json
+  sourceRunId  String?
+  sourceTaskId String?
+  createdAt    DateTime  @default(now())
 
   @@unique([workId, version])
   @@index([workId, createdAt])
 }
 
 model SpaceAutomation {
-  id              String    @id @default(uuid())
-  spaceId         String
-  space           Space     @relation(fields: [spaceId], references: [id], onDelete: Cascade)
-  name            String
-  prompt          String
-  scheduleType    String    @default("INTERVAL")
-  intervalMinutes Int       @default(1440)
-  timeZone        String    @default("Asia/Shanghai")
-  scheduleHour    Int?
-  scheduleMinute  Int?
-  weekdays        Json?
-  workStrategy    String    @default("NEW_WORK")
-  executionMode   String    @default("PROMPT")
-  scriptPath      String?
-  networkPolicy   String    @default("forbidden")
-  completionAction String   @default("NONE")
-  completionConfig Json?
-  shareTheme      String    @default("inherit")
-  enabled         Boolean   @default(false)
-  nextRunAt       DateTime
-  lastRunAt       DateTime?
-  lastRunId       String?
-  lastError       String?
-  consecutiveFailures Int   @default(0)
-  deletedAt       DateTime?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  id                  String    @id @default(uuid())
+  spaceId             String
+  space               Space     @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  name                String
+  prompt              String
+  scheduleType        String    @default("INTERVAL")
+  intervalMinutes     Int       @default(1440)
+  timeZone            String    @default("Asia/Shanghai")
+  scheduleHour        Int?
+  scheduleMinute      Int?
+  weekdays            Json?
+  workStrategy        String    @default("NEW_WORK")
+  executionMode       String    @default("PROMPT")
+  scriptPath          String?
+  networkPolicy       String    @default("forbidden")
+  completionAction    String    @default("NONE")
+  completionConfig    Json?
+  shareTheme          String    @default("inherit")
+  enabled             Boolean   @default(false)
+  nextRunAt           DateTime
+  lastRunAt           DateTime?
+  lastRunId           String?
+  lastError           String?
+  consecutiveFailures Int       @default(0)
+  deletedAt           DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
   executions SpaceAutomationExecution[]
 
@@ -376,24 +387,24 @@ model SpaceAutomation {
 }
 
 model SpaceAutomationExecution {
-  id           String          @id @default(uuid())
-  automationId String
-  automation   SpaceAutomation @relation(fields: [automationId], references: [id], onDelete: Cascade)
-  scheduledFor DateTime
-  status       String          @default("TRIGGERED")
-  runId        String?         @unique
-  run          AgentRun?       @relation(fields: [runId], references: [id], onDelete: SetNull)
-  workId       String?
-  result       String?
-  resultHash   String?
-  deliveryStatus String        @default("NOT_REQUIRED")
-  deliveryAttempts Int         @default(0)
-  deliveryError String?
+  id                    String          @id @default(uuid())
+  automationId          String
+  automation            SpaceAutomation @relation(fields: [automationId], references: [id], onDelete: Cascade)
+  scheduledFor          DateTime
+  status                String          @default("TRIGGERED")
+  runId                 String?         @unique
+  run                   AgentRun?       @relation(fields: [runId], references: [id], onDelete: SetNull)
+  workId                String?
+  result                String?
+  resultHash            String?
+  deliveryStatus        String          @default("NOT_REQUIRED")
+  deliveryAttempts      Int             @default(0)
+  deliveryError         String?
   deliveryNextAttemptAt DateTime?
-  deliveredAt  DateTime?
-  error        String?
-  createdAt    DateTime        @default(now())
-  updatedAt    DateTime        @updatedAt
+  deliveredAt           DateTime?
+  error                 String?
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
 
   actionRequests SpaceActionRequest[]
 
@@ -404,29 +415,29 @@ model SpaceAutomationExecution {
 }
 
 model SpaceActionRequest {
-  id                    String    @id @default(uuid())
+  id                    String                    @id @default(uuid())
   spaceId               String
-  space                 Space     @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  space                 Space                     @relation(fields: [spaceId], references: [id], onDelete: Cascade)
   workId                String?
-  work                  SpaceWork? @relation(fields: [workId], references: [id], onDelete: SetNull)
+  work                  SpaceWork?                @relation(fields: [workId], references: [id], onDelete: SetNull)
   runId                 String?
-  run                   AgentRun? @relation(fields: [runId], references: [id], onDelete: SetNull)
+  run                   AgentRun?                 @relation(fields: [runId], references: [id], onDelete: SetNull)
   automationExecutionId String?
   automationExecution   SpaceAutomationExecution? @relation(fields: [automationExecutionId], references: [id], onDelete: SetNull)
   kind                  String
-  riskLevel             String    @default("HIGH")
+  riskLevel             String                    @default("HIGH")
   title                 String
-  status                String    @default("PENDING")
+  status                String                    @default("PENDING")
   payload               Json?
   result                Json?
   error                 String?
-  idempotencyKey        String    @unique
+  idempotencyKey        String                    @unique
   decidedBy             String?
-  requestedAt           DateTime  @default(now())
+  requestedAt           DateTime                  @default(now())
   decidedAt             DateTime?
   completedAt           DateTime?
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
+  createdAt             DateTime                  @default(now())
+  updatedAt             DateTime                  @updatedAt
 
   connectorExecution SpaceConnectorExecution?
 
@@ -453,16 +464,16 @@ model SpaceMember {
 }
 
 model AgentSession {
-  id            String   @id @default(uuid())
+  id            String    @id @default(uuid())
   spaceId       String
   agentId       String
-  status        String   @default("IDLE")
+  status        String    @default("IDLE")
   currentTaskId String?
   worklog       String?
   summary       String?
   lastActiveAt  DateTime?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   @@unique([spaceId, agentId])
   @@index([spaceId, status])
@@ -473,7 +484,7 @@ model SpaceMessage {
   id             String   @id @default(uuid())
   spaceId        String
   space          Space    @relation(fields: [spaceId], references: [id], onDelete: Cascade)
-  role           String   // "user" | "assistant" | "system"
+  role           String // "user" | "assistant" | "system"
   speakerAgentId String?
   content        String
   attachments    Json?
@@ -498,25 +509,25 @@ model SpaceContextCheckpoint {
 }
 
 model SpaceFile {
-  id           String   @id @default(uuid())
-  spaceId      String
-  space        Space    @relation(fields: [spaceId], references: [id], onDelete: Cascade)
-  fileName     String
-  mimeType     String?
-  size         Int?
-  relativePath String
-  runId        String?
-  taskId       String?
-  workId       String?
-  work         SpaceWork? @relation(fields: [workId], references: [id], onDelete: SetNull)
-  status       String   @default("READY")
-  shareId      String?  @unique
-  shareEnabled Boolean  @default(false)
-  shareTheme   String   @default("clean")
-  externalDependencies Boolean @default(false)
-  sharedAt     DateTime?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime? @updatedAt
+  id                   String     @id @default(uuid())
+  spaceId              String
+  space                Space      @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  fileName             String
+  mimeType             String?
+  size                 Int?
+  relativePath         String
+  runId                String?
+  taskId               String?
+  workId               String?
+  work                 SpaceWork? @relation(fields: [workId], references: [id], onDelete: SetNull)
+  status               String     @default("READY")
+  shareId              String?    @unique
+  shareEnabled         Boolean    @default(false)
+  shareTheme           String     @default("clean")
+  externalDependencies Boolean    @default(false)
+  sharedAt             DateTime?
+  createdAt            DateTime   @default(now())
+  updatedAt            DateTime?  @updatedAt
 
   @@index([spaceId])
   @@index([runId])
@@ -525,26 +536,36 @@ model SpaceFile {
 }
 
 model KnowledgeDocument {
-  id        String   @id @default(uuid())
-  /** 知识归属用户；空间公共知识可为空 */
-  userId    String?
-  /** 模型/Agent ID。不设外键，内置 Agent 与自定义 Agent 均可直接使用 */
-  agentId   String?
-  spaceId   String?
-  space     Space?   @relation(fields: [spaceId], references: [id], onDelete: Cascade)
-  fileName  String
-  mimeType  String?
-  size      Int?
-  /** USER_UPLOAD | SPACE_UPLOAD | STUDY */
-  sourceType String  @default("USER_UPLOAD")
-  /** 去重键，例如研习条目的 id 或原始 URL */
+  id         String   @id @default(uuid())
+  /**
+   * 知识归属用户；空间公共知识可为空
+   */
+  userId     String?
+  /**
+   * 模型/Agent ID。不设外键，内置 Agent 与自定义 Agent 均可直接使用
+   */
+  agentId    String?
+  spaceId    String?
+  space      Space?   @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  fileName   String
+  mimeType   String?
+  size       Int?
+  /**
+   * USER_UPLOAD | SPACE_UPLOAD | STUDY
+   */
+  sourceType String   @default("USER_UPLOAD")
+  /**
+   * 去重键，例如研习条目的 id 或原始 URL
+   */
   sourceKey  String?
   sourceUrl  String?
   summary    String?
   tags       Json?
-  /** ACTIVE 才参与检索；DRAFT 为低置信草稿 */
-  status     String  @default("ACTIVE")
-  createdAt DateTime @default(now())
+  /**
+   * ACTIVE 才参与检索；DRAFT 为低置信草稿
+   */
+  status     String   @default("ACTIVE")
+  createdAt  DateTime @default(now())
 
   chunks KnowledgeChunk[]
 
@@ -564,7 +585,7 @@ model KnowledgeChunk {
   title      String?
   content    String
   embedding  Json
-  createdAt  DateTime @default(now())
+  createdAt  DateTime          @default(now())
 
   @@index([agentId])
   @@index([spaceId])
@@ -572,29 +593,30 @@ model KnowledgeChunk {
 }
 
 model Conversation {
-  id                  String    @id @default(uuid())
-  userId              String
-  user                User      @relation(fields: [userId], references: [id])
-  kind                String    @default("AGENT")
-  agentMode           String    @default("MAIN")
-  archived            Boolean   @default(false)
-  agentId             String?
-  agentName           String?
-  agentAvatar         String?
-  agentCategory       String?
-  agentTone           String?
-  agentDescription    String?
-  agentSystemPrompt   String?
-  agentVoice          String?
-  contextMessageLimit Int?
-  assistantMode       String?
-  title               String?
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
-  messages            Message[]
+  id                   String                    @id @default(uuid())
+  userId               String
+  user                 User                      @relation(fields: [userId], references: [id])
+  kind                 String                    @default("AGENT")
+  agentMode            String                    @default("MAIN")
+  archived             Boolean                   @default(false)
+  agentId              String?
+  agentName            String?
+  agentAvatar          String?
+  agentCategory        String?
+  agentTone            String?
+  agentDescription     String?
+  agentSystemPrompt    String?
+  agentVoice           String?
+  contextMessageLimit  Int?
+  assistantMode        String?
+  title                String?
+  createdAt            DateTime                  @default(now())
+  updatedAt            DateTime                  @updatedAt
+  messages             Message[]
   assistantExperiences AssistantExperience[]
-  personalAssistant   PersonalAssistantProfile?
-  assistantQQBinding  AssistantQQBinding?
+  personalAssistant    PersonalAssistantProfile?
+  assistantQQBinding   AssistantQQBinding?
+  agentQQBinding       AgentQQBinding?
 
   @@index([userId, kind, updatedAt])
   @@index([userId, agentId, agentMode])
@@ -602,37 +624,37 @@ model Conversation {
 }
 
 model Message {
-  id             String       @id @default(uuid())
-  conversationId String
-  conversation   Conversation @relation(fields: [conversationId], references: [id])
-  role           String       // "user" | "assistant" | "system"
-  source         String       @default("WEB") // "WEB" | "QQ" | "SYSTEM"
-  content        String
-  attachments    Json?
+  id                    String               @id @default(uuid())
+  conversationId        String
+  conversation          Conversation         @relation(fields: [conversationId], references: [id])
+  role                  String // "user" | "assistant" | "system"
+  source                String               @default("WEB") // "WEB" | "QQ" | "SYSTEM"
+  content               String
+  attachments           Json?
   assistantExperienceId String?
-  assistantExperience AssistantExperience? @relation(fields: [assistantExperienceId], references: [id], onDelete: SetNull)
-  createdAt      DateTime     @default(now())
+  assistantExperience   AssistantExperience? @relation(fields: [assistantExperienceId], references: [id], onDelete: SetNull)
+  createdAt             DateTime             @default(now())
 
   @@index([conversationId, createdAt])
   @@index([assistantExperienceId])
 }
 
 model PersonalAssistantProfile {
-  userId         String       @id
-  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  conversationId String       @unique
-  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  name           String       @default("小伴")
-  avatar         String?
-  identity       String?
-  soul           String?
-  greeting       String?
-  proactiveEnabled Boolean     @default(true)
-  includeSpaceContext Boolean  @default(true)
-  includeTaskContext Boolean   @default(true)
-  includeChatContext Boolean   @default(true)
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+  userId              String       @id
+  user                User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conversationId      String       @unique
+  conversation        Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  name                String       @default("小伴")
+  avatar              String?
+  identity            String?
+  soul                String?
+  greeting            String?
+  proactiveEnabled    Boolean      @default(true)
+  includeSpaceContext Boolean      @default(true)
+  includeTaskContext  Boolean      @default(true)
+  includeChatContext  Boolean      @default(true)
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
 }
 
 model AssistantMemoryItem {
@@ -671,45 +693,45 @@ model AssistantExperience {
 }
 
 model AssistantReminder {
-  id              String    @id @default(uuid())
-  userId          String
-  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  content         String
-  dueTime         DateTime?
-  status          String    @default("PENDING")
-  sourceMessageId String?
-  idempotencyKey  String?
-  qqDeliveredAt   DateTime?
-  qqMessageId     String?
-  qqDeliveryAttempts Int @default(0)
-  qqNextAttemptAt DateTime?
-  qqDeliveryError String?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  id                 String    @id @default(uuid())
+  userId             String
+  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  content            String
+  dueTime            DateTime?
+  status             String    @default("PENDING")
+  sourceMessageId    String?
+  idempotencyKey     String?
+  qqDeliveredAt      DateTime?
+  qqMessageId        String?
+  qqDeliveryAttempts Int       @default(0)
+  qqNextAttemptAt    DateTime?
+  qqDeliveryError    String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   @@unique([userId, idempotencyKey])
   @@index([userId, status, dueTime])
 }
 
 model AssistantQQBinding {
-  userId              String       @id
-  user                User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  conversationId      String       @unique
-  conversation        Conversation @relation(fields: [conversationId], references: [id])
-  appId               String       @unique
-  appSecretCiphertext String
-  webhookTokenHash    String?      @unique
+  userId                 String       @id
+  user                   User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conversationId         String       @unique
+  conversation           Conversation @relation(fields: [conversationId], references: [id])
+  appId                  String       @unique
+  appSecretCiphertext    String
+  webhookTokenHash       String?      @unique
   webhookTokenCiphertext String?
-  webhookCreatedAt    DateTime?
-  webhookLastUsedAt   DateTime?
-  enabled             Boolean      @default(true)
-  qqOpenId            String?
-  status              String       @default("PENDING")
-  lastError           String?
-  connectedAt         DateTime?
-  lastInboundAt       DateTime?
-  createdAt           DateTime     @default(now())
-  updatedAt           DateTime     @updatedAt
+  webhookCreatedAt       DateTime?
+  webhookLastUsedAt      DateTime?
+  enabled                Boolean      @default(true)
+  qqOpenId               String?
+  status                 String       @default("PENDING")
+  lastError              String?
+  connectedAt            DateTime?
+  lastInboundAt          DateTime?
+  createdAt              DateTime     @default(now())
+  updatedAt              DateTime     @updatedAt
 
   @@index([enabled, status])
 }
@@ -724,16 +746,78 @@ model AssistantQQEvent {
   @@index([userId, createdAt])
 }
 
+model QqBotAccount {
+  id                  String    @id @default(uuid())
+  userId              String?
+  user                User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  appId               String    @unique
+  appSecretCiphertext String
+  label               String?
+  kind                String    @default("DEDICATED")
+  status              String    @default("PENDING")
+  lastError           String?
+  connectedAt         DateTime?
+  enabled             Boolean   @default(true)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  identities    QqUserIdentity[]
+  agentBindings AgentQQBinding[]
+
+  @@index([userId, enabled])
+  @@index([enabled, status])
+}
+
+model QqUserIdentity {
+  id           String       @id @default(uuid())
+  userId       String
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  botAccountId String
+  botAccount   QqBotAccount @relation(fields: [botAccountId], references: [id], onDelete: Cascade)
+  qqOpenId     String
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@unique([botAccountId, qqOpenId])
+  @@unique([userId, botAccountId])
+  @@index([userId])
+}
+
+model AgentQQBinding {
+  id                     String       @id @default(uuid())
+  userId                 String
+  user                   User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agentId                String
+  botAccountId           String
+  botAccount             QqBotAccount @relation(fields: [botAccountId], references: [id], onDelete: Cascade)
+  conversationId         String       @unique
+  conversation           Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  routeKey               String?
+  webhookTokenHash       String?      @unique
+  webhookTokenCiphertext String?
+  webhookCreatedAt       DateTime?
+  webhookLastUsedAt      DateTime?
+  enabled                Boolean      @default(true)
+  lastInboundAt          DateTime?
+  createdAt              DateTime     @default(now())
+  updatedAt              DateTime     @updatedAt
+
+  @@unique([userId, agentId])
+  @@index([botAccountId, routeKey])
+  @@index([botAccountId, enabled])
+  @@index([userId, updatedAt])
+}
+
 model AssistantProactiveDelivery {
-  id        String   @id @default(uuid())
+  id        String    @id @default(uuid())
   userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   sourceKey String
   activeKey String?
   greeting  String
-  status    String   @default("SHOWN")
+  status    String    @default("SHOWN")
   messageId String?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
   openedAt  DateTime?
 
   @@unique([userId, sourceKey])
@@ -766,39 +850,39 @@ model DailyChatUsage {
 }
 
 model SpaceMemory {
-  spaceId         String   @id
-  space           Space    @relation(fields: [spaceId], references: [id], onDelete: Cascade)
-  recentActivity  Json
-  rollingSummary  String?
-  historySummary  String?
-  activityCount   Int      @default(0)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  spaceId        String   @id
+  space          Space    @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  recentActivity Json
+  rollingSummary String?
+  historySummary String?
+  activityCount  Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 }
 
 model SpaceDiscussion {
-  id                String    @id @default(uuid())
-  spaceId           String
-  space             Space     @relation(fields: [spaceId], references: [id], onDelete: Cascade)
-  userId            String
-  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  topic             String
-  participantIds    Json
-  transcript        Json?
-  status            String    @default("QUEUED")
-  currentRound      Int       @default(1)
-  currentIndex      Int       @default(0)
-  maxRounds         Int       @default(2)
-  allowWeb          Boolean   @default(false)
-  webSearchCount    Int       @default(0)
-  pendingResearch   Json?
-  researchContext   String?
-  result            String?
-  error             String?
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
-  startedAt         DateTime?
-  completedAt       DateTime?
+  id              String    @id @default(uuid())
+  spaceId         String
+  space           Space     @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  topic           String
+  participantIds  Json
+  transcript      Json?
+  status          String    @default("QUEUED")
+  currentRound    Int       @default(1)
+  currentIndex    Int       @default(0)
+  maxRounds       Int       @default(2)
+  allowWeb        Boolean   @default(false)
+  webSearchCount  Int       @default(0)
+  pendingResearch Json?
+  researchContext String?
+  result          String?
+  error           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  startedAt       DateTime?
+  completedAt     DateTime?
 
   @@index([spaceId, createdAt])
   @@index([userId, createdAt])
@@ -806,28 +890,28 @@ model SpaceDiscussion {
 }
 
 model SpaceRelay {
-  id              String    @id @default(uuid())
-  spaceId         String
-  space           Space     @relation(fields: [spaceId], references: [id], onDelete: Cascade)
-  userId          String
-  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  kind             String
-  goal             String
-  participantIds   Json
-  approvalMode     String    @default("AUTO")
-  status           String    @default("QUEUED")
-  currentIndex     Int       @default(0)
-  turnCount        Int       @default(0)
-  maxTurns         Int       @default(60)
-  state            Json
-  transcript       Json?
-  pendingAction    Json?
-  result           String?
-  error            String?
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
-  startedAt        DateTime?
-  completedAt      DateTime?
+  id             String    @id @default(uuid())
+  spaceId        String
+  space          Space     @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind           String
+  goal           String
+  participantIds Json
+  approvalMode   String    @default("AUTO")
+  status         String    @default("QUEUED")
+  currentIndex   Int       @default(0)
+  turnCount      Int       @default(0)
+  maxTurns       Int       @default(60)
+  state          Json
+  transcript     Json?
+  pendingAction  Json?
+  result         String?
+  error          String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  startedAt      DateTime?
+  completedAt    DateTime?
 
   @@index([spaceId, createdAt])
   @@index([userId, createdAt])
@@ -835,43 +919,43 @@ model SpaceRelay {
 }
 
 model AgentRun {
-  id          String    @id @default(uuid())
-  spaceId     String
-  space       Space     @relation(fields: [spaceId], references: [id], onDelete: Cascade)
-  userId      String
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  input       String
-  status      String    @default("QUEUED")
-  result      String?
-  error       String?
-  retryOfId   String?
-  workId      String?
-  work        SpaceWork? @relation(fields: [workId], references: [id], onDelete: SetNull)
-  attempt     Int       @default(1)
-  workerId    String?
-  heartbeatAt DateTime?
-  completionId String?   @unique
-  modelRequestCount Int  @default(0)
-  modelRequestLimit Int  @default(12)
-  executionEngine String  @default("native")
-  engineVersion   String  @default("1")
-  runtimeVersion Int      @default(3)
-  eventSequence  Int      @default(0)
-  coordinatorState Json?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  startedAt   DateTime?
-  completedAt DateTime?
+  id                String     @id @default(uuid())
+  spaceId           String
+  space             Space      @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  userId            String
+  user              User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  input             String
+  status            String     @default("QUEUED")
+  result            String?
+  error             String?
+  retryOfId         String?
+  workId            String?
+  work              SpaceWork? @relation(fields: [workId], references: [id], onDelete: SetNull)
+  attempt           Int        @default(1)
+  workerId          String?
+  heartbeatAt       DateTime?
+  completionId      String?    @unique
+  modelRequestCount Int        @default(0)
+  modelRequestLimit Int        @default(12)
+  executionEngine   String     @default("native")
+  engineVersion     String     @default("1")
+  runtimeVersion    Int        @default(3)
+  eventSequence     Int        @default(0)
+  coordinatorState  Json?
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  startedAt         DateTime?
+  completedAt       DateTime?
 
-  tasks  AgentTask[]
-  events AgentRunEvent[]
-  outbox AgentRunOutbox?
-  artifactManifests AgentArtifactManifest[]
-  coordinatorTurns AgentCoordinatorTurn[]
-  taskCompletions AgentTaskCompletion[]
-  runtimeOutbox AgentRuntimeOutbox[]
+  tasks               AgentTask[]
+  events              AgentRunEvent[]
+  outbox              AgentRunOutbox?
+  artifactManifests   AgentArtifactManifest[]
+  coordinatorTurns    AgentCoordinatorTurn[]
+  taskCompletions     AgentTaskCompletion[]
+  runtimeOutbox       AgentRuntimeOutbox[]
   automationExecution SpaceAutomationExecution?
-  actionRequests SpaceActionRequest[]
+  actionRequests      SpaceActionRequest[]
 
   @@index([spaceId, createdAt])
   @@index([userId, createdAt])
@@ -881,68 +965,68 @@ model AgentRun {
 }
 
 model AgentTask {
-  id          String    @id @default(uuid())
-  runId       String
-  run         AgentRun  @relation(fields: [runId], references: [id], onDelete: Cascade)
-  agentId     String
-  agentName   String
-  title       String
-  instruction String
-  acceptanceCriteria String?
-  origin      String    @default("legacy_plan")
-  parentTaskId String?
-  mode        String     @default("executor")
-  dependsOn   Json?
-  skillId     String     @default("general-task")
-  skillVersion String    @default("1.0.0")
-  skillSnapshot Json?
-  webResearchRequired Boolean @default(false)
-  modelRequestCount Int  @default(0)
-  modelRequestLimit Int  @default(8)
-  status      String    @default("PENDING")
-  result      String?
-  error       String?
-  reviewFeedback String?
-  waitQuestion String?
-  waitReason   String?
-  waitAnswer   String?
-  waitingAt    DateTime?
-  proposedAt   DateTime?
-  approvedAt   DateTime?
-  submittedAt  DateTime?
-  reviewDecision String?
-  reviewSummary  String?
-  attempt     Int       @default(1)
-  sortOrder   Int
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  startedAt   DateTime?
-  completedAt DateTime?
-  reviewedAt  DateTime?
+  id                  String    @id @default(uuid())
+  runId               String
+  run                 AgentRun  @relation(fields: [runId], references: [id], onDelete: Cascade)
+  agentId             String
+  agentName           String
+  title               String
+  instruction         String
+  acceptanceCriteria  String?
+  origin              String    @default("legacy_plan")
+  parentTaskId        String?
+  mode                String    @default("executor")
+  dependsOn           Json?
+  skillId             String    @default("general-task")
+  skillVersion        String    @default("1.0.0")
+  skillSnapshot       Json?
+  webResearchRequired Boolean   @default(false)
+  modelRequestCount   Int       @default(0)
+  modelRequestLimit   Int       @default(8)
+  status              String    @default("PENDING")
+  result              String?
+  error               String?
+  reviewFeedback      String?
+  waitQuestion        String?
+  waitReason          String?
+  waitAnswer          String?
+  waitingAt           DateTime?
+  proposedAt          DateTime?
+  approvedAt          DateTime?
+  submittedAt         DateTime?
+  reviewDecision      String?
+  reviewSummary       String?
+  attempt             Int       @default(1)
+  sortOrder           Int
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  startedAt           DateTime?
+  completedAt         DateTime?
+  reviewedAt          DateTime?
 
   artifactManifests AgentArtifactManifest[]
-  completions AgentTaskCompletion[]
+  completions       AgentTaskCompletion[]
 
   @@index([runId, sortOrder])
   @@index([status])
 }
 
 model AgentCoordinatorTurn {
-  id             String   @id @default(uuid())
-  runId          String
-  run            AgentRun @relation(fields: [runId], references: [id], onDelete: Cascade)
-  triggerEventId String
-  status         String   @default("QUEUED")
-  inputSnapshot  Json?
-  action         Json?
-  error          String?
-  modelRequestCount Int   @default(0)
-  claimedBy      String?
-  claimedAt      DateTime?
-  startedAt      DateTime?
-  completedAt    DateTime?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id                String    @id @default(uuid())
+  runId             String
+  run               AgentRun  @relation(fields: [runId], references: [id], onDelete: Cascade)
+  triggerEventId    String
+  status            String    @default("QUEUED")
+  inputSnapshot     Json?
+  action            Json?
+  error             String?
+  modelRequestCount Int       @default(0)
+  claimedBy         String?
+  claimedAt         DateTime?
+  startedAt         DateTime?
+  completedAt       DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   @@unique([runId, triggerEventId])
   @@index([status, createdAt])
@@ -991,19 +1075,19 @@ model AgentArtifactManifest {
 }
 
 model AgentRunEvent {
-  id        String   @id @default(uuid())
-  runId     String
-  run       AgentRun @relation(fields: [runId], references: [id], onDelete: Cascade)
-  type      String
-  message   String
-  payload   Json?
-  idempotencyKey String? @unique
-  sequence  Int      @default(0)
-  taskId    String?
-  agentId   String?
-  attempt   Int?
-  actor     String?
-  createdAt DateTime @default(now())
+  id             String   @id @default(uuid())
+  runId          String
+  run            AgentRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  type           String
+  message        String
+  payload        Json?
+  idempotencyKey String?  @unique
+  sequence       Int      @default(0)
+  taskId         String?
+  agentId        String?
+  attempt        Int?
+  actor          String?
+  createdAt      DateTime @default(now())
 
   @@unique([runId, sequence])
   @@index([runId, createdAt])
@@ -1011,42 +1095,42 @@ model AgentRunEvent {
 }
 
 model AgentRunOutbox {
-  id             String   @id @default(uuid())
-  runId          String   @unique
-  run            AgentRun @relation(fields: [runId], references: [id], onDelete: Cascade)
-  idempotencyKey String   @unique
+  id             String    @id @default(uuid())
+  runId          String    @unique
+  run            AgentRun  @relation(fields: [runId], references: [id], onDelete: Cascade)
+  idempotencyKey String    @unique
   payload        Json
-  status         String   @default("PENDING")
-  attempts       Int      @default(0)
+  status         String    @default("PENDING")
+  attempts       Int       @default(0)
   lastError      String?
-  availableAt    DateTime @default(now())
+  availableAt    DateTime  @default(now())
   claimedBy      String?
   claimedAt      DateTime?
   deliveredAt    DateTime?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   @@index([status, availableAt])
   @@index([claimedBy, claimedAt])
 }
 
 model AgentRuntimeOutbox {
-  id             String   @id @default(uuid())
+  id             String    @id @default(uuid())
   runId          String
-  run            AgentRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  run            AgentRun  @relation(fields: [runId], references: [id], onDelete: Cascade)
   kind           String
   aggregateId    String
-  idempotencyKey String   @unique
+  idempotencyKey String    @unique
   payload        Json
-  status         String   @default("PENDING")
-  attempts       Int      @default(0)
+  status         String    @default("PENDING")
+  attempts       Int       @default(0)
   lastError      String?
-  availableAt    DateTime @default(now())
+  availableAt    DateTime  @default(now())
   claimedBy      String?
   claimedAt      DateTime?
   deliveredAt    DateTime?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   @@index([status, availableAt])
   @@index([runId, kind, createdAt])
@@ -1054,15 +1138,15 @@ model AgentRuntimeOutbox {
 }
 
 model StudioWorkspace {
-  id          String          @id @default(uuid())
-  userId      String
-  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id           String          @id @default(uuid())
+  userId       String
+  user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   name         String
   description  String?
   systemPrompt String?
   createdAt    DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
-  messages    StudioMessage[]
+  updatedAt    DateTime        @updatedAt
+  messages     StudioMessage[]
 
   @@index([userId, createdAt])
 }
@@ -1072,9 +1156,9 @@ model StudioMessage {
   workspaceId String
   workspace   StudioWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   userId      String
-  role        String          // 'user' | 'assistant' | 'tool'
+  role        String // 'user' | 'assistant' | 'tool'
   content     String?
-  tools       Json?           // JSON array of ToolInvocation: [{ id, name, preview, status, result, sessionId, agentId }]
+  tools       Json? // JSON array of ToolInvocation: [{ id, name, preview, status, result, sessionId, agentId }]
   tokens      Int?
   createdAt   DateTime        @default(now())
 
@@ -1083,20 +1167,20 @@ model StudioMessage {
 }
 
 model TrendingFavorite {
-  id          String   @id @default(uuid())
-  userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  source      String
-  sourceName  String
-  itemId      String
-  title       String
-  url         String
-  heat        String?
-  desc        String?
-  category    String?
-  date        String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  source     String
+  sourceName String
+  itemId     String
+  title      String
+  url        String
+  heat       String?
+  desc       String?
+  category   String?
+  date       String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   @@unique([userId, source, itemId])
   @@index([userId, createdAt])

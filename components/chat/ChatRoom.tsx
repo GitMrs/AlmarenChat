@@ -347,7 +347,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
 
         // Agent chat uses one persistent main conversation per user and agent.
         const mainConversation = !existingConversationId && found && authenticated
-          ? (await agentsApi.getMainConversation(found.id, found).catch(() => null))?.conversation
+          ? (await agentsApi.getMainConversation(found.id).catch(() => null))?.conversation
           : null;
         const activeConversationId = existingConversationId || mainConversation?.id || null;
 

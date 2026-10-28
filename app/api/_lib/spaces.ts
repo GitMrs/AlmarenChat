@@ -8,7 +8,7 @@ import type { Agent } from '@/types';
 
 export type ResolvedSpaceAgent = Pick<
   Agent,
-  'id' | 'name' | 'avatar' | 'description' | 'category' | 'tone' | 'systemPrompt'
+  'id' | 'name' | 'avatar' | 'description' | 'category' | 'tone' | 'systemPrompt' | 'voice'
 >;
 
 export const SPACE_COORDINATOR_ID = 'space-coordinator';

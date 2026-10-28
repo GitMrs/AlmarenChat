@@ -2,7 +2,7 @@ import { decodeChatBody } from '../chat/chat-stream.mjs';
 import type { EvaluatedEvent } from '../workspace/crypto/event-temporal';
 import type { AgentModelFields, AgentModelSettingsResponse, AgentMemoryItem, AgentExperience, ChatContextStats } from '@/types';
 import type { AgentDailyStudyRecord } from '@/lib/agent-study/types';
-import type { AgentGrowthEvent, AgentGrowthProfile, AgentGrowthState, AgentRun, AssistantContextStats, AssistantConversationSummary, AssistantExperience, AssistantExperienceMessage, AssistantMemoryItem, AssistantQQBinding, AssistantReminder, AssistantReminderCandidate, Message, MessageAttachment, PersonalAssistantBootstrap, PersonalAssistantProfile, SpaceActionRequest, SpaceAutomation, SpaceConnector, SpaceDiscussion, SpaceDiscussionSettings, SpaceFileShare, SpaceOperationOutcome, SpaceOperationsSummary, SpaceRelay, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal, SpaceWork, SpaceWorkVersion, SpaceMcpServer, SpaceWebhook, AssistantMcpServer, McpProbeResult } from '@/types';
+import type { AgentGrowthEvent, AgentGrowthProfile, AgentGrowthState, AgentQQBindingResponse, AgentRun, AssistantContextStats, AssistantConversationSummary, AssistantExperience, AssistantExperienceMessage, AssistantMemoryItem, AssistantQQBinding, AssistantReminder, AssistantReminderCandidate, BotBindingListResponse, Message, MessageAttachment, PersonalAssistantBootstrap, PersonalAssistantProfile, SpaceActionRequest, SpaceAutomation, SpaceConnector, SpaceDiscussion, SpaceDiscussionSettings, SpaceFileShare, SpaceOperationOutcome, SpaceOperationsSummary, SpaceRelay, SpaceSkill, SpaceSkillPreview, SpaceTaskProposal, SpaceWork, SpaceWorkVersion, SpaceMcpServer, SpaceWebhook, AssistantMcpServer, McpProbeResult } from '@/types';
 
 export interface BilibiliProfile {
   mid: string;
@@ -361,6 +361,10 @@ export const assistant = {
     }),
 };
 
+export const botBindings = {
+  list: () => request<BotBindingListResponse>('/qq/bindings'),
+};
+
 // Agents
 export const agents = {
   modelSettings: (id: string) => request<AgentModelSettingsResponse>(`/agents/${encodeURIComponent(id)}/model-settings`),
@@ -369,10 +373,27 @@ export const agents = {
   list: () => request<{ agents: any[] }>('/agents'),
   mine: () => request<{ agents: any[] }>('/agents?scope=mine'),
   get: (id: string) => request<{ agent: any }>(`/agents/${id}`),
-  getMainConversation: (id: string, agentSnapshot?: any) => request<{ conversation: any; created: boolean }>(`/agents/${id}/main-conversation`, {
+  getMainConversation: (id: string) => request<{ conversation: any; created: boolean }>(`/agents/${id}/main-conversation`, {
     method: 'POST',
-    body: JSON.stringify({ agentSnapshot }),
   }),
+  getQQBinding: (id: string) =>
+    request<AgentQQBindingResponse>(`/agents/${encodeURIComponent(id)}/qq`),
+  saveQQBinding: (id: string, data: { appId: string; appSecret: string }) =>
+    request<AgentQQBindingResponse>(`/agents/${encodeURIComponent(id)}/qq`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+  updateQQBinding: (id: string, data: { enabled?: boolean; action?: string; password?: string }) =>
+    request<AgentQQBindingResponse>(`/agents/${encodeURIComponent(id)}/qq`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+  deleteQQBinding: (id: string) =>
+    request<{ success: true }>(`/agents/${encodeURIComponent(id)}/qq`, { method: 'DELETE' }),
+  testQQBinding: (id: string) =>
+    request<{ sent: boolean; messageId?: string | null }>(`/agents/${encodeURIComponent(id)}/qq/test`, {
+      method: 'POST',
+    }),
   create: (data: any) =>
     request<{ agent: any }>('/agents', {
       method: 'POST',
