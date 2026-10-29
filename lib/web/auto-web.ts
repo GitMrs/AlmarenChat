@@ -7,6 +7,7 @@ import { queryCryptoMarket } from '../workspace/crypto/market-tools';
 import { getAvailableSources, getTrendingSnapshot } from '../trending';
 
 export { AUTO_WEB_GUIDANCE, AUTO_WEB_SCHEMAS, runAutoWebChat } from './auto-web-core.mjs';
+export { DATA_TOOL_GUIDANCE, TOOL_DECISION_POLICY, TOOL_SAFETY_POLICY, buildToolGuidance } from '../chat/tool-policy.mjs';
 
 export function createChatWebTools(options: { apiKey?: string | null; defaultWeatherLocation?: unknown; signal?: AbortSignal; onStatus?: (label: string) => void; history?: any[]; cryptoContext?: (data: any) => string } = {}) {
   const defaultWeatherLocation = normalizeWeatherLocation(options.defaultWeatherLocation);

@@ -3,11 +3,47 @@
 import { Check, Copy, Loader2, RefreshCw, Square, Trash2, Volume2 } from 'lucide-react';
 import { cn } from '@/lib/client/utils';
 
-function formatTime(value: string) {
+function formatClock(date: Date) {
   return new Intl.DateTimeFormat('zh-CN', {
     hour: '2-digit',
     minute: '2-digit',
-  }).format(new Date(value));
+    hour12: false,
+  }).format(date);
+}
+
+function dayNumber(date: Date) {
+  return Math.floor(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / 86400000);
+}
+
+function formatTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+
+  const now = new Date();
+  const dayDiff = dayNumber(now) - dayNumber(date);
+  const clock = formatClock(date);
+  if (dayDiff === 0) return clock;
+  if (dayDiff === 1) return `昨天 ${clock}`;
+
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return date.getFullYear() === now.getFullYear()
+    ? `${month}月${day}日 ${clock}`
+    : `${date.getFullYear()}年${month}月${day}日 ${clock}`;
+}
+
+function formatFullDateTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return new Intl.DateTimeFormat('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).format(date);
 }
 
 export default function MessageActions({
@@ -44,12 +80,7 @@ export default function MessageActions({
     >
       <span
         className="px-1 text-[11px] font-semibold leading-7"
-        title={new Intl.DateTimeFormat('zh-CN', {
-          month: '2-digit',
-          day: '2-digit',
-          hour: '2-digit',
-          minute: '2-digit',
-        }).format(new Date(createdAt))}
+        title={formatFullDateTime(createdAt)}
       >
         {formatTime(createdAt)}
       </span>
