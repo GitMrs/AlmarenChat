@@ -11,7 +11,7 @@ import { formatKnowledgeContext, getKnowledgeHits } from '@/lib/knowledge/knowle
 import { createModelClient, resolveModelName } from '@/lib/core/model-client';
 import { reserveChatQuota } from '@/lib/chat/chat-quota';
 import { withMessageReasoning } from '@/lib/chat/reasoning.mjs';
-import { stripHistoryRetrievalNotices } from '@/lib/personal-assistant/retrieval-notice.mjs';
+import { stripHistoryRetrievalNotices, stripLeadingHistoryTimestampMetadata } from '@/lib/personal-assistant/retrieval-notice.mjs';
 import { loadAgentMemoryContext } from '@/lib/agents/memory/agent-memory';
 import { currentTimeContext } from '@/lib/agents/memory/current-time-context.mjs';
 import { agentChatArchiveState, archiveAgentChat } from '@/app/api/_lib/agent-personal-memory';
@@ -171,7 +171,9 @@ export async function POST(request: Request) {
       ...msg,
       id: String(msg.id || `history-${index}`),
       role: String(msg.role || 'assistant'),
-      content: msg.role === 'assistant' ? stripHistoryRetrievalNotices(msg.content) : String(msg.content || ''),
+      content: msg.role === 'assistant'
+        ? stripLeadingHistoryTimestampMetadata(stripHistoryRetrievalNotices(msg.content))
+        : String(msg.content || ''),
     }));
     const historyTargetTokens = conversationContextTargetTokens(
       modelConfig.modelName,
