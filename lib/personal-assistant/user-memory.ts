@@ -67,8 +67,8 @@ export function selectRelevantUserMemories<T extends { category: string; content
     return matches.slice(0, limit).map((item) => item.memory);
   }
 
-  // 若无强相关词命中，选取前 3 条最新核心偏好作为兜底认知
-  return memories.slice(0, Math.min(limit, 3));
+  // 没有相关词命中时不注入记忆，避免把无关偏好变成当前对话的暗示。
+  return [];
 }
 
 export async function loadUserMemoryItems(userId: string, agentId?: string | null, limit = 40) {

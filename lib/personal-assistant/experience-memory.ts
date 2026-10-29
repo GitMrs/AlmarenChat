@@ -4,7 +4,7 @@ import { formatAssistantHistoryTimestamp } from '@/lib/personal-assistant/histor
 
 export const EXPERIENCE_ARCHIVE_TRIGGER = 64;
 export const EXPERIENCE_ARCHIVE_BATCH = 48;
-const EXPERIENCE_CONTEXT_LIMIT = 12;
+const EXPERIENCE_CONTEXT_LIMIT = 4;
 
 type RawMessage = {
   id: string;
@@ -253,7 +253,8 @@ export async function loadAssistantMemoryContext(options: {
   ]);
 
   const terms = queryTerms(options.query);
-  const recent = experiencePool.slice(0, 6);
+  const asksAboutHistory = /记得|记忆|上次|以前|昨天|前天|昨晚|回忆|经历|做过|吃过|聊过|提过|最近.*(做|吃|聊|经历)/i.test(options.query);
+  const recent = asksAboutHistory ? experiencePool.slice(0, 2) : [];
   const relevant = experiencePool
     .map((experience) => ({
       experience,
@@ -271,8 +272,8 @@ export async function loadAssistantMemoryContext(options: {
     ? selected.map((item) => {
         const start = item.startAt.toISOString().slice(0, 10);
         const end = item.endAt.toISOString().slice(0, 10);
-        return `[${start}${start === end ? '' : ` 至 ${end}`}，${item.messageCount} 条消息]\n${item.summary}`;
-      }).join('\n\n')
+        return `[${start}${start === end ? '' : ` 至 ${end}`}，${item.messageCount} 条消息]\n${item.summary.slice(0, 900)}`;
+      }).join('\n\n').slice(0, 4_000)
     : '';
 
   return { history: history.reverse(), experienceContext };

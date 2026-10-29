@@ -210,6 +210,7 @@ export async function POST(request: Request) {
       activityContext,
       webEnabled: !localMode,
       experienceContext: memoryContext.experienceContext,
+        query: messageForModel,
     });
     const compressedHistory = compressConversationContext(
       buildTimedAssistantHistory(memoryContext.history),

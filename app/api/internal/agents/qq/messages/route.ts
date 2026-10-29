@@ -18,6 +18,7 @@ import { isValidInternalQQSecret } from '@/lib/qq-assistant/credentials.mjs';
 import { qqImageAttachments } from '@/lib/qq-assistant/policy.mjs';
 import { agentChatArchiveState, archiveAgentChat } from '@/app/api/_lib/agent-personal-memory';
 import { loadAgentModelSetting, resolveUserModelConfig } from '@/app/api/_lib/agent-model';
+import { CONVERSATION_GROUNDING_GUIDANCE } from '@/lib/chat/conversation-grounding.mjs';
 import { stripHistoryRetrievalNotices } from '@/lib/personal-assistant/retrieval-notice.mjs';
 
 export const runtime = 'nodejs';
@@ -189,6 +190,7 @@ export async function POST(request: Request) {
       agentMemory,
       worldContext,
       knowledgeContext,
+      CONVERSATION_GROUNDING_GUIDANCE,
       '【当前渠道】你正在 QQ 私聊中回复用户。请使用适合即时消息阅读的标准 Markdown，避免 HTML、复杂表格和站内相对链接。',
     ].filter(Boolean).join('\n\n');
 

@@ -167,6 +167,7 @@ export async function POST(request: Request) {
         activityContext,
         webEnabled: true,
         experienceContext: memoryContext.experienceContext,
+        query: message,
       }),
       '【当前渠道】：你正在 QQ 私聊中回复用户。QQ 与网页共用同一个主聊天上下文；不要提供站内相对链接，可以使用 QQ 支持的标准 Markdown，但避免 HTML 和复杂表格，回答保持适合即时消息阅读。长期记忆、任务和提醒也与网页共享。用户要求提醒时不要声称已经创建，系统会在回复末尾附加真实创建结果。',
     ].filter(Boolean).join('\n\n');

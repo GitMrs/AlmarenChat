@@ -19,6 +19,7 @@ import { compressConversationContext, estimateMessagesTokens } from '@/lib/agent
 import { conversationContextTargetTokens } from '@/lib/core/model-limits.mjs';
 import { loadAgentWorldContext } from '@/lib/world/context';
 import { loadAgentModelSetting, resolveUserModelConfig } from '@/app/api/_lib/agent-model';
+import { CONVERSATION_GROUNDING_GUIDANCE } from '@/lib/chat/conversation-grounding.mjs';
 
 const TEXT_CHAT_COST = 1;
 const IMAGE_CHAT_COST = 3;
@@ -201,7 +202,7 @@ export async function POST(request: Request) {
       usesAgentMemory ? loadAgentMemoryContext({ userId, agentId: memoryAgentId, query: textMessage }) : Promise.resolve(''),
       loadAgentWorldContext({ agentId: conversationSettings?.agentId || agentId, query: textMessage, history: normalizedHistory }),
     ]);
-    let finalContext = [currentTimeContext(), context, employeeMemory, worldContext].filter(Boolean).join('\n\n');
+    let finalContext = [currentTimeContext(), context, employeeMemory, worldContext, CONVERSATION_GROUNDING_GUIDANCE].filter(Boolean).join('\n\n');
     if (knowledgeEnabled && agentId && textMessage.trim()) {
       try {
         const hits = await getKnowledgeHits({ agentId, userId }, textMessage);
