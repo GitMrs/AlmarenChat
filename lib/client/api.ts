@@ -1155,6 +1155,11 @@ export const cryptoEvents = {
     request<{ success: boolean; message: string; data: any }>('/crypto/events', {
       method: 'POST',
     }),
+  saveImpact: (eventId: string, impact: Record<string, unknown>) =>
+    request<{ success: boolean; data?: { eventId: string; lifecycleState: string }; error?: string }>('/crypto/events', {
+      method: 'PUT',
+      body: JSON.stringify({ eventId, impact }),
+    }),
 };
 
 export const downloadKnowledgeFile = spaces.downloadKnowledgeFile;

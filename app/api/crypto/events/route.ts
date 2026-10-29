@@ -1,10 +1,14 @@
 import { NextResponse } from 'next/server';
 import {
   evaluateEventPhase,
+  getEventLifecycleState,
+  type EventImpactRecord,
+  groupCryptoEvents,
   type CryptoEvent,
   type EvaluatedEvent,
 } from '@/lib/workspace/crypto/event-temporal.ts';
-import { readCryptoEventsFromDisk, syncMacroEvents } from '@/lib/workspace/crypto/event-sync.ts';
+import { persistEventImpact, readCryptoEventsFromDisk, syncMacroEvents } from '@/lib/workspace/crypto/event-sync.ts';
+import { hasCompleteEventMarket } from '@/lib/workspace/crypto/event-market.ts';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -29,11 +33,15 @@ export async function GET(request: Request) {
       );
     }
 
+    // 日历源可能把同一场 FOMC 拆成多行；接口只返回一个代表事件，原始阶段挂在 eventGroupMembers 中。
+    events = groupCryptoEvents(events);
+
     const evaluated: EvaluatedEvent[] = events.map((e) => {
       const evalRes = evaluateEventPhase(e, now);
       return {
         event: e,
         phase: evalRes.phase,
+        lifecycleState: getEventLifecycleState(e, now),
         deltaMinutes: evalRes.deltaMinutes,
         countdownText: evalRes.countdownText,
         formattedLocalTime: evalRes.formattedLocalTime,
@@ -94,5 +102,42 @@ export async function POST() {
       },
       { status: 500 }
     );
+  }
+}
+
+/** 保存事件复盘。带核验结论时必须已经完成 24 小时行情窗口，并提供可访问来源。 */
+export async function PUT(request: Request) {
+  let body: any;
+  try { body = await request.json(); }
+  catch { return NextResponse.json({ success: false, error: '无效请求' }, { status: 400 }); }
+  const eventId = typeof body?.eventId === 'string' ? body.eventId.trim() : '';
+  const impact = body?.impact as EventImpactRecord | undefined;
+  if (!eventId || !impact || typeof impact !== 'object' || !impact.marketReaction || typeof impact.marketReaction !== 'object') {
+    return NextResponse.json({ success: false, error: '缺少有效的 eventId 或复盘内容' }, { status: 400 });
+  }
+  try {
+    const events = await readCryptoEventsFromDisk();
+    const event = events.find((item) => item.id === eventId);
+    if (!event) return NextResponse.json({ success: false, error: '事件不存在' }, { status: 404 });
+    if (impact.verification) {
+      const verification = impact.verification;
+      const verifiedAt = Date.parse(verification.verifiedAt);
+      const eventAt = Date.parse(event.timestamp);
+      const sourcesValid = Array.isArray(verification.sourceUrls) && verification.sourceUrls.length > 0 &&
+        verification.sourceUrls.every((url) => { try { return ['https:', 'http:'].includes(new URL(url).protocol); } catch { return false; } });
+      if (!sourcesValid || !Number.isFinite(verifiedAt) || verifiedAt < eventAt + 24 * 60 * 60_000 || verifiedAt > Date.now()) {
+        return NextResponse.json({ success: false, error: '核验复盘必须在事件 24 小时后提交，并包含有效来源 URL' }, { status: 422 });
+      }
+      if (!hasCompleteEventMarket(event, new Date())) {
+        return NextResponse.json({ success: false, error: '24 小时行情窗口尚未完成，暂不能提交最终复盘' }, { status: 422 });
+      }
+    }
+    const saved = await persistEventImpact(eventId, impact);
+    return saved
+      ? NextResponse.json({ success: true, data: { eventId, lifecycleState: getEventLifecycleState({ ...event, impact }, new Date()) } })
+      : NextResponse.json({ success: false, error: '复盘保存失败' }, { status: 500 });
+  } catch (error: any) {
+    console.error('[api/crypto/events] PUT review failed:', error);
+    return NextResponse.json({ success: false, error: error?.message || '复盘保存失败' }, { status: 500 });
   }
 }

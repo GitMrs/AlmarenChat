@@ -76,6 +76,44 @@ function recordAlertCooldown(key: string) {
 }
 
 /**
+ * 日历源会把同一场 FOMC 拆成 Federal Funds Rate、FOMC Statement 等多行。
+ * 详情页保留这些原始事件，但哨兵在同一公布时刻只提醒一次。
+ */
+function macroEventGroupKey(event: { id: string; title: string; timestamp: string }) {
+  const title = String(event.title || '');
+  if (/(?:fomc|federal funds rate|美联储.*(?:利率决议|政策声明|新闻发布会))/i.test(title)) {
+    return `fomc:${event.timestamp}`;
+  }
+  return `event:${event.id}`;
+}
+
+function hasCompleteMarketObservation(event: { marketObservation?: { stages?: Record<string, { status?: string }> } }): boolean {
+  return ['5m', '1h', '24h'].every((window) => event.marketObservation?.stages?.[window]?.status === 'complete');
+}
+
+function hasCompleteEventGroupMarket(event: {
+  marketObservation?: { stages?: Record<string, { status?: string }> };
+  eventGroupMembers?: Array<{ marketObservation?: { stages?: Record<string, { status?: string }> } }>;
+}): boolean {
+  return [event, ...(event.eventGroupMembers || [])].every(hasCompleteMarketObservation);
+}
+
+function marketReadySummary(event: { marketObservation?: { stages?: Record<string, { status?: string; returnPct?: number } | undefined> } }): string {
+  return ['5m', '1h', '24h'].map((window) => {
+    const value = event.marketObservation?.stages?.[window]?.returnPct;
+    return `${window} ${typeof value === 'number' && Number.isFinite(value) ? `${value >= 0 ? '+' : ''}${value.toFixed(2)}%` : '未知'}`;
+  }).join(' · ');
+}
+
+function sentinelReminderIdempotencyKey(spaceId: string, alerts: CheckAlert[]) {
+  const parts = alerts
+    .map((alert) => alert.dedupeKey || `${alert.type}:${alert.symbol}:${alert.title}`)
+    .sort()
+    .join('|');
+  return `crypto-sentinel:${spaceId}:${parts}`.slice(0, 180);
+}
+
+/**
  * 从 Prisma 读取 Space 的盯盘状态
  * 采用 Space.templateSnapshot.sentinelState 统一存储，百分之百生产环境兼容
  */
@@ -232,6 +270,8 @@ export interface CheckAlert {
   content: string;
   level: 'INFO' | 'WARN' | 'CRITICAL';
   notifyQQ: boolean;
+  /** 用于跨进程/重启后的通知幂等，不展示给用户。 */
+  dedupeKey?: string;
 }
 
 /**
@@ -396,7 +436,8 @@ export async function checkSentinelForSpace(
 
       // ① 事前倒计时告警 (T-35m ~ T-10m) 且冷却防刷屏 60 分钟
       if (phase === 'IMPENDING' && deltaMinutes <= 35 && deltaMinutes >= 10) {
-        const alertKey = `${spaceId}:event:${event.id}:T30M`;
+        const eventGroupKey = macroEventGroupKey(event);
+        const alertKey = `${spaceId}:event-group:${eventGroupKey}:T30M`;
         if (!isAlertInCooldown(alertKey, 60 * 60 * 1000)) {
           recordAlertCooldown(alertKey);
           alerts.push({
@@ -406,12 +447,14 @@ export async function checkSentinelForSpace(
             content: `【鹰眼·宏观暴风雨预警】：重磅大事件【${event.title}】将于 ${countdownText} 后出炉！\n• 战备铁律：${event.guidance?.riskInstruction || '严禁追涨杀跌，持仓严格上移防守损！'}\n• 历史参考：过往同类事件双向插针概率极高，请持仓者做好防插针准备！`,
             level: 'CRITICAL',
             notifyQQ: true,
+            dedupeKey: `${eventGroupKey}:T30M`,
           });
         }
       }
       // ② 预定公布后 15~45 分钟的早期观察，不能替代事件窗口统计或实际公布值。
       else if (phase === 'DIGESTING' && deltaMinutes <= -15 && deltaMinutes >= -45) {
-        const alertKey = `${spaceId}:event:${event.id}:DIGEST`;
+        const eventGroupKey = macroEventGroupKey(event);
+        const alertKey = `${spaceId}:event-group:${eventGroupKey}:DIGEST`;
         if (!isAlertInCooldown(alertKey, 2 * 60 * 60 * 1000)) {
           recordAlertCooldown(alertKey);
           const btcSnap = marketMap['BTC'];
@@ -439,6 +482,25 @@ export async function checkSentinelForSpace(
             content: `【鹰眼·早期观察】：${event.title} 已到预定公布时间 ${Math.round(-deltaMinutes)} 分钟，实际公布值与预期差尚未核验。\n• ${priceInfo}\n• 本条不构成完整复盘，1小时与24小时走势尚未完成核验，请继续观察。`,
             level: 'INFO',
             notifyQQ: state.activePositions.length > 0,
+            dedupeKey: `${eventGroupKey}:DIGEST`,
+          });
+        }
+      }
+
+      // ③ 整场事件的所有阶段都完成 24h 行情后，只提醒一次进入最终复盘。
+      if (hasCompleteEventGroupMarket(event) && !event.impact?.verification) {
+        const eventGroupKey = macroEventGroupKey(event);
+        const alertKey = `${spaceId}:event-group:${eventGroupKey}:REVIEW_READY`;
+        if (!isAlertInCooldown(alertKey, 2 * 60 * 60 * 1000)) {
+          recordAlertCooldown(alertKey);
+          alerts.push({
+            type: 'MACRO_EVENT',
+            symbol: event.impactCoins[0] || 'BTC',
+            title: `✅【事件复盘就绪】${event.title} 24小时行情已完成`,
+            content: `【鹰眼·事件闭环】：${event.title} 的 5m、1h、24h 客观行情已经采集完成（${marketReadySummary(event)}）。\n• 当前只完成价格观察，实际公布值、预期差和事件因果仍待来源核验。\n• 请前往空间补充复盘，完成后将沉淀为历史战术剧本。`,
+            level: 'INFO',
+            notifyQQ: true,
+            dedupeKey: `${eventGroupKey}:REVIEW_READY`,
           });
         }
       }
@@ -478,16 +540,20 @@ export async function checkSentinelForSpace(
   // 3. 若有告警产生，写入空间聊天并推送 QQ
   if (alerts.length > 0) {
     const alertDigest = alerts.map((a) => `**${a.title}**\n${a.content}`).join('\n\n---\n\n');
+    const alertSourceKey = sentinelReminderIdempotencyKey(spaceId, alerts);
 
     // 写入空间群聊记录 (使用 Prisma)
     try {
-      await prisma.spaceMessage.create({
-        data: {
+      await prisma.spaceMessage.upsert({
+        where: { sourceKey: alertSourceKey },
+        update: {},
+        create: {
           id: `msg-sentinel-${Date.now()}-${randomUUID().slice(0, 6)}`,
           spaceId,
           role: 'assistant',
           speakerAgentId: 'crypto-ticker-sentinel',
           content: `🦅 **【鹰眼·离线后台哨兵速报】**\n\n${alertDigest}`,
+          sourceKey: alertSourceKey,
         },
       });
     } catch (e: any) {
@@ -508,26 +574,34 @@ export async function checkSentinelForSpace(
           const qqAlerts = alerts.filter((a) => a.notifyQQ !== false);
           if (qqAlerts.length === 1) {
             const a = qqAlerts[0];
-            const reminderId = `rem-sentinel-${Date.now()}-${randomUUID().slice(0, 6)}`;
-            await prisma.assistantReminder.create({
-              data: {
-                id: reminderId,
+            const content = `🦅【加密合约作战室·紧急盘面告警】\n${a.title}\n${a.content}`;
+            const idempotencyKey = sentinelReminderIdempotencyKey(spaceId, qqAlerts);
+            await prisma.assistantReminder.upsert({
+              where: { userId_idempotencyKey: { userId: state.userId, idempotencyKey } },
+              update: {},
+              create: {
+                id: `rem-sentinel-${Date.now()}-${randomUUID().slice(0, 6)}`,
                 userId: state.userId,
-                content: `🦅【加密合约作战室·紧急盘面告警】\n${a.title}\n${a.content}`,
+                content,
                 dueTime: new Date(),
                 status: 'PENDING',
+                idempotencyKey,
               },
             });
           } else if (qqAlerts.length > 1) {
             const digestItems = qqAlerts.map((a, i) => `${i + 1}. ${a.title}\n${a.content}`).join('\n\n');
-            const reminderId = `rem-sentinel-${Date.now()}-${randomUUID().slice(0, 6)}`;
-            await prisma.assistantReminder.create({
-              data: {
-                id: reminderId,
+            const content = `🦅【加密合约作战室·盘面异动汇总 (${qqAlerts.length}笔)】\n\n${digestItems}\n\n请前往空间查看详细建议与盘面。`;
+            const idempotencyKey = sentinelReminderIdempotencyKey(spaceId, qqAlerts);
+            await prisma.assistantReminder.upsert({
+              where: { userId_idempotencyKey: { userId: state.userId, idempotencyKey } },
+              update: {},
+              create: {
+                id: `rem-sentinel-${Date.now()}-${randomUUID().slice(0, 6)}`,
                 userId: state.userId,
-                content: `🦅【加密合约作战室·盘面异动汇总 (${qqAlerts.length}笔)】\n\n${digestItems}\n\n请前往空间查看详细建议与盘面。`,
+                content,
                 dueTime: new Date(),
                 status: 'PENDING',
+                idempotencyKey,
               },
             });
           }

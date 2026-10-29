@@ -1,9 +1,12 @@
 import cryptoEventsRaw from './crypto-events.json' with { type: 'json' };
 import { EVENT_MARKET_WINDOWS, getEventMarketResult, hasCompleteEventMarket, formatMarketPercent, type EventMarketObservation, type EventMarketWindow } from './event-market.ts';
+import { groupCryptoEvents } from './event-groups.ts';
+export { dedupeCryptoEventPhases, getCryptoEventGroupKey, groupCryptoEvents } from './event-groups.ts';
 
 export type EventCategory = 'macro' | 'unlock' | 'upgrade' | 'regulatory' | 'derivatives';
 export type VolatilityTier = 1 | 2 | 3;
 export type EventPhase = 'IMPENDING' | 'IN_THE_STORM' | 'DIGESTING' | 'DORMANT';
+export type EventLifecycleState = 'UPCOMING' | 'TRACKING_MARKET' | 'REVIEW_PENDING' | 'REVIEWED';
 
 export interface EventImpactRecord {
   // 复盘核验独立于日历来源；旧记录缺少此字段时保留，但不作为已验证经验使用。
@@ -58,11 +61,16 @@ export interface CryptoEvent {
   };
   impact?: EventImpactRecord;
   marketObservation?: EventMarketObservation;
+  /** 同一场宏观事件的稳定分组键；原始日历记录仍按各自 id 保留。 */
+  eventGroupKey?: string;
+  /** 分组后代表事件关联的其他阶段/别名，仅用于接口展示。 */
+  eventGroupMembers?: Array<Pick<CryptoEvent, 'id' | 'title' | 'timestamp' | 'marketObservation' | 'impact'>>;
 }
 
 export interface EvaluatedEvent {
   event: CryptoEvent;
   phase: EventPhase;
+  lifecycleState: EventLifecycleState;
   deltaMinutes: number;
   countdownText: string;
   formattedLocalTime: string;
@@ -123,6 +131,15 @@ export function getVerifiedEventImpact(event: CryptoEvent, now = new Date()): Ev
     catch { return false; }
   });
   return hasSources ? impact : undefined;
+}
+
+/** 事件后续流程状态：行情采集完成后才进入待复盘，核验完成后才进入已复盘。 */
+export function getEventLifecycleState(event: CryptoEvent, now = new Date()): EventLifecycleState {
+  if (getVerifiedEventImpact(event, now)) return 'REVIEWED';
+  const eventAt = Date.parse(event.timestamp);
+  if (!Number.isFinite(eventAt) || now.getTime() < eventAt) return 'UPCOMING';
+  if (hasCompleteEventMarket(event, now)) return 'REVIEW_PENDING';
+  return 'TRACKING_MARKET';
 }
 
 export function formatEventSurprise(impact?: EventImpactRecord): string {
@@ -234,7 +251,7 @@ export function filterEventsForSpace(
   spaceCustomEvents: CryptoEvent[] = [],
   activeSymbols: string[] = []
 ): CryptoEvent[] {
-  const merged = [...globalEvents, ...spaceCustomEvents];
+  const merged = groupCryptoEvents([...globalEvents, ...spaceCustomEvents]);
   if (activeSymbols.length === 0) {
     // 未指定币种时默认仅返回影响全市场的全局事件
     return merged.filter((e) => e.impactCoins.includes('ALL'));
@@ -297,6 +314,7 @@ export function buildEventRadarContext(options: EventRadarOptions = {}): string 
     if (evaluation.phase !== 'DORMANT') {
       activeEvaluations.push({
         event,
+        lifecycleState: getEventLifecycleState(event, now),
         ...evaluation,
       });
     }

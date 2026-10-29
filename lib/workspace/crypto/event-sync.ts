@@ -279,6 +279,11 @@ export function transformToCryptoEvents(rawEvents: RawCalendarItem[], fetchedAt 
       riskInstruction: '数据发布前后15分钟内市场流动性剧震，严禁市价追单',
     };
 
+    const eventGroupKey = !/member[- ]|member.*speaks|成员.*讲话/i.test(`${normalizedTitle} ${id}`) &&
+      /federal funds rate|fomc.*(?:statement|press conference|rate|decision|projections)|美联储.*(?:利率决议|政策声明|新闻发布会|经济预测)/i.test(`${normalizedTitle} ${id}`)
+      ? `fomc:${isoDate.slice(0, 10)}`
+      : undefined;
+
     // 源未提供的市场预期或前值显式记为 null，不自行推测。
     const forecastVal = item.forecast && item.forecast.trim() ? item.forecast.trim() : null;
     const previousVal = item.previous && item.previous.trim() ? item.previous.trim() : null;
@@ -300,6 +305,7 @@ export function transformToCryptoEvents(rawEvents: RawCalendarItem[], fetchedAt 
         impact: item.impact, fetchedAt, calendarWeek: calendarWeek(isoDate),
       },
       guidance,
+      ...(eventGroupKey ? { eventGroupKey } : {}),
     });
   }
 

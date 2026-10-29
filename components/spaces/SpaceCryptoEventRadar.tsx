@@ -21,9 +21,16 @@ import {
 } from 'lucide-react';
 import { cryptoEvents, type CryptoEventsData } from '@/lib/client/api';
 import { toast } from '@/lib/client/toast';
-import { formatEventSource, getVerifiedEventImpact, formatEventSurprise, formatEventImpactPercent, formatEventMarketResult } from '@/lib/workspace/crypto/event-temporal.ts';
+import { formatEventSource, formatLocalTime, getVerifiedEventImpact, formatEventSurprise, formatEventImpactPercent, formatEventMarketResult } from '@/lib/workspace/crypto/event-temporal.ts';
 import type { CryptoEvent } from '@/lib/workspace/crypto/event-temporal.ts';
 import { canTrackEventMarket, EVENT_MARKET_WINDOWS, getEventMarketResult, formatMarketPercent, type EventMarketWindow } from '@/lib/workspace/crypto/event-market.ts';
+
+function lifecycleLabel(state?: string) {
+  return state === 'REVIEWED' ? '已核验复盘'
+    : state === 'REVIEW_PENDING' ? '行情已完成 · 待复盘'
+    : state === 'TRACKING_MARKET' ? '行情采集中'
+    : '待公布';
+}
 
 export interface SpaceCryptoEventRadarProps {
   currentSymbol?: string;
@@ -372,6 +379,16 @@ export default function SpaceCryptoEventRadar({
                                 </>
                               )}
                             </div>
+                            {e.eventGroupMembers?.length ? (
+                              <details className="mt-1.5 text-[10px] text-slate-500">
+                                <summary className="cursor-pointer font-bold text-indigo-600">同场事件与阶段（{e.eventGroupMembers.length + 1} 条日历记录）</summary>
+                                <div className="mt-1 space-y-0.5 pl-2 border-l border-indigo-100">
+                                  {[e, ...e.eventGroupMembers]
+                                    .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp))
+                                    .map((member) => <div key={member.id}>{formatLocalTime(new Date(member.timestamp))} · {member.title}</div>)}
+                                </div>
+                              </details>
+                            ) : null}
                           </div>
                         </div>
 
@@ -477,7 +494,7 @@ export default function SpaceCryptoEventRadar({
                                 {formatEventMarketResult(impact.marketReaction.twentyFourHourResult)}
                               </span>
                             ) : (
-                              <span className="text-[10px] text-slate-400 font-semibold">{e.impact ? '复盘待核验' : '待补充复盘'}</span>
+                              <span className="text-[10px] text-slate-400 font-semibold">{e.impact ? '复盘待核验' : lifecycleLabel(item.lifecycleState)}</span>
                             )}
                           </div>
 
