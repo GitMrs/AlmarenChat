@@ -39,6 +39,7 @@ import { currentTimeContext } from '@/lib/agents/memory/current-time-context.mjs
 import { recordSpaceAgentExperiences } from '@/app/api/_lib/agent-personal-memory';
 import { prepareSpaceMessageRuntime } from '@/lib/space/space-message-runtime';
 import { loadAgentWorldContext } from '@/lib/world/context';
+import { buildConversationContinuityGuidance } from '@/lib/chat/conversation-continuity.mjs';
 
 const MESSAGE_PAGE_SIZE = 40;
 const READ_ONLY_WORKSPACE_TOOLS = new Set(['list_files', 'read_file', 'check_files']);
@@ -388,6 +389,18 @@ async function handlePiMessage(options: {
     }]);
   }
 
+  const continuityHistory = interactionMode && interactionMode !== 'chat'
+    ? []
+    : await prisma.spaceMessage.findMany({
+        where: { spaceId },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take: 40,
+        select: { role: true, content: true, createdAt: true },
+      });
+  const continuityGuidance = continuityHistory.length > 0
+    ? buildConversationContinuityGuidance({ message: textMessage, history: continuityHistory.reverse() })
+    : '';
+
   const settings = await userModelSettings(userId);
   const modelConfig = await resolveSpaceMemberModelConfig({
     spaceId,
@@ -421,6 +434,7 @@ async function handlePiMessage(options: {
             availableAgents: memberAgents,
             selectedSkill,
             message: textMessage,
+            continuityGuidance,
             interactionMode,
             multiReplyIndex,
             apiBaseUrl: modelConfig.effectiveApiBaseUrl,
@@ -818,6 +832,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
       ? (checkpointMessage ? [checkpointMessage, ...persistedMessages] : persistedMessages)
       : fallbackHistory.slice(-settings.contextMessageLimit * 2))
       .map((item: any) => item.role === 'assistant' ? { ...item, content: stripHistoryRetrievalNotices(item.content) } : item);
+    const continuityGuidance = normalizedInteractionMode === 'chat'
+      ? buildConversationContinuityGuidance({ message: textMessage, history: rawHistory })
+      : '';
     const pendingProposalMessage = [...rawHistory].reverse().find((item: { attachments?: unknown }) => pendingTaskProposal(item.attachments));
     const currentPendingProposal = pendingTaskProposal(pendingProposalMessage?.attachments);
 
@@ -936,6 +953,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
 
     const systemPrompt = [
       currentTimeContext(),
+      continuityGuidance,
       spaceKnowledgeContext,
       spaceMessageRuntime.promptContext,
       targetAgent.systemPrompt || targetAgent.description || `你是 ${targetAgent.name}。`,
