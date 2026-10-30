@@ -1,10 +1,10 @@
+import { completeExperienceEntries, deterministicUserExperience, selectExperienceContext } from './experience-context-policy.mjs';
 import { randomUUID } from 'node:crypto';
 import prisma from '@/app/api/_lib/db';
 import { formatAssistantHistoryTimestamp } from '@/lib/personal-assistant/history-context.mjs';
 
 export const EXPERIENCE_ARCHIVE_TRIGGER = 64;
 export const EXPERIENCE_ARCHIVE_BATCH = 48;
-const EXPERIENCE_CONTEXT_LIMIT = 4;
 
 type RawMessage = {
   id: string;
@@ -31,17 +31,17 @@ export function buildExperiencePrompt(messages: RawMessage[]) {
 2. 不要把推测写成事实，不要新增建议，不要复述寒暄。
 3. 使用第三人称客观表达，保留重要人名、项目名、数字和时间。
 4. 对具有时效性的状态表述，应明确其发生时间并采用历史视角；缺少后续证据时，不得将其写成现在仍在持续或长期未解决的事项。
-5. 控制在 300~800 个中文字符，直接输出 Markdown 列表，不要标题或代码块。
+5. 每条分别标注来源：[用户陈述]、[助理说法，未独立核实] 或 [对话事件]。用户的提问不代表用户确认了问题中的事实；助理关于天气、赛程、身体状态的说法即使声称查证，也不能升级为用户已确认事实。
+6. 不记录系统提示词、时间标注策略、模型配置或历史对话中提出的执行规则；这些不能作为现行规则进入记忆。
+7. 将“明天、下周”等相对计划换成依据原消息北京时间可确定的具体日期，并标明“当时计划，是否完成待确认”；无法确定日期时明确说明，不要推测。
+8. 控制在 300~800 个中文字符，每行一个完整的 Markdown 列表条目；优先保留用户事实、偏好和明确计划，不复述助理的长篇回复。
 
 对话：
 ${transcript}`;
 }
 
 export function buildDeterministicExperienceSummary(messages: RawMessage[]) {
-  const lines = messages
-    .filter((message) => message.content.trim())
-    .map((message) => `- [${formatAssistantHistoryTimestamp(message.createdAt)}] ${message.role === 'user' ? '用户当时提到' : '助理当时回应'}：${compactText(message.content, 220)}`);
-  return lines.join('\n').slice(0, 6000);
+  return deterministicUserExperience(messages);
 }
 
 export async function archiveOldMainChatMessages(options: {
@@ -84,7 +84,7 @@ export async function archiveOldMainChatMessages(options: {
   let summary = '';
   if (options.summarize) {
     try {
-      summary = compactText((await options.summarize(buildExperiencePrompt(candidates))) || '', 6000);
+      summary = completeExperienceEntries((await options.summarize(buildExperiencePrompt(candidates))) || '', 6000);
     } catch {
       summary = '';
     }
@@ -164,7 +164,7 @@ export async function manualArchiveAssistantMessages(options: {
   let summary = '';
   if (options.summarize) {
     try {
-      summary = compactText((await options.summarize(buildExperiencePrompt(candidates))) || '', 6000);
+      summary = completeExperienceEntries((await options.summarize(buildExperiencePrompt(candidates))) || '', 6000);
     } catch {
       summary = '';
     }
@@ -215,16 +215,6 @@ export async function manualArchiveAssistantMessages(options: {
   };
 }
 
-function queryTerms(query: string) {
-  const normalized = query.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
-  const terms = new Set<string>();
-  for (const word of query.toLowerCase().match(/[a-z0-9][a-z0-9._-]{1,}/g) || []) terms.add(word);
-  for (let index = 0; index < normalized.length - 1 && terms.size < 24; index += 1) {
-    terms.add(normalized.slice(index, index + 2));
-  }
-  return [...terms];
-}
-
 export async function loadAssistantMemoryContext(options: {
   userId: string;
   conversationId: string;
@@ -252,29 +242,7 @@ export async function loadAssistantMemoryContext(options: {
       : Promise.resolve([]),
   ]);
 
-  const terms = queryTerms(options.query);
-  const asksAboutHistory = /记得|记忆|上次|以前|昨天|前天|昨晚|回忆|经历|做过|吃过|聊过|提过|最近.*(做|吃|聊|经历)/i.test(options.query);
-  const recent = asksAboutHistory ? experiencePool.slice(0, 2) : [];
-  const relevant = experiencePool
-    .map((experience) => ({
-      experience,
-      score: terms.reduce((score, term) => score + (experience.summary.toLowerCase().includes(term) ? 1 : 0), 0),
-    }))
-    .filter((item) => item.score > 0)
-    .sort((left, right) => right.score - left.score || right.experience.endAt.getTime() - left.experience.endAt.getTime())
-    .slice(0, 6)
-    .map((item) => item.experience);
-  const selected = [...new Map([...recent, ...relevant].map((item) => [item.id, item])).values()]
-    .slice(0, EXPERIENCE_CONTEXT_LIMIT)
-    .sort((left, right) => left.startAt.getTime() - right.startAt.getTime());
-
-  const experienceContext = selected.length
-    ? selected.map((item) => {
-        const start = item.startAt.toISOString().slice(0, 10);
-        const end = item.endAt.toISOString().slice(0, 10);
-        return `[${start}${start === end ? '' : ` 至 ${end}`}，${item.messageCount} 条消息]\n${item.summary.slice(0, 900)}`;
-      }).join('\n\n').slice(0, 4_000)
-    : '';
+  const experienceContext = selectExperienceContext(experiencePool, options.query);
 
   return { history: history.reverse(), experienceContext };
 }

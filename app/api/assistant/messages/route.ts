@@ -197,7 +197,7 @@ export async function POST(request: Request) {
         includeExperiences: conversationMode === 'MAIN',
       }),
       loadUserMemoryItems(userId),
-      buildAssistantPlatformContext(userId, contextSources),
+      buildAssistantPlatformContext(userId, contextSources, textMessage),
       buildAssistantActivityContext(userId, textMessage, contextSources),
     ]);
     

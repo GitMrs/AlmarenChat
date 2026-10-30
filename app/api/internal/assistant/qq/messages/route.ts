@@ -154,7 +154,7 @@ export async function POST(request: Request) {
         includeExperiences: true,
       }),
       loadUserMemoryItems(userId, null, 30),
-      buildAssistantPlatformContext(userId, contextSources),
+      buildAssistantPlatformContext(userId, contextSources, message),
       buildAssistantActivityContext(userId, message, contextSources),
     ]);
     let reportStatus: ((label: string) => void) | undefined;

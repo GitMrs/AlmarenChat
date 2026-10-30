@@ -1,3 +1,4 @@
+import { ACTIVE_PLATFORM_RUN_STATUSES, compactPlatformText, platformContextRequest, serializePlatformContext } from './platform-context-policy.mjs';
 import prisma from '@/app/api/_lib/db';
 import { classifyActivityTimestamps, resolveActivityRange } from '@/lib/personal-assistant/activity-query.mjs';
 
@@ -7,7 +8,13 @@ export type AssistantContextSources = {
   chats: boolean;
 };
 
-export async function buildAssistantPlatformContext(userId: string, sources: AssistantContextSources) {
+export async function buildAssistantPlatformContext(userId: string, allowedSources: AssistantContextSources, message = '') {
+  // Date-specific activity requests have a dedicated evidence query below.
+  if (resolveActivityRange(message)) return null;
+  const requested = platformContextRequest(message, allowedSources);
+  const sources = requested.sources;
+  if (!sources.spaces && !sources.tasks && !sources.chats) return null;
+  const recentSince = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   const [spaces, activeRuns, conversations] = await Promise.all([
     sources.spaces ? prisma.space.findMany({
       where: { userId },
@@ -18,11 +25,15 @@ export async function buildAssistantPlatformContext(userId: string, sources: Ass
     sources.tasks ? prisma.agentRun.findMany({
       where: {
         userId,
-        status: { in: ['QUEUED', 'PLANNING', 'RUNNING', 'WAITING', 'WAITING_APPROVAL', 'SUMMARIZING', 'CANCEL_REQUESTED', 'FAILED'] },
+        ...(requested.taskId ? { id: requested.taskId } : requested.taskSearch ? {
+          OR: [{ input: { contains: requested.taskSearch } }, { work: { title: { contains: requested.taskSearch } } }],
+        } : {
+          OR: [{ status: { in: ACTIVE_PLATFORM_RUN_STATUSES } }, { updatedAt: { gte: recentSince } }],
+        }),
       },
       orderBy: { updatedAt: 'desc' },
       take: 6,
-      select: { id: true, spaceId: true, input: true, status: true, error: true, updatedAt: true },
+      select: { id: true, spaceId: true, work: { select: { title: true } }, input: requested.details, status: true, error: requested.details, updatedAt: true },
     }) : Promise.resolve([]),
     sources.chats ? prisma.conversation.findMany({
       where: { userId, kind: 'AGENT' },
@@ -32,17 +43,29 @@ export async function buildAssistantPlatformContext(userId: string, sources: Ass
     }) : Promise.resolve([]),
   ]);
 
-  return JSON.stringify({
-    enabledSources: sources,
-    ...(sources.spaces ? { recentSpaces: spaces } : {}),
-    ...(sources.tasks ? { activeOrFailedRuns: activeRuns } : {}),
-    ...(sources.chats ? { recentAgentChats: conversations } : {}),
+  return serializePlatformContext({
+    enabledSources: allowedSources,
+    includedSources: sources,
+    scope: requested.taskId || requested.taskSearch ? '明确指定的任务' : '最近更新的空间/会话；任务限进行中或最近7天更新，非完整历史',
+    ...(sources.spaces ? { recentSpaces: spaces.map((item) => ({
+      id: item.id, name: compactPlatformText(item.name, 80), description: compactPlatformText(item.description, 120), updatedAt: item.updatedAt,
+    })) } : {}),
+    ...(sources.tasks ? { recentTasks: activeRuns.map((item) => ({
+      id: item.id, spaceId: item.spaceId, title: compactPlatformText(item.work?.title || '未命名任务', 100), status: item.status, updatedAt: item.updatedAt,
+      ...(requested.details ? { goalExcerpt: compactPlatformText(item.input, 240), errorExcerpt: compactPlatformText(item.error, 240) } : {}),
+    })) } : {}),
+    ...(sources.chats ? { recentAgentChats: conversations.map((item) => ({
+      id: item.id, title: compactPlatformText(item.title, 80), agentName: compactPlatformText(item.agentName, 60), updatedAt: item.updatedAt,
+    })) } : {}),
   });
 }
 
-export async function buildAssistantActivityContext(userId: string, message: string, sources: AssistantContextSources) {
+export async function buildAssistantActivityContext(userId: string, message: string, allowedSources: AssistantContextSources) {
   const range = resolveActivityRange(message);
   if (!range) return null;
+  const requested = platformContextRequest(message, allowedSources).sources;
+  const hasSpecificSource = /任务|执行记录|运行记录|工作流|成果|空间|项目|agent|角色|智能体|会话/i.test(message);
+  const sources = hasSpecificSource ? requested : allowedSources;
 
   const timeFilter = { gte: range.start, lt: range.end };
   const [runs, conversations, spaceMessages, files] = await Promise.all([
@@ -95,7 +118,7 @@ export async function buildAssistantActivityContext(userId: string, message: str
     }) : Promise.resolve([]),
   ]);
 
-  return JSON.stringify({
+  return serializePlatformContext({
     label: range.label,
     range: { start: range.start.toISOString(), end: range.end.toISOString() },
     enabledSources: sources,
