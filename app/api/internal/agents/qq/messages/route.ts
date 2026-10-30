@@ -20,6 +20,7 @@ import { agentChatArchiveState, archiveAgentChat } from '@/app/api/_lib/agent-pe
 import { loadAgentModelSetting, resolveUserModelConfig } from '@/app/api/_lib/agent-model';
 import { CONVERSATION_GROUNDING_GUIDANCE } from '@/lib/chat/conversation-grounding.mjs';
 import { stripHistoryRetrievalNotices } from '@/lib/personal-assistant/retrieval-notice.mjs';
+import { buildConversationContinuityGuidance } from '@/lib/chat/conversation-continuity.mjs';
 
 export const runtime = 'nodejs';
 
@@ -187,6 +188,7 @@ export async function POST(request: Request) {
       agent?.description ? `【角色描述】${agent.description}` : '',
       agent?.tone ? `【表达语气】${agent.tone}` : '',
       currentTimeContext(),
+      buildConversationContinuityGuidance({ message, history: normalizedHistory }),
       agentMemory,
       worldContext,
       knowledgeContext,

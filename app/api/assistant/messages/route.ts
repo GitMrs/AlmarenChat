@@ -12,7 +12,8 @@ import { buildPersonalAssistantPrompt } from '@/lib/personal-assistant/prompt-bu
 import { buildAssistantActivityContext, buildAssistantPlatformContext } from '@/lib/personal-assistant/platform-context';
 import { archiveOldMainChatMessages, loadAssistantMemoryContext } from '@/lib/personal-assistant/experience-memory';
 import { loadUserMemoryItems } from '@/lib/personal-assistant/user-memory';
-import { buildTimedAssistantHistory } from '@/lib/personal-assistant/history-context.mjs';
+import { buildAssistantHistory } from '@/lib/personal-assistant/history-context.mjs';
+import { buildConversationContinuityGuidance } from '@/lib/chat/conversation-continuity.mjs';
 import { compressConversationContext } from '@/lib/agents/memory/context-compression';
 import { conversationContextTargetTokens } from '@/lib/core/model-limits.mjs';
 import { parseMcpServers } from '@/lib/agents/runtime/mcp-config.mjs';
@@ -202,6 +203,7 @@ export async function POST(request: Request) {
     let toolCalled = false;
     const retrievalNotice = () => buildRetrievalNotice({ toolCalled });
 
+    const continuityGuidance = buildConversationContinuityGuidance({ message: messageForModel, history: memoryContext.history });
     const systemPrompt = buildPersonalAssistantPrompt({
       userName: userSettings.name,
       profile,
@@ -210,10 +212,10 @@ export async function POST(request: Request) {
       activityContext,
       webEnabled: !localMode,
       experienceContext: memoryContext.experienceContext,
-        query: messageForModel,
-    });
+      query: messageForModel,
+    }) + `\n\n${continuityGuidance}`;
     const compressedHistory = compressConversationContext(
-      buildTimedAssistantHistory(memoryContext.history),
+      buildAssistantHistory(memoryContext.history),
       {
         maxMessages: contextLimit,
         targetTokens: conversationContextTargetTokens(
