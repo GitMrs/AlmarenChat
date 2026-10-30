@@ -26,6 +26,7 @@ import { getCompanionCharacterId } from '@/lib/companion/agents';
 import { companionReplyInstruction, createCompanionReplyParser } from '@/lib/companion/reply-protocol.mjs';
 import { CONVERSATION_GROUNDING_GUIDANCE } from '@/lib/chat/conversation-grounding.mjs';
 import { buildConversationContinuityGuidance } from '@/lib/chat/conversation-continuity.mjs';
+import { currentTimeContext } from '@/lib/agents/memory/current-time-context.mjs';
 import type { CompanionReply } from '@/lib/companion/reply';
 import type { AgentDailyStudyRecord, AgentStudyItem } from '@/lib/agent-study/types';
 import { agentMemories, generateConversationImage, streamChat, conversations as conversationsApi, agents as agentsApi, user as userApi, uploads } from '@/lib/client/api';
@@ -962,7 +963,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
           ? `当前换装的皮肤对话规则（只影响表达氛围，不改变核心人格）：${companionSkinPrompt}\n请在自然相关的回复中适度融入这些元素，偶尔使用对应意象或小口头禅即可；不要每句话都重复皮肤关键词，也不要把服装设定说成角色身份发生了改变。`
           : '';
         const continuityGuidance = buildConversationContinuityGuidance({ message: content, history: historySource });
-        const systemPrompt = [displayAgent?.systemPrompt, memoryContext, knowledgeContext, worldContext, continuityGuidance, CONVERSATION_GROUNDING_GUIDANCE, isCompanionSend ? companionReplyInstruction : '', companionSkinInstruction].filter(Boolean).join('\n\n');
+        const systemPrompt = [currentTimeContext(), displayAgent?.systemPrompt, memoryContext, knowledgeContext, worldContext, continuityGuidance, CONVERSATION_GROUNDING_GUIDANCE, isCompanionSend ? companionReplyInstruction : '', companionSkinInstruction].filter(Boolean).join('\n\n');
         if (systemPrompt) {
           modelMessages.unshift({ role: 'system', content: systemPrompt });
         }

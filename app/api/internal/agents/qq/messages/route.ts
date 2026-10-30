@@ -1,3 +1,4 @@
+import { logModelTimeContext } from '@/lib/chat/model-time-log.mjs';
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -215,6 +216,8 @@ export async function POST(request: Request) {
         content: item.content,
       }));
     if (systemPrompt) openaiMessages.unshift({ role: 'system', content: systemPrompt });
+    logModelTimeContext({ entry: 'qq-agent', model: model, source: 'server-clock', messages: [{ role: 'system', content: systemPrompt }] });
+
 
     if (imageAttachments.length > 0) {
       const imageContent = await Promise.all(

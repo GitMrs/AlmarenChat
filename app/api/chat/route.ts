@@ -1,3 +1,4 @@
+import { logModelTimeContext } from '@/lib/chat/model-time-log.mjs';
 import { NextResponse } from 'next/server';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -241,6 +242,8 @@ export async function POST(request: Request) {
         openaiMessages.push({ role: 'user', content: textMessage });
       }
     }
+
+    logModelTimeContext({ entry: 'agent-chat', model: model, source: 'server-clock', messages: [{ role: 'system', content: finalContext }] });
 
     // Save user message
     if (resolvedConversationId && !skipPersistUserMessage) {

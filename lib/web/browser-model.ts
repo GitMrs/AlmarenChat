@@ -1,3 +1,5 @@
+import { logModelRequest } from '../chat/model-request-log.mjs';
+import { logModelTimeContext } from '../chat/model-time-log.mjs';
 import { getReasoningDelta } from '../chat/reasoning.mjs';
 import { stripHistoryRetrievalNotices } from '../personal-assistant/retrieval-notice.mjs';
 
@@ -134,12 +136,25 @@ export async function streamBrowserModel({
   messages,
   signal,
   onReasoning,
+  timeSource = 'browser-clock',
+  entry = 'browser-agent-chat',
 }: {
   config: BrowserModelConfig;
   messages: ModelMessage[];
   signal?: AbortSignal;
   onReasoning?: (text: string) => void;
+  timeSource?: 'browser-clock' | 'server-clock';
+  entry?: string;
 }): Promise<ReadableStream<Uint8Array>> {
+  logModelTimeContext({ entry, model: config.model, source: timeSource, messages });
+  const body = {
+    model: config.model,
+    messages: messages.map(message => message.role === 'assistant' && typeof message.content === 'string'
+      ? { ...message, content: stripHistoryRetrievalNotices(message.content) }
+      : message),
+    stream: true,
+  };
+  logModelRequest({ entry, body });
   let response: Response;
   try {
     response = await fetch(completionUrl(config.baseUrl), {
@@ -149,13 +164,7 @@ export async function streamBrowserModel({
         'Content-Type': 'application/json',
         ...(config.apiKey ? { Authorization: `Bearer ${config.apiKey}` } : {}),
       },
-      body: JSON.stringify({
-        model: config.model,
-        messages: messages.map(message => message.role === 'assistant' && typeof message.content === 'string'
-          ? { ...message, content: stripHistoryRetrievalNotices(message.content) }
-          : message),
-        stream: true,
-      }),
+      body: JSON.stringify(body),
       signal,
     });
   } catch (error: any) {

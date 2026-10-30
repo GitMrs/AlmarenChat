@@ -1,3 +1,4 @@
+import { logModelTimeContext } from '@/lib/chat/model-time-log.mjs';
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -273,6 +274,8 @@ export async function POST(request: Request) {
         }
       }
     }
+
+    logModelTimeContext({ entry: 'personal-assistant', model: localMode ? null : model, source: 'server-clock', messages: [{ role: 'system', content: systemPrompt }] });
 
     if (localMode) {
       return NextResponse.json({ messages, conversationId, conversationMode });

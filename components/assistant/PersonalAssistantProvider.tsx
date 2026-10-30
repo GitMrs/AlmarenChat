@@ -1208,6 +1208,8 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
         const stream = await streamBrowserModel({
           config: modelConfig,
           messages: prepared.messages,
+          timeSource: 'server-clock',
+          entry: 'browser-personal-assistant',
           signal: controller.signal,
         });
         reader = stream.getReader();
