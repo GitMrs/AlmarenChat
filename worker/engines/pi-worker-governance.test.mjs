@@ -274,3 +274,20 @@ test('Pi Worker discovers and invokes an authorized remote MCP tool', async () =
     globalThis.fetch = originalFetch;
   }
 });
+
+test('Pi worker forwards reasoning and correlated tool lifecycle events', async () => {
+  const events = [];
+  const build = createPiWorkerGovernance({ db: {}, reserveRequest: () => ({}) });
+  const options = await build(request({ emit: (...event) => events.push(event) }));
+  options.onReasoningStart();
+  options.onReasoningDelta('核对文件');
+  options.onReasoningComplete();
+  options.onToolEvent({ type: 'start', id: 'call-1', name: 'read_file', args: { path: 'article.md' } });
+  options.onToolEvent({ type: 'end', id: 'call-1', name: 'read_file', isError: false, result: { details: { ok: false, error: '不存在' } } });
+  assert.equal(events[1][3].final, true);
+  assert.equal(events[2][1], 'TOOL_STARTED');
+  assert.equal(events[3][1], 'TOOL_FINISHED');
+  assert.equal(events[3][3].toolCallId, 'call-1');
+  assert.equal(events[3][3].path, 'article.md');
+  assert.equal(events[3][3].failed, true);
+});

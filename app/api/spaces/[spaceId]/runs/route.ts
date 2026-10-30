@@ -7,7 +7,7 @@ import { getSpaceForUser, resolveManyAgents } from '@/app/api/_lib/spaces';
 import { taskProposalNeedsClarification } from '@/lib/space/task-proposals';
 import { resolveTaskSkill } from '@/lib/agents/runtime/skill-registry.mjs';
 import { EXECUTOR_MODEL_REQUEST_LIMIT } from '@/lib/agents/runtime/task-execution-plan.mjs';
-import { coordinatorAuthorization } from '@/lib/agents/runtime/agent-runtime-v3-policy.mjs';
+import { coordinatorAuthorization, shouldDispatchDirectAgentTask } from '@/lib/agents/runtime/agent-runtime-v3-policy.mjs';
 import { taskProposalWithServerCapabilities } from '@/lib/space/task-proposal-policy.mjs';
 import { getSpaceSkill, listSpaceSkills } from '@/lib/space/space-skills.mjs';
 import { runningWorkStage } from '@/lib/space/space-templates.mjs';
@@ -265,7 +265,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
       if (currentProposal?.requestedAgentId && !requestedAgent) {
         throw new Error('任务指定的 Agent 已不在当前空间中，请重新生成任务方案');
       }
-      const directTaskSkill = requestedAgent
+      const directTaskSkill = requestedAgent && shouldDispatchDirectAgentTask(currentProposal || {})
         ? resolveTaskSkill({
             requestedSkillId: currentProposal?.skillSnapshot?.id || 'general-task',
             agent: requestedAgent,

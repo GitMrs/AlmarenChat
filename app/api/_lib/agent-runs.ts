@@ -8,10 +8,16 @@ export const agentRunInclude = {
   events: { orderBy: { sequence: 'asc' as const } },
 };
 
-export function getAgentRunForUser(runId: string, userId: string) {
+export function getAgentRunForUser(runId: string, userId: string, afterSequence = 0) {
   return prisma.agentRun.findFirst({
     where: { id: runId, userId },
-    include: agentRunInclude,
+    include: {
+      ...agentRunInclude,
+      events: {
+        ...agentRunInclude.events,
+        ...(afterSequence > 0 ? { where: { sequence: { gt: afterSequence } } } : {}),
+      },
+    },
   });
 }
 

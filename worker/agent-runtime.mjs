@@ -501,7 +501,9 @@ async function coordinateNextWork(run, context, triggerEventId) {
     team,
   } = loadCoordinatorDecisionContext(db, run, context.agents);
   if (activeTasks.length > 0) return { type: 'active', tasks: activeTasks };
-  const dispatchConstraint = dispatchConstraintFromFeedback(state.lastDispatchFeedback?.feedback, team);
+  const dispatchConstraint = authorization.requestedAgentId
+    ? { agentId: authorization.requestedAgentId, agentName: team.find((member) => member.id === authorization.requestedAgentId)?.name }
+    : dispatchConstraintFromFeedback(state.lastDispatchFeedback?.feedback, team);
   let workspace = { files: [], unavailable: '' };
   try {
     const snapshot = await snapshotWorkspace({
@@ -599,6 +601,7 @@ async function coordinateNextWork(run, context, triggerEventId) {
             content:
               '你是 AI 团队的运行时 Coordinator。用户已经批准目标与能力边界，但没有批准固定成员链。' +
               '你必须根据当前团队、成员专业描述、忙闲状态和已验收成果，只决定此刻的下一步。' +
+              'authorization.requestedAgentId 非空时，用户已指定本次交付的执行成员，所有后续任务也必须交给该成员；每轮只派一项，不能改派其他成员。' +
               '不要为了使用所有成员而派活。需求已经明确、工作主要是页面或代码实现时直接选择相应执行成员；' +
               '只有产品定义、用户故事或验收标准仍有实质歧义且会改变实现方向时，才先派产品 advisor。' +
               '成员身份、协作模式和工具权限相互独立：advisor 默认可以读取工作区；任务明确要求文件且 authorization 已包含 workspace_write 时，advisor 也可以创建或修改经过验收的文件。executor 负责主要实施，但不独占文件能力。' +
@@ -700,7 +703,7 @@ async function coordinateNextWork(run, context, triggerEventId) {
 
     const timestamp = now();
     if (action.type === 'dispatch') {
-      const awaitingApproval = dispatchRequiresApproval(context.space.executionMode, context.automated);
+      const awaitingApproval = dispatchRequiresApproval(context.space.executionMode, context.automated, authorization);
       const initialStatus = awaitingApproval ? 'PROPOSED' : 'PENDING';
       const alreadyCreated = db.prepare(
         `SELECT * FROM "AgentTask" WHERE "runId" = ? AND "parentTaskId" = ? ORDER BY "sortOrder" ASC`

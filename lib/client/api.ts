@@ -697,7 +697,7 @@ export const spaces = {
         ...data,
       }),
     }),
-  files: (id: string) => request<{ files: any[] }>(`/spaces/${id}/files`),
+  files: (id: string, signal?: AbortSignal) => request<{ files: any[] }>(`/spaces/${id}/files`, { signal }),
   downloadFile: async (spaceId: string, fileId: string) => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
     const res = await fetch(`${API_BASE}/spaces/${spaceId}/files/${fileId}`, {
@@ -1169,8 +1169,8 @@ export const spaceShares = {
 };
 
 export const agentRuns = {
-  get: (id: string, afterSequence = 0) => request<{ run: AgentRun }>(
-    `/runs/${id}${afterSequence > 0 ? `?afterSequence=${afterSequence}` : ''}`
+  get: (id: string, afterSequence = 0, signal?: AbortSignal) => request<{ run: AgentRun }>(
+    `/runs/${id}${afterSequence > 0 ? `?afterSequence=${afterSequence}` : ''}`, { signal }
   ),
   cancel: (id: string) =>
     request<{ run: AgentRun }>(`/runs/${id}/cancel`, { method: 'POST' }),

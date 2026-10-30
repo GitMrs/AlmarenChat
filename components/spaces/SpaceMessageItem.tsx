@@ -314,7 +314,9 @@ function TaskProposal({
               </ol>
               <p className="mt-4 text-[11px] font-semibold leading-5 text-slate-400">
                 {proposal.requestedAgentId
-                  ? `确认后直接交给 ${proposal.requestedAgentName || '指定成员'} 执行，不再重新选择成员。`
+                  ? proposal.capabilities?.includes('image_generate')
+                    ? `确认后由 ${proposal.requestedAgentName || '指定成员'} 执行，图片将逐张安排并分别确认。`
+                    : `确认后直接交给 ${proposal.requestedAgentName || '指定成员'} 执行，不再重新选择成员。`
                   : '确认后，协调者会根据空间成员、实时状态和每轮成果动态安排下一项工作。'}
               </p>
               {proposal.deliverables.length > 0 && (

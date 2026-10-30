@@ -1,3 +1,4 @@
+import { createModelProgressCallbacks, trackToolExecution } from '../runtime/activity-progress.mjs';
 import { contextManager } from './context-manager.mjs';
 import { runToolLoop } from '../../lib/agents/runtime/tool-loop.mjs';
 import {
@@ -21,49 +22,6 @@ export const EXECUTOR_TOOL_ITERATIONS = 10;
 export const EXECUTOR_MAX_ATTEMPTS = 3;
 export const ADVISOR_MAX_ATTEMPTS = 3;
 export const ADVISOR_TOOL_ITERATIONS = 6;
-const MODEL_REASONING_PROGRESS_INTERVAL_MS = 800;
-const MODEL_REASONING_PREVIEW_CHARS = 600;
-
-function createModelProgressCallbacks({ emit, runId, taskId, agentId, agentName }) {
-  let reasoningPreview = '';
-  let reasoningContentChars = 0;
-  let lastPublishedAt = 0;
-
-  const publish = () => {
-    const now = Date.now();
-    if (!reasoningPreview || now - lastPublishedAt < MODEL_REASONING_PROGRESS_INTERVAL_MS) return;
-    lastPublishedAt = now;
-    emit?.(runId, 'MODEL_REASONING_PROGRESS', `${agentName}正在思考`, {
-      taskId,
-      agentId,
-      preview: reasoningPreview.slice(-MODEL_REASONING_PREVIEW_CHARS),
-      reasoningContentChars,
-    });
-  };
-
-  return {
-    onReasoningDelta: (delta) => {
-      const text = String(delta || '');
-      if (!text) return;
-      reasoningContentChars += text.length;
-      reasoningPreview = `${reasoningPreview}${text}`.slice(-MODEL_REASONING_PREVIEW_CHARS);
-      publish();
-    },
-  };
-}
-
-function toolProgressPayload(name, args = {}) {
-  const payload = { tool: name };
-  if (args.path) payload.path = String(args.path).slice(0, 300);
-  if (name === 'patch_files') {
-    payload.paths = (Array.isArray(args.edits) ? args.edits : [])
-      .map((edit) => String(edit?.path || ''))
-      .filter(Boolean)
-      .slice(0, 20);
-  }
-  return payload;
-}
-
 const REQUEST_USER_INPUT_TOOL = {
   type: 'function',
   function: {
@@ -318,25 +276,23 @@ export async function runExecutorHarness({
             attempt: task.attempt,
             iteration: requestState.totalIteration,
             signal: abortController.signal,
-            ...progress,
-            onStreamStart: () => emit(run.id, 'MODEL_STREAMING', `${agent.name}的模型响应已开始传输`, {
-              taskId: task.id,
-              agentId: agent.id,
-            }),
+            onReasoningDelta: progress.onReasoningDelta,
+            onStreamStart: () => {
+              progress.reset();
+              return emit(run.id, 'MODEL_STREAMING', `${agent.name}的模型响应已开始传输`, {
+                taskId: task.id,
+                agentId: agent.id,
+              });
+            },
             onRetry: (error) => emit(run.id, 'MODEL_RETRYING', `${agent.name}的模型请求暂时失败，正在重试`, {
               taskId: task.id,
               agentId: agent.id,
               status: Number(error?.status || error?.statusCode || 0) || null,
             }),
           }
-        );
+        ).finally(progress.flush);
       },
-      executeTool: (name, args) => {
-        emit(run.id, 'TOOL_STARTED', `${agent.name}准备执行 ${name}`, {
-          taskId: task.id,
-          agentId: agent.id,
-          ...toolProgressPayload(name, args),
-        });
+      executeTool: trackToolExecution({ emit, runId: run.id, taskId: task.id, agentId: agent.id, agentName: agent.name }, (name, args) => {
         if (context.bilibiliTools?.owns(name)) {
           return context.bilibiliTools.execute(name, args, abortController.signal).then((result) => {
             emit(run.id, 'TOOL_COMPLETED', `${agent.name}已读取 B 站数据`, {
@@ -539,7 +495,7 @@ export async function runExecutorHarness({
             });
           },
         }, name, args);
-      },
+      }),
       isCancelled,
       onModelRequest: ({ batchIteration, totalIteration }) => emit(
         run.id,
@@ -674,25 +630,23 @@ export async function runAdvisorHarness({
             attempt: task.attempt,
             iteration: requestState.iteration,
             signal: abortController.signal,
-            ...progress,
-            onStreamStart: () => emit?.(run.id, 'MODEL_STREAMING', `${agent.name}的模型响应已开始传输`, {
-              taskId: task.id,
-              agentId: agent.id,
-            }),
+            onReasoningDelta: progress.onReasoningDelta,
+            onStreamStart: () => {
+              progress.reset();
+              return emit?.(run.id, 'MODEL_STREAMING', `${agent.name}的模型响应已开始传输`, {
+                taskId: task.id,
+                agentId: agent.id,
+              });
+            },
             onRetry: (error) => emit?.(run.id, 'MODEL_RETRYING', `${agent.name}的模型请求暂时失败，正在重试`, {
               taskId: task.id,
               agentId: agent.id,
               status: Number(error?.status || error?.statusCode || 0) || null,
             }),
           }
-        );
+        ).finally(progress.flush);
       },
-      executeTool: (name, args) => {
-        emit?.(run.id, 'TOOL_STARTED', `${agent.name}准备执行 ${name}`, {
-          taskId: task.id,
-          agentId: agent.id,
-          ...toolProgressPayload(name, args),
-        });
+      executeTool: trackToolExecution({ emit, runId: run.id, taskId: task.id, agentId: agent.id, agentName: agent.name }, (name, args) => {
         if (context.bilibiliTools?.owns(name)) {
           return context.bilibiliTools.execute(name, args, abortController.signal).then((result) => {
             emit?.(run.id, 'TOOL_COMPLETED', `${agent.name}已读取 B 站数据`, {
@@ -760,7 +714,7 @@ export async function runAdvisorHarness({
             });
           },
         }, name, args);
-      },
+      }),
       isCancelled,
       onModelRequest: ({ iteration }) => emit?.(
         run.id,

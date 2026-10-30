@@ -6,14 +6,13 @@ export async function GET(request: Request, { params }: { params: Promise<{ runI
   try {
     const userId = requireAuth(request);
     const { runId } = await params;
-    const run = await getAgentRunForUser(runId, userId);
+    const afterSequence = Number(new URL(request.url).searchParams.get('afterSequence') || 0);
+    if (!Number.isSafeInteger(afterSequence) || afterSequence < 0) {
+      return NextResponse.json({ error: 'afterSequence must be a non-negative integer' }, { status: 400 });
+    }
+    const run = await getAgentRunForUser(runId, userId, afterSequence);
     if (!run) return NextResponse.json({ error: 'Run not found' }, { status: 404 });
-    const afterSequence = Math.max(0, Number(new URL(request.url).searchParams.get('afterSequence') || 0));
-    return NextResponse.json({
-      run: afterSequence > 0
-        ? { ...run, events: run.events.filter((event) => event.sequence > afterSequence) }
-        : run,
-    });
+    return NextResponse.json({ run });
   } catch (error: any) {
     if (error.message === 'Unauthorized') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     return NextResponse.json({ error: error.message }, { status: 500 });

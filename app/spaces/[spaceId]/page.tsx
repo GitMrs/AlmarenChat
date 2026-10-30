@@ -1,5 +1,7 @@
 'use client';
 
+import { startSerialPolling } from '@/lib/space/serial-polling.mjs';
+import { compactActivityEvents } from '@/lib/space/activity-events.mjs';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Activity, ArrowLeft, BookOpen, Flame, CalendarClock, Check, CheckCircle2, ChevronRight, Code2, Copy, Cpu, Database, Download, ExternalLink, FilePenLine, FileText, Gamepad2, Globe2, History, Image as ImageIcon, ListTodo, Loader2, MessagesSquare, Newspaper, PackagePlus, Paperclip, Play, Plus, RotateCcw, Save, Send, Settings2, ShieldCheck, SkipForward, Sliders, SlidersHorizontal, Square, Trash2, TrendingUp, Tv, UploadCloud, UsersRound, X } from 'lucide-react';
@@ -213,6 +215,11 @@ type RunEventPayload = {
   contentChars?: number;
   reasoningContentChars?: number;
   preview?: string;
+  final?: boolean;
+  failed?: boolean;
+  error?: string;
+  toolCallId?: string;
+  requestId?: string;
   toolCallCount?: number;
   retryCount?: number;
   finishReasons?: string[];
@@ -301,6 +308,13 @@ function formatActivityEvent(event: AgentRunEvent) {
       payload.retryCount ? `重试 ${payload.retryCount} 次` : '',
     ].filter(Boolean);
     return { title: event.message, detail: details.join(' · '), checked: true };
+  }
+  if (event.type === 'TOOL_FINISHED') {
+    return {
+      title: `${payload.failed ? '执行失败：' : '已完成：'}${TOOL_LABELS[payload.tool || ''] || payload.tool || event.message}`,
+      detail: [payload.error, payload.path || payload.paths?.join('、')].filter(Boolean).join(' · '),
+      checked: !payload.failed,
+    };
   }
   if (event.type === 'TOOL_COMPLETED') {
     const paths = payload.path ? [payload.path] : payload.paths || [];
@@ -807,7 +821,9 @@ export default function SpaceDetailPage() {
     for (const event of currentRun?.events || []) {
       const taskId = eventPayload(event).taskId;
       if (!taskId) continue;
-      grouped.set(taskId, [...(grouped.get(taskId) || []), event]);
+      const events = grouped.get(taskId) || [];
+      events.push(event);
+      grouped.set(taskId, events);
     }
     return grouped;
   }, [currentRun]);
@@ -1330,25 +1346,25 @@ export default function SpaceDetailPage() {
 
   useEffect(() => {
     if (!activeRun) return;
-    const timer = window.setInterval(async () => {
-      try {
-        const result = await agentRunsApi.get(activeRun.id, activeRun.eventSequence || 0);
-        const fileResult = result.run.events.some(eventChangesWorkspaceFiles)
-          ? await spacesApi.files(spaceId)
-          : null;
-        setRuns((items) => items.map((item) => {
-          if (item.id !== result.run.id) return item;
-          const events = new Map(item.events.map((event) => [event.id, event]));
-          for (const event of result.run.events) events.set(event.id, event);
-          return { ...result.run, events: [...events.values()].sort((a, b) => a.sequence - b.sequence) };
-        }));
-        if (fileResult) setFiles(fileResult.files);
-      } catch {
-        // Keep the last persisted state visible; the next poll can recover from a transient failure.
-      }
-    }, 1200);
-    return () => window.clearInterval(timer);
-  }, [activeRun?.id, activeRun?.status, activeRun?.eventSequence, spaceId]);
+    let afterSequence = activeRun.eventSequence || 0;
+    return startSerialPolling(async (signal: AbortSignal) => {
+      const result = await agentRunsApi.get(activeRun.id, afterSequence, signal);
+      if (signal.aborted) return false;
+      const fileResult = result.run.events.some(eventChangesWorkspaceFiles)
+        ? await spacesApi.files(spaceId, signal)
+        : null;
+      if (signal.aborted) return false;
+      setRuns((items) => items.map((item) => {
+        if (item.id !== result.run.id) return item;
+        const events = new Map(item.events.map((event) => [event.id, event]));
+        for (const event of result.run.events) events.set(event.id, event);
+        return { ...result.run, events: [...events.values()].sort((a, b) => a.sequence - b.sequence) };
+      }));
+      if (fileResult) setFiles(fileResult.files);
+      afterSequence = result.run.eventSequence || afterSequence;
+      return ACTIVE_RUN_STATUSES.has(result.run.status);
+    });
+  }, [activeRun?.id, activeRun?.status, spaceId]);
 
   useEffect(() => {
     if (!latestRun || ACTIVE_RUN_STATUSES.has(latestRun.status)) return;
@@ -4242,7 +4258,7 @@ export default function SpaceDetailPage() {
                           ) : currentRun.tasks.map((task, index) => {
                             const activity = taskActivityById.get(task.id) || [];
                             const modelMetrics = aggregateModelRequests(activity, true);
-                            const recentActivity = activity.slice(-10);
+                            const recentActivity = compactActivityEvents(activity).slice(-10);
                             const latestActivity = recentActivity.at(-1);
                             const manifest = [...activity].reverse().find((event) => event.type === 'ARTIFACT_MANIFEST_RECORDED');
                             const manifestPayload = manifest ? eventPayload(manifest) : null;
@@ -4300,7 +4316,7 @@ export default function SpaceDetailPage() {
                                     <div className="mt-4 space-y-3">
                                       {recentActivity.map((event) => {
                                         const activityItem = formatActivityEvent(event);
-                                        const isCurrent = task.status === 'RUNNING' && event.id === latestActivity?.id;
+                                        const isCurrent = task.status === 'RUNNING' && event.id === latestActivity?.id && !eventPayload(event).final;
                                         return (
                                           <div key={event.id} className="flex min-w-0 items-start gap-2.5">
                                             <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center text-slate-400">

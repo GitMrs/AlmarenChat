@@ -1,3 +1,4 @@
+import { createModelProgressCallbacks, toolProgressPayload } from '../runtime/activity-progress.mjs';
 import path from 'node:path';
 import { defineTool } from '@earendil-works/pi-coding-agent';
 import { Type } from 'typebox';
@@ -599,7 +600,22 @@ export function createPiWorkerGovernance({
       },
     });
 
+    const progress = createModelProgressCallbacks({ emit: request.emit, runId, taskId, agentId: request.agent?.id, agentName: request.agent?.name || '成员' });
+    const toolCalls = new Map();
     return {
+      onReasoningStart: progress.reset,
+      onReasoningDelta: progress.onReasoningDelta,
+      onReasoningComplete: progress.flush,
+      onToolEvent: (event) => {
+        if (event.type === 'start') toolCalls.set(event.id, toolProgressPayload(event.name, event.args));
+        const payload = toolCalls.get(event.id) || { tool: event.name };
+        const failed = Boolean(event.isError || event.result?.details?.ok === false || event.result?.details?.valid === false || event.result?.details?.error);
+        request.emit?.(runId, event.type === 'start' ? 'TOOL_STARTED' : 'TOOL_FINISHED', `${request.agent?.name || '成员'}${event.type === 'start' ? '正在执行' : failed ? '执行失败' : '已执行'} ${event.name}`, {
+          taskId, agentId: request.agent?.id, toolCallId: event.id, ...payload,
+          ...(event.type === 'end' ? { failed, error: failed ? String(event.result?.details?.error || '工具执行失败').slice(0, 500) : undefined } : {}),
+        });
+        if (event.type === 'end') toolCalls.delete(event.id);
+      },
       sessionKey: `task:${runId}:${taskId}:${attempt}`,
       paths: workerPiPaths(request),
       apiKey: request.context?.model?.apiKey,
