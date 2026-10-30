@@ -161,13 +161,16 @@ test('worker model client omits tool fields and can reserve only the run budget'
 
 test('worker model client preserves reasoning-only diagnostics without exposing reasoning text', async () => {
   const current = fixture({ stream: streamWith({ reasoning_content: '内部推理内容' }, 'length') });
+  const reasoning = [];
   const message = await current.client.completeMessage(model, [{ role: 'user', content: '任务' }], [], {
     runId: 'run-1',
     taskId: 'task-1',
+    onReasoningDelta: (delta) => reasoning.push(delta),
   });
 
   assert.equal(message.content, null);
   assert.equal(message.diagnostics.reasoningContentChars, 6);
+  assert.deepEqual(reasoning, ['内部推理内容']);
   assert.deepEqual(message.diagnostics.finishReasons, ['length']);
   assert.equal(JSON.stringify(message).includes('内部推理内容'), false);
   assert.equal(current.warnings.length, 1);

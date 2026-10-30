@@ -740,6 +740,8 @@ export interface SpaceTaskProposal {
     digest?: string;
   };
   skillAgentId?: string;
+  requestedAgentId?: string;
+  requestedAgentName?: string;
 }
 
 export interface SpaceDiscussionAttachment {

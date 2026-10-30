@@ -131,7 +131,11 @@ export function createWorkerModelClient({
             },
             { signal: requestController.signal }
           );
-          return collectStream(trackStream(stream), { onStreamStart: options.onStreamStart });
+          return collectStream(trackStream(stream), {
+            onStreamStart: options.onStreamStart,
+            onReasoningDelta: options.onReasoningDelta,
+            onContentDelta: options.onContentDelta,
+          });
         },
         {
           onRetry: (error) => {

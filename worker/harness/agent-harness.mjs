@@ -21,6 +21,48 @@ export const EXECUTOR_TOOL_ITERATIONS = 10;
 export const EXECUTOR_MAX_ATTEMPTS = 3;
 export const ADVISOR_MAX_ATTEMPTS = 3;
 export const ADVISOR_TOOL_ITERATIONS = 6;
+const MODEL_REASONING_PROGRESS_INTERVAL_MS = 800;
+const MODEL_REASONING_PREVIEW_CHARS = 600;
+
+function createModelProgressCallbacks({ emit, runId, taskId, agentId, agentName }) {
+  let reasoningPreview = '';
+  let reasoningContentChars = 0;
+  let lastPublishedAt = 0;
+
+  const publish = () => {
+    const now = Date.now();
+    if (!reasoningPreview || now - lastPublishedAt < MODEL_REASONING_PROGRESS_INTERVAL_MS) return;
+    lastPublishedAt = now;
+    emit?.(runId, 'MODEL_REASONING_PROGRESS', `${agentName}正在思考`, {
+      taskId,
+      agentId,
+      preview: reasoningPreview.slice(-MODEL_REASONING_PREVIEW_CHARS),
+      reasoningContentChars,
+    });
+  };
+
+  return {
+    onReasoningDelta: (delta) => {
+      const text = String(delta || '');
+      if (!text) return;
+      reasoningContentChars += text.length;
+      reasoningPreview = `${reasoningPreview}${text}`.slice(-MODEL_REASONING_PREVIEW_CHARS);
+      publish();
+    },
+  };
+}
+
+function toolProgressPayload(name, args = {}) {
+  const payload = { tool: name };
+  if (args.path) payload.path = String(args.path).slice(0, 300);
+  if (name === 'patch_files') {
+    payload.paths = (Array.isArray(args.edits) ? args.edits : [])
+      .map((edit) => String(edit?.path || ''))
+      .filter(Boolean)
+      .slice(0, 20);
+  }
+  return payload;
+}
 
 const REQUEST_USER_INPUT_TOOL = {
   type: 'function',
@@ -257,29 +299,44 @@ export async function runExecutorHarness({
         REQUEST_USER_INPUT_TOOL,
         SUBMIT_TASK_RESULT_TOOL,
       ],
-      requestCompletion: (conversation, tools, requestState) => completeMessage(
-        context.model,
-        conversation,
-        tools,
-        {
+      requestCompletion: (conversation, tools, requestState) => {
+        const progress = createModelProgressCallbacks({
+          emit,
           runId: run.id,
           taskId: task.id,
           agentId: agent.id,
-          attempt: task.attempt,
-          iteration: requestState.totalIteration,
-          signal: abortController.signal,
-          onStreamStart: () => emit(run.id, 'MODEL_STREAMING', `${agent.name}的模型响应已开始传输`, {
+          agentName: agent.name,
+        });
+        return completeMessage(
+          context.model,
+          conversation,
+          tools,
+          {
+            runId: run.id,
             taskId: task.id,
             agentId: agent.id,
-          }),
-          onRetry: (error) => emit(run.id, 'MODEL_RETRYING', `${agent.name}的模型请求暂时失败，正在重试`, {
-            taskId: task.id,
-            agentId: agent.id,
-            status: Number(error?.status || error?.statusCode || 0) || null,
-          }),
-        }
-      ),
+            attempt: task.attempt,
+            iteration: requestState.totalIteration,
+            signal: abortController.signal,
+            ...progress,
+            onStreamStart: () => emit(run.id, 'MODEL_STREAMING', `${agent.name}的模型响应已开始传输`, {
+              taskId: task.id,
+              agentId: agent.id,
+            }),
+            onRetry: (error) => emit(run.id, 'MODEL_RETRYING', `${agent.name}的模型请求暂时失败，正在重试`, {
+              taskId: task.id,
+              agentId: agent.id,
+              status: Number(error?.status || error?.statusCode || 0) || null,
+            }),
+          }
+        );
+      },
       executeTool: (name, args) => {
+        emit(run.id, 'TOOL_STARTED', `${agent.name}准备执行 ${name}`, {
+          taskId: task.id,
+          agentId: agent.id,
+          ...toolProgressPayload(name, args),
+        });
         if (context.bilibiliTools?.owns(name)) {
           return context.bilibiliTools.execute(name, args, abortController.signal).then((result) => {
             emit(run.id, 'TOOL_COMPLETED', `${agent.name}已读取 B 站数据`, {
@@ -598,29 +655,44 @@ export async function runAdvisorHarness({
     const loopResult = await runToolLoop({
       messages,
       tools,
-      requestCompletion: (conversation, availableTools, requestState) => completeMessage(
-        context.model,
-        conversation,
-        availableTools,
-        {
+      requestCompletion: (conversation, availableTools, requestState) => {
+        const progress = createModelProgressCallbacks({
+          emit,
           runId: run.id,
           taskId: task.id,
           agentId: agent.id,
-          attempt: task.attempt,
-          iteration: requestState.iteration,
-          signal: abortController.signal,
-          onStreamStart: () => emit?.(run.id, 'MODEL_STREAMING', `${agent.name}的模型响应已开始传输`, {
+          agentName: agent.name,
+        });
+        return completeMessage(
+          context.model,
+          conversation,
+          availableTools,
+          {
+            runId: run.id,
             taskId: task.id,
             agentId: agent.id,
-          }),
-          onRetry: (error) => emit?.(run.id, 'MODEL_RETRYING', `${agent.name}的模型请求暂时失败，正在重试`, {
-            taskId: task.id,
-            agentId: agent.id,
-            status: Number(error?.status || error?.statusCode || 0) || null,
-          }),
-        }
-      ),
+            attempt: task.attempt,
+            iteration: requestState.iteration,
+            signal: abortController.signal,
+            ...progress,
+            onStreamStart: () => emit?.(run.id, 'MODEL_STREAMING', `${agent.name}的模型响应已开始传输`, {
+              taskId: task.id,
+              agentId: agent.id,
+            }),
+            onRetry: (error) => emit?.(run.id, 'MODEL_RETRYING', `${agent.name}的模型请求暂时失败，正在重试`, {
+              taskId: task.id,
+              agentId: agent.id,
+              status: Number(error?.status || error?.statusCode || 0) || null,
+            }),
+          }
+        );
+      },
       executeTool: (name, args) => {
+        emit?.(run.id, 'TOOL_STARTED', `${agent.name}准备执行 ${name}`, {
+          taskId: task.id,
+          agentId: agent.id,
+          ...toolProgressPayload(name, args),
+        });
         if (context.bilibiliTools?.owns(name)) {
           return context.bilibiliTools.execute(name, args, abortController.signal).then((result) => {
             emit?.(run.id, 'TOOL_COMPLETED', `${agent.name}已读取 B 站数据`, {

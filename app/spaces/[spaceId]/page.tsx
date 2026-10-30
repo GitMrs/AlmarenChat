@@ -212,6 +212,7 @@ type RunEventPayload = {
   estimatedTotalTokens?: number;
   contentChars?: number;
   reasoningContentChars?: number;
+  preview?: string;
   toolCallCount?: number;
   retryCount?: number;
   finishReasons?: string[];
@@ -265,6 +266,13 @@ function eventChangesWorkspaceFiles(event: AgentRunEvent) {
 
 function formatActivityEvent(event: AgentRunEvent) {
   const payload = eventPayload(event);
+  if (event.type === 'MODEL_REASONING_PROGRESS') {
+    return {
+      title: event.message,
+      detail: payload.preview ? `思考进度：${payload.preview}` : `已收到 ${formatMetricCount(payload.reasoningContentChars || 0)} 字符的思考内容`,
+      checked: false,
+    };
+  }
   if (event.type === 'MODEL_WORKING' && payload.iteration) {
     return {
       title: event.message,
@@ -300,6 +308,14 @@ function formatActivityEvent(event: AgentRunEvent) {
       title: TOOL_LABELS[payload.tool || ''] || event.message,
       detail: paths.length > 0 ? paths.join('、') : payload.tool === 'list_files' ? '工作区根目录' : '',
       checked: payload.tool === 'check_files' && payload.valid,
+    };
+  }
+  if (event.type === 'TOOL_STARTED') {
+    const paths = payload.path ? [payload.path] : payload.paths || [];
+    return {
+      title: `准备${TOOL_LABELS[payload.tool || ''] || event.message}`,
+      detail: paths.length > 0 ? paths.join('、') : '',
+      checked: false,
     };
   }
   if (event.type === 'COORDINATOR_TASK_DISPATCHED') {
@@ -4288,7 +4304,7 @@ export default function SpaceDetailPage() {
                                         return (
                                           <div key={event.id} className="flex min-w-0 items-start gap-2.5">
                                             <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center text-slate-400">
-                                              {isCurrent && ['MODEL_WORKING', 'MODEL_STREAMING', 'MODEL_RETRYING'].includes(event.type) ? <Loader2 className="animate-spin" size={14} /> : activityItem.checked ? <CheckCircle2 className="text-emerald-500" size={14} /> : <Activity size={14} />}
+                                              {isCurrent && ['MODEL_WORKING', 'MODEL_STREAMING', 'MODEL_REASONING_PROGRESS', 'MODEL_RETRYING', 'TOOL_STARTED'].includes(event.type) ? <Loader2 className="animate-spin" size={14} /> : activityItem.checked ? <CheckCircle2 className="text-emerald-500" size={14} /> : <Activity size={14} />}
                                             </div>
                                             <div className="min-w-0 flex-1">
                                               <div className="text-xs font-bold leading-5 text-slate-700">{activityItem.title}</div>

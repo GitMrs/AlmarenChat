@@ -5,6 +5,8 @@ import { requireAuth } from '@/app/api/_lib/auth';
 import { ACTIVE_AGENT_RUN_STATUSES, agentRunInclude } from '@/app/api/_lib/agent-runs';
 import { getSpaceForUser, resolveManyAgents } from '@/app/api/_lib/spaces';
 import { taskProposalNeedsClarification } from '@/lib/space/task-proposals';
+import { resolveTaskSkill } from '@/lib/agents/runtime/skill-registry.mjs';
+import { EXECUTOR_MODEL_REQUEST_LIMIT } from '@/lib/agents/runtime/task-execution-plan.mjs';
 import { coordinatorAuthorization } from '@/lib/agents/runtime/agent-runtime-v3-policy.mjs';
 import { taskProposalWithServerCapabilities } from '@/lib/space/task-proposal-policy.mjs';
 import { getSpaceSkill, listSpaceSkills } from '@/lib/space/space-skills.mjs';
@@ -14,6 +16,7 @@ const ACTIVE_RELAY_STATUSES = ['QUEUED', 'RUNNING', 'PAUSE_REQUESTED', 'WAITING_
 
 type TaskProposalAttachment = {
   type: 'task_proposal';
+  title?: string;
   goal?: string;
   steps?: string[];
   deliverables?: string[];
@@ -23,6 +26,8 @@ type TaskProposalAttachment = {
   runId?: string;
   skillSnapshot?: Record<string, unknown>;
   skillAgentId?: string;
+  requestedAgentId?: string;
+  requestedAgentName?: string;
   workId?: string;
   [key: string]: unknown;
 };
@@ -254,6 +259,21 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
       if (availableSpaceSkills.length > 0 && !authorization.availableSkills) {
         authorization.availableSkills = availableSpaceSkills;
       }
+      const requestedAgent = currentProposal?.requestedAgentId
+        ? currentMemberAgents.find((agent) => agent.id === currentProposal.requestedAgentId) || null
+        : null;
+      if (currentProposal?.requestedAgentId && !requestedAgent) {
+        throw new Error('任务指定的 Agent 已不在当前空间中，请重新生成任务方案');
+      }
+      const directTaskSkill = requestedAgent
+        ? resolveTaskSkill({
+            requestedSkillId: currentProposal?.skillSnapshot?.id || 'general-task',
+            agent: requestedAgent,
+            text: runInput,
+            authorization,
+            additionalSkills: availableSpaceSkills,
+          })
+        : null;
       const modelRequestLimit = 48;
       const workTitle = String(currentProposal?.goal || runInput).split('\n')[0].trim().slice(0, 120) || '未命名成果';
       const templateSnapshot = space.templateSnapshot && typeof space.templateSnapshot === 'object'
@@ -318,6 +338,46 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
         },
         include: agentRunInclude,
       });
+      if (requestedAgent && directTaskSkill) {
+        const acceptanceCriteria = currentProposal?.deliverables?.length
+          ? currentProposal.deliverables.join('；')
+          : currentProposal?.goal || runInput;
+        const directTask = await tx.agentTask.create({
+          data: {
+            runId: created.id,
+            agentId: requestedAgent.id,
+            agentName: requestedAgent.name,
+            title: currentProposal?.title || '完成指定交付',
+            instruction: runInput,
+            acceptanceCriteria: acceptanceCriteria.slice(0, 4_000),
+            origin: 'direct_agent_request',
+            mode: 'executor',
+            dependsOn: [],
+            skillId: directTaskSkill.id,
+            skillVersion: directTaskSkill.version,
+            skillSnapshot: directTaskSkill as Prisma.InputJsonValue,
+            modelRequestLimit: EXECUTOR_MODEL_REQUEST_LIMIT,
+            status: 'PENDING',
+            sortOrder: 0,
+            proposedAt: new Date(),
+            approvedAt: new Date(),
+          },
+        });
+        await tx.agentRun.update({
+          where: { id: created.id },
+          data: {
+            coordinatorState: {
+              phase: 'executing',
+              authorizedAt: new Date().toISOString(),
+              iteration: 0,
+              taskCount: 1,
+              currentTaskIds: [directTask.id],
+              authorization,
+              directAgentRequest: true,
+            },
+          },
+        });
+      }
       if (currentProposalMessage && currentProposal) {
         const attachments = (currentProposalMessage.attachments as unknown[]).map((attachment) =>
           attachment && typeof attachment === 'object' && (attachment as TaskProposalAttachment).type === 'task_proposal'
@@ -329,7 +389,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
           data: { attachments: attachments as Prisma.InputJsonValue },
         });
       }
-      return { run: created, proposal: currentProposal || undefined };
+      const run = await tx.agentRun.findUnique({ where: { id: created.id }, include: agentRunInclude });
+      return { run, proposal: currentProposal || undefined };
     });
     return NextResponse.json(run, { status: 201 });
   } catch (error: any) {

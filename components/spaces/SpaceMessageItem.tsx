@@ -313,7 +313,9 @@ function TaskProposal({
                 ))}
               </ol>
               <p className="mt-4 text-[11px] font-semibold leading-5 text-slate-400">
-                确认后，协调者会根据空间成员、实时状态和每轮成果动态安排下一项工作。
+                {proposal.requestedAgentId
+                  ? `确认后直接交给 ${proposal.requestedAgentName || '指定成员'} 执行，不再重新选择成员。`
+                  : '确认后，协调者会根据空间成员、实时状态和每轮成果动态安排下一项工作。'}
               </p>
               {proposal.deliverables.length > 0 && (
                 <div className="mt-4 text-xs font-semibold leading-5 text-slate-500">
