@@ -44,6 +44,24 @@ test('a failed next decision preserves accepted work and leaves the run retryabl
   db.close();
 });
 
+test('coverage mismatch leaves the rerun decision to the user', () => {
+  const db = database();
+  db.prepare(`INSERT INTO "AgentRun" ("id", "status", "coordinatorState", "workerId", "updatedAt")
+    VALUES (?, 'RUNNING', ?, 'worker-1', 'before')`).run(
+    'run-1',
+    JSON.stringify({ phase: 'coordinating', currentTaskIds: [], authorization: { steps: ['交付 index.html'] } })
+  );
+  const error = new Error('协调者不能结束任务：授权要求尚未覆盖：交付 index.html');
+  error.code = 'COORDINATOR_COVERAGE_MISMATCH';
+  assert.equal(deferCoordinatorDecision(db, 'run-1', error, 'after'), true);
+  const run = db.prepare(`SELECT * FROM "AgentRun" WHERE "id" = 'run-1'`).get();
+  assert.equal(run.status, 'BLOCKED');
+  assert.match(run.error, /完成清单未对齐/);
+  assert.match(run.error, /是否重新执行由你决定/);
+  assert.match(run.error, /保留已验收成果/);
+  db.close();
+});
+
 test('stale coordinator turn can be recovered and reclaimed', () => {
   const db = database();
   const first = beginCoordinatorTurn(db, { runId: 'run-1', triggerEventId: 'event-1', workerId: 'worker-1' }, '2026-08-15T00:00:00.000Z');

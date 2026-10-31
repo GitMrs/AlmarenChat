@@ -59,13 +59,16 @@ export function deferCoordinatorDecision(db, runId, error, timestamp = new Date(
     phase: 'coordinating',
     currentTaskIds: [],
   };
+  const prefix = error?.code === 'COORDINATOR_COVERAGE_MISMATCH'
+    ? '已验收当前成果，但完成清单未对齐。是否重新执行由你决定；重新执行会保留已验收成果'
+    : '已验收当前成果，但协调者暂时无法生成下一步安排';
   return db.prepare(
     `UPDATE "AgentRun"
      SET "status" = 'BLOCKED', "error" = ?, "coordinatorState" = ?,
          "workerId" = NULL, "heartbeatAt" = NULL, "updatedAt" = ?
      WHERE "id" = ?`
   ).run(
-    `已验收当前成果，但协调者暂时无法生成下一步安排：${message}`.slice(0, 4000),
+    `${prefix}：${message}`.slice(0, 4000),
     JSON.stringify(nextState),
     timestamp,
     runId

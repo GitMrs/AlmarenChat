@@ -3158,6 +3158,20 @@ export default function SpaceDetailPage() {
     }
   };
 
+  const completeRun = async () => {
+    if (!currentRun || isRunActive || runActionLoading) return;
+    setRunActionLoading(true);
+    setError('');
+    try {
+      const result = await agentRunsApi.complete(currentRun.id);
+      setRuns((items) => items.map((item) => (item.id === result.run.id ? result.run : item)));
+    } catch (err: any) {
+      setError(err.message || '确认完成失败');
+    } finally {
+      setRunActionLoading(false);
+    }
+  };
+
   const retryFailedTask = async (task: AgentTask) => {
     if (!currentRun || isRunActive || retryingTaskId) return;
     setRetryingTaskId(task.id);
@@ -3866,7 +3880,9 @@ export default function SpaceDetailPage() {
                         <h2 className="mt-2 line-clamp-3 text-lg font-black leading-7 text-slate-950">{currentRun.input}</h2>
                         <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 text-xs font-bold text-slate-400">
                           <span className={['FAILED', 'FAILED_VALIDATION'].includes(currentRun.status) ? 'text-rose-500' : currentRun.status === 'COMPLETED' ? 'text-emerald-600' : ['PARTIAL', 'BLOCKED'].includes(currentRun.status) ? 'text-amber-600' : 'text-slate-700'}>
-                            {RUN_STATUS_LABELS[currentRun.status] || currentRun.status}
+                            {currentRun.status === 'BLOCKED' && currentRun.error?.includes('完成清单未对齐')
+                              ? '待确认'
+                              : RUN_STATUS_LABELS[currentRun.status] || currentRun.status}
                           </span>
                           <span>{formatRunDate(currentRun.createdAt)}</span>
                           {currentRun.attempt > 1 && <span>第 {currentRun.attempt} 次执行</span>}
@@ -3889,15 +3905,28 @@ export default function SpaceDetailPage() {
                               停止任务
                             </button>
                           ) : (
-                            <button
-                              type="button"
-                              onClick={retryRun}
-                              disabled={isRunActive || runActionLoading}
-                              className="ml-auto inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 font-black text-slate-500 transition hover:bg-white hover:text-slate-950 disabled:text-slate-300"
-                            >
-                              {runActionLoading ? <Loader2 className="animate-spin" size={13} /> : <RotateCcw size={13} />}
-                              重新执行整个任务
-                            </button>
+                            <div className="ml-auto flex items-center gap-1">
+                              {currentRun.status === 'BLOCKED' && currentRun.error?.includes('完成清单未对齐') && (
+                                <button
+                                  type="button"
+                                  onClick={completeRun}
+                                  disabled={isRunActive || runActionLoading}
+                                  className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 font-black text-emerald-600 transition hover:bg-emerald-50 disabled:text-slate-300"
+                                >
+                                  {runActionLoading ? <Loader2 className="animate-spin" size={13} /> : <CheckCircle2 size={13} />}
+                                  确认完成
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={retryRun}
+                                disabled={isRunActive || runActionLoading}
+                                className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 font-black text-slate-500 transition hover:bg-white hover:text-slate-950 disabled:text-slate-300"
+                              >
+                                {runActionLoading ? <Loader2 className="animate-spin" size={13} /> : <RotateCcw size={13} />}
+                                重新执行整个任务
+                              </button>
+                            </div>
                           )}
                         </div>
                       </section>

@@ -954,7 +954,9 @@ async function reviewSubmittedTask(run, task, context, completion) {
             (error instanceof Error ? error.message : String(error)).slice(0, 2_000), deferredAt, deferredAt, wakeup.id
           );
         }
-        addEvent(run.id, 'COORDINATOR_DECISION_DEFERRED', '当前成果已验收，但协调者暂时无法生成下一步安排，可重新执行继续', {
+        addEvent(run.id, 'COORDINATOR_DECISION_DEFERRED', error?.code === 'COORDINATOR_COVERAGE_MISMATCH'
+          ? '当前成果已验收，但完成清单未对齐；是否重新执行由你决定'
+          : '当前成果已验收，但协调者暂时无法生成下一步安排，可重新执行继续', {
           taskId: task.id,
           agentId: task.agentId,
           attempt: task.attempt,

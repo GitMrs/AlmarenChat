@@ -1206,6 +1206,8 @@ export const agentRuns = {
     }),
   retry: (id: string) =>
     request<{ run: AgentRun }>(`/runs/${id}/retry`, { method: 'POST' }),
+  complete: (id: string) =>
+    request<{ run: AgentRun }>(`/runs/${id}/complete`, { method: 'POST' }),
   retryTask: (runId: string, taskId: string) =>
     request<{ run: AgentRun; inheritedWorkspace: boolean }>(`/runs/${runId}/tasks/${taskId}/retry`, { method: 'POST' }),
 };
