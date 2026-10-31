@@ -1,6 +1,6 @@
-import { ASSISTANT_RECENT_MESSAGE_LIMIT, estimateRequestTokens } from '@/lib/memory/conversation-context-policy.mjs';
 'use client';
 
+import { ASSISTANT_RECENT_MESSAGE_LIMIT, estimateRequestTokens } from '@/lib/memory/conversation-context-policy.mjs';
 import { usePathname, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Activity, ArrowLeft, Bell, Check, CheckSquare, ChevronDown, ChevronUp, Clock, Cpu, Globe2, History, ImagePlus, Loader2, MessageCircleHeart, PanelRightClose, Pin, Plus, Send, Settings2, Sparkles, Square, Trash2, X } from 'lucide-react';
