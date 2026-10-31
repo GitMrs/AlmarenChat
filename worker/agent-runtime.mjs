@@ -500,6 +500,7 @@ async function coordinateNextWork(run, context, triggerEventId) {
     state,
     team,
   } = loadCoordinatorDecisionContext(db, run, context.agents);
+  const requirements = authorizationRequirements(authorization);
   if (activeTasks.length > 0) return { type: 'active', tasks: activeTasks };
   const dispatchConstraint = authorization.requestedAgentId
     ? { agentId: authorization.requestedAgentId, agentName: team.find((member) => member.id === authorization.requestedAgentId)?.name }
@@ -576,7 +577,7 @@ async function coordinateNextWork(run, context, triggerEventId) {
           ? {
               type: 'finish',
               summary: '已完成并验收授权目标。',
-              coverage: authorizationRequirements(authorization).map((requirement) => ({
+              coverage: requirements.map((requirement) => ({
                 requirement,
                 taskIds: completed.map((task) => task.id),
                 evidence: '已由测试执行任务完成并通过验收。',
@@ -613,14 +614,15 @@ async function coordinateNextWork(run, context, triggerEventId) {
               '每个成员的 availableSkills 是本轮可选工作方法。authorization.selectedSkill 非空时，这是用户本轮明确指定的工作方法，第一项任务必须采用它；否则优先选择与任务产物匹配的专用 Skill，没有匹配项时才使用 general-task。Skill 不能扩大 authorization 的能力。可执行 Skill 必须使用 executor 模式，并且 authorization 必须包含 code_execute。' +
               'Coordinator 不需要在派发阶段预声明联网；成员执行到需要外部事实时，运行时会根据本轮权限和实际工具调用决定是否联网。' +
               `必须调用 ${COORDINATOR_ACTION_TOOL_NAME} 提交唯一动作。继续工作时提交：{"type":"dispatch","summary":"决策摘要","tasks":[{"agentId":"成员ID","skillId":"Skill ID","mode":"advisor|executor","title":"标题","instruction":"完整指令","acceptanceCriteria":"可核对标准","reason":"选人和 Skill 理由","expectedArtifacts":["相对路径或结果"]}]}；` +
-              '目标已由已验收成果完全满足时，必须逐项覆盖 authorization 中的 steps 和 deliverables，且只能引用 completed 中的任务 ID：' +
-              '{"type":"finish","summary":"完成依据","coverage":[{"requirement":"授权步骤或交付物原文","taskIds":["已验收任务ID"],"evidence":"该任务如何满足此要求"}]}；' +
+              '目标已由已验收成果完全满足时，必须逐项覆盖 requirements 数组：coverage 数量必须与 requirements 一致、顺序一致，requirement 字段原样复制对应 requirements 字符串，且只能引用 completed 中的任务 ID：' +
+              '{"type":"finish","summary":"完成依据","coverage":[{"requirement":"requirements 中的原文","taskIds":["已验收任务ID"],"evidence":"该任务如何满足此要求"}]}；' +
               '授权范围内确实无法继续：{"type":"block","reason":"具体原因","summary":"给用户的说明"}。',
           },
           {
             role: 'user',
             content: JSON.stringify({
               authorization,
+              requirements,
               team,
               completed: completed.map((task) => ({
                 id: task.id,
@@ -670,7 +672,7 @@ async function coordinateNextWork(run, context, triggerEventId) {
       remainingTasks,
       existingTasks,
       allowFinish: completed.length > 0,
-      requirements: authorizationRequirements(authorization),
+      requirements,
       completedTaskIds: completed.map((task) => task.id),
       requiredAgentId: dispatchConstraint?.agentId
         || (existingTasks.length === 0 ? authorization.selectedSkillAgentId : null)
