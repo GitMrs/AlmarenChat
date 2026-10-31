@@ -28,7 +28,7 @@ export default function AgentContextModal({ agentId, agentName, conversationId, 
   const settings = (
     <div className="rounded-xl border border-slate-200 p-3 text-xs text-slate-600">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <label htmlFor="agent-context-limit" className="font-bold">近期上下文</label>
+        <label htmlFor="agent-context-limit" className="font-bold">近期原文上限</label>
         <div className="flex items-center gap-2">
           <input id="agent-context-limit" type="number" min={1} max={maxContextMessageLimit} value={limit} disabled={saving} onChange={event => setLimit(Number(event.target.value))} className="h-8 w-16 rounded-lg border border-slate-200 px-2 text-center" />
           <span>/ {maxContextMessageLimit} 条</span>
@@ -42,6 +42,7 @@ export default function AgentContextModal({ agentId, agentName, conversationId, 
           }} className="rounded-lg bg-slate-950 px-3 py-1.5 font-bold text-white disabled:bg-slate-200 disabled:text-slate-400">{saving ? '保存中…' : '保存'}</button>
         </div>
       </div>
+      <p className="mt-2 text-slate-400">条数限制用于近期原文；退出窗口的内容由会话摘要承接，实际请求还受完整上下文预算限制。</p>
       {!conversationId && <p className="mt-2 text-slate-400">发送首条消息后，可查看当前会话的统计和归档。</p>}
       {error && <p role="alert" className="mt-2 text-rose-600">{error}</p>}
     </div>

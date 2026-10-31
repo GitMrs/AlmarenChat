@@ -1,3 +1,5 @@
+import { prepareConversationContext, recordConversationUsage } from '@/lib/memory/conversation-context';
+import { createMemoryTools } from '@/lib/memory/memory-tools';
 import { logModelTimeContext } from '@/lib/chat/model-time-log.mjs';
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
@@ -10,14 +12,12 @@ import { createChatWebTools, runAutoWebChat } from '@/lib/web/auto-web';
 import { createAgentGrowthTools } from '@/lib/agents/growth/agent-growth';
 import { loadAgentMemoryContext } from '@/lib/agents/memory/agent-memory';
 import { currentTimeContext } from '@/lib/agents/memory/current-time-context.mjs';
-import { compressConversationContext, estimateMessagesTokens } from '@/lib/agents/memory/context-compression';
-import { conversationContextTargetTokens } from '@/lib/core/model-limits.mjs';
 import { loadAgentWorldContext } from '@/lib/world/context';
 import { formatKnowledgeContext, getKnowledgeHits } from '@/lib/knowledge/knowledge';
 import { findCompanionAgent } from '@/lib/companion/agents';
 import { isValidInternalQQSecret } from '@/lib/qq-assistant/credentials.mjs';
 import { qqImageAttachments } from '@/lib/qq-assistant/policy.mjs';
-import { agentChatArchiveState, archiveAgentChat } from '@/app/api/_lib/agent-personal-memory';
+import { archiveAgentChat } from '@/app/api/_lib/agent-personal-memory';
 import { loadAgentModelSetting, resolveUserModelConfig } from '@/app/api/_lib/agent-model';
 import { CONVERSATION_GROUNDING_GUIDANCE } from '@/lib/chat/conversation-grounding.mjs';
 import { stripHistoryRetrievalNotices } from '@/lib/personal-assistant/retrieval-notice.mjs';
@@ -132,12 +132,11 @@ export async function POST(request: Request) {
     }
 
     const contextLimit = Math.max(
-      8,
+      1,
       Math.min(80, conversation.contextMessageLimit || userSettings.contextMessageLimit || 40)
     );
-    const archiveState = await agentChatArchiveState(userId, agentId, conversationId);
     const persistedHistory = await prisma.message.findMany({
-      where: archiveState.where,
+      where: { conversationId, role: { in: ['user', 'assistant'] } },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: contextLimit + 1,
     });
@@ -152,22 +151,10 @@ export async function POST(request: Request) {
         ? stripHistoryRetrievalNotices(item.content)
         : String(item.content || ''),
     }));
-    const historyTargetTokens = conversationContextTargetTokens(
-      modelConfig.modelName,
-      userSettings.modelContextWindow
-    );
-    const sourceHistory = estimateMessagesTokens(normalizedHistory) > historyTargetTokens
-      ? compressConversationContext(normalizedHistory, {
-          maxMessages: contextLimit,
-          targetTokens: historyTargetTokens,
-          preserveRecent: Math.max(1, Math.floor(contextLimit * 0.4)),
-          aggressiveAfter: Math.floor(contextLimit * 1.5),
-          preserveSystem: false,
-        }).compressedMessages
-      : normalizedHistory;
+    const sourceHistory = normalizedHistory;
 
     const [agentMemory, worldContext] = await Promise.all([
-      loadAgentMemoryContext({ userId, agentId, query: message }),
+      loadAgentMemoryContext({ userId, agentId, query: message, conversationId, recentMessageIds: normalizedHistory.map(item => item.id) }),
       loadAgentWorldContext({ agentId, query: message, history: normalizedHistory }),
     ]);
 
@@ -190,9 +177,6 @@ export async function POST(request: Request) {
       agent?.tone ? `【表达语气】${agent.tone}` : '',
       currentTimeContext(),
       buildConversationContinuityGuidance({ message, history: normalizedHistory }),
-      agentMemory,
-      worldContext,
-      knowledgeContext,
       CONVERSATION_GROUNDING_GUIDANCE,
       '【当前渠道】你正在 QQ 私聊中回复用户。请使用适合即时消息阅读的标准 Markdown，避免 HTML、复杂表格和站内相对链接。',
     ].filter(Boolean).join('\n\n');
@@ -233,6 +217,19 @@ export async function POST(request: Request) {
     } else {
       openaiMessages.push({ role: 'user', content: message });
     }
+
+    const preparedContext = await prepareConversationContext({
+      userId, conversationId, maxMessages: contextLimit, requiredSystem: systemPrompt,
+      optional: [{ name: '相关记忆与历史原文', content: agentMemory }, { name: '世界事件', content: worldContext }, { name: '知识库', content: knowledgeContext }],
+      currentMessage: openaiMessages.at(-1), excludeMessageIds: [userMessageId, assistantMessageId],
+      modelName: model, modelContextWindow: userSettings.modelContextWindow,
+      summarize: async prompt => {
+        const response = await client.chat.completions.create({ model, messages: [{ role: 'user', content: prompt }], temperature: 0.1 }, { timeout: 20_000, maxRetries: 0 });
+        return response.choices[0]?.message?.content || null;
+      },
+    });
+    openaiMessages.splice(0, openaiMessages.length, ...preparedContext.messages);
+    const memoryTools = createMemoryTools({ userId, kind: 'agent', agentId, conversationId }, preparedContext.history.map(item => item.id));
 
     const existingUserMessage = await prisma.message.findUnique({
       where: { id: userMessageId },
@@ -301,8 +298,10 @@ export async function POST(request: Request) {
               model,
               messages: openaiMessages,
               web,
-              extraTools: growth?.tools || [],
-              callTool: growth?.execute,
+              contextBudget: preparedContext.manifest.hardInputBudget,
+              onContextUsage: usage => recordConversationUsage(userId, conversationId, preparedContext.manifest, usage),
+              extraTools: [...(growth?.tools || []), ...memoryTools.tools],
+              callTool: (name, args) => name === 'memory_search' || name === 'memory_read' ? memoryTools.execute(name, args) : growth?.execute(name, args),
               signal: request.signal,
               onText: (delta: string) => emit({ type: 'delta', content: delta }),
             });
@@ -330,8 +329,10 @@ export async function POST(request: Request) {
       model,
       messages: openaiMessages,
       web,
-      extraTools: growth?.tools || [],
-      callTool: growth?.execute,
+      contextBudget: preparedContext.manifest.hardInputBudget,
+      onContextUsage: usage => recordConversationUsage(userId, conversationId, preparedContext.manifest, usage),
+      extraTools: [...(growth?.tools || []), ...memoryTools.tools],
+      callTool: (name, args) => name === 'memory_search' || name === 'memory_read' ? memoryTools.execute(name, args) : growth?.execute(name, args),
       signal: request.signal,
     });
     const content = await finalizeResponse(modelContent);

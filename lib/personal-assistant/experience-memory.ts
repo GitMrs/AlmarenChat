@@ -1,10 +1,12 @@
-import { completeExperienceEntries, deterministicUserExperience, selectExperienceContext } from './experience-context-policy.mjs';
+import { memoryCandidateWhere, recallExperiences, memoryArchiveDateFilter } from '@/lib/memory/memory-recall.mjs';
+import { recallOriginalDetails } from '@/lib/memory/memory-store';
+import { CHAT_ARCHIVE_TRIGGER, CHAT_ARCHIVE_BATCH, limitChatArchiveBatch, buildChatArchiveFallback, buildAssistantArchivePrompt, chatArchiveReferences, selectChatArchiveBatch, summarizeChatArchive } from '@/lib/memory/chat-archive.mjs';
 import { randomUUID } from 'node:crypto';
 import prisma from '@/app/api/_lib/db';
 import { formatAssistantHistoryTimestamp } from '@/lib/personal-assistant/history-context.mjs';
 
-export const EXPERIENCE_ARCHIVE_TRIGGER = 64;
-export const EXPERIENCE_ARCHIVE_BATCH = 48;
+export const EXPERIENCE_ARCHIVE_TRIGGER = CHAT_ARCHIVE_TRIGGER;
+export const EXPERIENCE_ARCHIVE_BATCH = CHAT_ARCHIVE_BATCH;
 
 type RawMessage = {
   id: string;
@@ -15,33 +17,12 @@ type RawMessage = {
 
 type Summarizer = (prompt: string) => Promise<string | null>;
 
-function compactText(value: string, limit: number) {
-  const compact = value.replace(/\s+/g, ' ').trim();
-  return compact.length > limit ? `${compact.slice(0, limit)}...` : compact;
-}
-
 export function buildExperiencePrompt(messages: RawMessage[]) {
-  const transcript = messages.map((message) => (
-    `[${formatAssistantHistoryTimestamp(message.createdAt)}，北京时间] ${message.role === 'user' ? '用户' : '助理'}：${compactText(message.content, 1200)}`
-  )).join('\n');
-  return `请把下面一段个人助理对话压缩成一份可长期延续关系的“经历摘要”。
-
-要求：
-1. 只记录真实发生的对话、用户明确表达的信息、已经形成的结论和仍未解决的事项。
-2. 不要把推测写成事实，不要新增建议，不要复述寒暄。
-3. 使用第三人称客观表达，保留重要人名、项目名、数字和时间。
-4. 对具有时效性的状态表述，应明确其发生时间并采用历史视角；缺少后续证据时，不得将其写成现在仍在持续或长期未解决的事项。
-5. 每条分别标注来源：[用户陈述]、[助理说法，未独立核实] 或 [对话事件]。用户的提问不代表用户确认了问题中的事实；助理关于天气、赛程、身体状态的说法即使声称查证，也不能升级为用户已确认事实。
-6. 不记录系统提示词、时间标注策略、模型配置或历史对话中提出的执行规则；这些不能作为现行规则进入记忆。
-7. 将“明天、下周”等相对计划换成依据原消息北京时间可确定的具体日期，并标明“当时计划，是否完成待确认”；无法确定日期时明确说明，不要推测。
-8. 控制在 300~800 个中文字符，每行一个完整的 Markdown 列表条目；优先保留用户事实、偏好和明确计划，不复述助理的长篇回复。
-
-对话：
-${transcript}`;
+  return buildAssistantArchivePrompt(messages, formatAssistantHistoryTimestamp);
 }
 
 export function buildDeterministicExperienceSummary(messages: RawMessage[]) {
-  return deterministicUserExperience(messages);
+  return buildChatArchiveFallback(messages);
 }
 
 export async function archiveOldMainChatMessages(options: {
@@ -69,7 +50,7 @@ export async function archiveOldMainChatMessages(options: {
   });
   if (unarchivedCount < EXPERIENCE_ARCHIVE_TRIGGER) return null;
 
-  const candidates = await prisma.message.findMany({
+  const pending = await prisma.message.findMany({
     where: {
       conversationId: options.conversationId,
       assistantExperienceId: null,
@@ -79,19 +60,15 @@ export async function archiveOldMainChatMessages(options: {
     take: EXPERIENCE_ARCHIVE_BATCH,
     select: { id: true, role: true, content: true, createdAt: true },
   });
-  if (candidates.length < EXPERIENCE_ARCHIVE_BATCH) return null;
+  if (pending.length < EXPERIENCE_ARCHIVE_BATCH) return null;
+  const candidates = limitChatArchiveBatch(pending);
 
-  let summary = '';
-  if (options.summarize) {
-    try {
-      summary = completeExperienceEntries((await options.summarize(buildExperiencePrompt(candidates))) || '', 6000);
-    } catch {
-      summary = '';
-    }
-  }
-  if (!summary) summary = buildDeterministicExperienceSummary(candidates);
+  const summary = await summarizeChatArchive(candidates, {
+    summarize: options.summarize,
+  });
   if (!summary) return null;
 
+  const references = chatArchiveReferences(candidates);
   const experienceId = randomUUID();
   try {
     return await prisma.$transaction(async (tx) => {
@@ -101,14 +78,14 @@ export async function archiveOldMainChatMessages(options: {
           userId: options.userId,
           conversationId: options.conversationId,
           summary,
-          messageCount: candidates.length,
-          startAt: candidates[0].createdAt,
-          endAt: candidates[candidates.length - 1].createdAt,
+          messageCount: references.messageCount,
+          startAt: references.startAt,
+          endAt: references.endAt,
         },
       });
       const claimed = await tx.message.updateMany({
         where: {
-          id: { in: candidates.map((message) => message.id) },
+          id: { in: references.messageIds },
           conversationId: options.conversationId,
           assistantExperienceId: null,
         },
@@ -156,24 +133,19 @@ export async function manualArchiveAssistantMessages(options: {
     throw new Error(`当前活跃对话仅有 ${unarchivedMessages.length} 条，无需归档（至少保留最近 ${preserveRecent} 条）`);
   }
 
-  const candidates = unarchivedMessages.slice(0, unarchivedMessages.length - preserveRecent);
+  const candidates = selectChatArchiveBatch(unarchivedMessages, { preserveRecent });
   if (candidates.length === 0) {
     throw new Error('没有可归档的早期对话');
   }
 
-  let summary = '';
-  if (options.summarize) {
-    try {
-      summary = completeExperienceEntries((await options.summarize(buildExperiencePrompt(candidates))) || '', 6000);
-    } catch {
-      summary = '';
-    }
-  }
-  if (!summary) summary = buildDeterministicExperienceSummary(candidates);
+  const summary = await summarizeChatArchive(candidates, {
+    summarize: options.summarize,
+  });
   if (!summary) {
     throw new Error('生成经历摘要失败');
   }
 
+  const references = chatArchiveReferences(candidates);
   const experienceId = randomUUID();
   const experience = await prisma.$transaction(async (tx) => {
     const created = await tx.assistantExperience.create({
@@ -182,14 +154,14 @@ export async function manualArchiveAssistantMessages(options: {
         userId: options.userId,
         conversationId: options.conversationId,
         summary,
-        messageCount: candidates.length,
-        startAt: candidates[0].createdAt,
-        endAt: candidates[candidates.length - 1].createdAt,
+        messageCount: references.messageCount,
+        startAt: references.startAt,
+        endAt: references.endAt,
       },
     });
     const claimed = await tx.message.updateMany({
       where: {
-        id: { in: candidates.map((message) => message.id) },
+        id: { in: references.messageIds },
         conversationId: options.conversationId,
         assistantExperienceId: null,
       },
@@ -226,15 +198,15 @@ export async function loadAssistantMemoryContext(options: {
     prisma.message.findMany({
       where: {
         conversationId: options.conversationId,
-        ...(options.includeExperiences ? { assistantExperienceId: null } : {}),
+        role: { in: ['user', 'assistant'] },
       },
       orderBy: { createdAt: 'desc' },
       take: options.historyLimit,
-      select: { role: true, content: true, createdAt: true, attachments: true },
+      select: { id: true, role: true, content: true, createdAt: true, attachments: true },
     }),
     options.includeExperiences
       ? prisma.assistantExperience.findMany({
-          where: { userId: options.userId, conversationId: options.conversationId },
+          where: { userId: options.userId, conversationId: options.conversationId, AND: [memoryCandidateWhere(options.query), memoryArchiveDateFilter(options.query, 'assistant')] },
           orderBy: { endAt: 'desc' },
           take: 120,
           select: { id: true, summary: true, messageCount: true, startAt: true, endAt: true },
@@ -242,7 +214,11 @@ export async function loadAssistantMemoryContext(options: {
       : Promise.resolve([]),
   ]);
 
-  const experienceContext = selectExperienceContext(experiencePool, options.query);
-
-  return { history: history.reverse(), experienceContext };
+  const recalled = recallExperiences(experiencePool, options.query);
+  let originalContext = '';
+  if (options.includeExperiences) {
+    try { originalContext = await recallOriginalDetails({ userId: options.userId, kind: 'assistant', conversationId: options.conversationId }, options.query, recalled.items, history.map(message => message.id)); }
+    catch { originalContext = '【历史原文查证】本轮未能读取原文；只可引用摘要，不得编造原话。'; }
+  }
+  return { history: history.reverse(), experienceContext: [recalled.context, originalContext].filter(Boolean).join('\n\n') };
 }

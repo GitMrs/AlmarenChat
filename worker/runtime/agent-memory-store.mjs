@@ -1,3 +1,4 @@
+import { memorySearchTerms, isBroadMemoryRecall } from '../../lib/memory/memory-recall.mjs';
 import { activeGrowthEvents } from '../../lib/agents/growth/cognition.mjs';
 import { randomUUID } from 'node:crypto';
 import { agentMemoryContext } from '../../lib/agents/memory/agent-memory-policy.mjs';
@@ -12,22 +13,35 @@ export function loadAgentMemoryContextSync(db, { userId, agentId, query, spaceId
   const agent = db.prepare(
     `SELECT "agentType" FROM "Agent" WHERE "id" = ? LIMIT 1`
   ).get(agentId);
+  const candidateFilter = fields => {
+    const terms = isBroadMemoryRecall(query) ? [] : memorySearchTerms(query).slice(0, 48);
+    return {
+      sql: terms.length ? ` AND (${terms.flatMap(() => fields.map(field => `instr(lower("${field}"), lower(?)) > 0`)).join(' OR ')})` : '',
+      params: terms.flatMap(term => fields.map(() => term)),
+    };
+  };
+  const factsFilter = candidateFilter(['category', 'content']);
+  const ruleFilter = candidateFilter(['title', 'instruction']);
+  const experienceFilter = candidateFilter(['title', 'summary']);
   const memories = db.prepare(
-    `SELECT "category", "content" FROM "AgentMemoryItem" WHERE "userId" = ? AND "agentId" = ? AND "status" = 'ACTIVE' AND "category" != 'skill' ORDER BY "updatedAt" DESC LIMIT 60`
-  ).all(userId, agentId);
+    `SELECT "category", "content" FROM "AgentMemoryItem" WHERE "userId" = ? AND "agentId" = ? AND "status" = 'ACTIVE' AND "category" != 'skill' ${factsFilter.sql} ORDER BY "updatedAt" DESC LIMIT 60`
+  ).all(userId, agentId, ...factsFilter.params);
   const rules = agent?.agentType === 'EMPLOYEE' ? db.prepare(
     `SELECT "category", "title", "instruction", "status", "evidenceCount", "updatedAt"
      FROM "AgentMemoryRule"
      WHERE "userId" = ? AND "agentId" = ? AND "status" = 'ACTIVE'
-     ORDER BY "updatedAt" DESC LIMIT 60`
-  ).all(userId, agentId) : [];
+     ${ruleFilter.sql} ORDER BY "updatedAt" DESC LIMIT 60`
+  ).all(userId, agentId, ...ruleFilter.params) : [];
   const experiences = db.prepare(
-    `SELECT "title", "summary", "outcome", "spaceId", "sourceType", "createdAt"
+    `SELECT "id", "title", "summary", "outcome", "spaceId", "sourceType", "createdAt", "tags"
      FROM "AgentExperience"
      WHERE "userId" = ? AND "agentId" = ? AND "outcome" = 'ACCEPTED' AND "status" = 'ACTIVE'
        AND ("spaceId" IS NULL OR "spaceId" = ?)
-     ORDER BY "updatedAt" DESC LIMIT 30`
-  ).all(userId, agentId, spaceId);
+     ${experienceFilter.sql} ORDER BY "updatedAt" DESC LIMIT 120`
+  ).all(userId, agentId, spaceId, ...experienceFilter.params).map(item => {
+    try { return { ...item, tags: typeof item.tags === 'string' ? JSON.parse(item.tags) : item.tags }; }
+    catch { return { ...item, tags: [] }; }
+  });
   const growth = db.prepare(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'AgentGrowthEvent'`).get()
     ? activeGrowthEvents(db.prepare(`SELECT * FROM "AgentGrowthEvent" WHERE "userId" = ? AND "agentId" = ? AND ("scope" = 'PERSONAL' OR ("scope" = 'SPACE' AND "spaceId" = ?)) ORDER BY "createdAt" DESC`).all(userId, agentId, spaceId).map(e => ({ ...e, payload: JSON.parse(e.payload) })))
       .filter(e => ['BELIEF', 'REVISION', 'REFLECTION'].includes(e.type) && (e.payload?.beliefKey || e.payload?.evidence))

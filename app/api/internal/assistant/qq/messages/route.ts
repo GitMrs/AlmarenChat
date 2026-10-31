@@ -1,3 +1,6 @@
+import { prepareConversationContext, recordConversationUsage } from '@/lib/memory/conversation-context';
+import { ASSISTANT_RECENT_MESSAGE_LIMIT } from '@/lib/memory/conversation-context-policy.mjs';
+import { createMemoryTools } from '@/lib/memory/memory-tools';
 import { logModelTimeContext } from '@/lib/chat/model-time-log.mjs';
 import { createHash } from 'node:crypto';
 import { NextResponse } from 'next/server';
@@ -6,7 +9,7 @@ import { reserveChatQuota } from '@/lib/chat/chat-quota';
 import { createModelClient, resolveModelName } from '@/lib/core/model-client';
 import { createChatWebTools, runAutoWebChat } from '@/lib/web/auto-web';
 import { buildAssistantActivityContext, buildAssistantPlatformContext } from '@/lib/personal-assistant/platform-context';
-import { buildPersonalAssistantPrompt } from '@/lib/personal-assistant/prompt-builder';
+import { buildAssistantContextParts } from '@/lib/personal-assistant/prompt-builder';
 import { ensurePersonalAssistant } from '@/lib/personal-assistant/profile';
 import { archiveOldMainChatMessages, loadAssistantMemoryContext } from '@/lib/personal-assistant/experience-memory';
 import { buildAssistantHistory } from '@/lib/personal-assistant/history-context.mjs';
@@ -19,8 +22,6 @@ import { loadUserMemoryItems } from '@/lib/personal-assistant/user-memory';
 import { stripRetrievalNotices } from '@/lib/personal-assistant/retrieval-notice.mjs';
 import { isValidInternalQQSecret } from '@/lib/qq-assistant/credentials.mjs';
 import { classifyQQCommand, qqImageAttachments } from '@/lib/qq-assistant/policy.mjs';
-import { compressConversationContext } from '@/lib/agents/memory/context-compression';
-import { conversationContextTargetTokens } from '@/lib/core/model-limits.mjs';
 
 export const runtime = 'nodejs';
 
@@ -139,7 +140,7 @@ export async function POST(request: Request) {
       },
     });
 
-    const contextLimit = Math.max(8, Math.min(80, userSettings.contextMessageLimit || 40));
+    const contextLimit = ASSISTANT_RECENT_MESSAGE_LIMIT;
     const contextSources = {
       spaces: profile.includeSpaceContext,
       tasks: profile.includeTaskContext,
@@ -153,15 +154,14 @@ export async function POST(request: Request) {
         historyLimit: contextLimit,
         includeExperiences: true,
       }),
-      loadUserMemoryItems(userId, null, 30),
+      loadUserMemoryItems(userId, null, 40, message),
       buildAssistantPlatformContext(userId, contextSources, message),
       buildAssistantActivityContext(userId, message, contextSources),
     ]);
     let reportStatus: ((label: string) => void) | undefined;
     const web = createChatWebTools({ apiKey: userSettings.tavilyApiKey, defaultWeatherLocation: userSettings.defaultWeatherLocation, history: memoryContext.history, signal: request.signal, onStatus: (label: string) => reportStatus?.(label) });
 
-    const systemPrompt = [
-      buildPersonalAssistantPrompt({
+    const contextParts = buildAssistantContextParts({
         userName: userSettings.name,
         profile,
         memories,
@@ -170,25 +170,15 @@ export async function POST(request: Request) {
         webEnabled: true,
         experienceContext: memoryContext.experienceContext,
         query: message,
-      }),
+      });
+    const systemPrompt = [
+      contextParts.requiredSystem,
       buildConversationContinuityGuidance({ message, history: memoryContext.history }),
       '【当前渠道】：你正在 QQ 私聊中回复用户。QQ 与网页共用同一个主聊天上下文；不要提供站内相对链接，可以使用 QQ 支持的标准 Markdown，但避免 HTML 和复杂表格，回答保持适合即时消息阅读。长期记忆、任务和提醒也与网页共享。用户要求提醒时不要声称已经创建，系统会在回复末尾附加真实创建结果。',
     ].filter(Boolean).join('\n\n');
     logModelTimeContext({ entry: 'qq-assistant', model: model, source: 'server-clock', messages: [{ role: 'system', content: systemPrompt }] });
 
-    const compressedHistory = compressConversationContext(
-      buildAssistantHistory(memoryContext.history),
-      {
-        maxMessages: contextLimit,
-        targetTokens: conversationContextTargetTokens(
-          usesCustomModel ? userSettings.modelName : '',
-          userSettings.modelContextWindow
-        ),
-        preserveRecent: Math.max(1, Math.floor(contextLimit * 0.4)),
-        aggressiveAfter: Math.floor(contextLimit * 1.5),
-        preserveSystem: false,
-      }
-    ).compressedMessages;
+    const compressedHistory = buildAssistantHistory(memoryContext.history);
     const userContent = imageAttachments.length
       ? [
           { type: 'text' as const, text: message },
@@ -208,6 +198,17 @@ export async function POST(request: Request) {
     ];
 
     const userMessageId = eventMessageId('user', binding.appId, eventId);
+    const preparedContext = await prepareConversationContext({
+      userId, conversationId: binding.conversationId, maxMessages: contextLimit, excludeMessageIds: [userMessageId],
+      requiredSystem: systemPrompt, optional: contextParts.optional,
+      currentMessage: { role: 'user', content: userContent }, modelName: usesCustomModel ? userSettings.modelName : '', modelContextWindow: userSettings.modelContextWindow,
+      summarize: async (prompt: string) => {
+        const response = await client.chat.completions.create({ model, messages: [{ role: 'user', content: prompt }], temperature: 0.1 }, { timeout: 20_000, maxRetries: 0 });
+        return response.choices[0]?.message?.content || null;
+      },
+    });
+    modelMessages.splice(0, modelMessages.length, ...preparedContext.messages);
+    const memoryTools = createMemoryTools({ userId, kind: 'assistant', conversationId: binding.conversationId }, preparedContext.history.map(item => item.id));
     const finalizeResponse = async (modelContent: string) => {
       const normalizedModelContent = stripRetrievalNotices(modelContent).trim();
       if (!normalizedModelContent) throw new Error('模型没有返回可展示的正文');
@@ -293,7 +294,7 @@ export async function POST(request: Request) {
 
           try {
             reportStatus = (label: string) => emit({ type: 'status', label });
-            const modelContent = await runAutoWebChat({ client, model, messages: modelMessages, web, signal: request.signal, onText: (delta: string) => emit({ type: 'delta', content: delta }) });
+            const modelContent = await runAutoWebChat({ client, model, messages: modelMessages, web, contextBudget: preparedContext.manifest.hardInputBudget, onContextUsage: usage => recordConversationUsage(userId, binding.conversationId, preparedContext.manifest, usage), extraTools: memoryTools.tools, callTool: memoryTools.execute, signal: request.signal, onText: (delta: string) => emit({ type: 'delta', content: delta }) });
 
             const finalized = await finalizeResponse(modelContent);
             emit({ type: 'done', content: finalized.streamContent, conversationId: binding.conversationId });
@@ -314,7 +315,7 @@ export async function POST(request: Request) {
       });
     }
 
-    const modelContent = await runAutoWebChat({ client, model, messages: modelMessages, web, signal: request.signal });
+    const modelContent = await runAutoWebChat({ client, model, messages: modelMessages, web, contextBudget: preparedContext.manifest.hardInputBudget, onContextUsage: usage => recordConversationUsage(userId, binding.conversationId, preparedContext.manifest, usage), extraTools: memoryTools.tools, callTool: memoryTools.execute, signal: request.signal });
     if (!modelContent?.trim()) throw new Error('模型没有返回可展示的正文');
     const finalized = await finalizeResponse(modelContent);
     return NextResponse.json({ content: finalized.content, conversationId: binding.conversationId });

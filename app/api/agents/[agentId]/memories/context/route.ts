@@ -16,7 +16,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ age
     if (!conversation) return NextResponse.json({ error: 'Conversation not found' }, { status: 404 });
     if (conversation.agentMode !== 'MAIN') return NextResponse.json({ context: '' }, { headers: { 'Cache-Control': 'no-store' } });
     const [context, archiveState] = await Promise.all([
-      loadAgentMemoryContext({ userId, agentId, query: typeof body.query === 'string' ? body.query.slice(0, 4_000) : '' }),
+      loadAgentMemoryContext({ userId, agentId, conversationId: body.conversationId, query: typeof body.query === 'string' ? body.query.slice(0, 4_000) : '' }),
       agentChatArchiveState(userId, agentId, body.conversationId),
     ]);
     return NextResponse.json({ context, archivedThrough: archiveState.archivedThrough }, { headers: { 'Cache-Control': 'no-store' } });

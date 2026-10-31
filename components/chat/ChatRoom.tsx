@@ -907,20 +907,20 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
           await conversationsApi.update(localConversationId, { contextMessageLimit });
         }
 
+        let postedCurrentMessageId: string | undefined;
         if (!options.reuseLastUserMessage) {
-          await conversationsApi.sendMessage(localConversationId, content, {
+          const persistedUser = await conversationsApi.sendMessage(localConversationId, content, {
             role: 'user',
             attachments: outgoingAttachments,
           });
+          postedCurrentMessageId = persistedUser.message.id;
         }
 
         const memoryState = conversationMode === 'MAIN'
           ? await agentMemories.context(displayAgent?.id || agentId, localConversationId, content, controller.signal)
           : { context: '', archivedThrough: null };
-        const archivedThrough = memoryState.archivedThrough;
         const modelMessages: { role: 'system' | 'user' | 'assistant'; content: any }[] = historySource
           .filter((message) => !message.id.startsWith('error-') && (message.role !== 'assistant' || message.content.trim()))
-          .filter(message => !archivedThrough || new Date(message.createdAt).getTime() > new Date(archivedThrough.createdAt).getTime() || (new Date(message.createdAt).getTime() === new Date(archivedThrough.createdAt).getTime() && message.id > archivedThrough.id))
           .slice(-contextMessageLimit)
           .map((message) => ({
             role: message.role,
@@ -963,15 +963,19 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
           ? `当前换装的皮肤对话规则（只影响表达氛围，不改变核心人格）：${companionSkinPrompt}\n请在自然相关的回复中适度融入这些元素，偶尔使用对应意象或小口头禅即可；不要每句话都重复皮肤关键词，也不要把服装设定说成角色身份发生了改变。`
           : '';
         const continuityGuidance = buildConversationContinuityGuidance({ message: content, history: historySource });
-        const systemPrompt = [currentTimeContext(), displayAgent?.systemPrompt, memoryContext, knowledgeContext, worldContext, continuityGuidance, CONVERSATION_GROUNDING_GUIDANCE, isCompanionSend ? companionReplyInstruction : '', companionSkinInstruction].filter(Boolean).join('\n\n');
-        if (systemPrompt) {
-          modelMessages.unshift({ role: 'system', content: systemPrompt });
-        }
+        const systemPrompt = [currentTimeContext(), displayAgent?.systemPrompt, continuityGuidance, CONVERSATION_GROUNDING_GUIDANCE, isCompanionSend ? companionReplyInstruction : '', companionSkinInstruction].filter(Boolean).join('\n\n');
+        const preparedContext = await conversationsApi.prepareContext(localConversationId, {
+          requiredSystem: systemPrompt,
+          optional: [{ name: '相关记忆与历史原文', content: memoryContext }, { name: '角色知识库', content: knowledgeContext }, { name: '世界事件', content: worldContext }],
+          currentContent: modelMessages.at(-1)?.content || content,
+          maxMessages: contextMessageLimit, currentMessageId: postedCurrentMessageId, reuseLastUserMessage: options.reuseLastUserMessage,
+        }, controller.signal);
 
         result = {
           stream: await streamBrowserModel({
             config: activeBrowserModelConfig,
-            messages: modelMessages,
+            messages: preparedContext.messages,
+            contextBudget: preparedContext.contextManifest.hardInputBudget,
             signal: controller.signal,
             onReasoning,
           }),

@@ -1,3 +1,5 @@
+import { prepareConversationContext, recordConversationUsage } from '@/lib/memory/conversation-context';
+import { createMemoryTools } from '@/lib/memory/memory-tools';
 import { logModelTimeContext } from '@/lib/chat/model-time-log.mjs';
 import { NextResponse } from 'next/server';
 import { readFile } from 'node:fs/promises';
@@ -15,9 +17,7 @@ import { withMessageReasoning } from '@/lib/chat/reasoning.mjs';
 import { stripHistoryRetrievalNotices, stripLeadingHistoryTimestampMetadata } from '@/lib/personal-assistant/retrieval-notice.mjs';
 import { loadAgentMemoryContext } from '@/lib/agents/memory/agent-memory';
 import { currentTimeContext } from '@/lib/agents/memory/current-time-context.mjs';
-import { agentChatArchiveState, archiveAgentChat } from '@/app/api/_lib/agent-personal-memory';
-import { compressConversationContext, estimateMessagesTokens } from '@/lib/agents/memory/context-compression';
-import { conversationContextTargetTokens } from '@/lib/core/model-limits.mjs';
+import { archiveAgentChat } from '@/app/api/_lib/agent-personal-memory';
 import { loadAgentWorldContext } from '@/lib/world/context';
 import { loadAgentModelSetting, resolveUserModelConfig } from '@/app/api/_lib/agent-model';
 import { CONVERSATION_GROUNDING_GUIDANCE } from '@/lib/chat/conversation-grounding.mjs';
@@ -155,13 +155,10 @@ export async function POST(request: Request) {
     }
     const contextLimit = requestedContextLimit || conversationSettings?.contextMessageLimit || userSettings?.contextMessageLimit || 40;
     const companionReply = companionMode === true && Boolean(findCompanionAgent(conversationSettings?.agentId || agentId));
-    const archiveState = resolvedConversationId && conversationSettings?.agentMode === 'MAIN' && conversationSettings.agentId
-      ? await agentChatArchiveState(userId, conversationSettings.agentId, resolvedConversationId) : null;
-
     const persistedHistory =
       resolvedConversationId
         ? await prisma.message.findMany({
-            where: archiveState?.where || { conversationId: resolvedConversationId },
+            where: { conversationId: resolvedConversationId, role: { in: ['user', 'assistant'] } },
             orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
             take: contextLimit,
           })
@@ -177,19 +174,7 @@ export async function POST(request: Request) {
         ? stripLeadingHistoryTimestampMetadata(stripHistoryRetrievalNotices(msg.content))
         : String(msg.content || ''),
     }));
-    const historyTargetTokens = conversationContextTargetTokens(
-      modelConfig.modelName,
-      userSettings.modelContextWindow
-    );
-    const sourceHistory = estimateMessagesTokens(normalizedHistory) > historyTargetTokens
-      ? compressConversationContext(normalizedHistory, {
-          maxMessages: contextLimit,
-          targetTokens: historyTargetTokens,
-          preserveRecent: Math.max(1, Math.floor(contextLimit * 0.4)),
-          aggressiveAfter: Math.floor(contextLimit * 1.5),
-          preserveSystem: false,
-        }).compressedMessages
-      : normalizedHistory;
+    const sourceHistory = normalizedHistory;
 
     const openaiMessages: { role: 'system' | 'user' | 'assistant'; content: any }[] = sourceHistory
       .filter((msg: { role: string; content: string }) => msg.content && msg.role !== 'system')
@@ -203,18 +188,19 @@ export async function POST(request: Request) {
     const memoryAgentId = conversationSettings?.agentId || agentId;
     const usesAgentMemory = conversationSettings?.agentMode === 'MAIN';
     const [employeeMemory, worldContext] = await Promise.all([
-      usesAgentMemory ? loadAgentMemoryContext({ userId, agentId: memoryAgentId, query: textMessage }) : Promise.resolve(''),
+      usesAgentMemory ? loadAgentMemoryContext({ userId, agentId: memoryAgentId, query: textMessage, conversationId: resolvedConversationId || undefined, recentMessageIds: normalizedHistory.map(item => item.id) }) : Promise.resolve(''),
       loadAgentWorldContext({ agentId: conversationSettings?.agentId || agentId, query: textMessage, history: normalizedHistory }),
     ]);
     const continuityGuidance = buildConversationContinuityGuidance({ message: textMessage, history: normalizedHistory });
-    let finalContext = [currentTimeContext(), continuityGuidance, context, employeeMemory, worldContext, CONVERSATION_GROUNDING_GUIDANCE].filter(Boolean).join('\n\n');
+    const optionalContext = [{ name: '相关记忆与历史原文', content: employeeMemory }, { name: '世界事件', content: worldContext }];
+    let finalContext = [currentTimeContext(), continuityGuidance, context, CONVERSATION_GROUNDING_GUIDANCE].filter(Boolean).join('\n\n');
     if (knowledgeEnabled && agentId && textMessage.trim()) {
       try {
         const hits = await getKnowledgeHits({ agentId, userId }, textMessage);
         // 过滤出具备足够语义相关度的优质切片（余弦相似度 >= 0.35）
         const relevantHits = hits.filter((hit) => hit.score >= 0.35);
         if (relevantHits.length > 0) {
-          finalContext = [finalContext, formatKnowledgeContext(relevantHits, { scopeLabel: '角色专属知识库' })].filter(Boolean).join('\n\n');
+          optionalContext.push({ name: '角色知识库', content: formatKnowledgeContext(relevantHits, { scopeLabel: '角色专属知识库' }) });
         }
       } catch (err: any) {
         console.warn('[chat/knowledge] Knowledge hit retrieval failed:', err?.message);
@@ -243,6 +229,18 @@ export async function POST(request: Request) {
       }
     }
 
+    const preparedContext = resolvedConversationId ? await prepareConversationContext({
+      userId, conversationId: resolvedConversationId, maxMessages: contextLimit,
+      excludeMessageIds: skipPersistUserMessage && normalizedHistory.at(-1)?.role === 'user' ? [normalizedHistory.at(-1).id] : [],
+      requiredSystem: finalContext, optional: optionalContext, currentMessage: openaiMessages.at(-1),
+      modelName: model, modelContextWindow: userSettings.modelContextWindow,
+      summarize: async prompt => {
+        const response = await client.chat.completions.create({ model, messages: [{ role: 'user', content: prompt }], temperature: 0.1 }, { timeout: 20_000, maxRetries: 0 });
+        return response.choices[0]?.message?.content || null;
+      },
+    }) : null;
+    if (preparedContext) openaiMessages.splice(0, openaiMessages.length, ...preparedContext.messages);
+
     logModelTimeContext({ entry: 'agent-chat', model: model, source: 'server-clock', messages: [{ role: 'system', content: finalContext }] });
 
     // Save user message
@@ -267,6 +265,8 @@ export async function POST(request: Request) {
         const growth = usesAgentMemory && memoryAgentId
           ? createAgentGrowthTools({ userId, agentId: memoryAgentId })
           : null;
+        const memoryTools = usesAgentMemory && memoryAgentId && resolvedConversationId
+          ? createMemoryTools({ userId, kind: 'agent', agentId: memoryAgentId, conversationId: resolvedConversationId }, (preparedContext?.history || normalizedHistory).map(item => item.id)) : null;
         try {
           const parser = companionReply ? createCompanionReplyParser() : null;
           const emitText = (text: string) => {
@@ -278,8 +278,10 @@ export async function POST(request: Request) {
             model,
             messages: openaiMessages,
             web,
-            extraTools: growth?.tools || [],
-            callTool: growth?.execute,
+            contextBudget: preparedContext?.manifest.hardInputBudget,
+            onContextUsage: preparedContext ? usage => recordConversationUsage(userId, resolvedConversationId, preparedContext.manifest, usage) : undefined,
+            extraTools: [...(growth?.tools || []), ...(memoryTools?.tools || [])],
+            callTool: (name, args) => name === 'memory_search' || name === 'memory_read' ? memoryTools?.execute(name, args) : growth?.execute(name, args),
             signal: abortController.signal,
             onText: (text: string) => emitText(parser ? parser.push(text) : text),
             onReasoning: (text: string) => {

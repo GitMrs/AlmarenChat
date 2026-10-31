@@ -8,6 +8,10 @@ import Database from 'better-sqlite3';
 const BASELINE_MIGRATION = '20260921180000_add_space_automation_execution_mode';
 const MANUAL_MIGRATION_REPAIRS = [
   {
+    migration: '20261031120000_add_conversation_context_state',
+    tables: [{ name: 'ConversationContextState', columns: ['conversationId', 'summary', 'throughMessageId', 'throughCreatedAt', 'sourceCount', 'version', 'lastRequest', 'updatedAt'] }],
+  },
+  {
     migration: '20261020160000_separate_agent_memory',
     columns: [{ table: 'AgentExperience', names: ['sourceType', 'status', 'edited'] }],
     tables: [{ name: 'AgentMemoryItem', columns: ['id', 'userId', 'agentId', 'category', 'content', 'status', 'sourceMessageId', 'createdAt', 'updatedAt'] }],
@@ -554,6 +558,18 @@ try {
     if (!hasColumn('User', 'imageApiBaseUrl')) db.exec('ALTER TABLE "User" ADD COLUMN "imageApiBaseUrl" TEXT');
     if (!hasColumn('User', 'imageApiKey')) db.exec('ALTER TABLE "User" ADD COLUMN "imageApiKey" TEXT');
     if (hasTable('Space') && !hasColumn('Space', 'activeWorkId')) db.exec('ALTER TABLE "Space" ADD COLUMN "activeWorkId" TEXT');
+    db.exec(`CREATE TABLE IF NOT EXISTS "ConversationContextState" (
+  "conversationId" TEXT NOT NULL PRIMARY KEY,
+  "summary" TEXT NOT NULL DEFAULT '',
+  "throughMessageId" TEXT,
+  "throughCreatedAt" DATETIME,
+  "sourceCount" INTEGER NOT NULL DEFAULT 0,
+  "version" INTEGER NOT NULL DEFAULT 0,
+  "lastRequest" JSONB,
+  "updatedAt" DATETIME NOT NULL,
+  CONSTRAINT "ConversationContextState_conversationId_fkey" FOREIGN KEY ("conversationId") REFERENCES "Conversation" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
+`);
     if (!hasColumn('Conversation', 'kind')) db.exec(`ALTER TABLE "Conversation" ADD COLUMN "kind" TEXT NOT NULL DEFAULT 'AGENT'`);
     if (!hasColumn('Conversation', 'assistantMode')) db.exec('ALTER TABLE "Conversation" ADD COLUMN "assistantMode" TEXT');
     if (!hasColumn('Agent', 'voice')) db.exec('ALTER TABLE "Agent" ADD COLUMN "voice" TEXT');

@@ -333,6 +333,7 @@ export const assistant = {
       messages: Array<{ role: 'system' | 'user' | 'assistant'; content: any }>;
       conversationId: string;
       conversationMode: 'MAIN' | 'TEMPORARY';
+      contextManifest?: any;
     }>('/assistant/messages', {
       method: 'POST',
       body: JSON.stringify({
@@ -537,6 +538,8 @@ export const conversations = {
     return request<{ messages: any[]; hasMore?: boolean }>(`/conversations/${id}/messages${query ? `?${query}` : ''}`);
   },
   getContextStats: (id: string) => request<ChatContextStats>(`/conversations/${encodeURIComponent(id)}/context`),
+  prepareContext: (id: string, data: { requiredSystem: string; optional: Array<{ name: string; content: string }>; currentContent: any; maxMessages: number; currentMessageId?: string; reuseLastUserMessage?: boolean }, signal?: AbortSignal) =>
+    request<{ messages: Array<{ role: 'system' | 'user' | 'assistant'; content: any }>; contextManifest: any }>(`/conversations/${encodeURIComponent(id)}/context/prepare`, { method: 'POST', body: JSON.stringify(data), signal }),
   archiveContext: (data: { conversationId: string; preserveRecent: number }) =>
     request<{ experience: AssistantExperience; archivedCount: number; remainingCount: number }>(`/conversations/${encodeURIComponent(data.conversationId)}/context`, { method: 'POST', body: JSON.stringify({ preserveRecent: data.preserveRecent }) }),
   getContextExperience: (id: string, conversationId: string) =>

@@ -1,3 +1,4 @@
+import { estimateRequestTokens } from '../memory/conversation-context-policy.mjs';
 import { logModelRequest } from '../chat/model-request-log.mjs';
 import { logModelTimeContext } from '../chat/model-time-log.mjs';
 import { getReasoningDelta } from '../chat/reasoning.mjs';
@@ -138,6 +139,7 @@ export async function streamBrowserModel({
   onReasoning,
   timeSource = 'browser-clock',
   entry = 'browser-agent-chat',
+  contextBudget,
 }: {
   config: BrowserModelConfig;
   messages: ModelMessage[];
@@ -145,7 +147,9 @@ export async function streamBrowserModel({
   onReasoning?: (text: string) => void;
   timeSource?: 'browser-clock' | 'server-clock';
   entry?: string;
+  contextBudget?: number;
 }): Promise<ReadableStream<Uint8Array>> {
+  if (contextBudget && estimateRequestTokens(messages) > contextBudget) throw new Error('本轮完整上下文超出预算，请缩小输入；不会静默删除消息');
   logModelTimeContext({ entry, model: config.model, source: timeSource, messages });
   const body = {
     model: config.model,

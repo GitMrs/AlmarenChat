@@ -613,6 +613,7 @@ model Conversation {
   createdAt            DateTime                  @default(now())
   updatedAt            DateTime                  @updatedAt
   messages             Message[]
+  contextState         ConversationContextState?
   assistantExperiences AssistantExperience[]
   personalAssistant    PersonalAssistantProfile?
   assistantQQBinding   AssistantQQBinding?
@@ -621,6 +622,18 @@ model Conversation {
   @@index([userId, kind, updatedAt])
   @@index([userId, agentId, agentMode])
   @@index([userId, agentId, agentMode, archived])
+}
+
+model ConversationContextState {
+  conversationId   String       @id
+  conversation     Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  summary          String       @default("")
+  throughMessageId String?
+  throughCreatedAt DateTime?
+  sourceCount      Int          @default(0)
+  version          Int          @default(0)
+  lastRequest      Json?
+  updatedAt        DateTime     @updatedAt
 }
 
 model Message {

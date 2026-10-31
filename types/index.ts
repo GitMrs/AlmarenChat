@@ -211,6 +211,9 @@ export interface AssistantContextStats {
 }
 
 export interface ChatContextStats extends AssistantContextStats {
+  unarchivedTokens?: number;
+  workingSummary?: { text: string; sourceCount: number; throughMessageId?: string | null; throughCreatedAt?: string | null } | null;
+  lastRequest?: { phase?: string; estimatedInputTokens: number; inputBudget: number; hardInputBudget: number; replyReserve: number; recentCount: number; summarySourceCount: number; capturedAt: string; included: string[]; omitted: string[]; recentStartAt?: string | null; recentEndAt?: string | null; toolsSchemaIncluded?: boolean; estimateNotice?: string } | null;
   recentContextCount?: number;
   recentContextTokens?: number;
   memoryContext?: string;

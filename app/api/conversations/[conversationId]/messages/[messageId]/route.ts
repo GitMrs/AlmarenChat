@@ -29,6 +29,7 @@ export async function DELETE(
     });
     await removeGeneratedChatImages(message?.attachments).catch(() => {});
 
+    await prisma.conversationContextState.deleteMany({ where: { conversationId } });
     await prisma.conversation.update({
       where: { id: conversationId },
       data: { updatedAt: new Date() },

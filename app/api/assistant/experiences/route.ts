@@ -1,3 +1,4 @@
+import { ASSISTANT_RECENT_MESSAGE_LIMIT } from '@/lib/memory/conversation-context-policy.mjs';
 import { NextResponse } from 'next/server';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
@@ -21,7 +22,7 @@ export async function GET(request: Request) {
     const profile = await ensurePersonalAssistant(userId);
     const conversationId = requestedConversationId || profile.conversationId;
 
-    const [user, conversation, unarchivedMessages, totalCount, experiences] = await Promise.all([
+    const [user, conversation, unarchivedMessages, totalCount, experiences, recent, contextState] = await Promise.all([
       prisma.user.findUnique({
         where: { id: userId },
         select: { contextMessageLimit: true },
@@ -55,16 +56,18 @@ export async function GET(request: Request) {
           createdAt: true,
         },
       }),
+      prisma.message.findMany({ where: { conversationId, role: { in: ['user', 'assistant'] } }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: ASSISTANT_RECENT_MESSAGE_LIMIT, select: { id: true, role: true, content: true, createdAt: true } }),
+      prisma.conversationContextState.findUnique({ where: { conversationId } }),
     ]);
 
     if (!conversation) {
       return NextResponse.json({ error: '小伴会话不存在' }, { status: 404 });
     }
 
-    const contextLimit = Math.max(8, Math.min(80, user?.contextMessageLimit || 40));
+    const contextLimit = ASSISTANT_RECENT_MESSAGE_LIMIT;
     const unarchivedCount = unarchivedMessages.length;
     const archivedCount = Math.max(0, totalCount - unarchivedCount);
-    const estimatedTokens = estimateMessagesTokens(unarchivedMessages);
+    const estimatedTokens = estimateMessagesTokens(recent);
 
     return NextResponse.json({
       conversationId,
@@ -76,6 +79,11 @@ export async function GET(request: Request) {
       archiveTrigger: EXPERIENCE_ARCHIVE_TRIGGER,
       autoPreserveRecent: EXPERIENCE_ARCHIVE_TRIGGER - EXPERIENCE_ARCHIVE_BATCH,
       estimatedTokens,
+      recentContextTokens: estimatedTokens,
+      recentContextCount: recent.length,
+      unarchivedTokens: estimateMessagesTokens(unarchivedMessages),
+      workingSummary: contextState ? { text: contextState.summary, sourceCount: contextState.sourceCount, throughMessageId: contextState.throughMessageId, throughCreatedAt: contextState.throughCreatedAt } : null,
+      lastRequest: contextState?.lastRequest || null,
       experiencesCount: experiences.length,
       experiences: experiences.map((exp) => ({
         id: exp.id,

@@ -1,3 +1,4 @@
+import { rankMemoryRecords, memoryCandidateWhere } from '@/lib/memory/memory-recall.mjs';
 import prisma from '@/app/api/_lib/db';
 
 export interface UserMemoryItem {
@@ -6,76 +7,17 @@ export interface UserMemoryItem {
   updatedAt?: Date | string;
 }
 
-const GENERIC_QUERY_TERMS = new Set([
-  '帮我', '可以', '一下', '这个', '那个', '需要', '使用', '处理',
-  '任务', '工作', '内容', '完成', '创建', '修改', '生成', '实现', '怎么', '什么', '如何',
-  '请问', '给我', '看看', '觉得', '怎样', '问题', '开始',
-]);
-
-function extractSearchTerms(query: string): string[] {
-  const text = String(query || '').replace(/\s+/g, ' ').trim().toLowerCase();
-  const terms = new Set<string>();
-
-  // 提取英文单词及数字（如 ts, nextjs, react, python, api 等）
-  const alphaMatches = text.match(/[a-z0-9][a-z0-9._-]{1,}/g) || [];
-  for (const match of alphaMatches) {
-    terms.add(match);
-  }
-
-  // 提取中文双字二元分词 (bi-grams)
-  const compactChinese = text.replace(/[^\u4e00-\u9fa5]/gu, '');
-  for (let i = 0; i < compactChinese.length - 1 && terms.size < 60; i += 1) {
-    const bi = compactChinese.slice(i, i + 2);
-    if (!GENERIC_QUERY_TERMS.has(bi)) {
-      terms.add(bi);
-    }
-  }
-
-  return [...terms];
+/** Shared relevance policy; private memory stores remain separate. */
+export function selectRelevantUserMemories<T extends { category: string; content: string }>(memories: T[], query = '', limit = 6): T[] {
+  return rankMemoryRecords(memories, query, { limit, fields: ['category', 'content'] });
 }
 
-/**
- * 根据用户当前输入，从该 Agent 专属记忆库中精准挑选最相关的记忆条目（避免全部硬塞导致上下文臃肿）
- */
-export function selectRelevantUserMemories<T extends { category: string; content: string }>(
-  memories: T[],
-  query?: string,
-  limit = 6
-): T[] {
-  if (!memories.length) return [];
-  if (!query || !query.trim()) return memories.slice(0, Math.min(limit, 4));
-
-  const terms = extractSearchTerms(query);
-  if (!terms.length) return memories.slice(0, Math.min(limit, 4));
-
-  const scored = memories.map((memory, index) => {
-    const text = `${memory.category} ${memory.content}`.toLowerCase();
-    let score = 0;
-    for (const term of terms) {
-      if (text.includes(term)) {
-        score += term.length >= 3 ? 5 : 2;
-      }
-    }
-    // 越新保存的记忆赋予微小时间权重
-    score += Math.max(0, 1 - index * 0.05);
-    return { memory, score };
-  });
-
-  // 命中关键词的记忆优先排在最前
-  const matches = scored.filter((item) => item.score > 1).sort((a, b) => b.score - a.score);
-  if (matches.length > 0) {
-    return matches.slice(0, limit).map((item) => item.memory);
-  }
-
-  // 没有相关词命中时不注入记忆，避免把无关偏好变成当前对话的暗示。
-  return [];
-}
-
-export async function loadUserMemoryItems(userId: string, agentId?: string | null, limit = 40) {
+export async function loadUserMemoryItems(userId: string, agentId?: string | null, limit = 40, query = '') {
   return prisma.assistantMemoryItem.findMany({
     where: {
       userId,
       status: 'ACTIVE',
+      AND: [memoryCandidateWhere(query, ['category', 'content'])],
       ...(agentId ? { agentId } : { agentId: null }),
     },
     orderBy: { updatedAt: 'desc' },

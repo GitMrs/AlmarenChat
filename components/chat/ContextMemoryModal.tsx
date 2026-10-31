@@ -258,6 +258,7 @@ export function ContextMemoryModal({
           )}
 
           {settings}
+          <p className="text-xs leading-5 text-slate-500">近期原文上限为 {stats?.contextLimit ?? '…'} 条历史消息（当前输入另计，不是对话轮数）。归档只建立历史索引，不会直接把原文从近期窗口排除。</p>
           {conversationId && <>
           {/* 指标卡片网格 */}
           <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
@@ -277,14 +278,14 @@ export function ContextMemoryModal({
 
             <div className="rounded-xl border border-sky-200 bg-sky-50/70 p-3 text-sky-800">
               <div className="flex items-center justify-between text-[11px] font-bold text-sky-700">
-                <span>{isAgent ? '近期原文 Tokens' : '未归档 Tokens'}</span>
+                <span>近期原文候选 Tokens</span>
                 <Sparkles size={13} />
               </div>
               <div className="mt-1 text-lg font-black tracking-tight text-sky-950">
                 ~{stats ? (estimatedKTokens >= 1 ? `${estimatedKTokens}k` : `${stats.recentContextTokens ?? stats.estimatedTokens}`) : '...'}
               </div>
               <div className="mt-0.5 text-[10px] font-semibold text-sky-600">
-                {isAgent ? `最近 ${stats?.recentContextCount ?? '…'} 条原文估算` : '未归档正文估算'}
+                {`最近 ${stats?.recentContextCount ?? '…'} 条原文估算，实际使用见下方请求记录`}
               </div>
             </div>
 
@@ -331,9 +332,9 @@ export function ContextMemoryModal({
                 </div>
                 <p className="mt-1 text-xs font-medium leading-5 text-slate-600">
                   {conversationMode === 'MAIN'
-                    ? `主会话在未归档对话达到 ${stats ? stats.archiveTrigger : '…'} 条时，于后续请求中自动归档早期消息，保留最近 ${stats ? stats.autoPreserveRecent : '…'} 条原文。`
+                    ? `主会话在未归档对话达到 ${stats ? stats.archiveTrigger : '…'} 条时，于后续请求中自动分批归档早期消息，至少保留最近 ${stats ? stats.autoPreserveRecent : '…'} 条未归档原文。`
                     : isAgent ? '临时聊天不写入 Agent 的长期对话归档。' : '临时会话不自动沉淀经历。'}
-                  {(!isAgent || conversationMode === 'MAIN') && <>手动归档按下方选项保留最近 {preserveRecent} 条未归档原文，原始聊天记录不删除。</>}
+                  {(!isAgent || conversationMode === 'MAIN') && <>手动归档每次整理一批早期对话，至少保留最近 {preserveRecent} 条未归档原文；剩余早期消息可继续归档，原始聊天记录不删除。</>}
                 </p>
               </div>
             </div>
@@ -388,6 +389,23 @@ export function ContextMemoryModal({
             </div>
           </div>
 
+          {stats?.lastRequest && (
+            <section className="rounded-xl border border-sky-200 bg-sky-50 p-4 text-xs leading-6 text-sky-950">
+              <div className="font-bold">最近一次上下文拼装（Token 为估算）</div>
+              <div>输入约 {stats.lastRequest.estimatedInputTokens} Tokens；窗口输入上限 {stats.lastRequest.hardInputBudget}；回复预留 {stats.lastRequest.replyReserve}。</div>
+              <div>近期原文 {stats.lastRequest.recentCount} 条；会话摘要承接 {stats.lastRequest.summarySourceCount} 条。</div>
+              <div>已加入：{stats.lastRequest.included?.join('、') || '无额外历史资料'}。</div>
+              {!!stats.lastRequest.omitted?.length && <div>因预算未加入：{stats.lastRequest.omitted.join('、')}。</div>}
+              <div>记录时间：{new Date(stats.lastRequest.capturedAt).toLocaleString()}。{stats.lastRequest.phase === 'prepared' ? '准备记录不表示模型已接收。' : '模型请求阶段记录，不代表回复已完成。'}</div>
+            </section>
+          )}
+          {stats?.workingSummary?.text && (
+            <section className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-xs text-emerald-950">
+              <div className="font-bold">当前会话承接记录（与历史经历归档分别管理）</div>
+              <div className="mt-1">承接 {stats.workingSummary.sourceCount} 条（表示处理范围，不保证保留全部细节），边界：{stats.workingSummary.throughCreatedAt ? new Date(stats.workingSummary.throughCreatedAt).toLocaleString() : '未记录'}。</div>
+              <pre className="mt-2 max-h-60 overflow-y-auto whitespace-pre-wrap font-sans leading-6">{stats.workingSummary.text}</pre>
+            </section>
+          )}
           {stats?.memoryContext !== undefined && (
             <details className="rounded-xl border border-slate-200 p-3 text-xs text-slate-600">
               <summary className="cursor-pointer font-bold">记忆召回预览</summary>

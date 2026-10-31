@@ -1,3 +1,6 @@
+import { prepareConversationContext, recordConversationUsage } from '@/lib/memory/conversation-context';
+import { ASSISTANT_RECENT_MESSAGE_LIMIT } from '@/lib/memory/conversation-context-policy.mjs';
+import { createMemoryTools } from '@/lib/memory/memory-tools';
 import { logModelTimeContext } from '@/lib/chat/model-time-log.mjs';
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
@@ -9,14 +12,12 @@ import { reserveChatQuota } from '@/lib/chat/chat-quota';
 import { createModelClient, resolveModelName } from '@/lib/core/model-client';
 import { createChatWebTools, runAutoWebChat } from '@/lib/web/auto-web';
 import { ensurePersonalAssistant } from '@/lib/personal-assistant/profile';
-import { buildPersonalAssistantPrompt } from '@/lib/personal-assistant/prompt-builder';
+import { buildAssistantContextParts } from '@/lib/personal-assistant/prompt-builder';
 import { buildAssistantActivityContext, buildAssistantPlatformContext } from '@/lib/personal-assistant/platform-context';
 import { archiveOldMainChatMessages, loadAssistantMemoryContext } from '@/lib/personal-assistant/experience-memory';
 import { loadUserMemoryItems } from '@/lib/personal-assistant/user-memory';
 import { buildAssistantHistory } from '@/lib/personal-assistant/history-context.mjs';
 import { buildConversationContinuityGuidance } from '@/lib/chat/conversation-continuity.mjs';
-import { compressConversationContext } from '@/lib/agents/memory/context-compression';
-import { conversationContextTargetTokens } from '@/lib/core/model-limits.mjs';
 import { parseMcpServers } from '@/lib/agents/runtime/mcp-config.mjs';
 import { createAssistantToolBroker } from '@/lib/personal-assistant/tool-broker.mjs';
 import { buildRetrievalNotice } from '@/lib/personal-assistant/retrieval-notice.mjs';
@@ -182,7 +183,7 @@ export async function POST(request: Request) {
       });
     }
 
-    const contextLimit = Math.max(8, Math.min(80, userSettings.contextMessageLimit || 40));
+    const contextLimit = ASSISTANT_RECENT_MESSAGE_LIMIT;
     const contextSources = {
       spaces: profile.includeSpaceContext,
       tasks: profile.includeTaskContext,
@@ -196,7 +197,7 @@ export async function POST(request: Request) {
         historyLimit: contextLimit,
         includeExperiences: conversationMode === 'MAIN',
       }),
-      loadUserMemoryItems(userId),
+      loadUserMemoryItems(userId, null, 40, messageForModel),
       buildAssistantPlatformContext(userId, contextSources, textMessage),
       buildAssistantActivityContext(userId, textMessage, contextSources),
     ]);
@@ -205,7 +206,7 @@ export async function POST(request: Request) {
     const retrievalNotice = () => buildRetrievalNotice({ toolCalled });
 
     const continuityGuidance = buildConversationContinuityGuidance({ message: messageForModel, history: memoryContext.history });
-    const systemPrompt = buildPersonalAssistantPrompt({
+    const contextParts = buildAssistantContextParts({
       userName: userSettings.name,
       profile,
       memories,
@@ -214,20 +215,9 @@ export async function POST(request: Request) {
       webEnabled: !localMode,
       experienceContext: memoryContext.experienceContext,
       query: messageForModel,
-    }) + `\n\n${continuityGuidance}`;
-    const compressedHistory = compressConversationContext(
-      buildAssistantHistory(memoryContext.history),
-      {
-        maxMessages: contextLimit,
-        targetTokens: conversationContextTargetTokens(
-          usesCustomModel ? userSettings.modelName : '',
-          userSettings.modelContextWindow
-        ),
-        preserveRecent: Math.max(1, Math.floor(contextLimit * 0.4)),
-        aggressiveAfter: Math.floor(contextLimit * 1.5),
-        preserveSystem: false,
-      }
-    ).compressedMessages;
+    });
+    const systemPrompt = `${contextParts.requiredSystem}\n\n${continuityGuidance}`;
+    const compressedHistory = buildAssistantHistory(memoryContext.history);
     const userContent = imageAttachments.length
       ? [
           { type: 'text' as const, text: messageForModel },
@@ -252,6 +242,16 @@ export async function POST(request: Request) {
       { role: 'user', content: userContent },
     ];
 
+    const preparedContext = await prepareConversationContext({
+      userId, conversationId: conversationId, maxMessages: contextLimit,
+      requiredSystem: systemPrompt, optional: contextParts.optional,
+      currentMessage: { role: 'user', content: userContent }, modelName: usesCustomModel ? userSettings.modelName : '', modelContextWindow: userSettings.modelContextWindow,
+      summarize: localMode ? undefined : async (prompt: string) => {
+        const response = await client.chat.completions.create({ model, messages: [{ role: 'user', content: prompt }], temperature: 0.1 }, { timeout: 20_000, maxRetries: 0 });
+        return response.choices[0]?.message?.content || null;
+      },
+    });
+    messages.splice(0, messages.length, ...preparedContext.messages);
     await prisma.message.create({
       data: {
         id: userMessageId,
@@ -265,6 +265,7 @@ export async function POST(request: Request) {
 
     const broker = createAssistantToolBroker({ servers: localMode ? [] : parseMcpServers(userSettings.assistantMcpServers).filter((server) => server.enabled !== false) });
     const assistantTools = localMode ? [] : await broker.discover();
+    const memoryTools = conversationMode === 'MAIN' && !localMode ? createMemoryTools({ userId, kind: 'assistant', conversationId }, preparedContext.history.map(item => item.id)) : null;
 
     if (memoryContext.history.length === 0) {
       const generatedTitle = textMessage.slice(0, 24).replace(/[\r\n]+/g, ' ').trim();
@@ -278,7 +279,7 @@ export async function POST(request: Request) {
     logModelTimeContext({ entry: 'personal-assistant', model: localMode ? null : model, source: 'server-clock', messages: [{ role: 'system', content: systemPrompt }] });
 
     if (localMode) {
-      return NextResponse.json({ messages, conversationId, conversationMode });
+      return NextResponse.json({ messages, conversationId, conversationMode, contextManifest: preparedContext.manifest });
     }
 
     const encoder = new TextEncoder();
@@ -308,7 +309,7 @@ export async function POST(request: Request) {
           });
         };
         try {
-          await runAutoWebChat({ client, model, messages, web, extraTools: assistantTools.map((tool) => ({ type: 'function', function: tool })), callTool: async (name: string, args: any) => { toolCalled = true; return broker.call(name, args); }, signal: modelAbortController.signal, onText: (text: string) => { fullContent += text; emit({ type: 'text_delta', text }); } });
+          await runAutoWebChat({ client, model, messages, web, contextBudget: preparedContext.manifest.hardInputBudget, onContextUsage: usage => recordConversationUsage(userId, conversationId, preparedContext.manifest, usage), extraTools: [...assistantTools.map((tool) => ({ type: 'function', function: tool })), ...(memoryTools?.tools || [])], callTool: async (name: string, args: any) => { if (name === 'memory_search' || name === 'memory_read') return memoryTools?.execute(name, args); toolCalled = true; return broker.call(name, args); }, signal: modelAbortController.signal, onText: (text: string) => { fullContent += text; emit({ type: 'text_delta', text }); } });
           if (!fullContent) throw new Error('模型没有返回正文');
           const notice = retrievalNotice();
           fullContent += notice;
@@ -379,12 +380,14 @@ export async function DELETE(request: Request) {
             await tx.assistantExperience.deleteMany({ where: { id: target.assistantExperienceId } });
           }
           await tx.message.delete({ where: { id: target.id } });
+          await tx.conversationContextState.deleteMany({ where: { conversationId: conversation.id } });
         });
       }
     } else {
       await prisma.$transaction([
         prisma.message.deleteMany({ where: { conversationId: conversation.id } }),
         prisma.assistantExperience.deleteMany({ where: { conversationId: conversation.id } }),
+        prisma.conversationContextState.deleteMany({ where: { conversationId: conversation.id } }),
       ]);
     }
 

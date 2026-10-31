@@ -28,21 +28,24 @@ export async function GET(request: Request, { params }: Params) {
     const state = await agentChatArchiveState(userId, agentId, conversationId);
     const user = await prisma.user.findUnique({ where: { id: userId }, select: { contextMessageLimit: true } });
     const contextLimit = Math.max(1, Math.min(80, conversation.contextMessageLimit || user?.contextMessageLimit || 40));
-    const [totalCount, unarchivedCount, recent, experiences, experiencesCount, lastQuestion] = await Promise.all([
+    const [totalCount, unarchivedCount, recent, experiences, experiencesCount, lastQuestion, contextState] = await Promise.all([
       prisma.message.count({ where: { conversationId, role: { in: ['user', 'assistant'] } } }),
       prisma.message.count({ where: state.where }),
-      prisma.message.findMany({ where: state.where, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: contextLimit, select: { id: true, role: true, content: true, createdAt: true } }),
+      prisma.message.findMany({ where: { conversationId, role: { in: ['user', 'assistant'] } }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: contextLimit, select: { id: true, role: true, content: true, createdAt: true } }),
       prisma.agentExperience.findMany({ where: { userId, agentId, sourceType: 'CHAT', taskId: { startsWith: state.prefix }, status: { not: 'DELETED' } }, orderBy: { createdAt: 'desc' }, take: 30 }),
       prisma.agentExperience.count({ where: { userId, agentId, sourceType: 'CHAT', taskId: { startsWith: state.prefix }, status: { not: 'DELETED' } } }),
       prisma.message.findFirst({ where: { conversationId, role: 'user' }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], select: { content: true } }),
+      prisma.conversationContextState.findUnique({ where: { conversationId } }),
     ]);
     const memoryContext = conversation.agentMode === 'MAIN'
-      ? await loadAgentMemoryContext({ userId, agentId, query: (lastQuestion?.content || '').slice(0, 4_000) }) : '';
+      ? await loadAgentMemoryContext({ userId, agentId, conversationId: conversationId, query: (lastQuestion?.content || '').slice(0, 4_000) }) : '';
     return NextResponse.json({
       conversationId, conversationMode: conversation.agentMode, contextLimit,
       totalCount, unarchivedCount, archivedCount: totalCount - unarchivedCount,
       estimatedTokens: estimateMessagesTokens(recent), recentContextTokens: estimateMessagesTokens(recent), recentContextCount: recent.length,
       archiveTrigger: 64, autoPreserveRecent: 16, experiencesCount, memoryContext,
+      workingSummary: contextState ? { text: contextState.summary, sourceCount: contextState.sourceCount, throughMessageId: contextState.throughMessageId, throughCreatedAt: contextState.throughCreatedAt } : null,
+      lastRequest: contextState?.lastRequest || null,
       canArchive: conversation.agentMode === 'MAIN' && unarchivedCount > 2,
       experiences: experiences.map(item => {
         const tags = Array.isArray(item.tags) ? item.tags.map(String) : [];

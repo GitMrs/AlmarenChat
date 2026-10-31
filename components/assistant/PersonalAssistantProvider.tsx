@@ -1,3 +1,4 @@
+import { ASSISTANT_RECENT_MESSAGE_LIMIT, estimateRequestTokens } from '@/lib/memory/conversation-context-policy.mjs';
 'use client';
 
 import { usePathname, useRouter } from 'next/navigation';
@@ -504,13 +505,9 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
   const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
   const [contextModalOpen, setContextModalOpen] = useState(false);
 
-  const unarchivedMessages = (data?.messages || []).filter(
-    (m) => !m.assistantExperienceId && (m.role === 'user' || m.role === 'assistant')
-  );
-  const activeMessageCount = unarchivedMessages.length;
-  const estimatedActiveTokens = Math.round(
-    unarchivedMessages.reduce((sum, m) => sum + Math.max(1, Math.ceil(m.content.length * 1.3)), 0)
-  );
+  const recentCandidates = (data?.messages || []).filter(m => (m.role === 'user' || m.role === 'assistant') && m.content.trim()).slice(-ASSISTANT_RECENT_MESSAGE_LIMIT);
+  const activeMessageCount = recentCandidates.length;
+  const estimatedActiveTokens = estimateRequestTokens(recentCandidates);
   const estimatedTokensText = estimatedActiveTokens >= 1000
     ? `${(estimatedActiveTokens / 1000).toFixed(1)}k`
     : `${estimatedActiveTokens}`;
@@ -1208,6 +1205,7 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
         const stream = await streamBrowserModel({
           config: modelConfig,
           messages: prepared.messages,
+          contextBudget: prepared.contextManifest?.hardInputBudget,
           timeSource: 'server-clock',
           entry: 'browser-personal-assistant',
           signal: controller.signal,
@@ -2001,18 +1999,14 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
                           <button
                             type="button"
                             onClick={() => setContextModalOpen(true)}
-                            title="查看上下文占用与经历记忆沉淀"
+                            title="近期原文候选；点击查看最近一次请求的实际组成"
                             className={cn(
                               'inline-flex h-7 items-center gap-1.5 rounded-lg border px-2 text-[11px] font-bold transition cursor-pointer select-none active:scale-95 shadow-2xs',
-                              activeMessageCount >= 30
-                                ? 'border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100'
-                                : activeMessageCount >= 16
-                                  ? 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100'
-                                  : 'border-slate-200/90 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-950'
+                              'border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100'
                             )}
                           >
-                            <span className={cn('h-1.5 w-1.5 rounded-full', activeMessageCount >= 30 ? 'bg-rose-500 animate-pulse' : activeMessageCount >= 16 ? 'bg-amber-500' : 'bg-emerald-500')} />
-                            <span>{activeMessageCount} 条活跃 · ~{estimatedTokensText} Tokens</span>
+                            <span className="h-1.5 w-1.5 rounded-full bg-sky-500" />
+                            <span>{activeMessageCount} 条候选原文 · ~{estimatedTokensText} Tokens</span>
                           </button>
                         )}
 
