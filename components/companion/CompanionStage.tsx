@@ -16,6 +16,7 @@ import {
 } from '@/lib/companion/motion';
 import { PhysicsPlayer, type CompanionPhysics } from '@/lib/companion/physics';
 import { hitCharacter } from '@/lib/companion/touch-hit.mjs';
+import { sampleTouchFeedback, TOUCH_DRAG_SLOP } from '@/lib/companion/touch-feedback.mjs';
 
 export type FramingMode = 'auto' | 'closeup' | 'half' | 'full';
 export type TouchRegion = 'head' | 'face' | 'body';
@@ -37,6 +38,7 @@ export interface StageHandle {
   setParameter(id: string, value: number): void;
   getParameter(id: string): number | undefined;
   hitTest?(clientX: number, clientY: number): TouchRegion | null;
+  touch?(region: TouchRegion, side?: number, strength?: number): void;
 }
 
 export interface StageProps {
@@ -167,6 +169,7 @@ interface StageRuntime {
   cameraHalfHeight?: number;
   cameraCenterY?: number;
   hitTest?: (clientX: number, clientY: number) => TouchRegion | null;
+  touchPulse?: { age: number; region: TouchRegion; side: number; strength: number };
 }
 
 const resourceJsonCache = new Map<string, any>();
@@ -322,6 +325,10 @@ const KoroStage = forwardRef<StageHandle, StageProps>(function KoroStage(props, 
     hitTest(clientX: number, clientY: number) {
       return runtime.current.hitTest?.(clientX, clientY) ?? null;
     },
+    touch(region: TouchRegion, side = 1, strength = 1) {
+      if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+      runtime.current.touchPulse = { age: 0, region, side, strength: Math.min(1.4, strength) };
+    },
   }), []);
 
   useEffect(() => {
@@ -457,7 +464,7 @@ const KoroStage = forwardRef<StageHandle, StageProps>(function KoroStage(props, 
       if (!canvas || !active || !isPointerDown) return;
       if (!isDragging) {
         const dist = Math.hypot(event.clientX - dragStartX, event.clientY - dragStartY);
-        if (dist >= 6) {
+        if (dist >= (['nari', 'yume'].includes(character.id) ? TOUCH_DRAG_SLOP : 6)) {
           isDragging = true;
           runtime.current.isDragging = true;
         }
@@ -674,6 +681,15 @@ const KoroStage = forwardRef<StageHandle, StageProps>(function KoroStage(props, 
             advanceLookAt(state.lookAt, delta, lookSpeed);
             if (Math.abs(state.lookAt.currentX) > 0.001 || Math.abs(state.lookAt.currentY) > 0.001) {
               applyLookAt(model, state.lookAt);
+            }
+          }
+          if (state.touchPulse) {
+            const pulse = sampleTouchFeedback(state.touchPulse.age, state.touchPulse.region, state.touchPulse.strength, state.touchPulse.side);
+            state.touchPulse.age += delta;
+            if (!pulse) state.touchPulse = undefined;
+            else for (const [id, amount] of Object.entries(pulse)) {
+              const current = model.getParameter(id);
+              if (current !== undefined) model.setParameter(id, current + amount);
             }
           }
           if (physics) {

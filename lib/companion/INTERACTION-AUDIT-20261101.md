@@ -89,6 +89,19 @@ node --test lib/companion/touch-hit.test.mjs lib/companion/interaction-bindings.
 node --test --test-name-pattern='companion only|tap bursts|skin equip|model hit regions' lib/companion/view.test.mjs
 ```
 
+## 反馈节奏调整
+
+在部位和手势正确性修复之后，继续调整 Nari / Yume 的即时反馈：
+
+- 舞台提供短时、有限幅度的叠加回弹，不重置长动作播放时钟。每次有效触碰都可产生视觉响应，语音播放或冷却不会阻止回弹；左右位置决定回弹方向。减少动态效果时不施加该回弹。
+- 互动声音单独限制为至少间隔 3500ms，并等待当前语音、聊天流和通话空闲。不积攒后续对白、不在上一句结束后补播连击。连击时间窗缩短至 650ms，避免慢速轻点也累积为求饶。
+- 需要再次播放同一个完整反应动作时调用舞台 restart，避免相同 motionId 没有产生新反应。
+- 长按开始就显示轻量进度环，700ms 达到阈值时反馈，不再等松手。Nari / Yume 的视线拖动与上层手势共用 14px 阈值，允许手指轻微抖动；跨过阈值取消长按。达到 150ms / 14px 的拖动可在语音空闲时触发拖动对白，取消旧的 6～30px 判定落差。
+- 松手、取消、失焦、隐藏页面、换皮肤时清理长按进度和计时；实际释放后仍抑制重复 click。定时触发时读取最新聊天/静音状态，防止旧闭包在聊天回复期间插话。
+- Nari / Yume 在静音或音频失败时只保留字幕，不再用虚假说话口型模拟未播放的音频。其他 Cubism 角色保留原有连击与 fallback 行为。
+
+新增 `touch-feedback.mjs` 统一阈值和回弹曲线。针对性测试共 21 项通过；仍不代表完成浏览器手感、透明边缘和部位边界的人工验收。没有新增录音或改变音色。
+
 ## 本地代码入口
 
 - [CompanionPreview.tsx](../../components/companion/CompanionPreview.tsx)：点击、拖动、连击、换装及语音调度。

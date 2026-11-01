@@ -18,6 +18,7 @@ import { tts } from '@/lib/client/api';
 import { cleanMarkdownForTTS } from '@/lib/tts/markdown-cleaner';
 import { playChunkedMp3 } from '@/lib/companion/stream-audio';
 import MessageReasoning from '@/components/chat/MessageReasoning';
+import { TOUCH_DRAG_SLOP, TOUCH_HOLD_MS, TOUCH_VOICE_GAP_MS, TOUCH_COMBO_MS } from '@/lib/companion/touch-feedback.mjs';
 
 interface CompanionDisplayMessage {
   id: string;
@@ -254,6 +255,11 @@ function CompanionSession({
     dragStartRef.current = null;
     lastHoldEndRef.current = -Infinity;
     pointerHitRef.current = null;
+    if (holdTimerRef.current) clearSessionTimeout(holdTimerRef.current);
+    holdTimerRef.current = null;
+    holdFiredRef.current = false;
+    pressVisualRef.current = false;
+    setPressPoint(null);
     setCurrentSkinId(skin.id);
     onCompanionSkinChange?.(skin);
     if (typeof window !== 'undefined') {
@@ -443,6 +449,15 @@ function CompanionSession({
   const tapBubbleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastTapTimeRef = useRef<number>(0);
   const lastTouchRegionRef = useRef<TouchRegion>('body');
+  const lastTouchSideRef = useRef(1);
+  const lastTouchVoiceAtRef = useRef(-Infinity);
+  const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const holdFiredRef = useRef(false);
+  const pressVisualRef = useRef(false);
+  const pointerLocationRef = useRef<{ x: number; y: number } | null>(null);
+  const [pressPoint, setPressPoint] = useState<{ x: number; y: number; held: boolean } | null>(null);
+  const interactionContextRef = useRef({ isStreaming, callPhase, sfxEnabled, motionId, usable });
+  interactionContextRef.current = { isStreaming, callPhase, sfxEnabled, motionId, usable };
   const lastHoldEndRef = useRef(-Infinity);
   const pointerHitRef = useRef<boolean | null>(null);
   const lastTapLineTextRef = useRef<string | undefined>(undefined);
@@ -755,6 +770,24 @@ function CompanionSession({
     }
   };
 
+  const touchVisual = (region: TouchRegion, strength = 1) => {
+    stage.current?.touch?.(region, lastTouchSideRef.current, strength);
+  };
+
+  const fireHold = () => {
+    if (!interactionContextRef.current.usable || holdFiredRef.current || !dragStartRef.current || isDraggingGazeRef.current) return;
+    const point = pointerLocationRef.current;
+    const region = point && stage.current?.hitTest ? stage.current.hitTest(point.x, point.y) : lastTouchRegionRef.current;
+    if (!region) return;
+    lastTouchRegionRef.current = region;
+    holdFiredRef.current = true;
+    comboCountRef.current = 0;
+    lastTapTimeRef.current = 0;
+    setPressPoint(point => point ? { ...point, held: true } : null);
+    touchVisual(lastTouchRegionRef.current, 0.6);
+    speakTouchIfAllowed(1, true);
+  };
+
   const handleScenePointerDown = (e: React.PointerEvent) => {
     if (!usable || dragStartRef.current || e.isPrimary === false || (e.pointerType === 'mouse' && e.button !== 0)) return;
     const target = e.target as HTMLCanvasElement | null;
@@ -768,18 +801,35 @@ function CompanionSession({
       // 容错处理
     }
     dragStartRef.current = { x: e.clientX, y: e.clientY, pointerId: e.pointerId };
+    pointerLocationRef.current = { x: e.clientX, y: e.clientY };
     lastDragParticleRef.current = null;
     dragStartTimeRef.current = Date.now();
     dragDistanceRef.current = 0;
     isDraggingGazeRef.current = false;
+    holdFiredRef.current = false;
+    if (['nari', 'yume'].includes(character.id) && region) {
+      lastTouchRegionRef.current = region;
+      const canvasRect = target.getBoundingClientRect();
+      lastTouchSideRef.current = e.clientX < canvasRect.left + canvasRect.width / 2 ? 1 : -1;
+      touchVisual(region);
+      pressVisualRef.current = true;
+      const rect = e.currentTarget.getBoundingClientRect();
+      setPressPoint({ x: e.clientX - rect.left, y: e.clientY - rect.top, held: false });
+      holdTimerRef.current = setSessionTimeout(fireHold, TOUCH_HOLD_MS);
+    }
   };
 
   const handleScenePointerMove = (e: React.PointerEvent) => {
     if (!dragStartRef.current || dragStartRef.current.pointerId !== e.pointerId) return;
+    pointerLocationRef.current = { x: e.clientX, y: e.clientY };
     const dist = Math.hypot(e.clientX - dragStartRef.current.x, e.clientY - dragStartRef.current.y);
     dragDistanceRef.current = Math.max(dragDistanceRef.current, dist);
-    if (dist < 6 && !isDraggingGazeRef.current) return;
+    const slop = ['nari', 'yume'].includes(character.id) ? TOUCH_DRAG_SLOP : 6;
+    if (dist < slop && !isDraggingGazeRef.current) return;
     isDraggingGazeRef.current = true;
+    if (holdTimerRef.current) clearSessionTimeout(holdTimerRef.current);
+    holdTimerRef.current = null;
+    setPressPoint(null);
 
     const now = Date.now();
     const last = lastDragParticleRef.current;
@@ -801,9 +851,16 @@ function CompanionSession({
     const wasDragging = isDraggingGazeRef.current;
     const dragDuration = now - dragStartTimeRef.current;
     const dragDist = dragDistanceRef.current;
+    if (holdTimerRef.current) clearSessionTimeout(holdTimerRef.current);
+    holdTimerRef.current = null;
+    if (e?.type === 'pointerup' && !wasDragging && dragDuration >= TOUCH_HOLD_MS && ['nari', 'yume'].includes(character.id)) fireHold();
+    const wasHolding = holdFiredRef.current;
     dragStartRef.current = null;
     lastDragParticleRef.current = null;
     isDraggingGazeRef.current = false;
+    setPressPoint(null);
+    if (wasHolding) lastHoldEndRef.current = now;
+    if (e?.type !== 'pointerup') { pressVisualRef.current = false; pointerHitRef.current = false; }
 
     if (e && e.currentTarget) {
       try {
@@ -818,17 +875,16 @@ function CompanionSession({
     if (wasDragging) {
       lastDragEndRef.current = now;
 
-      // 拖拽趣味互动判定：按住拖动时长 >= 350ms 且总位移 >= 30px
-      if (e?.type === 'pointerup' && dragDuration >= 350 && dragDist >= 30) {
+      const modernTouch = ['nari', 'yume'].includes(character.id);
+      if (e?.type === 'pointerup' && dragDuration >= (modernTouch ? 150 : 350) && dragDist >= (modernTouch ? TOUCH_DRAG_SLOP : 30)) {
         // 拖拽语音保护防连刷：至少间隔 3.5 秒且当前未在播放语音
-        if (now - lastDragVoiceTimeRef.current > 3500 && !isPlayingVoiceRef.current) {
+        if (now - lastDragVoiceTimeRef.current > 3500 && !isPlayingVoiceRef.current && !isStreaming
+          && (!modernTouch || now - lastTouchVoiceAtRef.current >= TOUCH_VOICE_GAP_MS)) {
           lastDragVoiceTimeRef.current = now;
+          if (modernTouch) lastTouchVoiceAtRef.current = now;
           playDragVoice();
         }
       }
-    } else if (e?.type === 'pointerup' && dragDuration >= 700 && ['nari', 'yume'].includes(character.id)) {
-      lastHoldEndRef.current = now;
-      handleCharacterTap(e, true);
     }
   };
 
@@ -837,10 +893,16 @@ function CompanionSession({
       dragStartRef.current = null;
       lastDragParticleRef.current = null;
       isDraggingGazeRef.current = false;
+      if (holdTimerRef.current) clearSessionTimeout(holdTimerRef.current);
+      holdTimerRef.current = null;
+      setPressPoint(null);
+      pressVisualRef.current = false;
       lastDragEndRef.current = Date.now();
     };
     window.addEventListener('blur', cancelDrag);
-    return () => window.removeEventListener('blur', cancelDrag);
+    const visibility = () => { if (document.hidden) cancelDrag(); };
+    document.addEventListener('visibilitychange', visibility);
+    return () => { window.removeEventListener('blur', cancelDrag); document.removeEventListener('visibilitychange', visibility); };
   }, []);
 
   // 待机动作自然轮巡：当一个待机动作结束时，平滑过渡到下一个自然待机动作
@@ -876,6 +938,7 @@ function CompanionSession({
 
     // 动作与表情联动
     if (options?.targetMotionId) {
+      if (interactionContextRef.current.motionId === options.targetMotionId) stage.current?.restart();
       setMotionId(options.targetMotionId);
       setPlaying(true);
     }
@@ -917,13 +980,18 @@ function CompanionSession({
     const playFallback = () => {
       isPlayingVoiceRef.current = true;
       showBubble();
-      setIsSpeaking(true);
-      stage.current?.speak(fallbackDuration);
+      if (['nari', 'yume'].includes(character.id)) {
+        setIsSpeaking(false);
+        stage.current?.stopSpeaking();
+      } else {
+        setIsSpeaking(true);
+        stage.current?.speak(fallbackDuration);
+      }
       if (tapBubbleTimerRef.current) clearSessionTimeout(tapBubbleTimerRef.current);
       tapBubbleTimerRef.current = setSessionTimeout(() => finishVoice(), fallbackDuration);
     };
 
-    if (!voiceEnabled || !sfxEnabled || !line.audioUrl) {
+    if (!voiceEnabledRef.current || !interactionContextRef.current.sfxEnabled || !line.audioUrl) {
       playFallback();
       return;
     }
@@ -1135,8 +1203,16 @@ function CompanionSession({
     }
 
     lastTapLineTextRef.current = line.text;
-    playVoice(line, { targetMotionId, targetExpression, combo, isTap: !hold });
+    playVoice(line, { targetMotionId, targetExpression, combo, isTap: !hold && !['nari', 'yume'].includes(character.id) });
     if (combo < 5) prepareTapVoice(kind);
+  };
+
+  const speakTouchIfAllowed = (combo: number, hold = false) => {
+    const now = Date.now();
+    if (!interactionContextRef.current.usable || isPlayingVoiceRef.current || interactionContextRef.current.isStreaming || chatAbortControllerRef.current || interactionContextRef.current.callPhase !== 'idle'
+      || now < exhaustedUntilRef.current || now - lastTouchVoiceAtRef.current < TOUCH_VOICE_GAP_MS) return;
+    lastTouchVoiceAtRef.current = now;
+    playTapVoice(combo, hold);
   };
 
   // 角色点击触碰交互：
@@ -1144,7 +1220,7 @@ function CompanionSession({
   // 2. 眼睛按照模型自身动作与待机节奏自然眨眼，绝不随点击暴力快速眨眼
   // 3. 播放语音中做禁用不要覆盖，只累计点击次数
   // 4. 语音播放完了，若仍在连击，紧接着播放连击语音
-  const handleCharacterTap = (e: React.MouseEvent, hold = false) => {
+  const handleCharacterTap = (e: React.MouseEvent) => {
     const target = e.target as Element;
     if (!usable || !target.matches('canvas.companion-canvas')) return;
     if (pointerHitRef.current === false) { pointerHitRef.current = null; return; }
@@ -1152,8 +1228,10 @@ function CompanionSession({
       const region = stage.current?.hitTest ? stage.current.hitTest(e.clientX, e.clientY) : 'body';
       if (!region) return;
       lastTouchRegionRef.current = region;
+      const rect = target.getBoundingClientRect();
+      lastTouchSideRef.current = e.clientX < rect.left + rect.width / 2 ? 1 : -1;
     }
-    if (!hold && Date.now() - lastHoldEndRef.current < 400) return;
+    if (Date.now() - lastHoldEndRef.current < 400) return;
 
     // 若刚才是在按住拖拽视线引导（释放后 400ms 内），不误触发角色轻点对白与粒子
     if (Date.now() - lastDragEndRef.current < 400) {
@@ -1161,11 +1239,10 @@ function CompanionSession({
     }
 
     const now = Date.now();
-    if (hold) {
-      comboCountRef.current = 0;
-      lastTapTimeRef.current = 0;
-      if (!isPlayingVoiceRef.current && now >= exhaustedUntilRef.current) playTapVoice(1, true);
-      return;
+    const modernTouch = ['nari', 'yume'].includes(character.id);
+    if (modernTouch) {
+      if (!pressVisualRef.current) touchVisual(lastTouchRegionRef.current);
+      pressVisualRef.current = false;
     }
 
     // 1. 生成点击位置的浮动心动粒子 (❤️ / 🌸 / ✨)
@@ -1187,11 +1264,15 @@ function CompanionSession({
       return;
     }
 
-    // 3. 计算连击数 (Combo): 1400ms 内再次点击计入连击
-    const isConsecutive = now - lastTapTimeRef.current < 1400;
+    // Modern touch only groups genuinely rapid taps; legacy characters keep their timing.
+    const isConsecutive = now - lastTapTimeRef.current < (modernTouch ? TOUCH_COMBO_MS : 1400);
     const combo = isConsecutive ? comboCountRef.current + 1 : 1;
     comboCountRef.current = combo;
     lastTapTimeRef.current = now;
+    if (modernTouch) {
+      speakTouchIfAllowed(combo);
+      return;
+    }
 
     // 4. 核心：播放语音中，做禁用不要覆盖，只累计连击次数！
     if (isPlayingVoiceRef.current) {
@@ -1655,6 +1736,10 @@ function CompanionSession({
           )}
 
           {/* 点击飘动的心动粒子 (Hearts & Petals) */}
+          {pressPoint && (
+            <span aria-hidden="true" className={`companion-press-feedback${pressPoint.held ? ' is-held' : ''}`}
+              style={{ left: pressPoint.x, top: pressPoint.y }} />
+          )}
           {tapParticles.map(p => (
             <span
               key={p.id}

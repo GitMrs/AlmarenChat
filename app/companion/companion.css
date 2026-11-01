@@ -485,6 +485,28 @@
   to { opacity: 1; transform: scale(1); }
 }
 
+.companion-press-feedback {
+  position: absolute;
+  z-index: 3;
+  width: 44px;
+  height: 44px;
+  border: 2px solid rgb(255 255 255 / 85%);
+  border-radius: 50%;
+  background: rgb(255 255 255 / 12%);
+  box-shadow: 0 0 18px rgb(255 255 255 / 25%);
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  animation: companion-press-settle 700ms ease-out both;
+}
+.companion-press-feedback.is-held { background: rgb(255 255 255 / 25%); }
+@keyframes companion-press-settle {
+  from { opacity: 0.4; scale: 0.65; }
+  to { opacity: 1; scale: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .companion-press-feedback { animation: none; }
+}
+
 .companion-canvas {
   display: block;
   width: 100%;

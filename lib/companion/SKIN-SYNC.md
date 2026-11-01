@@ -74,6 +74,8 @@ Nari 梦境服装当前包含 34 个贴图槽位，有两个槽位引用同一�
 
 第二轮补充 `interaction.touchLines` 的 head / face / body / hold 索引，`voice.ts` 为经典原版复用基础录音池。`CompanionStage.hitTest` 和 `touch-hit.mjs` 根据当前相机、网格判断角色范围；以后修改渲染投影、模型平移或网格结构时，也必须回归触碰命中。部位比例为模型坐标近似值，不可按 PC/H5 屏幕固定高度重新切分。
 
+反馈节奏随后独立处理：`touch-feedback.mjs` 管理回弹、14px 拖动阈值、700ms 长按、650ms 连击窗口和 3500ms 语音间隔。即时视觉不依赖语音能否播放，Nari / Yume 不再排队补播触碰对白。以后改参数需同时检查舞台视线跟随与界面手势，避免两层使用不同拖动阈值。
+
 ## 下次同步流程
 
 1. 记录 `git status`，备份将改动的 `public/companion/skins/` 与配置文件。保留当前基线，不先覆盖。
