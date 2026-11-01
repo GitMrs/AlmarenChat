@@ -1,0 +1,3875 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-11-01",
+  "scope": "Local state after approved skin update; classic originals and existing voice behavior retained. File hashes are local integrity baselines, not proof of upstream visual equivalence.",
+  "sources": {
+    "page": "https://nariyume.com/app/",
+    "index": "https://nariyume.com/testing/models/index.json"
+  },
+  "upstreamPacks": [
+    {
+      "character": "nari",
+      "outfit": "original",
+      "pack": "Nari.original.hd.bdde1453fec020c5.koro",
+      "sha256": "219c86f2911ebcd652dbe5792374aca4e988a46aa01397dc31a5f318c249bddc",
+      "uniqueMotionFiles": 38
+    },
+    {
+      "character": "nari",
+      "outfit": "sakura-streetwear.base",
+      "pack": "Nari.sakura-streetwear.base.hd.ba44fd8ff9e4449c.koro",
+      "sha256": "4b7c4df537a2516b01330cb6a6f92ded31fb1f4a543969148d1dceaccaeae930",
+      "uniqueMotionFiles": 39
+    },
+    {
+      "character": "nari",
+      "outfit": "rose-regalia.base",
+      "pack": "Nari.rose-regalia.base.hd.fe808dea54bdf2b0.koro",
+      "sha256": "064d263e9db6e22ee6aea64ca5cbe1f7e37e1d09254c4897d0a5f3e0378cc4a9",
+      "uniqueMotionFiles": 39
+    },
+    {
+      "character": "nari",
+      "outfit": "sakura-reverie.base",
+      "pack": "Nari.sakura-reverie.base.hd.bac4a0f0973dfc3d.koro",
+      "sha256": "c44d53d965c4435f0cd3b90522f47b9822625affc9b2eb7bc432951f7c34f3a3",
+      "uniqueMotionFiles": 39
+    },
+    {
+      "character": "yume",
+      "outfit": "original",
+      "pack": "Yume.original.hd.23581498b689b4fd.koro",
+      "sha256": "2f49548bf79ab541fd6973e7af0483853373aae0fd651361ff9ab503c0e568b4",
+      "uniqueMotionFiles": 39
+    },
+    {
+      "character": "yume",
+      "outfit": "azure-streetwear.base",
+      "pack": "Yume.azure-streetwear.base.hd.0f58a2ccf6295160.koro",
+      "sha256": "d90b10bb66301688d3e66d6b92753b19248101fac9d076abe781600fd88e3ffe",
+      "uniqueMotionFiles": 39
+    },
+    {
+      "character": "yume",
+      "outfit": "azure-reverie.base",
+      "pack": "Yume.azure-reverie.base.hd.f61f96fc69d69acc.koro",
+      "sha256": "b08393ec2668a5b8f1e532192bde57bae08dab1b5f342e503ef17dc58135264a",
+      "uniqueMotionFiles": 39
+    },
+    {
+      "character": "yume",
+      "outfit": "sapphire-nocturne.base",
+      "pack": "Yume.sapphire-nocturne.base.hd.ad4b5849cf6d7ae1.koro",
+      "sha256": "ad4b5849cf6d7ae1ac232498a7c4bfd239428e1a96ce3eca50bad7812bbda233",
+      "uniqueMotionFiles": 39
+    }
+  ],
+  "localConfigurations": [
+    {
+      "character": "nari",
+      "skin": "original",
+      "modelRoot": "/companion/models/nari",
+      "rig": "Nari/Nari.korig.json",
+      "binary": "Nari/Nari.korig.bin",
+      "textures": [
+        "Nari/textures/tex_00.png",
+        "Nari/textures/tex_01.png",
+        "Nari/textures/tex_02.png"
+      ],
+      "tuning": "tunes/Nari.kotune.json",
+      "physics": "Nari/Nari.kophys.json",
+      "nativeDefaults": {},
+      "motionCount": 38
+    },
+    {
+      "character": "nari",
+      "skin": "sakura-streetwear",
+      "modelRoot": "/companion/skins/nari/sakura-streetwear",
+      "rig": "Nari/Nari.korig.json",
+      "binary": "Nari/Nari.korig.bin",
+      "textures": [
+        "Nari/textures/outfit_00.webp",
+        "Nari/textures/outfit_01.webp",
+        "Nari/textures/outfit_02.webp",
+        "Nari/textures/outfit_03.webp",
+        "Nari/azure-bust-seam.webp",
+        "Nari/identity-0.webp",
+        "Nari/identity-1.webp",
+        "Nari/identity-2.webp",
+        "Nari/clean-foot-v1.webp",
+        "EarAssets/sakura-ears.webp",
+        "EarAssets/ice-blue-fill.webp",
+        "EarAssets/yume-white-tufts.webp",
+        "Streetwear/upper-atlas.webp",
+        "Streetwear/skirt-atlas.webp",
+        "Streetwear/leg-atlas.webp",
+        "Streetwear/bustier-atlas.webp",
+        "Streetwear/trails-atlas.webp",
+        "Streetwear/sakura-punk-collar.webp",
+        "Streetwear/stockings-sakura-v2.webp",
+        "Streetwear/vest-sakura-v1.webp",
+        "NariSkin/rose-porcelain-lighting.webp",
+        "NariSkin/wrist-joins.webp",
+        "NariMechanics/opaque.png",
+        "NariSkin/wrist-continuity.png",
+        "Nari/native-face.png",
+        "Streetwear/generated-upper-sleeve-ad1.webp",
+        "Streetwear/separated-cloth-as1.webp",
+        "Streetwear/separated-flower-as1.webp",
+        "Streetwear/separated-tailA-as1.webp",
+        "Streetwear/separated-tailB-as1.webp"
+      ],
+      "tuning": "Nari/Nari.kotune.json",
+      "physics": "Nari/Nari.kophys.json",
+      "pose": "Nari/Nari.kopose.json",
+      "nativeDefaults": {
+        "ParamOutfit": 1,
+        "ParamNariRosePorcelain": 0.9,
+        "Param16": 0,
+        "Param79": 0
+      },
+      "motionCount": 38
+    },
+    {
+      "character": "nari",
+      "skin": "rose-regalia",
+      "modelRoot": "/companion/skins/nari/rose-regalia",
+      "rig": "Nari/Nari.korig.json",
+      "binary": "Nari/Nari.korig.bin",
+      "textures": [
+        "Nari/textures/outfit_00.webp",
+        "Nari/textures/outfit_01.webp",
+        "Nari/textures/outfit_02.webp",
+        "Nari/textures/outfit_03.webp",
+        "Nari/azure-bust-seam.webp",
+        "Nari/identity-0.webp",
+        "Nari/identity-1.webp",
+        "Nari/identity-2.webp",
+        "Nari/clean-foot-v1.webp",
+        "EarAssets/sakura-ears.webp",
+        "EarAssets/ice-blue-fill.webp",
+        "EarAssets/yume-white-tufts.webp",
+        "Regalia/regalia-fit-v2-atlas-00.webp",
+        "Regalia/regalia-fit-v2-atlas-01.webp",
+        "Regalia/regalia-fit-v2-atlas-02.webp",
+        "NariSkin/rose-porcelain-lighting.webp",
+        "ClothingCleanup/reviewed-flecks.webp",
+        "NariSkin/wrist-joins.webp",
+        "RegaliaRoyal/atlas-0.png",
+        "RegaliaRoyal/atlas-1.png",
+        "RegaliaRoyal/atlas-2.png",
+        "NariMechanics/opaque.png",
+        "NariSkin/wrist-continuity.png",
+        "Nari/native-face.png"
+      ],
+      "tuning": "Nari/Nari.kotune.json",
+      "physics": "Nari/Nari.kophys.json",
+      "pose": "Nari/Nari.kopose.json",
+      "nativeDefaults": {
+        "ParamOutfit": 1,
+        "ParamNariRosePorcelain": 0.9,
+        "Param16": 0,
+        "Param79": 0
+      },
+      "motionCount": 38
+    },
+    {
+      "character": "nari",
+      "skin": "sakura-reverie",
+      "modelRoot": "/companion/skins/nari/sakura-reverie",
+      "rig": "Nari/Nari.korig.json",
+      "binary": "Nari/Nari.korig.bin",
+      "textures": [
+        "Nari/textures/outfit_00.webp",
+        "Nari/textures/outfit_01.webp",
+        "NariSkin/plain-join-bv8-2.webp",
+        "Nari/textures/outfit_03.webp",
+        "Nari/azure-bust-seam.webp",
+        "Nari/identity-0.webp",
+        "Nari/identity-1.webp",
+        "Nari/identity-2.webp",
+        "Nari/clean-foot-v1.webp",
+        "EarAssets/sakura-ears.webp",
+        "EarAssets/ice-blue-fill.webp",
+        "EarAssets/yume-white-tufts.webp",
+        "NariSkin/plain-join-bv8-12.webp",
+        "Reverie/material-5.webp",
+        "Reverie/material-6-smooth-hem-bw3.webp",
+        "Reverie/material-7.webp",
+        "Reverie/material-10.webp",
+        "Reverie/material-11.webp",
+        "Reverie/material-12.webp",
+        "Reverie/sakura-jewel.webp",
+        "Reverie/sandal-material-mask-v2.webp",
+        "ClothingCleanup/reviewed-flecks.webp",
+        "NariSkin/wrist-joins.webp",
+        "NariMechanics/opaque.png",
+        "NariMechanics/opaque.png",
+        "Nari/native-face.png",
+        "NariHands/continuous-porcelain-bf1.png",
+        "NariSkin/thigh-fitted-shading-bx7.webp",
+        "NariSkin/forearm-blend-bf4.png",
+        "NariSkin/AzKneeL-soft-br6.png",
+        "NariSkin/AzKneeR-soft-br6.png",
+        "NariSkin/shin-fitted-shading-bx7.webp",
+        "NariSkin/knee-L-shade-bx3.webp",
+        "NariSkin/knee-R-shade-bx3.webp"
+      ],
+      "tuning": "Nari/Nari.kotune.json",
+      "physics": "Nari/Nari.kophys.json",
+      "pose": "Nari/Nari.kopose.json",
+      "nativeDefaults": {
+        "ParamOutfit": 1,
+        "ParamNariRosePorcelain": 0.9,
+        "Param16": 0,
+        "Param79": 0
+      },
+      "motionCount": 38
+    },
+    {
+      "character": "nari",
+      "skin": "original-ears",
+      "modelRoot": "/companion/skins/nari/original-ears",
+      "rig": "Nari/Nari.korig.json",
+      "binary": "Nari/Nari.korig.bin",
+      "textures": [
+        "Nari/textures/tex_00.png",
+        "Nari/textures/tex_01.png",
+        "Nari/textures/tex_02.png",
+        "Nari/textures/sakura-ears.webp",
+        "Nari/textures/ice-blue-fill.webp",
+        "Nari/textures/yume-white-tufts.webp"
+      ],
+      "tuning": "Nari/Nari.kotune.json",
+      "physics": "Nari/Nari.kophys.json",
+      "nativeDefaults": {},
+      "motionCount": 38
+    },
+    {
+      "character": "yume",
+      "skin": "original",
+      "modelRoot": "/companion/models/yume",
+      "rig": "Yume/Yume.korig.json",
+      "binary": "Yume/Yume.korig.bin",
+      "textures": [
+        "Yume/textures/tex_00.png",
+        "Yume/textures/tex_01.png",
+        "Yume/textures/face-atlas.png",
+        "Yume/textures/mouth-skin-clean.png"
+      ],
+      "tuning": "tunes/Yume.kotune.json",
+      "physics": "Yume/Yume.kophys.json",
+      "pose": "Yume/Yume.kopose.json",
+      "nativeDefaults": {},
+      "motionCount": 39
+    },
+    {
+      "character": "yume",
+      "skin": "azure-streetwear",
+      "modelRoot": "/companion/skins/yume/azure-streetwear",
+      "rig": "Yume/Yume.korig.json",
+      "binary": "Yume/Yume.korig.bin",
+      "textures": [
+        "Yume/textures/tex_00.png",
+        "Yume/textures/tex_01.png",
+        "Yume/textures/face-atlas.png",
+        "Yume/textures/mouth-skin-clean.png",
+        "Yume/textures/outfit_00.png",
+        "Yume/textures/outfit_01.png",
+        "Yume/textures/outfit_02.png",
+        "Yume/azure-bust-seam.png",
+        "EarAssets/azure-ears.png",
+        "EarAssets/white-tufts.png",
+        "Yume/textures/street_00.png",
+        "Yume/textures/street_01.png",
+        "Yume/textures/street_underbust.png",
+        "Yume/textures/street_sweater.png",
+        "Yume/textures/continuous-body.png"
+      ],
+      "tuning": "tunes/Yume.kotune.json",
+      "physics": "Yume/Yume.kophys.json",
+      "pose": "Yume/Yume.kopose.json",
+      "nativeDefaults": {
+        "Param16": 0,
+        "Param79": 0,
+        "ParamOutfit": 2
+      },
+      "motionCount": 39
+    },
+    {
+      "character": "yume",
+      "skin": "sapphire-nocturne",
+      "modelRoot": "/companion/skins/yume/sapphire-nocturne",
+      "rig": "Yume/Yume.korig.json",
+      "binary": "Yume/Yume.korig.bin",
+      "textures": [
+        "Yume/textures/tex_00.png",
+        "Yume/textures/tex_01.png",
+        "Yume/textures/face-atlas.png",
+        "Yume/textures/mouth-skin-clean.png",
+        "Yume/textures/outfit_00.png",
+        "Yume/textures/outfit_01.png",
+        "Yume/textures/outfit_02.png",
+        "Yume/azure-bust-seam.png",
+        "EarAssets/azure-ears.png",
+        "EarAssets/white-tufts.png",
+        "Yume/textures/nocturne_00.png",
+        "Yume/textures/nocturne_01.png",
+        "Yume/textures/nocturne_02.png",
+        "Yume/textures/nocturne_03.png",
+        "Yume/textures/continuous-body.png",
+        "Yume/textures/nocturne_hard.png"
+      ],
+      "tuning": "tunes/Yume.kotune.json",
+      "physics": "Yume/Yume.kophys.json",
+      "pose": "Yume/Yume.kopose.json",
+      "nativeDefaults": {
+        "Param16": 0,
+        "Param79": 0,
+        "ParamOutfit": 3
+      },
+      "motionCount": 39
+    },
+    {
+      "character": "yume",
+      "skin": "azure-reverie",
+      "modelRoot": "/companion/skins/yume/azure-reverie",
+      "rig": "Yume/Yume.korig.json",
+      "binary": "Yume/Yume.korig.bin",
+      "textures": [
+        "Yume/textures/tex_00.png",
+        "Yume/textures/tex_01.png",
+        "Yume/textures/face-atlas.png",
+        "Yume/textures/mouth-skin-clean.png",
+        "Yume/textures/outfit_00.png",
+        "Yume/textures/outfit_01.png",
+        "Yume/textures/outfit_02.png",
+        "Yume/textures/outfit_03.png",
+        "Yume/azure-layer-lining.png",
+        "Yume/azure-layer-ruffles.png",
+        "Yume/azure-layer-navy.png",
+        "Yume/azure-bust-seam.png",
+        "EarAssets/azure-ears.png",
+        "EarAssets/white-tufts.png",
+        "Yume/textures/swim_hard.png",
+        "Yume/textures/continuous-body.png"
+      ],
+      "tuning": "tunes/Yume.kotune.json",
+      "physics": "Yume/Yume.kophys.json",
+      "pose": "Yume/Yume.kopose.json",
+      "nativeDefaults": {
+        "Param16": 0,
+        "Param79": 0,
+        "ParamOutfit": 1
+      },
+      "motionCount": 39
+    },
+    {
+      "character": "yume",
+      "skin": "original-ears",
+      "modelRoot": "/companion/skins/yume/original-ears",
+      "rig": "Yume/Yume.korig.json",
+      "binary": "Yume/Yume.korig.bin",
+      "textures": [
+        "Yume/textures/tex_00.png",
+        "Yume/textures/tex_01.png",
+        "Yume/textures/face-atlas.png",
+        "Yume/textures/mouth-skin-clean.png",
+        "EarAssets/azure-ears.png",
+        "EarAssets/white-tufts.png"
+      ],
+      "tuning": "tunes/Yume.kotune.json",
+      "physics": "Yume/Yume.kophys.json",
+      "pose": "Yume/Yume.kopose.json",
+      "nativeDefaults": {
+        "Param16": 0,
+        "Param79": 0,
+        "ParamCatEars": 1,
+        "ParamOutfit": 0
+      },
+      "motionCount": 39
+    }
+  ],
+  "files": [
+    {
+      "path": "lib/companion/agents.ts",
+      "bytes": 6673,
+      "sha256": "eb41266b7e9761afaae009cf72b971ce17a654ef7285be70d4f6e3358a4dcea0"
+    },
+    {
+      "path": "lib/companion/behaviors/nari.ts",
+      "bytes": 4635,
+      "sha256": "9e6a9579ff9d08473aaf438caa14686afe49146f677dfbbc4591672b1cfc5353"
+    },
+    {
+      "path": "lib/companion/behaviors/yume.ts",
+      "bytes": 4042,
+      "sha256": "ab3bf8166da76d377043881fc78a25710872a1af4f4dada0fe69ca42aaec7637"
+    },
+    {
+      "path": "lib/companion/catalog.ts",
+      "bytes": 44427,
+      "sha256": "8e0e9a24685adf8e4e5636c0c7f9da4be22d36f0652f8a6d179fa9159a67b869"
+    },
+    {
+      "path": "lib/companion/motion.ts",
+      "bytes": 5032,
+      "sha256": "42510ab17eac322e0d0cafa5d603b131ac2dc480f67430c3c2146c37a283101d"
+    },
+    {
+      "path": "lib/companion/physics.ts",
+      "bytes": 12661,
+      "sha256": "96dd0145bec434eedfb63830382641eba19b144185626de32f209d0ddb3c8736"
+    },
+    {
+      "path": "lib/companion/skins-manifest.json",
+      "bytes": 10113,
+      "sha256": "44033b2540bb5e43422562240cbe416589afb3df30df15949b99be99208d1d62"
+    },
+    {
+      "path": "lib/companion/vendor/koro-core.js",
+      "bytes": 50057,
+      "sha256": "7d907707fd0e94c70953839436acbd7963566800011929d4b4572c817d2a3081"
+    },
+    {
+      "path": "lib/companion/voice-dataset.json",
+      "bytes": 52313,
+      "sha256": "4254d6142356749feac18604d1f485451c56fc1da9a255e72ffacaaaa380396d"
+    },
+    {
+      "path": "lib/companion/voice.ts",
+      "bytes": 13222,
+      "sha256": "71d6870c7031330e880011559f9b664be9d7db26d23eb5ffa05791079a44f556"
+    },
+    {
+      "path": "public/companion/models/nari/Nari/expressions/Angry.koexp.json",
+      "bytes": 96,
+      "sha256": "6c8aabdd90afc93db05371ca11498b035003f860d6a8bbc6d6a1b95c81efe5f8"
+    },
+    {
+      "path": "public/companion/models/nari/Nari/expressions/Blushing.koexp.json",
+      "bytes": 96,
+      "sha256": "8c2f6f8268f9835e1b08f869fcbe2b74f0e5b5fc7f9b92404f4699eab5e08a35"
+    },
+    {
+      "path": "public/companion/models/nari/Nari/expressions/Crying.koexp.json",
+      "bytes": 96,
+      "sha256": "b13598730c2cbee8ddb8ce5330474d9f0b4dceb28b6c3336a799af6a315d9564"
+    },
+    {
+      "path": "public/companion/models/nari/Nari/expressions/Dark.koexp.json",
+      "bytes": 96,
+      "sha256": "9d80811126607a41fdf6f32a7d74bdd69e078da686a3966ade141f5f5955bcd4"
+    },
+    {
+      "path": "public/companion/models/nari/Nari/expressions/Love.koexp.json",
+      "bytes": 96,
+      "sha256": "b00afce5aedd70cb5102ab6b17c8b097cc7f6259f981a79863252a3056369787"
+    },
+    {
+      "path": "public/companion/models/nari/Nari/expressions/Mischievous.koexp.json",
+      "bytes": 96,
+      "sha256": "0c940e910ed766eb5f8ef6ab3a10003488f86d3f3499a8462f733183a04fab1a"
+    },
+    {
+      "path": "public/companion/models/nari/Nari/expressions/Shocked.koexp.json",
+      "bytes": 96,
+      "sha256": "a28502e83d256fca30f0ea7196b5b95676d46aa0865d3a6362d8c2a5aa21c067"
+    },
+    {
+      "path": "public/companion/models/nari/Nari/expressions/Silly.koexp.json",
+      "bytes": 96,
+      "sha256": "2eb69d57be5f0a8101e61e28eb9db41b100ba556404d79adcee2668db6552bba"
+    },
+    {
+      "path": "public/companion/models/nari/Nari/expressions/Stars.koexp.json",
+      "bytes": 96,
+      "sha256": "2516ddc31f705864fc04e19eb7a0558bcf0c734b79198653f874e80bf744e43c"
+    },
+    {
+      "path": "public/companion/models/nari/Nari/motions/Nari_anim_09.komo.json",
+      "bytes": 2942,
+      "sha256": "f37fecf235a3d2adba8cc72cdbcb171d7582bf0e7a35235de9d77cfcef8ed368"
+    },
+    {
+      "path": "public/companion/models/nari/Nari/motions/Nari_bright_bounce.komo.json",
+      "bytes": 39866,
+      "sha256": "4f0676569337a44489e69d3ef3e1dc7e82bd19c6de0962f3466a011f210da9e6"
+    },
+    {
+      "path": "public/companion/models/nari/Nari/motions/Nari_chat_01_attentive.komo.json",
+      "bytes": 136923,
+      "sha256": "35924ab6b55d89f3e4bcd8ce1420f419a486589229baaff1dc5f04e90ac7cfe4"
+    },
+    {
+      "path": "public/companion/models/nari/Nari/motions/Nari_chat_02_listen_tilt.komo.json",
+      "bytes": 143769,
+      "sha256": "a32197f1feef405c449a7b150bb3de42e34b5fa8c7e5405b3a557eb3e88e28c9"
+    },
+    {
+      "path": "public/companion/models/nari/Nari/motions/Nari_chat_03_warm_breath.komo.json",
+      "bytes": 151844,
+      "sha256": "2c05937766be6014634a3ff69d1f4daf3e2d459a1e287dd13d70d3d1b3a87a19"
+    },
+    {
+      "path": "public/companion/models/nari/Nari/motions/Nari_chat_04_nod_along.komo.json",
+      "bytes": 131796,
+      "sha256": "80ce125165873bcf53c39293b0615dfabcb231ac87cb66cc0a951d25b1e8e4f7"
+    },
+    {
+      "path": "public/companion/models/nari/Nari/motions/Nari_chat_05_readjust.komo.json",
+      "bytes": 134346,
+      "sha256": "edee6600d8fdb441c12687032fcd96295d59b8da35b75ae31b4103a15273d276"
+    },
+    {
+      "path": "public/companion/models/nari/Nari/motions/Nari_cheeky_swing_wink.komo.json",
+      "bytes": 86809,
+      "sha256": "e1357705132acfed3bf1f4033647b9dae9efc3568c9e1cbe1ceaac226020c28a"
+    },
+    {
+      "path": "public/companion/models/nari/Nari/motions/Nari_games_board_scan.komo.json",
+      "bytes": 107195,
+      "sha256": "423e26e61281bed9a530e8dfdc40f7383a4a833f443087fa3631d7589f756993"
+    },
+    {
+      "path": "public/companion/models/nari/Nari/motions/Nari_idle_02_double_bounce.komo.json",
+      "bytes": 95292,
+      "sha256": "10c3585004603e8045909969412328033986107a11e42e0a50297f2fad6d3911"
+    },
+    {
+      "path": "public/companion/models/nari/Nari/motions/Nari_idle_04_flirty_lashes.komo.json",
+      "bytes": 128632,
+      "sha256": "5782f5dd39bdb5151fcf44e31316c24b3fcf90f62d184d76e95856184828cf9b"
+    },
+    {
+      "path": "public/companion/models/nari/Nari/motions/Nari_idle_06_giggle.komo.json",
+      "bytes": 109296,
+      "sha256": "e937cb8c742aabddd649e528fa21a7ec8e759d36ef79848f496647d55d89905b"
+    },
+    {
+      "path": "public/companion/models/nari/Nari/motions/Nari_idle_08_look_around.komo.json",
+      "bytes": 116945,
+      "sha256": "3fa4a6dcd1eb2f38c921daa5b3dd4740cf9193dd3429c147937e6b5ad804a493"
+    },
+    {
+      "path": "public/companion/models/nari/Nari/motions/Nari_idle_13_tease_peek.komo.json",
+      "bytes": 112046,
+      "sha256": "c399a1b9776fa3058df051e998440c3d218ae14e6fe9ef6602d964a048022559"
+    },
+    {
+      "path": "public/companion/models/nari/Nari/motions/Nari_mood_angry_glare.komo.json",
+      "bytes": 78906,
+      "sha256": "e0ca475d4775595eb6a31fae4f1bc5787977de6b53ca6b99117e4f0d68eac9d3"
+    },
+    {
+      "path": "public/companion/models/nari/Nari/motions/Nari_mood_angry_hmph.komo.json",
+      "bytes": 83138,
+      "sha256": "d480b36dbfda7778baf36c713783071f07f6e04cc565bcfb4933687e41169637"
+    },
+    {
+      "path": "public/companion/models/nari/Nari/motions/Nari_mood_angry_shake.komo.json",
+      "bytes": 68450,
+      "sha256": "9f130ddfe9fd7ca31f537ad9ec87f9032efc45d11ff75f047a29fe47fa2f3ea0"
+    },
+    {
+      "path": "public/companion/models/nari/Nari/motions/Nari_mood_flirty_lean.komo.json",
+      "bytes": 102207,
+      "sha256": "f416f54d55ace25a58f9da6d08c76b9018584ffb099627d5a3c11440b90219bf"
+    },
+    {
+      "path": "public/companion/models/nari/Nari/motions/Nari_mood_flirty_toss.komo.json",
+      "bytes": 92888,
+      "sha256": "73d3619496547be784aaca7420349bc6c53d04a00c9293713c128331139eb08c"
+    },
+    {
+      "path": "public/companion/models/nari/Nari/motions/Nari_mood_happy_pop.komo.json",
+      "bytes": 99466,
+      "sha256": "f330e6c51b2a9a58c68343dbe9564082f987ba9b59db7cd74ca8d245321cadb6"
+    },
+    {
+      "path": "public/companion/models/nari/Nari/motions/Nari_mood_happy_sway.komo.json",
+      "bytes": 89798,
+      "sha256": "841d8c8fade90802e361595fe8fa99604016f8b6e819390a6f036ed0ed5fb4b6"
+    },
+    {
+      "path": "public/companion/models/nari/Nari/motions/Nari_mood_loving_flutter.komo.json",
+      "bytes": 95458,
+      "sha256": "a23b2b58b2a7ebafd8f19ef188edb9d98a354f823dc6286dc6963e62daeea5d4"
+    },
+    {
+      "path": "public/companion/models/nari/Nari/motions/Nari_mood_loving_lean.komo.json",
+      "bytes": 105029,
+      "sha256": "668cf672d8199cf987a10022dac3ff5f466c83f42075045a4023c30396916dc0"
+    },
+    {
+      "path": "public/companion/models/nari/Nari/motions/Nari_mood_loving_tilt.komo.json",
+      "bytes": 97659,
+      "sha256": "d3bd83d5ed8aa61e38b357eb0d27ae32491568f31d63bbe7ba54c8f89b8f269e"
+    },
+    {
+      "path": "public/companion/models/nari/Nari/motions/Nari_mood_sad_brave.komo.json",
+      "bytes": 92319,
+      "sha256": "b1f52ff3bc5866b7c898ff276cb01a8434f9d485d1627ca552e066136f7f6eb9"
+    },
+    {
+      "path": "public/companion/models/nari/Nari/motions/Nari_mood_sad_look_down.komo.json",
+      "bytes": 102099,
+      "sha256": "1dfc00ca0ce334b940227e4a4e670deeb93bfc70db847f2f6a662e17ffa50cf9"
+    },
+    {
+      "path": "public/companion/models/nari/Nari/motions/Nari_mood_sad_turn.komo.json",
+      "bytes": 91756,
+      "sha256": "40b6a9d8f720cfc9c5daee374cf86c5483fcef4dd54c8d8f0930fbb4bacf75d0"
+    },
+    {
+      "path": "public/companion/models/nari/Nari/motions/Nari_mood_sexual_heated_lean.komo.json",
+      "bytes": 134592,
+      "sha256": "ed2aaeb71181c1d3f970b789e86c18fd921a0feb0481c68fdc104df364706997"
+    },
+    {
+      "path": "public/companion/models/nari/Nari/motions/Nari_mood_sexual_slow_look.komo.json",
+      "bytes": 127373,
+      "sha256": "8545796920cf7736cc23756b560ae730c89be71d8b0d33ab3fca513043764e59"
+    },
+    {
+      "path": "public/companion/models/nari/Nari/motions/Nari_mood_sexual_sultry_tilt.komo.json",
+      "bytes": 132137,
+      "sha256": "892f1ef120cd1d120aba7bc1db135f466b680a828b2b831e9bb7b4495cd35823"
+    },
+    {
+      "path": "public/companion/models/nari/Nari/motions/Nari_mood_shy_duck.komo.json",
+      "bytes": 114282,
+      "sha256": "ba4415ecba5d0b53d3ad451979709437cdd324b031b68081f21af08e03b77a1c"
+    },
+    {
+      "path": "public/companion/models/nari/Nari/motions/Nari_mood_shy_twist.komo.json",
+      "bytes": 93183,
+      "sha256": "181a4b41d9d2d44d42b8b15e941292d98339670bd26bb01d8b4ba520c869628b"
+    },
+    {
+      "path": "public/companion/models/nari/Nari/motions/Nari_mood_surprised_double_take.komo.json",
+      "bytes": 96316,
+      "sha256": "754924778aed2cf8982b023165c8603ac0b40100f37f84caf589c52b76480011"
+    },
+    {
+      "path": "public/companion/models/nari/Nari/motions/Nari_mood_surprised_jolt.komo.json",
+      "bytes": 83581,
+      "sha256": "3736f6a28f58e880f6e964fc4f92518913310cd311eadb9d5373da4f8ca022c2"
+    },
+    {
+      "path": "public/companion/models/nari/Nari/motions/Nari_mood_surprised_lean.komo.json",
+      "bytes": 87158,
+      "sha256": "4e62f57be0ee1d343464bc3327a1924daf2ee83c389ba29c7b948374e2e9d439"
+    },
+    {
+      "path": "public/companion/models/nari/Nari/motions/Nari_music_bounce_loop.komo.json",
+      "bytes": 122823,
+      "sha256": "96a9bd3e62cd286b04745a1d36059fd66ce6440ea2dcc6797aa1bdac9ab78841"
+    },
+    {
+      "path": "public/companion/models/nari/Nari/motions/Nari_yume04.komo.json",
+      "bytes": 2594,
+      "sha256": "9b2e4d8496360e7b64695c95cabc2ca359c543ef75274167447022c9d4a3d8b6"
+    },
+    {
+      "path": "public/companion/models/nari/Nari/motions/Nari_yume05.komo.json",
+      "bytes": 3121,
+      "sha256": "b461907d1ecaa13b026c0c6ffbdb8a45369ecd5e3e37388e6e49dedd414718b8"
+    },
+    {
+      "path": "public/companion/models/nari/Nari/Nari.kophys.json",
+      "bytes": 51558,
+      "sha256": "65cd481446e8fb03e51a46224b82e6c01d3ac197e2f99a91151750060ec035f7"
+    },
+    {
+      "path": "public/companion/models/nari/Nari/Nari.korig.bin",
+      "bytes": 5281612,
+      "sha256": "cb939d355a7e0b0aa43df91d7851ff24d74ca71043ade271ad690fbbe548aaa3"
+    },
+    {
+      "path": "public/companion/models/nari/Nari/Nari.korig.json",
+      "bytes": 249488,
+      "sha256": "10c80044904df75680ef0b8409913ad3c36d628fa6fa2cbadbe2c7d427567062"
+    },
+    {
+      "path": "public/companion/models/nari/Nari/textures/tex_00.png",
+      "bytes": 358870,
+      "sha256": "b08aa985af7d771e91ef19d1eed85c6ad15b1cc3a5a64275a40c7e5475b4f804"
+    },
+    {
+      "path": "public/companion/models/nari/Nari/textures/tex_01.png",
+      "bytes": 601292,
+      "sha256": "90114d5a5f1bd4e0520ecf92644d332644029c14bec00d274b6318d4d95de611"
+    },
+    {
+      "path": "public/companion/models/nari/Nari/textures/tex_02.png",
+      "bytes": 220032,
+      "sha256": "3d8d97ea73b205575e9691b458045599e6ad82160e3e2ab7c892af6d3e46dee9"
+    },
+    {
+      "path": "public/companion/models/nari/tunes/Nari.kotune.json",
+      "bytes": 499,
+      "sha256": "b840f3a6a8d0cab14cfd454a0c6c9761fcb2c49e41eff5a2e0bf4380fe3f4f18"
+    },
+    {
+      "path": "public/companion/models/yume/Nari/motions/Nari_anim_09.komo.json",
+      "bytes": 2942,
+      "sha256": "f37fecf235a3d2adba8cc72cdbcb171d7582bf0e7a35235de9d77cfcef8ed368"
+    },
+    {
+      "path": "public/companion/models/yume/tunes/Yume.kotune.json",
+      "bytes": 530,
+      "sha256": "02cb1651ecd73103a66bd507f3d056265416ec7b9c16dfd4894d54812c7ece66"
+    },
+    {
+      "path": "public/companion/models/yume/Yume/expressions/Crying.koexp.json",
+      "bytes": 151,
+      "sha256": "23c4db1b770337d9a34ac3ad0bc8ad47b3e441c244a95406b02dd2dc0e7dfd11"
+    },
+    {
+      "path": "public/companion/models/yume/Yume/expressions/HeartEye.koexp.json",
+      "bytes": 95,
+      "sha256": "2855aa9fe4b3c08f2fa787c941c3dc21e5b1f45dfaff8b40c063375eee9bb3cc"
+    },
+    {
+      "path": "public/companion/models/yume/Yume/expressions/HeartHands.koexp.json",
+      "bytes": 96,
+      "sha256": "727207c73bdbb2c89ec393e007178ff4f9062dca934873385d61130d8f733733"
+    },
+    {
+      "path": "public/companion/models/yume/Yume/expressions/Shy.koexp.json",
+      "bytes": 96,
+      "sha256": "8e90f066304f500fe0f3c523f85703e62572ddb491e6b1978a4239ebe9bd2621"
+    },
+    {
+      "path": "public/companion/models/yume/Yume/expressions/StarEye.koexp.json",
+      "bytes": 95,
+      "sha256": "3eb9088a57d03757bda6eefd76a1875e5effdb467fc223afe1c7a64ccd5a1c0e"
+    },
+    {
+      "path": "public/companion/models/yume/Yume/expressions/Wave.koexp.json",
+      "bytes": 96,
+      "sha256": "25d45aca27a3f89cdc28a9a15a6feb2ce7fb775e91e7cc8993f9dead2ba4f3e1"
+    },
+    {
+      "path": "public/companion/models/yume/Yume/motions/Yume_anim_04.komo.json",
+      "bytes": 5880,
+      "sha256": "213de7d9929d3d3d0735d4062fc56b6cde3db8b6e7b0d983a31b4c8f2c60692d"
+    },
+    {
+      "path": "public/companion/models/yume/Yume/motions/Yume_anim_05.komo.json",
+      "bytes": 5885,
+      "sha256": "b56c9063c6f7d7a4ca3b78dd062f8f46ea2093cdd98aa4d20ef50452ad0db6f7"
+    },
+    {
+      "path": "public/companion/models/yume/Yume/motions/Yume_bright_bounce.komo.json",
+      "bytes": 31727,
+      "sha256": "0edab761b571c29362dbae9defe38eaf2d9871614f8a37ffd410aea04e418493"
+    },
+    {
+      "path": "public/companion/models/yume/Yume/motions/Yume_chat_01_attentive.komo.json",
+      "bytes": 63867,
+      "sha256": "6064d930f46a43f7c6c9606d21a761342c2f20ff77498bc03d63d12bfe9376fb"
+    },
+    {
+      "path": "public/companion/models/yume/Yume/motions/Yume_chat_02_listen_tilt.komo.json",
+      "bytes": 92985,
+      "sha256": "27971a45997b17a3deffc908d8a2ed3ef82657ca69357d7a2d005c435dfc8c7a"
+    },
+    {
+      "path": "public/companion/models/yume/Yume/motions/Yume_chat_03_shy_glance.komo.json",
+      "bytes": 68123,
+      "sha256": "1c7213951a8e6c07f7bf775cd758d000a3ba78314aaed7397aef4213e79e5910"
+    },
+    {
+      "path": "public/companion/models/yume/Yume/motions/Yume_chat_04_nod_along.komo.json",
+      "bytes": 91322,
+      "sha256": "c36cde9cf176a2b4e18257aaf02ef519f26819efad84fa545fc4475b555e9da3"
+    },
+    {
+      "path": "public/companion/models/yume/Yume/motions/Yume_chat_05_readjust.komo.json",
+      "bytes": 87024,
+      "sha256": "af768e35e5cc34fb09d8dead8612ddc820258641eff23cb19ef5d4e3e9cdef9f"
+    },
+    {
+      "path": "public/companion/models/yume/Yume/motions/Yume_cheeky_swing_wink.komo.json",
+      "bytes": 68664,
+      "sha256": "882775de7d51057d22c651f829d120cb65a242bf2ebb58e7db96210c1b05a2d1"
+    },
+    {
+      "path": "public/companion/models/yume/Yume/motions/Yume_games_board_scan.komo.json",
+      "bytes": 85517,
+      "sha256": "0d2a0f4ff8749e40798fe48e7fe20c1a316836963dd98c4aa6fcc55c5e22a762"
+    },
+    {
+      "path": "public/companion/models/yume/Yume/motions/Yume_idle_01_hmph_look_away.komo.json",
+      "bytes": 110019,
+      "sha256": "e4a484e283d5c3a3c40909e73c85d09b0dce7974450720f4398f6681059250f8"
+    },
+    {
+      "path": "public/companion/models/yume/Yume/motions/Yume_idle_03_brisk_nods.komo.json",
+      "bytes": 52077,
+      "sha256": "67c21f3718472bf984ecf4a5ee256715dd30e08143b914a4ccf3c9d6293a4d5c"
+    },
+    {
+      "path": "public/companion/models/yume/Yume/motions/Yume_idle_05_flustered.komo.json",
+      "bytes": 104509,
+      "sha256": "aee59464f686cec69709db418b2797501af80ca6d1773e38fc69e2bb5ce11df3"
+    },
+    {
+      "path": "public/companion/models/yume/Yume/motions/Yume_idle_10_smug_wink.komo.json",
+      "bytes": 89572,
+      "sha256": "68429f032307b91a3fbbb55617467d92354b70d46280d9e0c543e4d004201daf"
+    },
+    {
+      "path": "public/companion/models/yume/Yume/motions/Yume_idle_11_double_take.komo.json",
+      "bytes": 83598,
+      "sha256": "5ab489f9de12af5904561e12fcd70ddb5ff1936c422c07a06dc950748c51eba2"
+    },
+    {
+      "path": "public/companion/models/yume/Yume/motions/Yume_idle_12_pout.komo.json",
+      "bytes": 91624,
+      "sha256": "ef84ab0ee9780f03be56830063e3d631325b156ea2a5197522e6173bcd16ea77"
+    },
+    {
+      "path": "public/companion/models/yume/Yume/motions/Yume_idle_13_victory.komo.json",
+      "bytes": 97691,
+      "sha256": "07cc450675f3ce264ce693a752575750479cd488c1ce56f64a41dfe543e3dc2f"
+    },
+    {
+      "path": "public/companion/models/yume/Yume/motions/Yume_mood_angry_seriously.komo.json",
+      "bytes": 67496,
+      "sha256": "c62bef01031ee2dd32a9b391d699b4036987c26c7bc78a781af02fbfefd5cc21"
+    },
+    {
+      "path": "public/companion/models/yume/Yume/motions/Yume_mood_flirty_chin_tilt.komo.json",
+      "bytes": 78368,
+      "sha256": "3dd983ace89879423aa977ac16a11e5487912352e5f95736c1b3042ec3d90f30"
+    },
+    {
+      "path": "public/companion/models/yume/Yume/motions/Yume_mood_flirty_glance.komo.json",
+      "bytes": 76883,
+      "sha256": "6aeda13a8f1bb267ad53db7f3f3d27ae18e78710e80754575e99e7f8340afa30"
+    },
+    {
+      "path": "public/companion/models/yume/Yume/motions/Yume_mood_flirty_retreat.komo.json",
+      "bytes": 74398,
+      "sha256": "ec63277afc9986dca91b475999e4e2a8c87295438a3dcf1bd43b80aab3ddcc50"
+    },
+    {
+      "path": "public/companion/models/yume/Yume/motions/Yume_mood_happy_pleased.komo.json",
+      "bytes": 73636,
+      "sha256": "8447d94ba084759d55830f7553074906ea3bbf8f0b8d2eb325ad45968c43e394"
+    },
+    {
+      "path": "public/companion/models/yume/Yume/motions/Yume_mood_happy_proud.komo.json",
+      "bytes": 73756,
+      "sha256": "118643a9e9313db36400bd468f755fa94356d40daa6c5dcb090bd91f371896cc"
+    },
+    {
+      "path": "public/companion/models/yume/Yume/motions/Yume_mood_loving_bashful.komo.json",
+      "bytes": 76625,
+      "sha256": "2fb650e0d0d279a62a89b4986e0626a3f7ad0bd171027b2f4e1c6ea85165204a"
+    },
+    {
+      "path": "public/companion/models/yume/Yume/motions/Yume_mood_loving_lean.komo.json",
+      "bytes": 83161,
+      "sha256": "a5a8f18978a279e93dc9998ef5d671a912e32d3c95fac5875c135674f9cab191"
+    },
+    {
+      "path": "public/companion/models/yume/Yume/motions/Yume_mood_loving_soft.komo.json",
+      "bytes": 78909,
+      "sha256": "f6cd28f2575081ea20647b64e683b45a5ebb1fdf645f6e4da91ce18c4584f465"
+    },
+    {
+      "path": "public/companion/models/yume/Yume/motions/Yume_mood_playful_tease.komo.json",
+      "bytes": 71463,
+      "sha256": "ff3d63ecbc2568570188ec92c3070362fd2fbd76df68fd718930c67a3ce1ac31"
+    },
+    {
+      "path": "public/companion/models/yume/Yume/motions/Yume_mood_sad_hide.komo.json",
+      "bytes": 70943,
+      "sha256": "11fc34cc4c60c6e88c6d3cf219fe67a382e0b65e55becdad5bfc27a7953bca99"
+    },
+    {
+      "path": "public/companion/models/yume/Yume/motions/Yume_mood_sad_look_down.komo.json",
+      "bytes": 60539,
+      "sha256": "76546619d3147dc7b48a2d7ea24dda00be9e2d0ffa10a5c4cfdf8f6b6b65248b"
+    },
+    {
+      "path": "public/companion/models/yume/Yume/motions/Yume_mood_sad_tremble.komo.json",
+      "bytes": 57607,
+      "sha256": "188a7888f4b675889456e178ebc084dc1974099f4fb34c31930966a641609ab5"
+    },
+    {
+      "path": "public/companion/models/yume/Yume/motions/Yume_mood_sexual_heated_lean.komo.json",
+      "bytes": 111588,
+      "sha256": "cec2b2ea31916b75eab2cc2eb37e952d5da03317ae57d28d5fc36ffa480177f4"
+    },
+    {
+      "path": "public/companion/models/yume/Yume/motions/Yume_mood_sexual_slow_look.komo.json",
+      "bytes": 105193,
+      "sha256": "c7e1e78b9e4d1312044ab242ecf237f2f0368aac94de278d93cd2e8d0d3071bb"
+    },
+    {
+      "path": "public/companion/models/yume/Yume/motions/Yume_mood_sexual_sultry_gaze.komo.json",
+      "bytes": 108678,
+      "sha256": "fbda25c2286fe8ff3e304b1405640491a24f83506b4ba7a6c8ff75824640da53"
+    },
+    {
+      "path": "public/companion/models/yume/Yume/motions/Yume_mood_shy_fidget.komo.json",
+      "bytes": 73903,
+      "sha256": "90cf1c0bc1dd77b7f25778da03176468eb7e9ecdb70b7b2195d20449e32e39e0"
+    },
+    {
+      "path": "public/companion/models/yume/Yume/motions/Yume_mood_shy_hide_turn.komo.json",
+      "bytes": 79176,
+      "sha256": "dc2a23698abf14deba9b16740093825bf534c48b0ac17d14ef575a5d988cf4e3"
+    },
+    {
+      "path": "public/companion/models/yume/Yume/motions/Yume_mood_surprised_jolt.komo.json",
+      "bytes": 59699,
+      "sha256": "f623a9611cfa24e25bfdff3fe071e7719289cfe70cdff63f86dd427e7cf615e8"
+    },
+    {
+      "path": "public/companion/models/yume/Yume/motions/Yume_mood_surprised_wait_what.komo.json",
+      "bytes": 64026,
+      "sha256": "855e84e545cbbe9958f32acbcb66c8b6d0626852c921b54558a29afc2bebcc07"
+    },
+    {
+      "path": "public/companion/models/yume/Yume/motions/Yume_music_bounce_loop.komo.json",
+      "bytes": 114675,
+      "sha256": "2e64ebd8c06c255d809284cfad6bc5e13a3ba1a2beb8b4eddb76a2fa8f74b88a"
+    },
+    {
+      "path": "public/companion/models/yume/Yume/textures/face-atlas.png",
+      "bytes": 653638,
+      "sha256": "9518904b0ed284366c5f17acf75d592c6e41f535a6ddd754defac1b2dfd708c3"
+    },
+    {
+      "path": "public/companion/models/yume/Yume/textures/mouth-skin-clean.png",
+      "bytes": 35202,
+      "sha256": "3f6ce1fa3644213c7b89fd0780068d027aefb0c3358f3064338a0f9864f2d336"
+    },
+    {
+      "path": "public/companion/models/yume/Yume/textures/tex_00.png",
+      "bytes": 988728,
+      "sha256": "394f2a96cefa05ed0da4668d9bf612c00c18613d6386851660d20af19a8cb817"
+    },
+    {
+      "path": "public/companion/models/yume/Yume/textures/tex_01.png",
+      "bytes": 420186,
+      "sha256": "964da492bca19d3e891eedb75ccb905fe50ac5873eb1af92be05d848f0d2d8cd"
+    },
+    {
+      "path": "public/companion/models/yume/Yume/Yume.kophys.json",
+      "bytes": 102852,
+      "sha256": "0cae91a13703a4d8941ec1b48bf50d8f654a9862d5fdce8b9daba9196bccf57f"
+    },
+    {
+      "path": "public/companion/models/yume/Yume/Yume.kopose.json",
+      "bytes": 190,
+      "sha256": "e868666501b58aff1ea7e71c810f2c1d2351d69fe58a4f8774acc5064549d2a6"
+    },
+    {
+      "path": "public/companion/models/yume/Yume/Yume.korig.bin",
+      "bytes": 2998568,
+      "sha256": "36f9dcda1744aa59850aec9b97994f0339dd73651fa6ada8ad641926c7aa0ee9"
+    },
+    {
+      "path": "public/companion/models/yume/Yume/Yume.korig.json",
+      "bytes": 623996,
+      "sha256": "1396bf1c9ae05a1aa1473c5c4c978ea2fa819b459accd1231ea0b15cb2f0161a"
+    },
+    {
+      "path": "public/companion/skins/nari/original-ears/manifest.index.json",
+      "bytes": 9739,
+      "sha256": "0aaa65fd87fdc43236758117e116e7a711e07f99da9044e5c095980828fa6f34"
+    },
+    {
+      "path": "public/companion/skins/nari/original-ears/Nari/expressions/Angry.koexp.json",
+      "bytes": 96,
+      "sha256": "6c8aabdd90afc93db05371ca11498b035003f860d6a8bbc6d6a1b95c81efe5f8"
+    },
+    {
+      "path": "public/companion/skins/nari/original-ears/Nari/expressions/Blushing.koexp.json",
+      "bytes": 96,
+      "sha256": "8c2f6f8268f9835e1b08f869fcbe2b74f0e5b5fc7f9b92404f4699eab5e08a35"
+    },
+    {
+      "path": "public/companion/skins/nari/original-ears/Nari/expressions/Crying.koexp.json",
+      "bytes": 96,
+      "sha256": "b13598730c2cbee8ddb8ce5330474d9f0b4dceb28b6c3336a799af6a315d9564"
+    },
+    {
+      "path": "public/companion/skins/nari/original-ears/Nari/expressions/Dark.koexp.json",
+      "bytes": 96,
+      "sha256": "9d80811126607a41fdf6f32a7d74bdd69e078da686a3966ade141f5f5955bcd4"
+    },
+    {
+      "path": "public/companion/skins/nari/original-ears/Nari/expressions/Love.koexp.json",
+      "bytes": 96,
+      "sha256": "b00afce5aedd70cb5102ab6b17c8b097cc7f6259f981a79863252a3056369787"
+    },
+    {
+      "path": "public/companion/skins/nari/original-ears/Nari/expressions/Mischievous.koexp.json",
+      "bytes": 96,
+      "sha256": "0c940e910ed766eb5f8ef6ab3a10003488f86d3f3499a8462f733183a04fab1a"
+    },
+    {
+      "path": "public/companion/skins/nari/original-ears/Nari/expressions/Shocked.koexp.json",
+      "bytes": 96,
+      "sha256": "a28502e83d256fca30f0ea7196b5b95676d46aa0865d3a6362d8c2a5aa21c067"
+    },
+    {
+      "path": "public/companion/skins/nari/original-ears/Nari/expressions/Silly.koexp.json",
+      "bytes": 96,
+      "sha256": "2eb69d57be5f0a8101e61e28eb9db41b100ba556404d79adcee2668db6552bba"
+    },
+    {
+      "path": "public/companion/skins/nari/original-ears/Nari/expressions/Stars.koexp.json",
+      "bytes": 96,
+      "sha256": "2516ddc31f705864fc04e19eb7a0558bcf0c734b79198653f874e80bf744e43c"
+    },
+    {
+      "path": "public/companion/skins/nari/original-ears/Nari/motions/Nari_anim_09.komo.json",
+      "bytes": 2942,
+      "sha256": "f37fecf235a3d2adba8cc72cdbcb171d7582bf0e7a35235de9d77cfcef8ed368"
+    },
+    {
+      "path": "public/companion/skins/nari/original-ears/Nari/motions/Nari_bright_bounce.komo.json",
+      "bytes": 39866,
+      "sha256": "4f0676569337a44489e69d3ef3e1dc7e82bd19c6de0962f3466a011f210da9e6"
+    },
+    {
+      "path": "public/companion/skins/nari/original-ears/Nari/motions/Nari_chat_01_attentive.komo.json",
+      "bytes": 136923,
+      "sha256": "35924ab6b55d89f3e4bcd8ce1420f419a486589229baaff1dc5f04e90ac7cfe4"
+    },
+    {
+      "path": "public/companion/skins/nari/original-ears/Nari/motions/Nari_chat_02_listen_tilt.komo.json",
+      "bytes": 143769,
+      "sha256": "a32197f1feef405c449a7b150bb3de42e34b5fa8c7e5405b3a557eb3e88e28c9"
+    },
+    {
+      "path": "public/companion/skins/nari/original-ears/Nari/motions/Nari_chat_03_warm_breath.komo.json",
+      "bytes": 151844,
+      "sha256": "2c05937766be6014634a3ff69d1f4daf3e2d459a1e287dd13d70d3d1b3a87a19"
+    },
+    {
+      "path": "public/companion/skins/nari/original-ears/Nari/motions/Nari_chat_04_nod_along.komo.json",
+      "bytes": 131796,
+      "sha256": "80ce125165873bcf53c39293b0615dfabcb231ac87cb66cc0a951d25b1e8e4f7"
+    },
+    {
+      "path": "public/companion/skins/nari/original-ears/Nari/motions/Nari_chat_05_readjust.komo.json",
+      "bytes": 134346,
+      "sha256": "edee6600d8fdb441c12687032fcd96295d59b8da35b75ae31b4103a15273d276"
+    },
+    {
+      "path": "public/companion/skins/nari/original-ears/Nari/motions/Nari_cheeky_swing_wink.komo.json",
+      "bytes": 86809,
+      "sha256": "e1357705132acfed3bf1f4033647b9dae9efc3568c9e1cbe1ceaac226020c28a"
+    },
+    {
+      "path": "public/companion/skins/nari/original-ears/Nari/motions/Nari_games_board_scan.komo.json",
+      "bytes": 107195,
+      "sha256": "423e26e61281bed9a530e8dfdc40f7383a4a833f443087fa3631d7589f756993"
+    },
+    {
+      "path": "public/companion/skins/nari/original-ears/Nari/motions/Nari_idle_02_double_bounce.komo.json",
+      "bytes": 95292,
+      "sha256": "10c3585004603e8045909969412328033986107a11e42e0a50297f2fad6d3911"
+    },
+    {
+      "path": "public/companion/skins/nari/original-ears/Nari/motions/Nari_idle_04_flirty_lashes.komo.json",
+      "bytes": 128632,
+      "sha256": "5782f5dd39bdb5151fcf44e31316c24b3fcf90f62d184d76e95856184828cf9b"
+    },
+    {
+      "path": "public/companion/skins/nari/original-ears/Nari/motions/Nari_idle_06_giggle.komo.json",
+      "bytes": 109296,
+      "sha256": "e937cb8c742aabddd649e528fa21a7ec8e759d36ef79848f496647d55d89905b"
+    },
+    {
+      "path": "public/companion/skins/nari/original-ears/Nari/motions/Nari_idle_08_look_around.komo.json",
+      "bytes": 116945,
+      "sha256": "3fa4a6dcd1eb2f38c921daa5b3dd4740cf9193dd3429c147937e6b5ad804a493"
+    },
+    {
+      "path": "public/companion/skins/nari/original-ears/Nari/motions/Nari_idle_13_tease_peek.komo.json",
+      "bytes": 112046,
+      "sha256": "c399a1b9776fa3058df051e998440c3d218ae14e6fe9ef6602d964a048022559"
+    },
+    {
+      "path": "public/companion/skins/nari/original-ears/Nari/motions/Nari_mood_angry_glare.komo.json",
+      "bytes": 78906,
+      "sha256": "e0ca475d4775595eb6a31fae4f1bc5787977de6b53ca6b99117e4f0d68eac9d3"
+    },
+    {
+      "path": "public/companion/skins/nari/original-ears/Nari/motions/Nari_mood_angry_hmph.komo.json",
+      "bytes": 83138,
+      "sha256": "d480b36dbfda7778baf36c713783071f07f6e04cc565bcfb4933687e41169637"
+    },
+    {
+      "path": "public/companion/skins/nari/original-ears/Nari/motions/Nari_mood_angry_shake.komo.json",
+      "bytes": 68450,
+      "sha256": "9f130ddfe9fd7ca31f537ad9ec87f9032efc45d11ff75f047a29fe47fa2f3ea0"
+    },
+    {
+      "path": "public/companion/skins/nari/original-ears/Nari/motions/Nari_mood_flirty_lean.komo.json",
+      "bytes": 102207,
+      "sha256": "f416f54d55ace25a58f9da6d08c76b9018584ffb099627d5a3c11440b90219bf"
+    },
+    {
+      "path": "public/companion/skins/nari/original-ears/Nari/motions/Nari_mood_flirty_toss.komo.json",
+      "bytes": 92888,
+      "sha256": "73d3619496547be784aaca7420349bc6c53d04a00c9293713c128331139eb08c"
+    },
+    {
+      "path": "public/companion/skins/nari/original-ears/Nari/motions/Nari_mood_happy_pop.komo.json",
+      "bytes": 99466,
+      "sha256": "f330e6c51b2a9a58c68343dbe9564082f987ba9b59db7cd74ca8d245321cadb6"
+    },
+    {
+      "path": "public/companion/skins/nari/original-ears/Nari/motions/Nari_mood_happy_sway.komo.json",
+      "bytes": 89798,
+      "sha256": "841d8c8fade90802e361595fe8fa99604016f8b6e819390a6f036ed0ed5fb4b6"
+    },
+    {
+      "path": "public/companion/skins/nari/original-ears/Nari/motions/Nari_mood_loving_flutter.komo.json",
+      "bytes": 95458,
+      "sha256": "a23b2b58b2a7ebafd8f19ef188edb9d98a354f823dc6286dc6963e62daeea5d4"
+    },
+    {
+      "path": "public/companion/skins/nari/original-ears/Nari/motions/Nari_mood_loving_lean.komo.json",
+      "bytes": 105029,
+      "sha256": "668cf672d8199cf987a10022dac3ff5f466c83f42075045a4023c30396916dc0"
+    },
+    {
+      "path": "public/companion/skins/nari/original-ears/Nari/motions/Nari_mood_loving_tilt.komo.json",
+      "bytes": 97659,
+      "sha256": "d3bd83d5ed8aa61e38b357eb0d27ae32491568f31d63bbe7ba54c8f89b8f269e"
+    },
+    {
+      "path": "public/companion/skins/nari/original-ears/Nari/motions/Nari_mood_sad_brave.komo.json",
+      "bytes": 92319,
+      "sha256": "b1f52ff3bc5866b7c898ff276cb01a8434f9d485d1627ca552e066136f7f6eb9"
+    },
+    {
+      "path": "public/companion/skins/nari/original-ears/Nari/motions/Nari_mood_sad_look_down.komo.json",
+      "bytes": 102099,
+      "sha256": "1dfc00ca0ce334b940227e4a4e670deeb93bfc70db847f2f6a662e17ffa50cf9"
+    },
+    {
+      "path": "public/companion/skins/nari/original-ears/Nari/motions/Nari_mood_sad_turn.komo.json",
+      "bytes": 91756,
+      "sha256": "40b6a9d8f720cfc9c5daee374cf86c5483fcef4dd54c8d8f0930fbb4bacf75d0"
+    },
+    {
+      "path": "public/companion/skins/nari/original-ears/Nari/motions/Nari_mood_sexual_heated_lean.komo.json",
+      "bytes": 134592,
+      "sha256": "ed2aaeb71181c1d3f970b789e86c18fd921a0feb0481c68fdc104df364706997"
+    },
+    {
+      "path": "public/companion/skins/nari/original-ears/Nari/motions/Nari_mood_sexual_slow_look.komo.json",
+      "bytes": 127373,
+      "sha256": "8545796920cf7736cc23756b560ae730c89be71d8b0d33ab3fca513043764e59"
+    },
+    {
+      "path": "public/companion/skins/nari/original-ears/Nari/motions/Nari_mood_sexual_sultry_tilt.komo.json",
+      "bytes": 132137,
+      "sha256": "892f1ef120cd1d120aba7bc1db135f466b680a828b2b831e9bb7b4495cd35823"
+    },
+    {
+      "path": "public/companion/skins/nari/original-ears/Nari/motions/Nari_mood_shy_duck.komo.json",
+      "bytes": 114282,
+      "sha256": "ba4415ecba5d0b53d3ad451979709437cdd324b031b68081f21af08e03b77a1c"
+    },
+    {
+      "path": "public/companion/skins/nari/original-ears/Nari/motions/Nari_mood_shy_twist.komo.json",
+      "bytes": 93183,
+      "sha256": "181a4b41d9d2d44d42b8b15e941292d98339670bd26bb01d8b4ba520c869628b"
+    },
+    {
+      "path": "public/companion/skins/nari/original-ears/Nari/motions/Nari_mood_surprised_double_take.komo.json",
+      "bytes": 96316,
+      "sha256": "754924778aed2cf8982b023165c8603ac0b40100f37f84caf589c52b76480011"
+    },
+    {
+      "path": "public/companion/skins/nari/original-ears/Nari/motions/Nari_mood_surprised_jolt.komo.json",
+      "bytes": 83581,
+      "sha256": "3736f6a28f58e880f6e964fc4f92518913310cd311eadb9d5373da4f8ca022c2"
+    },
+    {
+      "path": "public/companion/skins/nari/original-ears/Nari/motions/Nari_mood_surprised_lean.komo.json",
+      "bytes": 87158,
+      "sha256": "4e62f57be0ee1d343464bc3327a1924daf2ee83c389ba29c7b948374e2e9d439"
+    },
+    {
+      "path": "public/companion/skins/nari/original-ears/Nari/motions/Nari_music_bounce_loop.komo.json",
+      "bytes": 122823,
+      "sha256": "96a9bd3e62cd286b04745a1d36059fd66ce6440ea2dcc6797aa1bdac9ab78841"
+    },
+    {
+      "path": "public/companion/skins/nari/original-ears/Nari/motions/Nari_yume04.komo.json",
+      "bytes": 2594,
+      "sha256": "9b2e4d8496360e7b64695c95cabc2ca359c543ef75274167447022c9d4a3d8b6"
+    },
+    {
+      "path": "public/companion/skins/nari/original-ears/Nari/motions/Nari_yume05.komo.json",
+      "bytes": 3121,
+      "sha256": "b461907d1ecaa13b026c0c6ffbdb8a45369ecd5e3e37388e6e49dedd414718b8"
+    },
+    {
+      "path": "public/companion/skins/nari/original-ears/Nari/Nari.kophys.json",
+      "bytes": 51558,
+      "sha256": "65cd481446e8fb03e51a46224b82e6c01d3ac197e2f99a91151750060ec035f7"
+    },
+    {
+      "path": "public/companion/skins/nari/original-ears/Nari/Nari.korig.bin",
+      "bytes": 5727532,
+      "sha256": "97fdeffef60b403f49ffcc08c2df771d288cb6d9fd39cf8c0c6c9b89bc294876"
+    },
+    {
+      "path": "public/companion/skins/nari/original-ears/Nari/Nari.korig.json",
+      "bytes": 280967,
+      "sha256": "e2fe8b12dc7e947c0a568560903ef227b4e8750c9ef1d700ea2722351e47b0ea"
+    },
+    {
+      "path": "public/companion/skins/nari/original-ears/Nari/Nari.kotune.json",
+      "bytes": 499,
+      "sha256": "b840f3a6a8d0cab14cfd454a0c6c9761fcb2c49e41eff5a2e0bf4380fe3f4f18"
+    },
+    {
+      "path": "public/companion/skins/nari/original-ears/Nari/textures/ice-blue-fill.webp",
+      "bytes": 46958,
+      "sha256": "54b9c9910ee775c16df2444f26401f46352ea9388500769db81d4491c555f132"
+    },
+    {
+      "path": "public/companion/skins/nari/original-ears/Nari/textures/sakura-ears.webp",
+      "bytes": 122638,
+      "sha256": "a35c90037f2c53336e5d4c54cbdc721e4e212466fb769f9dd59f05992e7a0173"
+    },
+    {
+      "path": "public/companion/skins/nari/original-ears/Nari/textures/tex_00.png",
+      "bytes": 434414,
+      "sha256": "9c371c76d9246ee307751e243317072423aade4f242f7438e6cdd6ff5d746b6e"
+    },
+    {
+      "path": "public/companion/skins/nari/original-ears/Nari/textures/tex_01.png",
+      "bytes": 601292,
+      "sha256": "90114d5a5f1bd4e0520ecf92644d332644029c14bec00d274b6318d4d95de611"
+    },
+    {
+      "path": "public/companion/skins/nari/original-ears/Nari/textures/tex_02.png",
+      "bytes": 278232,
+      "sha256": "ea8a358d4f72887c1cd8f7561814e0ab056665c1cc0fb2959278e1a48f20c97c"
+    },
+    {
+      "path": "public/companion/skins/nari/original-ears/Nari/textures/yume-white-tufts.webp",
+      "bytes": 38118,
+      "sha256": "f50de49e8d06b461eb4b95d19b9ea9b1b8ef98bf44166d5618b21e6a5629da50"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/ClothingCleanup/reviewed-flecks.webp",
+      "bytes": 90340,
+      "sha256": "74f696a05009e0e372846749fc3c25b10b04d9d4887964584bdbba1b3977e403"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/EarAssets/ice-blue-fill.webp",
+      "bytes": 277696,
+      "sha256": "3df9bf288dae80face7f5ac7a38d6bb8db9560f7dfe633407e8babdc8f24acf7"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/EarAssets/sakura-ears.webp",
+      "bytes": 420168,
+      "sha256": "decdc9a354a6cfee8df4b95a0cc45131c0b4028e554afcba1baa50cebd294847"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/EarAssets/yume-white-tufts.webp",
+      "bytes": 154734,
+      "sha256": "c6046e5889407f73e627dce2ca956386a03d7743813166c00c2783bdbbd505bf"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/manifest.index.json",
+      "bytes": 18966,
+      "sha256": "9042a0d5dd3336b6f532e70a14ed2bd543b026d8d5b783375c85f80fd2256df8"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/Nari/azure-bust-seam.webp",
+      "bytes": 11594,
+      "sha256": "9f697ef606786447cfccb043acb2aaf7e9c5b474e16b2a0b0ba46eb3c11ca849"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/Nari/clean-foot-v1.webp",
+      "bytes": 190638,
+      "sha256": "95578af65ab9f7b57ae5dce5616759d12623258353e6020874ebaf67c8442d7c"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/Nari/expressions/Angry.koexp.json",
+      "bytes": 91,
+      "sha256": "948f9a7c75a823d970b414626e01703c7385599e32facc310dd65986d9827154"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/Nari/expressions/Blushing.koexp.json",
+      "bytes": 91,
+      "sha256": "fa1af27caea458951cca06c9395df8d0ce9d60692040a46bcb5d6d53dde997fa"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/Nari/expressions/Crying.koexp.json",
+      "bytes": 91,
+      "sha256": "aee76f32063dfc87188b8443115ba9c786e03a9a0f9646fbca7f686a56d3c8ef"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/Nari/expressions/Dark.koexp.json",
+      "bytes": 91,
+      "sha256": "c0bda4b85df9ac40a0628f788e72d8ada5d1b72928f364a73ac60d1135fbd212"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/Nari/expressions/HeartHands.koexp.json",
+      "bytes": 96,
+      "sha256": "727207c73bdbb2c89ec393e007178ff4f9062dca934873385d61130d8f733733"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/Nari/expressions/Love.koexp.json",
+      "bytes": 91,
+      "sha256": "1f15b8f81bbf11aae96fa2220b7bb89d624f5e6012ac9762c96ab4dc3702d0fc"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/Nari/expressions/Mischievous.koexp.json",
+      "bytes": 91,
+      "sha256": "f5f2835dcf6144ea47bee27af3a524a17bafc7cc99f53ed8416f13879ee4dbc2"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/Nari/expressions/Shocked.koexp.json",
+      "bytes": 91,
+      "sha256": "fa55c228feb21a229aebdff19774e57e7d95a5077b1e0c25828e60d5a8bac2ae"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/Nari/expressions/Silly.koexp.json",
+      "bytes": 91,
+      "sha256": "872a8e64110b65c24c10c6ff97e09674d5f24bd58ff5799f1f11144692a083c2"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/Nari/expressions/Stars.koexp.json",
+      "bytes": 91,
+      "sha256": "bc21ee5c256f46c7de39e1422dda049e67cd5a24c07ba67edb2611b91519208c"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/Nari/expressions/Wave.koexp.json",
+      "bytes": 96,
+      "sha256": "25d45aca27a3f89cdc28a9a15a6feb2ce7fb775e91e7cc8993f9dead2ba4f3e1"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/Nari/identity-0.webp",
+      "bytes": 463064,
+      "sha256": "4da67e20a705ccfb489f2799b11e7279641b1c15314cf454d414094eaef61f55"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/Nari/identity-1.webp",
+      "bytes": 472412,
+      "sha256": "08dc1cb47e79efeb6c42f53541e7e7618dd581ff407bdcba5340f5e920411d00"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/Nari/identity-2.webp",
+      "bytes": 456660,
+      "sha256": "8571c0b88d2cc01353a680cde474d582486d35fcba72ce92a7f5e129de05f928"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/Nari/motions/Nari_anim_09.komo.json",
+      "bytes": 2942,
+      "sha256": "f37fecf235a3d2adba8cc72cdbcb171d7582bf0e7a35235de9d77cfcef8ed368"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/Nari/motions/Yume_anim_04.komo.json",
+      "bytes": 5880,
+      "sha256": "213de7d9929d3d3d0735d4062fc56b6cde3db8b6e7b0d983a31b4c8f2c60692d"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/Nari/motions/Yume_anim_05.komo.json",
+      "bytes": 5885,
+      "sha256": "b56c9063c6f7d7a4ca3b78dd062f8f46ea2093cdd98aa4d20ef50452ad0db6f7"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/Nari/motions/Yume_bright_bounce.komo.json",
+      "bytes": 31727,
+      "sha256": "0edab761b571c29362dbae9defe38eaf2d9871614f8a37ffd410aea04e418493"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/Nari/motions/Yume_chat_01_attentive.komo.json",
+      "bytes": 63867,
+      "sha256": "6064d930f46a43f7c6c9606d21a761342c2f20ff77498bc03d63d12bfe9376fb"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/Nari/motions/Yume_chat_02_listen_tilt.komo.json",
+      "bytes": 92985,
+      "sha256": "27971a45997b17a3deffc908d8a2ed3ef82657ca69357d7a2d005c435dfc8c7a"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/Nari/motions/Yume_chat_03_shy_glance.komo.json",
+      "bytes": 68123,
+      "sha256": "1c7213951a8e6c07f7bf775cd758d000a3ba78314aaed7397aef4213e79e5910"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/Nari/motions/Yume_chat_04_nod_along.komo.json",
+      "bytes": 91322,
+      "sha256": "c36cde9cf176a2b4e18257aaf02ef519f26819efad84fa545fc4475b555e9da3"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/Nari/motions/Yume_chat_05_readjust.komo.json",
+      "bytes": 87024,
+      "sha256": "af768e35e5cc34fb09d8dead8612ddc820258641eff23cb19ef5d4e3e9cdef9f"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/Nari/motions/Yume_cheeky_swing_wink.komo.json",
+      "bytes": 68664,
+      "sha256": "882775de7d51057d22c651f829d120cb65a242bf2ebb58e7db96210c1b05a2d1"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/Nari/motions/Yume_games_board_scan.komo.json",
+      "bytes": 85517,
+      "sha256": "0d2a0f4ff8749e40798fe48e7fe20c1a316836963dd98c4aa6fcc55c5e22a762"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/Nari/motions/Yume_idle_01_hmph_look_away.komo.json",
+      "bytes": 110019,
+      "sha256": "e4a484e283d5c3a3c40909e73c85d09b0dce7974450720f4398f6681059250f8"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/Nari/motions/Yume_idle_03_brisk_nods.komo.json",
+      "bytes": 52077,
+      "sha256": "67c21f3718472bf984ecf4a5ee256715dd30e08143b914a4ccf3c9d6293a4d5c"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/Nari/motions/Yume_idle_05_flustered.komo.json",
+      "bytes": 104509,
+      "sha256": "aee59464f686cec69709db418b2797501af80ca6d1773e38fc69e2bb5ce11df3"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/Nari/motions/Yume_idle_10_smug_wink.komo.json",
+      "bytes": 89572,
+      "sha256": "68429f032307b91a3fbbb55617467d92354b70d46280d9e0c543e4d004201daf"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/Nari/motions/Yume_idle_11_double_take.komo.json",
+      "bytes": 83598,
+      "sha256": "5ab489f9de12af5904561e12fcd70ddb5ff1936c422c07a06dc950748c51eba2"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/Nari/motions/Yume_idle_12_pout.komo.json",
+      "bytes": 91624,
+      "sha256": "ef84ab0ee9780f03be56830063e3d631325b156ea2a5197522e6173bcd16ea77"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/Nari/motions/Yume_idle_13_victory.komo.json",
+      "bytes": 97691,
+      "sha256": "07cc450675f3ce264ce693a752575750479cd488c1ce56f64a41dfe543e3dc2f"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/Nari/motions/Yume_mood_angry_seriously.komo.json",
+      "bytes": 67496,
+      "sha256": "c62bef01031ee2dd32a9b391d699b4036987c26c7bc78a781af02fbfefd5cc21"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/Nari/motions/Yume_mood_flirty_chin_tilt.komo.json",
+      "bytes": 78368,
+      "sha256": "3dd983ace89879423aa977ac16a11e5487912352e5f95736c1b3042ec3d90f30"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/Nari/motions/Yume_mood_flirty_glance.komo.json",
+      "bytes": 76883,
+      "sha256": "6aeda13a8f1bb267ad53db7f3f3d27ae18e78710e80754575e99e7f8340afa30"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/Nari/motions/Yume_mood_flirty_retreat.komo.json",
+      "bytes": 74398,
+      "sha256": "ec63277afc9986dca91b475999e4e2a8c87295438a3dcf1bd43b80aab3ddcc50"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/Nari/motions/Yume_mood_happy_pleased.komo.json",
+      "bytes": 73636,
+      "sha256": "8447d94ba084759d55830f7553074906ea3bbf8f0b8d2eb325ad45968c43e394"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/Nari/motions/Yume_mood_happy_proud.komo.json",
+      "bytes": 73756,
+      "sha256": "118643a9e9313db36400bd468f755fa94356d40daa6c5dcb090bd91f371896cc"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/Nari/motions/Yume_mood_loving_bashful.komo.json",
+      "bytes": 76625,
+      "sha256": "2fb650e0d0d279a62a89b4986e0626a3f7ad0bd171027b2f4e1c6ea85165204a"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/Nari/motions/Yume_mood_loving_lean.komo.json",
+      "bytes": 83161,
+      "sha256": "a5a8f18978a279e93dc9998ef5d671a912e32d3c95fac5875c135674f9cab191"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/Nari/motions/Yume_mood_loving_soft.komo.json",
+      "bytes": 78909,
+      "sha256": "f6cd28f2575081ea20647b64e683b45a5ebb1fdf645f6e4da91ce18c4584f465"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/Nari/motions/Yume_mood_playful_tease.komo.json",
+      "bytes": 71463,
+      "sha256": "ff3d63ecbc2568570188ec92c3070362fd2fbd76df68fd718930c67a3ce1ac31"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/Nari/motions/Yume_mood_sad_hide.komo.json",
+      "bytes": 70943,
+      "sha256": "11fc34cc4c60c6e88c6d3cf219fe67a382e0b65e55becdad5bfc27a7953bca99"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/Nari/motions/Yume_mood_sad_look_down.komo.json",
+      "bytes": 60539,
+      "sha256": "76546619d3147dc7b48a2d7ea24dda00be9e2d0ffa10a5c4cfdf8f6b6b65248b"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/Nari/motions/Yume_mood_sad_tremble.komo.json",
+      "bytes": 57607,
+      "sha256": "188a7888f4b675889456e178ebc084dc1974099f4fb34c31930966a641609ab5"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/Nari/motions/Yume_mood_sexual_heated_lean.komo.json",
+      "bytes": 111588,
+      "sha256": "cec2b2ea31916b75eab2cc2eb37e952d5da03317ae57d28d5fc36ffa480177f4"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/Nari/motions/Yume_mood_sexual_slow_look.komo.json",
+      "bytes": 105193,
+      "sha256": "c7e1e78b9e4d1312044ab242ecf237f2f0368aac94de278d93cd2e8d0d3071bb"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/Nari/motions/Yume_mood_sexual_sultry_gaze.komo.json",
+      "bytes": 108678,
+      "sha256": "fbda25c2286fe8ff3e304b1405640491a24f83506b4ba7a6c8ff75824640da53"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/Nari/motions/Yume_mood_shy_fidget.komo.json",
+      "bytes": 73903,
+      "sha256": "90cf1c0bc1dd77b7f25778da03176468eb7e9ecdb70b7b2195d20449e32e39e0"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/Nari/motions/Yume_mood_shy_hide_turn.komo.json",
+      "bytes": 79176,
+      "sha256": "dc2a23698abf14deba9b16740093825bf534c48b0ac17d14ef575a5d988cf4e3"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/Nari/motions/Yume_mood_surprised_jolt.komo.json",
+      "bytes": 59699,
+      "sha256": "f623a9611cfa24e25bfdff3fe071e7719289cfe70cdff63f86dd427e7cf615e8"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/Nari/motions/Yume_mood_surprised_wait_what.komo.json",
+      "bytes": 64026,
+      "sha256": "855e84e545cbbe9958f32acbcb66c8b6d0626852c921b54558a29afc2bebcc07"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/Nari/motions/Yume_music_bounce_loop.komo.json",
+      "bytes": 114675,
+      "sha256": "2e64ebd8c06c255d809284cfad6bc5e13a3ba1a2beb8b4eddb76a2fa8f74b88a"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/Nari/Nari.kophys.json",
+      "bytes": 78804,
+      "sha256": "6c80b14e670d4fdd8245e656e2201fb8f1751828f22aa6a4bc1fec3c6e11a1bc"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/Nari/Nari.kopose.json",
+      "bytes": 190,
+      "sha256": "e868666501b58aff1ea7e71c810f2c1d2351d69fe58a4f8774acc5064549d2a6"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/Nari/Nari.korig.bin",
+      "bytes": 11909444,
+      "sha256": "15d667de2b9168b726f79826a5b48fbb9a27befb765b302bdf650ed098f7b3b1"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/Nari/Nari.korig.json",
+      "bytes": 18359344,
+      "sha256": "8dd6472663ef057106b9772ec10dc1f590385c6613f787cd4989d59af3c7bf33"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/Nari/Nari.kotune.json",
+      "bytes": 346,
+      "sha256": "313bc2576132fc31bc478d6c15646f9c0862925fb751d1d13296765dc422044d"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/Nari/native-face.png",
+      "bytes": 69970,
+      "sha256": "a1c1c490cf3af86e0e6be12c34efe1f1a39e0b43ab82c0eded3c5943e3748e18"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/Nari/textures/outfit_00.webp",
+      "bytes": 252130,
+      "sha256": "f72722892d57ee94edb8aecc66ba255aa40561bfd7ef6e1f54d24adf3c610423"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/Nari/textures/outfit_01.webp",
+      "bytes": 911556,
+      "sha256": "7efe1a2a8d1164b8b2971945fb76c964b47292f5865e34e47a8371a0bc5d4044"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/Nari/textures/outfit_02.webp",
+      "bytes": 640258,
+      "sha256": "fd595964be008a679cd94b1bf06b783f927cf1927fcc9b7ed80858b7b328d72a"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/Nari/textures/outfit_03.webp",
+      "bytes": 349440,
+      "sha256": "3dc25aad710d2a974e56a4a1b9f2c29f6b8dadcedc6a1df1a2be77463598a6c2"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/NariMechanics/opaque.png",
+      "bytes": 68,
+      "sha256": "7ac2abfce2be8b46dd9826d597d94edeefc1570b4a992622721b90a1850e3ee9"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/NariSkin/rose-porcelain-lighting.webp",
+      "bytes": 305204,
+      "sha256": "2d7cb1a8e95d66fd6cecaf081ccf7a37a37ab002fb4ecf803432bdd0685bf99f"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/NariSkin/wrist-continuity.png",
+      "bytes": 53315,
+      "sha256": "f3004c73288d28d328ac57c1f54aa086ee96b86859b74660bb07d288cf03d9c7"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/NariSkin/wrist-joins.webp",
+      "bytes": 5176,
+      "sha256": "f895833d4dbc83f174be9e8547fe994213fefa5131e4f8729019dfb0e4f67e73"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/Regalia/regalia-fit-v2-atlas-00.webp",
+      "bytes": 675886,
+      "sha256": "0f9611ced33b5c6691af8d529376df0121859c4ed0936ecf497cf5c326afc2d3"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/Regalia/regalia-fit-v2-atlas-01.webp",
+      "bytes": 1222894,
+      "sha256": "4865773275ea5f96ee4d0943d8f292338f436bdd6a8b833bae3eae6fbee5b2a7"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/Regalia/regalia-fit-v2-atlas-02.webp",
+      "bytes": 701600,
+      "sha256": "8bd37126d16b4727b895c16fadd941023a4f72015c66daaa955893bf227ac7e1"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/RegaliaRoyal/atlas-0.png",
+      "bytes": 1328097,
+      "sha256": "ee58d3e6180bacd2db30cf3d65b506e5d72f44995f218e7f1114b347e61ad61f"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/RegaliaRoyal/atlas-1.png",
+      "bytes": 1192437,
+      "sha256": "2ab7600f1fee23ce65c976be75d038957e974d49347f9459c07e549cbae85377"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/RegaliaRoyal/atlas-2.png",
+      "bytes": 538145,
+      "sha256": "34c11ef4471591e3cb836a81ab3d2f1c81033cb39425e3d783e0826877c674ca"
+    },
+    {
+      "path": "public/companion/skins/nari/rose-regalia/tunes/Nari.kotune.json",
+      "bytes": 346,
+      "sha256": "313bc2576132fc31bc478d6c15646f9c0862925fb751d1d13296765dc422044d"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/ClothingCleanup/reviewed-flecks.webp",
+      "bytes": 39864,
+      "sha256": "f050a6d09f5716c58a2f147d876a5525bfddfdf42528e0624fba3d3b18055f6f"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/EarAssets/ice-blue-fill.webp",
+      "bytes": 277696,
+      "sha256": "3df9bf288dae80face7f5ac7a38d6bb8db9560f7dfe633407e8babdc8f24acf7"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/EarAssets/sakura-ears.webp",
+      "bytes": 420168,
+      "sha256": "decdc9a354a6cfee8df4b95a0cc45131c0b4028e554afcba1baa50cebd294847"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/EarAssets/yume-white-tufts.webp",
+      "bytes": 154734,
+      "sha256": "c6046e5889407f73e627dce2ca956386a03d7743813166c00c2783bdbbd505bf"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/manifest.index.json",
+      "bytes": 19317,
+      "sha256": "b9aeff99b4bf2bed8452daedfca33a4437789b2ccaf8859105faf22729bd505c"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Nari/azure-bust-seam.webp",
+      "bytes": 11594,
+      "sha256": "9f697ef606786447cfccb043acb2aaf7e9c5b474e16b2a0b0ba46eb3c11ca849"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Nari/clean-foot-v1.webp",
+      "bytes": 190638,
+      "sha256": "95578af65ab9f7b57ae5dce5616759d12623258353e6020874ebaf67c8442d7c"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Nari/expressions/Angry.koexp.json",
+      "bytes": 91,
+      "sha256": "948f9a7c75a823d970b414626e01703c7385599e32facc310dd65986d9827154"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Nari/expressions/Blushing.koexp.json",
+      "bytes": 91,
+      "sha256": "fa1af27caea458951cca06c9395df8d0ce9d60692040a46bcb5d6d53dde997fa"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Nari/expressions/Crying.koexp.json",
+      "bytes": 91,
+      "sha256": "aee76f32063dfc87188b8443115ba9c786e03a9a0f9646fbca7f686a56d3c8ef"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Nari/expressions/Dark.koexp.json",
+      "bytes": 91,
+      "sha256": "c0bda4b85df9ac40a0628f788e72d8ada5d1b72928f364a73ac60d1135fbd212"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Nari/expressions/HeartHands.koexp.json",
+      "bytes": 96,
+      "sha256": "727207c73bdbb2c89ec393e007178ff4f9062dca934873385d61130d8f733733"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Nari/expressions/Love.koexp.json",
+      "bytes": 91,
+      "sha256": "1f15b8f81bbf11aae96fa2220b7bb89d624f5e6012ac9762c96ab4dc3702d0fc"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Nari/expressions/Mischievous.koexp.json",
+      "bytes": 91,
+      "sha256": "f5f2835dcf6144ea47bee27af3a524a17bafc7cc99f53ed8416f13879ee4dbc2"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Nari/expressions/Shocked.koexp.json",
+      "bytes": 91,
+      "sha256": "fa55c228feb21a229aebdff19774e57e7d95a5077b1e0c25828e60d5a8bac2ae"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Nari/expressions/Silly.koexp.json",
+      "bytes": 91,
+      "sha256": "872a8e64110b65c24c10c6ff97e09674d5f24bd58ff5799f1f11144692a083c2"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Nari/expressions/Stars.koexp.json",
+      "bytes": 91,
+      "sha256": "bc21ee5c256f46c7de39e1422dda049e67cd5a24c07ba67edb2611b91519208c"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Nari/expressions/Wave.koexp.json",
+      "bytes": 96,
+      "sha256": "25d45aca27a3f89cdc28a9a15a6feb2ce7fb775e91e7cc8993f9dead2ba4f3e1"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Nari/identity-0.webp",
+      "bytes": 463064,
+      "sha256": "4da67e20a705ccfb489f2799b11e7279641b1c15314cf454d414094eaef61f55"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Nari/identity-1.webp",
+      "bytes": 472412,
+      "sha256": "08dc1cb47e79efeb6c42f53541e7e7618dd581ff407bdcba5340f5e920411d00"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Nari/identity-2.webp",
+      "bytes": 456660,
+      "sha256": "8571c0b88d2cc01353a680cde474d582486d35fcba72ce92a7f5e129de05f928"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Nari/motions/Nari_anim_09.komo.json",
+      "bytes": 2942,
+      "sha256": "f37fecf235a3d2adba8cc72cdbcb171d7582bf0e7a35235de9d77cfcef8ed368"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Nari/motions/Yume_anim_04.komo.json",
+      "bytes": 5880,
+      "sha256": "213de7d9929d3d3d0735d4062fc56b6cde3db8b6e7b0d983a31b4c8f2c60692d"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Nari/motions/Yume_anim_05.komo.json",
+      "bytes": 5885,
+      "sha256": "b56c9063c6f7d7a4ca3b78dd062f8f46ea2093cdd98aa4d20ef50452ad0db6f7"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Nari/motions/Yume_bright_bounce.komo.json",
+      "bytes": 31727,
+      "sha256": "0edab761b571c29362dbae9defe38eaf2d9871614f8a37ffd410aea04e418493"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Nari/motions/Yume_chat_01_attentive.komo.json",
+      "bytes": 63867,
+      "sha256": "6064d930f46a43f7c6c9606d21a761342c2f20ff77498bc03d63d12bfe9376fb"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Nari/motions/Yume_chat_02_listen_tilt.komo.json",
+      "bytes": 92985,
+      "sha256": "27971a45997b17a3deffc908d8a2ed3ef82657ca69357d7a2d005c435dfc8c7a"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Nari/motions/Yume_chat_03_shy_glance.komo.json",
+      "bytes": 68123,
+      "sha256": "1c7213951a8e6c07f7bf775cd758d000a3ba78314aaed7397aef4213e79e5910"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Nari/motions/Yume_chat_04_nod_along.komo.json",
+      "bytes": 91322,
+      "sha256": "c36cde9cf176a2b4e18257aaf02ef519f26819efad84fa545fc4475b555e9da3"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Nari/motions/Yume_chat_05_readjust.komo.json",
+      "bytes": 87024,
+      "sha256": "af768e35e5cc34fb09d8dead8612ddc820258641eff23cb19ef5d4e3e9cdef9f"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Nari/motions/Yume_cheeky_swing_wink.komo.json",
+      "bytes": 68664,
+      "sha256": "882775de7d51057d22c651f829d120cb65a242bf2ebb58e7db96210c1b05a2d1"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Nari/motions/Yume_games_board_scan.komo.json",
+      "bytes": 85517,
+      "sha256": "0d2a0f4ff8749e40798fe48e7fe20c1a316836963dd98c4aa6fcc55c5e22a762"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Nari/motions/Yume_idle_01_hmph_look_away.komo.json",
+      "bytes": 110019,
+      "sha256": "e4a484e283d5c3a3c40909e73c85d09b0dce7974450720f4398f6681059250f8"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Nari/motions/Yume_idle_03_brisk_nods.komo.json",
+      "bytes": 52077,
+      "sha256": "67c21f3718472bf984ecf4a5ee256715dd30e08143b914a4ccf3c9d6293a4d5c"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Nari/motions/Yume_idle_05_flustered.komo.json",
+      "bytes": 104509,
+      "sha256": "aee59464f686cec69709db418b2797501af80ca6d1773e38fc69e2bb5ce11df3"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Nari/motions/Yume_idle_10_smug_wink.komo.json",
+      "bytes": 89572,
+      "sha256": "68429f032307b91a3fbbb55617467d92354b70d46280d9e0c543e4d004201daf"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Nari/motions/Yume_idle_11_double_take.komo.json",
+      "bytes": 83598,
+      "sha256": "5ab489f9de12af5904561e12fcd70ddb5ff1936c422c07a06dc950748c51eba2"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Nari/motions/Yume_idle_12_pout.komo.json",
+      "bytes": 91624,
+      "sha256": "ef84ab0ee9780f03be56830063e3d631325b156ea2a5197522e6173bcd16ea77"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Nari/motions/Yume_idle_13_victory.komo.json",
+      "bytes": 97691,
+      "sha256": "07cc450675f3ce264ce693a752575750479cd488c1ce56f64a41dfe543e3dc2f"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Nari/motions/Yume_mood_angry_seriously.komo.json",
+      "bytes": 67496,
+      "sha256": "c62bef01031ee2dd32a9b391d699b4036987c26c7bc78a781af02fbfefd5cc21"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Nari/motions/Yume_mood_flirty_chin_tilt.komo.json",
+      "bytes": 78368,
+      "sha256": "3dd983ace89879423aa977ac16a11e5487912352e5f95736c1b3042ec3d90f30"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Nari/motions/Yume_mood_flirty_glance.komo.json",
+      "bytes": 76883,
+      "sha256": "6aeda13a8f1bb267ad53db7f3f3d27ae18e78710e80754575e99e7f8340afa30"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Nari/motions/Yume_mood_flirty_retreat.komo.json",
+      "bytes": 74398,
+      "sha256": "ec63277afc9986dca91b475999e4e2a8c87295438a3dcf1bd43b80aab3ddcc50"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Nari/motions/Yume_mood_happy_pleased.komo.json",
+      "bytes": 73636,
+      "sha256": "8447d94ba084759d55830f7553074906ea3bbf8f0b8d2eb325ad45968c43e394"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Nari/motions/Yume_mood_happy_proud.komo.json",
+      "bytes": 73756,
+      "sha256": "118643a9e9313db36400bd468f755fa94356d40daa6c5dcb090bd91f371896cc"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Nari/motions/Yume_mood_loving_bashful.komo.json",
+      "bytes": 76625,
+      "sha256": "2fb650e0d0d279a62a89b4986e0626a3f7ad0bd171027b2f4e1c6ea85165204a"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Nari/motions/Yume_mood_loving_lean.komo.json",
+      "bytes": 83161,
+      "sha256": "a5a8f18978a279e93dc9998ef5d671a912e32d3c95fac5875c135674f9cab191"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Nari/motions/Yume_mood_loving_soft.komo.json",
+      "bytes": 78909,
+      "sha256": "f6cd28f2575081ea20647b64e683b45a5ebb1fdf645f6e4da91ce18c4584f465"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Nari/motions/Yume_mood_playful_tease.komo.json",
+      "bytes": 71463,
+      "sha256": "ff3d63ecbc2568570188ec92c3070362fd2fbd76df68fd718930c67a3ce1ac31"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Nari/motions/Yume_mood_sad_hide.komo.json",
+      "bytes": 70943,
+      "sha256": "11fc34cc4c60c6e88c6d3cf219fe67a382e0b65e55becdad5bfc27a7953bca99"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Nari/motions/Yume_mood_sad_look_down.komo.json",
+      "bytes": 60539,
+      "sha256": "76546619d3147dc7b48a2d7ea24dda00be9e2d0ffa10a5c4cfdf8f6b6b65248b"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Nari/motions/Yume_mood_sad_tremble.komo.json",
+      "bytes": 57607,
+      "sha256": "188a7888f4b675889456e178ebc084dc1974099f4fb34c31930966a641609ab5"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Nari/motions/Yume_mood_sexual_heated_lean.komo.json",
+      "bytes": 111588,
+      "sha256": "cec2b2ea31916b75eab2cc2eb37e952d5da03317ae57d28d5fc36ffa480177f4"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Nari/motions/Yume_mood_sexual_slow_look.komo.json",
+      "bytes": 105193,
+      "sha256": "c7e1e78b9e4d1312044ab242ecf237f2f0368aac94de278d93cd2e8d0d3071bb"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Nari/motions/Yume_mood_sexual_sultry_gaze.komo.json",
+      "bytes": 108678,
+      "sha256": "fbda25c2286fe8ff3e304b1405640491a24f83506b4ba7a6c8ff75824640da53"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Nari/motions/Yume_mood_shy_fidget.komo.json",
+      "bytes": 73903,
+      "sha256": "90cf1c0bc1dd77b7f25778da03176468eb7e9ecdb70b7b2195d20449e32e39e0"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Nari/motions/Yume_mood_shy_hide_turn.komo.json",
+      "bytes": 79176,
+      "sha256": "dc2a23698abf14deba9b16740093825bf534c48b0ac17d14ef575a5d988cf4e3"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Nari/motions/Yume_mood_surprised_jolt.komo.json",
+      "bytes": 59699,
+      "sha256": "f623a9611cfa24e25bfdff3fe071e7719289cfe70cdff63f86dd427e7cf615e8"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Nari/motions/Yume_mood_surprised_wait_what.komo.json",
+      "bytes": 64026,
+      "sha256": "855e84e545cbbe9958f32acbcb66c8b6d0626852c921b54558a29afc2bebcc07"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Nari/motions/Yume_music_bounce_loop.komo.json",
+      "bytes": 114675,
+      "sha256": "2e64ebd8c06c255d809284cfad6bc5e13a3ba1a2beb8b4eddb76a2fa8f74b88a"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Nari/Nari.kophys.json",
+      "bytes": 76380,
+      "sha256": "8bd0351e3554130884057c33ec8ee3f4bdb44d696bda154fd80be9bf92cc1196"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Nari/Nari.kopose.json",
+      "bytes": 190,
+      "sha256": "e868666501b58aff1ea7e71c810f2c1d2351d69fe58a4f8774acc5064549d2a6"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Nari/Nari.korig.bin",
+      "bytes": 11850228,
+      "sha256": "4df8f1957df90b48e0b406cd80079273d1c055d945235242fedacd6a5dd516b3"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Nari/Nari.korig.json",
+      "bytes": 15540679,
+      "sha256": "ac4e85932facdaead2fd94ccec829fc0ee03f5f1b9363ebe8840313e87d5b94a"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Nari/Nari.kotune.json",
+      "bytes": 346,
+      "sha256": "313bc2576132fc31bc478d6c15646f9c0862925fb751d1d13296765dc422044d"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Nari/native-face.png",
+      "bytes": 69970,
+      "sha256": "a1c1c490cf3af86e0e6be12c34efe1f1a39e0b43ab82c0eded3c5943e3748e18"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Nari/textures/outfit_00.webp",
+      "bytes": 252130,
+      "sha256": "f72722892d57ee94edb8aecc66ba255aa40561bfd7ef6e1f54d24adf3c610423"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Nari/textures/outfit_01.webp",
+      "bytes": 911556,
+      "sha256": "7efe1a2a8d1164b8b2971945fb76c964b47292f5865e34e47a8371a0bc5d4044"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Nari/textures/outfit_02.webp",
+      "bytes": 640258,
+      "sha256": "fd595964be008a679cd94b1bf06b783f927cf1927fcc9b7ed80858b7b328d72a"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Nari/textures/outfit_03.webp",
+      "bytes": 349440,
+      "sha256": "3dc25aad710d2a974e56a4a1b9f2c29f6b8dadcedc6a1df1a2be77463598a6c2"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/NariHands/continuous-porcelain-bf1.png",
+      "bytes": 96167,
+      "sha256": "271393718af76c36d931d9549f1581252e3d5e329d94fdd3f8511800209a3440"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/NariMechanics/opaque.png",
+      "bytes": 68,
+      "sha256": "7ac2abfce2be8b46dd9826d597d94edeefc1570b4a992622721b90a1850e3ee9"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/NariSkin/AzKneeL-soft-br6.png",
+      "bytes": 190897,
+      "sha256": "be164d2013ce297d0fb7aad02db1ebadc0f9ba15a3a54f8c5c2cba0e1e0c3660"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/NariSkin/AzKneeR-soft-br6.png",
+      "bytes": 184542,
+      "sha256": "888db0b21ca81ab69d374ed34157ca46505c0fd584218616dd1175d20e0c4504"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/NariSkin/forearm-blend-bf4.png",
+      "bytes": 77696,
+      "sha256": "7418492c107a7be313fee2c59a9cba2bbdbad9f110c32c854b7cd0981490c280"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/NariSkin/knee-L-shade-bx3.webp",
+      "bytes": 19176,
+      "sha256": "09ed6204294acf5df75f94a6df358cbb5eadb5be0a6c4a493e1024e07530e34b"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/NariSkin/knee-R-shade-bx3.webp",
+      "bytes": 18596,
+      "sha256": "96098d7c3c489b954e3f815a04472228447309a24ee9a36be4a76331e94bc720"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/NariSkin/plain-join-bv8-12.webp",
+      "bytes": 301836,
+      "sha256": "0d0ec5fac6f531b608414646fef7e2632cb31689cec1c8e1442f79b838e48a4f"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/NariSkin/plain-join-bv8-2.webp",
+      "bytes": 630312,
+      "sha256": "3ad54446dafd8e534c5dacebd3e9a48ad0cdad3456af65d5a87f9b7e3f821761"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/NariSkin/rose-porcelain-lighting.webp",
+      "bytes": 305204,
+      "sha256": "2d7cb1a8e95d66fd6cecaf081ccf7a37a37ab002fb4ecf803432bdd0685bf99f"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/NariSkin/shin-fitted-shading-bx7.webp",
+      "bytes": 278272,
+      "sha256": "aeec8b454a3694792044bb7905b06cad034480f400e60741fb3ceefd9dabf121"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/NariSkin/thigh-fitted-shading-bx7.webp",
+      "bytes": 136320,
+      "sha256": "373da96eb60de1709f0ba537fdf83d1969142a8c96617dfcd2d7cdb74ab41f21"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/NariSkin/wrist-continuity.png",
+      "bytes": 53315,
+      "sha256": "f3004c73288d28d328ac57c1f54aa086ee96b86859b74660bb07d288cf03d9c7"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/NariSkin/wrist-joins.webp",
+      "bytes": 4742,
+      "sha256": "0f10de136258ffb1bff12040e8072c211f81659adcb8fd60bbb6130a18536828"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Reverie/material-10.webp",
+      "bytes": 601918,
+      "sha256": "15774c141b29bffd39bae1cf10f3de62a6770d6862eea1dc60119d38299cbf51"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Reverie/material-11.webp",
+      "bytes": 658168,
+      "sha256": "7752715311764f336d8ccbc559daeba04007f927f6b27c8677810c9071e707a0"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Reverie/material-12.webp",
+      "bytes": 286548,
+      "sha256": "7ea5b1d01183a496d3226fa2a37df9e899e7920a29d13b1fbbace2d187742b55"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Reverie/material-5.webp",
+      "bytes": 880330,
+      "sha256": "af3d50527e3b8ca86c3689736214e16267ea31d127167f0996d30e1f7248645f"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Reverie/material-6-smooth-hem-bw3.webp",
+      "bytes": 759142,
+      "sha256": "7743990204369f49d691049d3a31dbc43cbad715c687d7549df1bb32a128bef5"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Reverie/material-6.webp",
+      "bytes": 760162,
+      "sha256": "956b862a4a78d02b47bf9990e9047f1680747a5aff8cc725660725cad87766c1"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Reverie/material-7.webp",
+      "bytes": 399944,
+      "sha256": "f1ee3ac45ede8d439fcb60b6cdfe68cdf6858e0bd8f41e5c848b99fdd7e2ecad"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Reverie/sakura-jewel.webp",
+      "bytes": 8862,
+      "sha256": "cd478ca39edda07332a5d859f5ccfbf7824b3071b617a5a26c6f37412358a00f"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/Reverie/sandal-material-mask-v2.webp",
+      "bytes": 22984,
+      "sha256": "48f9396ac7dbcf6f28151872533d8441627252ea6072a939f30980a6f6341453"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-reverie/tunes/Nari.kotune.json",
+      "bytes": 346,
+      "sha256": "313bc2576132fc31bc478d6c15646f9c0862925fb751d1d13296765dc422044d"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/.DS_Store",
+      "bytes": 6148,
+      "sha256": "77b052e21e408f9243324818b8a3db630e721eb3f255db83f6817d7f85669c78"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/EarAssets/ice-blue-fill.webp",
+      "bytes": 277696,
+      "sha256": "3df9bf288dae80face7f5ac7a38d6bb8db9560f7dfe633407e8babdc8f24acf7"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/EarAssets/sakura-ears.webp",
+      "bytes": 420168,
+      "sha256": "decdc9a354a6cfee8df4b95a0cc45131c0b4028e554afcba1baa50cebd294847"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/EarAssets/yume-white-tufts.webp",
+      "bytes": 154734,
+      "sha256": "c6046e5889407f73e627dce2ca956386a03d7743813166c00c2783bdbbd505bf"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/manifest.index.json",
+      "bytes": 19219,
+      "sha256": "80734ec6e1c17612dd2467ba5db982b05af739cd64267561b541847ee44eab52"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Nari/azure-bust-seam.webp",
+      "bytes": 11594,
+      "sha256": "9f697ef606786447cfccb043acb2aaf7e9c5b474e16b2a0b0ba46eb3c11ca849"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Nari/clean-foot-v1.webp",
+      "bytes": 190638,
+      "sha256": "95578af65ab9f7b57ae5dce5616759d12623258353e6020874ebaf67c8442d7c"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Nari/expressions/Angry.koexp.json",
+      "bytes": 91,
+      "sha256": "948f9a7c75a823d970b414626e01703c7385599e32facc310dd65986d9827154"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Nari/expressions/Blushing.koexp.json",
+      "bytes": 91,
+      "sha256": "fa1af27caea458951cca06c9395df8d0ce9d60692040a46bcb5d6d53dde997fa"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Nari/expressions/Crying.koexp.json",
+      "bytes": 91,
+      "sha256": "aee76f32063dfc87188b8443115ba9c786e03a9a0f9646fbca7f686a56d3c8ef"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Nari/expressions/Dark.koexp.json",
+      "bytes": 91,
+      "sha256": "c0bda4b85df9ac40a0628f788e72d8ada5d1b72928f364a73ac60d1135fbd212"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Nari/expressions/HeartHands.koexp.json",
+      "bytes": 96,
+      "sha256": "727207c73bdbb2c89ec393e007178ff4f9062dca934873385d61130d8f733733"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Nari/expressions/Love.koexp.json",
+      "bytes": 91,
+      "sha256": "1f15b8f81bbf11aae96fa2220b7bb89d624f5e6012ac9762c96ab4dc3702d0fc"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Nari/expressions/Mischievous.koexp.json",
+      "bytes": 91,
+      "sha256": "f5f2835dcf6144ea47bee27af3a524a17bafc7cc99f53ed8416f13879ee4dbc2"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Nari/expressions/Shocked.koexp.json",
+      "bytes": 91,
+      "sha256": "fa55c228feb21a229aebdff19774e57e7d95a5077b1e0c25828e60d5a8bac2ae"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Nari/expressions/Silly.koexp.json",
+      "bytes": 91,
+      "sha256": "872a8e64110b65c24c10c6ff97e09674d5f24bd58ff5799f1f11144692a083c2"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Nari/expressions/Stars.koexp.json",
+      "bytes": 91,
+      "sha256": "bc21ee5c256f46c7de39e1422dda049e67cd5a24c07ba67edb2611b91519208c"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Nari/expressions/Wave.koexp.json",
+      "bytes": 96,
+      "sha256": "25d45aca27a3f89cdc28a9a15a6feb2ce7fb775e91e7cc8993f9dead2ba4f3e1"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Nari/identity-0.webp",
+      "bytes": 463064,
+      "sha256": "4da67e20a705ccfb489f2799b11e7279641b1c15314cf454d414094eaef61f55"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Nari/identity-1.webp",
+      "bytes": 472412,
+      "sha256": "08dc1cb47e79efeb6c42f53541e7e7618dd581ff407bdcba5340f5e920411d00"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Nari/identity-2.webp",
+      "bytes": 456660,
+      "sha256": "8571c0b88d2cc01353a680cde474d582486d35fcba72ce92a7f5e129de05f928"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Nari/motions/Nari_anim_09.komo.json",
+      "bytes": 2942,
+      "sha256": "f37fecf235a3d2adba8cc72cdbcb171d7582bf0e7a35235de9d77cfcef8ed368"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Nari/motions/Yume_anim_04.komo.json",
+      "bytes": 5880,
+      "sha256": "213de7d9929d3d3d0735d4062fc56b6cde3db8b6e7b0d983a31b4c8f2c60692d"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Nari/motions/Yume_anim_05.komo.json",
+      "bytes": 5885,
+      "sha256": "b56c9063c6f7d7a4ca3b78dd062f8f46ea2093cdd98aa4d20ef50452ad0db6f7"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Nari/motions/Yume_bright_bounce.komo.json",
+      "bytes": 31727,
+      "sha256": "0edab761b571c29362dbae9defe38eaf2d9871614f8a37ffd410aea04e418493"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Nari/motions/Yume_chat_01_attentive.komo.json",
+      "bytes": 63867,
+      "sha256": "6064d930f46a43f7c6c9606d21a761342c2f20ff77498bc03d63d12bfe9376fb"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Nari/motions/Yume_chat_02_listen_tilt.komo.json",
+      "bytes": 92985,
+      "sha256": "27971a45997b17a3deffc908d8a2ed3ef82657ca69357d7a2d005c435dfc8c7a"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Nari/motions/Yume_chat_03_shy_glance.komo.json",
+      "bytes": 68123,
+      "sha256": "1c7213951a8e6c07f7bf775cd758d000a3ba78314aaed7397aef4213e79e5910"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Nari/motions/Yume_chat_04_nod_along.komo.json",
+      "bytes": 91322,
+      "sha256": "c36cde9cf176a2b4e18257aaf02ef519f26819efad84fa545fc4475b555e9da3"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Nari/motions/Yume_chat_05_readjust.komo.json",
+      "bytes": 87024,
+      "sha256": "af768e35e5cc34fb09d8dead8612ddc820258641eff23cb19ef5d4e3e9cdef9f"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Nari/motions/Yume_cheeky_swing_wink.komo.json",
+      "bytes": 68664,
+      "sha256": "882775de7d51057d22c651f829d120cb65a242bf2ebb58e7db96210c1b05a2d1"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Nari/motions/Yume_games_board_scan.komo.json",
+      "bytes": 85517,
+      "sha256": "0d2a0f4ff8749e40798fe48e7fe20c1a316836963dd98c4aa6fcc55c5e22a762"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Nari/motions/Yume_idle_01_hmph_look_away.komo.json",
+      "bytes": 110019,
+      "sha256": "e4a484e283d5c3a3c40909e73c85d09b0dce7974450720f4398f6681059250f8"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Nari/motions/Yume_idle_03_brisk_nods.komo.json",
+      "bytes": 52077,
+      "sha256": "67c21f3718472bf984ecf4a5ee256715dd30e08143b914a4ccf3c9d6293a4d5c"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Nari/motions/Yume_idle_05_flustered.komo.json",
+      "bytes": 104509,
+      "sha256": "aee59464f686cec69709db418b2797501af80ca6d1773e38fc69e2bb5ce11df3"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Nari/motions/Yume_idle_10_smug_wink.komo.json",
+      "bytes": 89572,
+      "sha256": "68429f032307b91a3fbbb55617467d92354b70d46280d9e0c543e4d004201daf"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Nari/motions/Yume_idle_11_double_take.komo.json",
+      "bytes": 83598,
+      "sha256": "5ab489f9de12af5904561e12fcd70ddb5ff1936c422c07a06dc950748c51eba2"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Nari/motions/Yume_idle_12_pout.komo.json",
+      "bytes": 91624,
+      "sha256": "ef84ab0ee9780f03be56830063e3d631325b156ea2a5197522e6173bcd16ea77"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Nari/motions/Yume_idle_13_victory.komo.json",
+      "bytes": 97691,
+      "sha256": "07cc450675f3ce264ce693a752575750479cd488c1ce56f64a41dfe543e3dc2f"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Nari/motions/Yume_mood_angry_seriously.komo.json",
+      "bytes": 67496,
+      "sha256": "c62bef01031ee2dd32a9b391d699b4036987c26c7bc78a781af02fbfefd5cc21"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Nari/motions/Yume_mood_flirty_chin_tilt.komo.json",
+      "bytes": 78368,
+      "sha256": "3dd983ace89879423aa977ac16a11e5487912352e5f95736c1b3042ec3d90f30"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Nari/motions/Yume_mood_flirty_glance.komo.json",
+      "bytes": 76883,
+      "sha256": "6aeda13a8f1bb267ad53db7f3f3d27ae18e78710e80754575e99e7f8340afa30"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Nari/motions/Yume_mood_flirty_retreat.komo.json",
+      "bytes": 74398,
+      "sha256": "ec63277afc9986dca91b475999e4e2a8c87295438a3dcf1bd43b80aab3ddcc50"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Nari/motions/Yume_mood_happy_pleased.komo.json",
+      "bytes": 73636,
+      "sha256": "8447d94ba084759d55830f7553074906ea3bbf8f0b8d2eb325ad45968c43e394"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Nari/motions/Yume_mood_happy_proud.komo.json",
+      "bytes": 73756,
+      "sha256": "118643a9e9313db36400bd468f755fa94356d40daa6c5dcb090bd91f371896cc"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Nari/motions/Yume_mood_loving_bashful.komo.json",
+      "bytes": 76625,
+      "sha256": "2fb650e0d0d279a62a89b4986e0626a3f7ad0bd171027b2f4e1c6ea85165204a"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Nari/motions/Yume_mood_loving_lean.komo.json",
+      "bytes": 83161,
+      "sha256": "a5a8f18978a279e93dc9998ef5d671a912e32d3c95fac5875c135674f9cab191"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Nari/motions/Yume_mood_loving_soft.komo.json",
+      "bytes": 78909,
+      "sha256": "f6cd28f2575081ea20647b64e683b45a5ebb1fdf645f6e4da91ce18c4584f465"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Nari/motions/Yume_mood_playful_tease.komo.json",
+      "bytes": 71463,
+      "sha256": "ff3d63ecbc2568570188ec92c3070362fd2fbd76df68fd718930c67a3ce1ac31"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Nari/motions/Yume_mood_sad_hide.komo.json",
+      "bytes": 70943,
+      "sha256": "11fc34cc4c60c6e88c6d3cf219fe67a382e0b65e55becdad5bfc27a7953bca99"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Nari/motions/Yume_mood_sad_look_down.komo.json",
+      "bytes": 60539,
+      "sha256": "76546619d3147dc7b48a2d7ea24dda00be9e2d0ffa10a5c4cfdf8f6b6b65248b"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Nari/motions/Yume_mood_sad_tremble.komo.json",
+      "bytes": 57607,
+      "sha256": "188a7888f4b675889456e178ebc084dc1974099f4fb34c31930966a641609ab5"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Nari/motions/Yume_mood_sexual_heated_lean.komo.json",
+      "bytes": 111588,
+      "sha256": "cec2b2ea31916b75eab2cc2eb37e952d5da03317ae57d28d5fc36ffa480177f4"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Nari/motions/Yume_mood_sexual_slow_look.komo.json",
+      "bytes": 105193,
+      "sha256": "c7e1e78b9e4d1312044ab242ecf237f2f0368aac94de278d93cd2e8d0d3071bb"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Nari/motions/Yume_mood_sexual_sultry_gaze.komo.json",
+      "bytes": 108678,
+      "sha256": "fbda25c2286fe8ff3e304b1405640491a24f83506b4ba7a6c8ff75824640da53"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Nari/motions/Yume_mood_shy_fidget.komo.json",
+      "bytes": 73903,
+      "sha256": "90cf1c0bc1dd77b7f25778da03176468eb7e9ecdb70b7b2195d20449e32e39e0"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Nari/motions/Yume_mood_shy_hide_turn.komo.json",
+      "bytes": 79176,
+      "sha256": "dc2a23698abf14deba9b16740093825bf534c48b0ac17d14ef575a5d988cf4e3"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Nari/motions/Yume_mood_surprised_jolt.komo.json",
+      "bytes": 59699,
+      "sha256": "f623a9611cfa24e25bfdff3fe071e7719289cfe70cdff63f86dd427e7cf615e8"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Nari/motions/Yume_mood_surprised_wait_what.komo.json",
+      "bytes": 64026,
+      "sha256": "855e84e545cbbe9958f32acbcb66c8b6d0626852c921b54558a29afc2bebcc07"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Nari/motions/Yume_music_bounce_loop.komo.json",
+      "bytes": 114675,
+      "sha256": "2e64ebd8c06c255d809284cfad6bc5e13a3ba1a2beb8b4eddb76a2fa8f74b88a"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Nari/Nari.kophys.json",
+      "bytes": 83263,
+      "sha256": "4e1364c5f371d1e6a0b99033a8d445987682f403522ce73b80c4089a24898a4a"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Nari/Nari.kopose.json",
+      "bytes": 190,
+      "sha256": "e868666501b58aff1ea7e71c810f2c1d2351d69fe58a4f8774acc5064549d2a6"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Nari/Nari.korig.bin",
+      "bytes": 9543888,
+      "sha256": "3fd1253c6da739b9db55de20e6fce12a836809fd2ba6cae069af115dc70ae656"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Nari/Nari.korig.json",
+      "bytes": 16302538,
+      "sha256": "fe134ec4fe09b5b886645900ad8fc8a8c672dc37dd146105121ac72f1717b4bd"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Nari/Nari.kotune.json",
+      "bytes": 346,
+      "sha256": "313bc2576132fc31bc478d6c15646f9c0862925fb751d1d13296765dc422044d"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Nari/native-face.png",
+      "bytes": 69970,
+      "sha256": "a1c1c490cf3af86e0e6be12c34efe1f1a39e0b43ab82c0eded3c5943e3748e18"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Nari/textures/outfit_00.webp",
+      "bytes": 252130,
+      "sha256": "f72722892d57ee94edb8aecc66ba255aa40561bfd7ef6e1f54d24adf3c610423"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Nari/textures/outfit_01.webp",
+      "bytes": 911556,
+      "sha256": "7efe1a2a8d1164b8b2971945fb76c964b47292f5865e34e47a8371a0bc5d4044"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Nari/textures/outfit_02.webp",
+      "bytes": 640258,
+      "sha256": "fd595964be008a679cd94b1bf06b783f927cf1927fcc9b7ed80858b7b328d72a"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Nari/textures/outfit_03.webp",
+      "bytes": 349440,
+      "sha256": "3dc25aad710d2a974e56a4a1b9f2c29f6b8dadcedc6a1df1a2be77463598a6c2"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/NariMechanics/opaque.png",
+      "bytes": 68,
+      "sha256": "7ac2abfce2be8b46dd9826d597d94edeefc1570b4a992622721b90a1850e3ee9"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/NariSkin/rose-porcelain-lighting.webp",
+      "bytes": 305204,
+      "sha256": "2d7cb1a8e95d66fd6cecaf081ccf7a37a37ab002fb4ecf803432bdd0685bf99f"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/NariSkin/wrist-continuity.png",
+      "bytes": 53315,
+      "sha256": "f3004c73288d28d328ac57c1f54aa086ee96b86859b74660bb07d288cf03d9c7"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/NariSkin/wrist-joins.webp",
+      "bytes": 4742,
+      "sha256": "0f10de136258ffb1bff12040e8072c211f81659adcb8fd60bbb6130a18536828"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Streetwear/bustier-atlas.webp",
+      "bytes": 90992,
+      "sha256": "d9f41a3e5965cc8c344afa27cfc92372bf4ab2a65092390b6efdee69c44430b6"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Streetwear/generated-upper-sleeve-ad1.webp",
+      "bytes": 148096,
+      "sha256": "c3bbbe6200b5e10508df4d01cd838e825078d9bda7eafd5ca79579059cccbbfd"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Streetwear/leg-atlas.webp",
+      "bytes": 473056,
+      "sha256": "7ec4b969e39088082ab9dae75301668ee5047268bb632aa4cfffdedc2d5c9d26"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Streetwear/sakura-punk-collar.webp",
+      "bytes": 481646,
+      "sha256": "1c120cd63fce93354e21a68f997818c403d8433f1e21803e084a813581cdab5f"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Streetwear/separated-cloth-as1.webp",
+      "bytes": 418776,
+      "sha256": "82c647b1c5df8260ce8b49cc50fd60cda3ac7c2890502bd5e4e486bd4f237509"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Streetwear/separated-flower-as1.webp",
+      "bytes": 54930,
+      "sha256": "faafa5b25ba3ce52a164145aaba150d8a0f24460d3f29f072c1f111cec37554d"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Streetwear/separated-tailA-as1.webp",
+      "bytes": 41708,
+      "sha256": "d22a3f474e201fed303605b1d9f557836d6e9842183a3215273b727eedb5f71a"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Streetwear/separated-tailB-as1.webp",
+      "bytes": 40660,
+      "sha256": "0e5b79b7d4bd828c6845a69552e5bc25f34ff6c4fd0bf86a70dd98cbc5f350a6"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Streetwear/skirt-atlas.webp",
+      "bytes": 404454,
+      "sha256": "46b3d87f533ca57ed0b43ce87a44999431d8dbc093b76b2dc0cae87c82bc1c19"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Streetwear/stockings-sakura-v2.webp",
+      "bytes": 506716,
+      "sha256": "0167f4df78ace8d5d98d4e2fd57b8fd845929e71460aaa752601d01f44ecfd34"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Streetwear/trails-atlas.webp",
+      "bytes": 460332,
+      "sha256": "d9e1c39ad9339407d7579eb0d41ac30be4e72799118169d1fac48134188b7b57"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Streetwear/upper-atlas.webp",
+      "bytes": 766980,
+      "sha256": "bd9a72e4f16b584835283c803f6005ee8d2c5097f59f2facb55201fe866c2abb"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/Streetwear/vest-sakura-v1.webp",
+      "bytes": 806562,
+      "sha256": "d898b7e7bafeb3347e9a3a76c4aabf9b53249464421e860ab239c229fedab18f"
+    },
+    {
+      "path": "public/companion/skins/nari/sakura-streetwear/tunes/Nari.kotune.json",
+      "bytes": 346,
+      "sha256": "313bc2576132fc31bc478d6c15646f9c0862925fb751d1d13296765dc422044d"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-reverie/EarAssets/azure-ears.png",
+      "bytes": 591833,
+      "sha256": "7fcec5eef790218a224fb5a6471dfbd30f9100c3986195e8f0947a2c39a84f2f"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-reverie/EarAssets/white-tufts.png",
+      "bytes": 242206,
+      "sha256": "f47d065fb080ed114d4f44b47666a2217017a09837424851dbdb3787e7d86043"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-reverie/manifest.index.json",
+      "bytes": 18453,
+      "sha256": "06a4bc891c063f4ac73aea3a2e1d5fa9cb72db411a5123abb09209a6bb2bba93"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-reverie/Nari/motions/Nari_anim_09.komo.json",
+      "bytes": 2942,
+      "sha256": "f37fecf235a3d2adba8cc72cdbcb171d7582bf0e7a35235de9d77cfcef8ed368"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-reverie/tunes/Yume.kotune.json",
+      "bytes": 530,
+      "sha256": "02cb1651ecd73103a66bd507f3d056265416ec7b9c16dfd4894d54812c7ece66"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-reverie/Yume/azure-bust-seam.png",
+      "bytes": 47782,
+      "sha256": "82f9ca8380db68a74d940ac43e90cdff8f5c5e68eb487e2544e98fb223bba96b"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-reverie/Yume/azure-layer-lining.png",
+      "bytes": 847464,
+      "sha256": "93e81e00e4f563002326648e498e05e9880920e4f6d46aa286118078017015de"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-reverie/Yume/azure-layer-navy.png",
+      "bytes": 406423,
+      "sha256": "3f2687e701fe328699e2528110a1ca5f62d9775575e79810cf48d82b657b3df9"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-reverie/Yume/azure-layer-ruffles.png",
+      "bytes": 878662,
+      "sha256": "4e9476cba994fb0bb5a7152ed0322686b69588ead3dbdb9c3f873dd9056bc39d"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-reverie/Yume/expressions/Crying.koexp.json",
+      "bytes": 151,
+      "sha256": "23c4db1b770337d9a34ac3ad0bc8ad47b3e441c244a95406b02dd2dc0e7dfd11"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-reverie/Yume/expressions/HeartEye.koexp.json",
+      "bytes": 95,
+      "sha256": "2855aa9fe4b3c08f2fa787c941c3dc21e5b1f45dfaff8b40c063375eee9bb3cc"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-reverie/Yume/expressions/HeartHands.koexp.json",
+      "bytes": 96,
+      "sha256": "727207c73bdbb2c89ec393e007178ff4f9062dca934873385d61130d8f733733"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-reverie/Yume/expressions/Shy.koexp.json",
+      "bytes": 96,
+      "sha256": "8e90f066304f500fe0f3c523f85703e62572ddb491e6b1978a4239ebe9bd2621"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-reverie/Yume/expressions/StarEye.koexp.json",
+      "bytes": 95,
+      "sha256": "3eb9088a57d03757bda6eefd76a1875e5effdb467fc223afe1c7a64ccd5a1c0e"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-reverie/Yume/expressions/Wave.koexp.json",
+      "bytes": 96,
+      "sha256": "25d45aca27a3f89cdc28a9a15a6feb2ce7fb775e91e7cc8993f9dead2ba4f3e1"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-reverie/Yume/motions/Yume_anim_04.komo.json",
+      "bytes": 5880,
+      "sha256": "213de7d9929d3d3d0735d4062fc56b6cde3db8b6e7b0d983a31b4c8f2c60692d"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-reverie/Yume/motions/Yume_anim_05.komo.json",
+      "bytes": 5885,
+      "sha256": "b56c9063c6f7d7a4ca3b78dd062f8f46ea2093cdd98aa4d20ef50452ad0db6f7"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-reverie/Yume/motions/Yume_bright_bounce.komo.json",
+      "bytes": 31727,
+      "sha256": "0edab761b571c29362dbae9defe38eaf2d9871614f8a37ffd410aea04e418493"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-reverie/Yume/motions/Yume_chat_01_attentive.komo.json",
+      "bytes": 63867,
+      "sha256": "6064d930f46a43f7c6c9606d21a761342c2f20ff77498bc03d63d12bfe9376fb"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-reverie/Yume/motions/Yume_chat_02_listen_tilt.komo.json",
+      "bytes": 92985,
+      "sha256": "27971a45997b17a3deffc908d8a2ed3ef82657ca69357d7a2d005c435dfc8c7a"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-reverie/Yume/motions/Yume_chat_03_shy_glance.komo.json",
+      "bytes": 68123,
+      "sha256": "1c7213951a8e6c07f7bf775cd758d000a3ba78314aaed7397aef4213e79e5910"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-reverie/Yume/motions/Yume_chat_04_nod_along.komo.json",
+      "bytes": 91322,
+      "sha256": "c36cde9cf176a2b4e18257aaf02ef519f26819efad84fa545fc4475b555e9da3"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-reverie/Yume/motions/Yume_chat_05_readjust.komo.json",
+      "bytes": 87024,
+      "sha256": "af768e35e5cc34fb09d8dead8612ddc820258641eff23cb19ef5d4e3e9cdef9f"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-reverie/Yume/motions/Yume_cheeky_swing_wink.komo.json",
+      "bytes": 68664,
+      "sha256": "882775de7d51057d22c651f829d120cb65a242bf2ebb58e7db96210c1b05a2d1"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-reverie/Yume/motions/Yume_games_board_scan.komo.json",
+      "bytes": 85517,
+      "sha256": "0d2a0f4ff8749e40798fe48e7fe20c1a316836963dd98c4aa6fcc55c5e22a762"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-reverie/Yume/motions/Yume_idle_01_hmph_look_away.komo.json",
+      "bytes": 110019,
+      "sha256": "e4a484e283d5c3a3c40909e73c85d09b0dce7974450720f4398f6681059250f8"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-reverie/Yume/motions/Yume_idle_03_brisk_nods.komo.json",
+      "bytes": 52077,
+      "sha256": "67c21f3718472bf984ecf4a5ee256715dd30e08143b914a4ccf3c9d6293a4d5c"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-reverie/Yume/motions/Yume_idle_05_flustered.komo.json",
+      "bytes": 104509,
+      "sha256": "aee59464f686cec69709db418b2797501af80ca6d1773e38fc69e2bb5ce11df3"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-reverie/Yume/motions/Yume_idle_10_smug_wink.komo.json",
+      "bytes": 89572,
+      "sha256": "68429f032307b91a3fbbb55617467d92354b70d46280d9e0c543e4d004201daf"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-reverie/Yume/motions/Yume_idle_11_double_take.komo.json",
+      "bytes": 83598,
+      "sha256": "5ab489f9de12af5904561e12fcd70ddb5ff1936c422c07a06dc950748c51eba2"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-reverie/Yume/motions/Yume_idle_12_pout.komo.json",
+      "bytes": 91624,
+      "sha256": "ef84ab0ee9780f03be56830063e3d631325b156ea2a5197522e6173bcd16ea77"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-reverie/Yume/motions/Yume_idle_13_victory.komo.json",
+      "bytes": 97691,
+      "sha256": "07cc450675f3ce264ce693a752575750479cd488c1ce56f64a41dfe543e3dc2f"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-reverie/Yume/motions/Yume_mood_angry_seriously.komo.json",
+      "bytes": 67496,
+      "sha256": "c62bef01031ee2dd32a9b391d699b4036987c26c7bc78a781af02fbfefd5cc21"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-reverie/Yume/motions/Yume_mood_flirty_chin_tilt.komo.json",
+      "bytes": 78368,
+      "sha256": "3dd983ace89879423aa977ac16a11e5487912352e5f95736c1b3042ec3d90f30"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-reverie/Yume/motions/Yume_mood_flirty_glance.komo.json",
+      "bytes": 76883,
+      "sha256": "6aeda13a8f1bb267ad53db7f3f3d27ae18e78710e80754575e99e7f8340afa30"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-reverie/Yume/motions/Yume_mood_flirty_retreat.komo.json",
+      "bytes": 74398,
+      "sha256": "ec63277afc9986dca91b475999e4e2a8c87295438a3dcf1bd43b80aab3ddcc50"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-reverie/Yume/motions/Yume_mood_happy_pleased.komo.json",
+      "bytes": 73636,
+      "sha256": "8447d94ba084759d55830f7553074906ea3bbf8f0b8d2eb325ad45968c43e394"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-reverie/Yume/motions/Yume_mood_happy_proud.komo.json",
+      "bytes": 73756,
+      "sha256": "118643a9e9313db36400bd468f755fa94356d40daa6c5dcb090bd91f371896cc"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-reverie/Yume/motions/Yume_mood_loving_bashful.komo.json",
+      "bytes": 76625,
+      "sha256": "2fb650e0d0d279a62a89b4986e0626a3f7ad0bd171027b2f4e1c6ea85165204a"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-reverie/Yume/motions/Yume_mood_loving_lean.komo.json",
+      "bytes": 83161,
+      "sha256": "a5a8f18978a279e93dc9998ef5d671a912e32d3c95fac5875c135674f9cab191"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-reverie/Yume/motions/Yume_mood_loving_soft.komo.json",
+      "bytes": 78909,
+      "sha256": "f6cd28f2575081ea20647b64e683b45a5ebb1fdf645f6e4da91ce18c4584f465"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-reverie/Yume/motions/Yume_mood_playful_tease.komo.json",
+      "bytes": 71463,
+      "sha256": "ff3d63ecbc2568570188ec92c3070362fd2fbd76df68fd718930c67a3ce1ac31"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-reverie/Yume/motions/Yume_mood_sad_hide.komo.json",
+      "bytes": 70943,
+      "sha256": "11fc34cc4c60c6e88c6d3cf219fe67a382e0b65e55becdad5bfc27a7953bca99"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-reverie/Yume/motions/Yume_mood_sad_look_down.komo.json",
+      "bytes": 60539,
+      "sha256": "76546619d3147dc7b48a2d7ea24dda00be9e2d0ffa10a5c4cfdf8f6b6b65248b"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-reverie/Yume/motions/Yume_mood_sad_tremble.komo.json",
+      "bytes": 57607,
+      "sha256": "188a7888f4b675889456e178ebc084dc1974099f4fb34c31930966a641609ab5"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-reverie/Yume/motions/Yume_mood_sexual_heated_lean.komo.json",
+      "bytes": 111588,
+      "sha256": "cec2b2ea31916b75eab2cc2eb37e952d5da03317ae57d28d5fc36ffa480177f4"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-reverie/Yume/motions/Yume_mood_sexual_slow_look.komo.json",
+      "bytes": 105193,
+      "sha256": "c7e1e78b9e4d1312044ab242ecf237f2f0368aac94de278d93cd2e8d0d3071bb"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-reverie/Yume/motions/Yume_mood_sexual_sultry_gaze.komo.json",
+      "bytes": 108678,
+      "sha256": "fbda25c2286fe8ff3e304b1405640491a24f83506b4ba7a6c8ff75824640da53"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-reverie/Yume/motions/Yume_mood_shy_fidget.komo.json",
+      "bytes": 73903,
+      "sha256": "90cf1c0bc1dd77b7f25778da03176468eb7e9ecdb70b7b2195d20449e32e39e0"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-reverie/Yume/motions/Yume_mood_shy_hide_turn.komo.json",
+      "bytes": 79176,
+      "sha256": "dc2a23698abf14deba9b16740093825bf534c48b0ac17d14ef575a5d988cf4e3"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-reverie/Yume/motions/Yume_mood_surprised_jolt.komo.json",
+      "bytes": 59699,
+      "sha256": "f623a9611cfa24e25bfdff3fe071e7719289cfe70cdff63f86dd427e7cf615e8"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-reverie/Yume/motions/Yume_mood_surprised_wait_what.komo.json",
+      "bytes": 64026,
+      "sha256": "855e84e545cbbe9958f32acbcb66c8b6d0626852c921b54558a29afc2bebcc07"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-reverie/Yume/motions/Yume_music_bounce_loop.komo.json",
+      "bytes": 114675,
+      "sha256": "2e64ebd8c06c255d809284cfad6bc5e13a3ba1a2beb8b4eddb76a2fa8f74b88a"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-reverie/Yume/textures/continuous-body.png",
+      "bytes": 277700,
+      "sha256": "8faeca95f9badca89938f93cf12bb1c8ab8f363b2ea3ebafc4375266c88a825e"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-reverie/Yume/textures/face-atlas.png",
+      "bytes": 947310,
+      "sha256": "d04a78d82c9d6338fee485c41a76379e195c14c41377d30643e8f01176da15ab"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-reverie/Yume/textures/mouth-skin-clean.png",
+      "bytes": 52388,
+      "sha256": "b6a489729542f5dc889a2abc6072593b08c26f599f00a39ea8ea14cb1e4b6615"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-reverie/Yume/textures/outfit_00.png",
+      "bytes": 452165,
+      "sha256": "90a624fbec493d43c1fa9c40671177b137a0f5edbbd27aa59b5eaa28b4055c29"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-reverie/Yume/textures/outfit_01.png",
+      "bytes": 1227233,
+      "sha256": "2406fc412cc2fe04b74bbc7133afca28ce17dfa98417eea113e3bcc318a60f75"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-reverie/Yume/textures/outfit_02.png",
+      "bytes": 1107237,
+      "sha256": "d8eaa55d5c34aba7b3176d7876b88cd9c510f9a8b7b036ed215393cfd9bf6bda"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-reverie/Yume/textures/outfit_03.png",
+      "bytes": 562079,
+      "sha256": "bba7da88e8121933239468530af8e616003d4cf51497199cf2ba1c2237e08f4d"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-reverie/Yume/textures/swim_hard.png",
+      "bytes": 38204,
+      "sha256": "54dc6d265a481b3a09b2e09f0e44839983110cbd6f7493ade8b94a987141d965"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-reverie/Yume/textures/tex_00.png",
+      "bytes": 969886,
+      "sha256": "4b11d5b923fcbe1119ee76eebdcc4903fd391e4ffe977952455cdbe3ae0643ec"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-reverie/Yume/textures/tex_01.png",
+      "bytes": 1178821,
+      "sha256": "fe8b01f3726852b36cad2276bedc85ffc616d06d30346ee80df0bfb2fe67a298"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-reverie/Yume/Yume.kophys.json",
+      "bytes": 82442,
+      "sha256": "c016daaf32f8ca582fc0c00611f3cd9fa24d7fa8564f5dd5975208007e80dd56"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-reverie/Yume/Yume.kopose.json",
+      "bytes": 190,
+      "sha256": "e868666501b58aff1ea7e71c810f2c1d2351d69fe58a4f8774acc5064549d2a6"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-reverie/Yume/Yume.korig.bin",
+      "bytes": 2997880,
+      "sha256": "090f1fc591144a3be8c9ce8fadce0200eb274735cb5e9300842e4e6a512812c6"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-reverie/Yume/Yume.korig.json",
+      "bytes": 6083998,
+      "sha256": "7d0afa064ed2065f52644d4c66b66583339e6d7a261b4910f8e018f8f1267571"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-streetwear/EarAssets/azure-ears.png",
+      "bytes": 591833,
+      "sha256": "7fcec5eef790218a224fb5a6471dfbd30f9100c3986195e8f0947a2c39a84f2f"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-streetwear/EarAssets/white-tufts.png",
+      "bytes": 242206,
+      "sha256": "f47d065fb080ed114d4f44b47666a2217017a09837424851dbdb3787e7d86043"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-streetwear/manifest.index.json",
+      "bytes": 18439,
+      "sha256": "ad5511b0fa12b8e5b6b742a16f903c6e9624c5e50e77624650391861c79333c4"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-streetwear/Nari/motions/Nari_anim_09.komo.json",
+      "bytes": 2942,
+      "sha256": "f37fecf235a3d2adba8cc72cdbcb171d7582bf0e7a35235de9d77cfcef8ed368"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-streetwear/tunes/Yume.kotune.json",
+      "bytes": 530,
+      "sha256": "02cb1651ecd73103a66bd507f3d056265416ec7b9c16dfd4894d54812c7ece66"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-streetwear/Yume/azure-bust-seam.png",
+      "bytes": 47782,
+      "sha256": "82f9ca8380db68a74d940ac43e90cdff8f5c5e68eb487e2544e98fb223bba96b"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-streetwear/Yume/expressions/Crying.koexp.json",
+      "bytes": 151,
+      "sha256": "23c4db1b770337d9a34ac3ad0bc8ad47b3e441c244a95406b02dd2dc0e7dfd11"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-streetwear/Yume/expressions/HeartEye.koexp.json",
+      "bytes": 95,
+      "sha256": "2855aa9fe4b3c08f2fa787c941c3dc21e5b1f45dfaff8b40c063375eee9bb3cc"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-streetwear/Yume/expressions/HeartHands.koexp.json",
+      "bytes": 96,
+      "sha256": "727207c73bdbb2c89ec393e007178ff4f9062dca934873385d61130d8f733733"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-streetwear/Yume/expressions/Shy.koexp.json",
+      "bytes": 96,
+      "sha256": "8e90f066304f500fe0f3c523f85703e62572ddb491e6b1978a4239ebe9bd2621"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-streetwear/Yume/expressions/StarEye.koexp.json",
+      "bytes": 95,
+      "sha256": "3eb9088a57d03757bda6eefd76a1875e5effdb467fc223afe1c7a64ccd5a1c0e"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-streetwear/Yume/expressions/Wave.koexp.json",
+      "bytes": 96,
+      "sha256": "25d45aca27a3f89cdc28a9a15a6feb2ce7fb775e91e7cc8993f9dead2ba4f3e1"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-streetwear/Yume/motions/Yume_anim_04.komo.json",
+      "bytes": 5880,
+      "sha256": "213de7d9929d3d3d0735d4062fc56b6cde3db8b6e7b0d983a31b4c8f2c60692d"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-streetwear/Yume/motions/Yume_anim_05.komo.json",
+      "bytes": 5885,
+      "sha256": "b56c9063c6f7d7a4ca3b78dd062f8f46ea2093cdd98aa4d20ef50452ad0db6f7"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-streetwear/Yume/motions/Yume_bright_bounce.komo.json",
+      "bytes": 31727,
+      "sha256": "0edab761b571c29362dbae9defe38eaf2d9871614f8a37ffd410aea04e418493"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-streetwear/Yume/motions/Yume_chat_01_attentive.komo.json",
+      "bytes": 63867,
+      "sha256": "6064d930f46a43f7c6c9606d21a761342c2f20ff77498bc03d63d12bfe9376fb"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-streetwear/Yume/motions/Yume_chat_02_listen_tilt.komo.json",
+      "bytes": 92985,
+      "sha256": "27971a45997b17a3deffc908d8a2ed3ef82657ca69357d7a2d005c435dfc8c7a"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-streetwear/Yume/motions/Yume_chat_03_shy_glance.komo.json",
+      "bytes": 68123,
+      "sha256": "1c7213951a8e6c07f7bf775cd758d000a3ba78314aaed7397aef4213e79e5910"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-streetwear/Yume/motions/Yume_chat_04_nod_along.komo.json",
+      "bytes": 91322,
+      "sha256": "c36cde9cf176a2b4e18257aaf02ef519f26819efad84fa545fc4475b555e9da3"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-streetwear/Yume/motions/Yume_chat_05_readjust.komo.json",
+      "bytes": 87024,
+      "sha256": "af768e35e5cc34fb09d8dead8612ddc820258641eff23cb19ef5d4e3e9cdef9f"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-streetwear/Yume/motions/Yume_cheeky_swing_wink.komo.json",
+      "bytes": 68664,
+      "sha256": "882775de7d51057d22c651f829d120cb65a242bf2ebb58e7db96210c1b05a2d1"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-streetwear/Yume/motions/Yume_games_board_scan.komo.json",
+      "bytes": 85517,
+      "sha256": "0d2a0f4ff8749e40798fe48e7fe20c1a316836963dd98c4aa6fcc55c5e22a762"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-streetwear/Yume/motions/Yume_idle_01_hmph_look_away.komo.json",
+      "bytes": 110019,
+      "sha256": "e4a484e283d5c3a3c40909e73c85d09b0dce7974450720f4398f6681059250f8"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-streetwear/Yume/motions/Yume_idle_03_brisk_nods.komo.json",
+      "bytes": 52077,
+      "sha256": "67c21f3718472bf984ecf4a5ee256715dd30e08143b914a4ccf3c9d6293a4d5c"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-streetwear/Yume/motions/Yume_idle_05_flustered.komo.json",
+      "bytes": 104509,
+      "sha256": "aee59464f686cec69709db418b2797501af80ca6d1773e38fc69e2bb5ce11df3"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-streetwear/Yume/motions/Yume_idle_10_smug_wink.komo.json",
+      "bytes": 89572,
+      "sha256": "68429f032307b91a3fbbb55617467d92354b70d46280d9e0c543e4d004201daf"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-streetwear/Yume/motions/Yume_idle_11_double_take.komo.json",
+      "bytes": 83598,
+      "sha256": "5ab489f9de12af5904561e12fcd70ddb5ff1936c422c07a06dc950748c51eba2"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-streetwear/Yume/motions/Yume_idle_12_pout.komo.json",
+      "bytes": 91624,
+      "sha256": "ef84ab0ee9780f03be56830063e3d631325b156ea2a5197522e6173bcd16ea77"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-streetwear/Yume/motions/Yume_idle_13_victory.komo.json",
+      "bytes": 97691,
+      "sha256": "07cc450675f3ce264ce693a752575750479cd488c1ce56f64a41dfe543e3dc2f"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-streetwear/Yume/motions/Yume_mood_angry_seriously.komo.json",
+      "bytes": 67496,
+      "sha256": "c62bef01031ee2dd32a9b391d699b4036987c26c7bc78a781af02fbfefd5cc21"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-streetwear/Yume/motions/Yume_mood_flirty_chin_tilt.komo.json",
+      "bytes": 78368,
+      "sha256": "3dd983ace89879423aa977ac16a11e5487912352e5f95736c1b3042ec3d90f30"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-streetwear/Yume/motions/Yume_mood_flirty_glance.komo.json",
+      "bytes": 76883,
+      "sha256": "6aeda13a8f1bb267ad53db7f3f3d27ae18e78710e80754575e99e7f8340afa30"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-streetwear/Yume/motions/Yume_mood_flirty_retreat.komo.json",
+      "bytes": 74398,
+      "sha256": "ec63277afc9986dca91b475999e4e2a8c87295438a3dcf1bd43b80aab3ddcc50"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-streetwear/Yume/motions/Yume_mood_happy_pleased.komo.json",
+      "bytes": 73636,
+      "sha256": "8447d94ba084759d55830f7553074906ea3bbf8f0b8d2eb325ad45968c43e394"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-streetwear/Yume/motions/Yume_mood_happy_proud.komo.json",
+      "bytes": 73756,
+      "sha256": "118643a9e9313db36400bd468f755fa94356d40daa6c5dcb090bd91f371896cc"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-streetwear/Yume/motions/Yume_mood_loving_bashful.komo.json",
+      "bytes": 76625,
+      "sha256": "2fb650e0d0d279a62a89b4986e0626a3f7ad0bd171027b2f4e1c6ea85165204a"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-streetwear/Yume/motions/Yume_mood_loving_lean.komo.json",
+      "bytes": 83161,
+      "sha256": "a5a8f18978a279e93dc9998ef5d671a912e32d3c95fac5875c135674f9cab191"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-streetwear/Yume/motions/Yume_mood_loving_soft.komo.json",
+      "bytes": 78909,
+      "sha256": "f6cd28f2575081ea20647b64e683b45a5ebb1fdf645f6e4da91ce18c4584f465"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-streetwear/Yume/motions/Yume_mood_playful_tease.komo.json",
+      "bytes": 71463,
+      "sha256": "ff3d63ecbc2568570188ec92c3070362fd2fbd76df68fd718930c67a3ce1ac31"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-streetwear/Yume/motions/Yume_mood_sad_hide.komo.json",
+      "bytes": 70943,
+      "sha256": "11fc34cc4c60c6e88c6d3cf219fe67a382e0b65e55becdad5bfc27a7953bca99"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-streetwear/Yume/motions/Yume_mood_sad_look_down.komo.json",
+      "bytes": 60539,
+      "sha256": "76546619d3147dc7b48a2d7ea24dda00be9e2d0ffa10a5c4cfdf8f6b6b65248b"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-streetwear/Yume/motions/Yume_mood_sad_tremble.komo.json",
+      "bytes": 57607,
+      "sha256": "188a7888f4b675889456e178ebc084dc1974099f4fb34c31930966a641609ab5"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-streetwear/Yume/motions/Yume_mood_sexual_heated_lean.komo.json",
+      "bytes": 111588,
+      "sha256": "cec2b2ea31916b75eab2cc2eb37e952d5da03317ae57d28d5fc36ffa480177f4"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-streetwear/Yume/motions/Yume_mood_sexual_slow_look.komo.json",
+      "bytes": 105193,
+      "sha256": "c7e1e78b9e4d1312044ab242ecf237f2f0368aac94de278d93cd2e8d0d3071bb"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-streetwear/Yume/motions/Yume_mood_sexual_sultry_gaze.komo.json",
+      "bytes": 108678,
+      "sha256": "fbda25c2286fe8ff3e304b1405640491a24f83506b4ba7a6c8ff75824640da53"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-streetwear/Yume/motions/Yume_mood_shy_fidget.komo.json",
+      "bytes": 73903,
+      "sha256": "90cf1c0bc1dd77b7f25778da03176468eb7e9ecdb70b7b2195d20449e32e39e0"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-streetwear/Yume/motions/Yume_mood_shy_hide_turn.komo.json",
+      "bytes": 79176,
+      "sha256": "dc2a23698abf14deba9b16740093825bf534c48b0ac17d14ef575a5d988cf4e3"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-streetwear/Yume/motions/Yume_mood_surprised_jolt.komo.json",
+      "bytes": 59699,
+      "sha256": "f623a9611cfa24e25bfdff3fe071e7719289cfe70cdff63f86dd427e7cf615e8"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-streetwear/Yume/motions/Yume_mood_surprised_wait_what.komo.json",
+      "bytes": 64026,
+      "sha256": "855e84e545cbbe9958f32acbcb66c8b6d0626852c921b54558a29afc2bebcc07"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-streetwear/Yume/motions/Yume_music_bounce_loop.komo.json",
+      "bytes": 114675,
+      "sha256": "2e64ebd8c06c255d809284cfad6bc5e13a3ba1a2beb8b4eddb76a2fa8f74b88a"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-streetwear/Yume/textures/continuous-body.png",
+      "bytes": 427502,
+      "sha256": "49c85f0fe53716dbec205c6a8f53683a76601e90801328f3728b230962972c68"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-streetwear/Yume/textures/face-atlas.png",
+      "bytes": 947310,
+      "sha256": "d04a78d82c9d6338fee485c41a76379e195c14c41377d30643e8f01176da15ab"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-streetwear/Yume/textures/mouth-skin-clean.png",
+      "bytes": 52388,
+      "sha256": "b6a489729542f5dc889a2abc6072593b08c26f599f00a39ea8ea14cb1e4b6615"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-streetwear/Yume/textures/outfit_00.png",
+      "bytes": 452165,
+      "sha256": "90a624fbec493d43c1fa9c40671177b137a0f5edbbd27aa59b5eaa28b4055c29"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-streetwear/Yume/textures/outfit_01.png",
+      "bytes": 1227233,
+      "sha256": "2406fc412cc2fe04b74bbc7133afca28ce17dfa98417eea113e3bcc318a60f75"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-streetwear/Yume/textures/outfit_02.png",
+      "bytes": 1107237,
+      "sha256": "d8eaa55d5c34aba7b3176d7876b88cd9c510f9a8b7b036ed215393cfd9bf6bda"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-streetwear/Yume/textures/street_00.png",
+      "bytes": 979934,
+      "sha256": "8c4661af400e248b720fd9b6272ff46d7b6c6a9136a51659ffdffa4f846e7129"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-streetwear/Yume/textures/street_01.png",
+      "bytes": 864308,
+      "sha256": "4fc835160e30a4dfcef8ac4915b19a009cafffc6df71c54848530200fda94afe"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-streetwear/Yume/textures/street_sweater.png",
+      "bytes": 831184,
+      "sha256": "8f64a7a1907c2fe38d793168b898f8741b46e1e31a00fb727519d69222f1b5c4"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-streetwear/Yume/textures/street_underbust.png",
+      "bytes": 231219,
+      "sha256": "2df49377220c9cf9ea622dc6aeda02908a97120ce7dc35fe0cfbbfac9da13fe4"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-streetwear/Yume/textures/tex_00.png",
+      "bytes": 969886,
+      "sha256": "4b11d5b923fcbe1119ee76eebdcc4903fd391e4ffe977952455cdbe3ae0643ec"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-streetwear/Yume/textures/tex_01.png",
+      "bytes": 1178821,
+      "sha256": "fe8b01f3726852b36cad2276bedc85ffc616d06d30346ee80df0bfb2fe67a298"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-streetwear/Yume/Yume.kophys.json",
+      "bytes": 80202,
+      "sha256": "cb74f92a46bbf821260a7babec58f4b1b68d328e6568736bbf7558b6a735f45d"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-streetwear/Yume/Yume.kopose.json",
+      "bytes": 190,
+      "sha256": "e868666501b58aff1ea7e71c810f2c1d2351d69fe58a4f8774acc5064549d2a6"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-streetwear/Yume/Yume.korig.bin",
+      "bytes": 2347824,
+      "sha256": "2eac5cb66646a043c7098d28dd66047c4fa8d12b019828d9c0bb5f6b9848cae6"
+    },
+    {
+      "path": "public/companion/skins/yume/azure-streetwear/Yume/Yume.korig.json",
+      "bytes": 1014667,
+      "sha256": "72d6486822c522e3f5da86e13582ed66d744a0e4a8f3b263a074882f1cfad96c"
+    },
+    {
+      "path": "public/companion/skins/yume/original-ears/EarAssets/azure-ears.png",
+      "bytes": 591833,
+      "sha256": "7fcec5eef790218a224fb5a6471dfbd30f9100c3986195e8f0947a2c39a84f2f"
+    },
+    {
+      "path": "public/companion/skins/yume/original-ears/EarAssets/white-tufts.png",
+      "bytes": 242206,
+      "sha256": "f47d065fb080ed114d4f44b47666a2217017a09837424851dbdb3787e7d86043"
+    },
+    {
+      "path": "public/companion/skins/yume/original-ears/manifest.index.json",
+      "bytes": 18089,
+      "sha256": "019c3b4b3f2f301fc5544fdc7b132735bd382a692de426055515784ed1a8711d"
+    },
+    {
+      "path": "public/companion/skins/yume/original-ears/Nari/motions/Nari_anim_09.komo.json",
+      "bytes": 8796,
+      "sha256": "a25c590e7097893343752b78122ba67f2af4bd4931f5a760e540483d79930945"
+    },
+    {
+      "path": "public/companion/skins/yume/original-ears/tunes/Yume.kotune.json",
+      "bytes": 530,
+      "sha256": "02cb1651ecd73103a66bd507f3d056265416ec7b9c16dfd4894d54812c7ece66"
+    },
+    {
+      "path": "public/companion/skins/yume/original-ears/Yume/expressions/Crying.koexp.json",
+      "bytes": 151,
+      "sha256": "23c4db1b770337d9a34ac3ad0bc8ad47b3e441c244a95406b02dd2dc0e7dfd11"
+    },
+    {
+      "path": "public/companion/skins/yume/original-ears/Yume/expressions/HeartEye.koexp.json",
+      "bytes": 95,
+      "sha256": "2855aa9fe4b3c08f2fa787c941c3dc21e5b1f45dfaff8b40c063375eee9bb3cc"
+    },
+    {
+      "path": "public/companion/skins/yume/original-ears/Yume/expressions/HeartHands.koexp.json",
+      "bytes": 96,
+      "sha256": "727207c73bdbb2c89ec393e007178ff4f9062dca934873385d61130d8f733733"
+    },
+    {
+      "path": "public/companion/skins/yume/original-ears/Yume/expressions/Shy.koexp.json",
+      "bytes": 96,
+      "sha256": "8e90f066304f500fe0f3c523f85703e62572ddb491e6b1978a4239ebe9bd2621"
+    },
+    {
+      "path": "public/companion/skins/yume/original-ears/Yume/expressions/StarEye.koexp.json",
+      "bytes": 95,
+      "sha256": "3eb9088a57d03757bda6eefd76a1875e5effdb467fc223afe1c7a64ccd5a1c0e"
+    },
+    {
+      "path": "public/companion/skins/yume/original-ears/Yume/expressions/Wave.koexp.json",
+      "bytes": 96,
+      "sha256": "25d45aca27a3f89cdc28a9a15a6feb2ce7fb775e91e7cc8993f9dead2ba4f3e1"
+    },
+    {
+      "path": "public/companion/skins/yume/original-ears/Yume/motions/Yume_anim_04.komo.json",
+      "bytes": 5880,
+      "sha256": "213de7d9929d3d3d0735d4062fc56b6cde3db8b6e7b0d983a31b4c8f2c60692d"
+    },
+    {
+      "path": "public/companion/skins/yume/original-ears/Yume/motions/Yume_anim_05.komo.json",
+      "bytes": 5885,
+      "sha256": "b56c9063c6f7d7a4ca3b78dd062f8f46ea2093cdd98aa4d20ef50452ad0db6f7"
+    },
+    {
+      "path": "public/companion/skins/yume/original-ears/Yume/motions/Yume_bright_bounce.komo.json",
+      "bytes": 31727,
+      "sha256": "0edab761b571c29362dbae9defe38eaf2d9871614f8a37ffd410aea04e418493"
+    },
+    {
+      "path": "public/companion/skins/yume/original-ears/Yume/motions/Yume_chat_01_attentive.komo.json",
+      "bytes": 63867,
+      "sha256": "6064d930f46a43f7c6c9606d21a761342c2f20ff77498bc03d63d12bfe9376fb"
+    },
+    {
+      "path": "public/companion/skins/yume/original-ears/Yume/motions/Yume_chat_02_listen_tilt.komo.json",
+      "bytes": 92985,
+      "sha256": "27971a45997b17a3deffc908d8a2ed3ef82657ca69357d7a2d005c435dfc8c7a"
+    },
+    {
+      "path": "public/companion/skins/yume/original-ears/Yume/motions/Yume_chat_03_shy_glance.komo.json",
+      "bytes": 68123,
+      "sha256": "1c7213951a8e6c07f7bf775cd758d000a3ba78314aaed7397aef4213e79e5910"
+    },
+    {
+      "path": "public/companion/skins/yume/original-ears/Yume/motions/Yume_chat_04_nod_along.komo.json",
+      "bytes": 91322,
+      "sha256": "c36cde9cf176a2b4e18257aaf02ef519f26819efad84fa545fc4475b555e9da3"
+    },
+    {
+      "path": "public/companion/skins/yume/original-ears/Yume/motions/Yume_chat_05_readjust.komo.json",
+      "bytes": 87024,
+      "sha256": "af768e35e5cc34fb09d8dead8612ddc820258641eff23cb19ef5d4e3e9cdef9f"
+    },
+    {
+      "path": "public/companion/skins/yume/original-ears/Yume/motions/Yume_cheeky_swing_wink.komo.json",
+      "bytes": 68664,
+      "sha256": "882775de7d51057d22c651f829d120cb65a242bf2ebb58e7db96210c1b05a2d1"
+    },
+    {
+      "path": "public/companion/skins/yume/original-ears/Yume/motions/Yume_games_board_scan.komo.json",
+      "bytes": 85517,
+      "sha256": "0d2a0f4ff8749e40798fe48e7fe20c1a316836963dd98c4aa6fcc55c5e22a762"
+    },
+    {
+      "path": "public/companion/skins/yume/original-ears/Yume/motions/Yume_idle_01_hmph_look_away.komo.json",
+      "bytes": 110019,
+      "sha256": "e4a484e283d5c3a3c40909e73c85d09b0dce7974450720f4398f6681059250f8"
+    },
+    {
+      "path": "public/companion/skins/yume/original-ears/Yume/motions/Yume_idle_03_brisk_nods.komo.json",
+      "bytes": 52077,
+      "sha256": "67c21f3718472bf984ecf4a5ee256715dd30e08143b914a4ccf3c9d6293a4d5c"
+    },
+    {
+      "path": "public/companion/skins/yume/original-ears/Yume/motions/Yume_idle_05_flustered.komo.json",
+      "bytes": 104509,
+      "sha256": "aee59464f686cec69709db418b2797501af80ca6d1773e38fc69e2bb5ce11df3"
+    },
+    {
+      "path": "public/companion/skins/yume/original-ears/Yume/motions/Yume_idle_10_smug_wink.komo.json",
+      "bytes": 89572,
+      "sha256": "68429f032307b91a3fbbb55617467d92354b70d46280d9e0c543e4d004201daf"
+    },
+    {
+      "path": "public/companion/skins/yume/original-ears/Yume/motions/Yume_idle_11_double_take.komo.json",
+      "bytes": 83598,
+      "sha256": "5ab489f9de12af5904561e12fcd70ddb5ff1936c422c07a06dc950748c51eba2"
+    },
+    {
+      "path": "public/companion/skins/yume/original-ears/Yume/motions/Yume_idle_12_pout.komo.json",
+      "bytes": 91624,
+      "sha256": "ef84ab0ee9780f03be56830063e3d631325b156ea2a5197522e6173bcd16ea77"
+    },
+    {
+      "path": "public/companion/skins/yume/original-ears/Yume/motions/Yume_idle_13_victory.komo.json",
+      "bytes": 97691,
+      "sha256": "07cc450675f3ce264ce693a752575750479cd488c1ce56f64a41dfe543e3dc2f"
+    },
+    {
+      "path": "public/companion/skins/yume/original-ears/Yume/motions/Yume_mood_angry_seriously.komo.json",
+      "bytes": 67496,
+      "sha256": "c62bef01031ee2dd32a9b391d699b4036987c26c7bc78a781af02fbfefd5cc21"
+    },
+    {
+      "path": "public/companion/skins/yume/original-ears/Yume/motions/Yume_mood_flirty_chin_tilt.komo.json",
+      "bytes": 78368,
+      "sha256": "3dd983ace89879423aa977ac16a11e5487912352e5f95736c1b3042ec3d90f30"
+    },
+    {
+      "path": "public/companion/skins/yume/original-ears/Yume/motions/Yume_mood_flirty_glance.komo.json",
+      "bytes": 76883,
+      "sha256": "6aeda13a8f1bb267ad53db7f3f3d27ae18e78710e80754575e99e7f8340afa30"
+    },
+    {
+      "path": "public/companion/skins/yume/original-ears/Yume/motions/Yume_mood_flirty_retreat.komo.json",
+      "bytes": 74398,
+      "sha256": "ec63277afc9986dca91b475999e4e2a8c87295438a3dcf1bd43b80aab3ddcc50"
+    },
+    {
+      "path": "public/companion/skins/yume/original-ears/Yume/motions/Yume_mood_happy_pleased.komo.json",
+      "bytes": 73636,
+      "sha256": "8447d94ba084759d55830f7553074906ea3bbf8f0b8d2eb325ad45968c43e394"
+    },
+    {
+      "path": "public/companion/skins/yume/original-ears/Yume/motions/Yume_mood_happy_proud.komo.json",
+      "bytes": 73756,
+      "sha256": "118643a9e9313db36400bd468f755fa94356d40daa6c5dcb090bd91f371896cc"
+    },
+    {
+      "path": "public/companion/skins/yume/original-ears/Yume/motions/Yume_mood_loving_bashful.komo.json",
+      "bytes": 76625,
+      "sha256": "2fb650e0d0d279a62a89b4986e0626a3f7ad0bd171027b2f4e1c6ea85165204a"
+    },
+    {
+      "path": "public/companion/skins/yume/original-ears/Yume/motions/Yume_mood_loving_lean.komo.json",
+      "bytes": 83161,
+      "sha256": "a5a8f18978a279e93dc9998ef5d671a912e32d3c95fac5875c135674f9cab191"
+    },
+    {
+      "path": "public/companion/skins/yume/original-ears/Yume/motions/Yume_mood_loving_soft.komo.json",
+      "bytes": 78909,
+      "sha256": "f6cd28f2575081ea20647b64e683b45a5ebb1fdf645f6e4da91ce18c4584f465"
+    },
+    {
+      "path": "public/companion/skins/yume/original-ears/Yume/motions/Yume_mood_playful_tease.komo.json",
+      "bytes": 71463,
+      "sha256": "ff3d63ecbc2568570188ec92c3070362fd2fbd76df68fd718930c67a3ce1ac31"
+    },
+    {
+      "path": "public/companion/skins/yume/original-ears/Yume/motions/Yume_mood_sad_hide.komo.json",
+      "bytes": 70943,
+      "sha256": "11fc34cc4c60c6e88c6d3cf219fe67a382e0b65e55becdad5bfc27a7953bca99"
+    },
+    {
+      "path": "public/companion/skins/yume/original-ears/Yume/motions/Yume_mood_sad_look_down.komo.json",
+      "bytes": 60539,
+      "sha256": "76546619d3147dc7b48a2d7ea24dda00be9e2d0ffa10a5c4cfdf8f6b6b65248b"
+    },
+    {
+      "path": "public/companion/skins/yume/original-ears/Yume/motions/Yume_mood_sad_tremble.komo.json",
+      "bytes": 57607,
+      "sha256": "188a7888f4b675889456e178ebc084dc1974099f4fb34c31930966a641609ab5"
+    },
+    {
+      "path": "public/companion/skins/yume/original-ears/Yume/motions/Yume_mood_sexual_heated_lean.komo.json",
+      "bytes": 111588,
+      "sha256": "cec2b2ea31916b75eab2cc2eb37e952d5da03317ae57d28d5fc36ffa480177f4"
+    },
+    {
+      "path": "public/companion/skins/yume/original-ears/Yume/motions/Yume_mood_sexual_slow_look.komo.json",
+      "bytes": 105193,
+      "sha256": "c7e1e78b9e4d1312044ab242ecf237f2f0368aac94de278d93cd2e8d0d3071bb"
+    },
+    {
+      "path": "public/companion/skins/yume/original-ears/Yume/motions/Yume_mood_sexual_sultry_gaze.komo.json",
+      "bytes": 108678,
+      "sha256": "fbda25c2286fe8ff3e304b1405640491a24f83506b4ba7a6c8ff75824640da53"
+    },
+    {
+      "path": "public/companion/skins/yume/original-ears/Yume/motions/Yume_mood_shy_fidget.komo.json",
+      "bytes": 73903,
+      "sha256": "90cf1c0bc1dd77b7f25778da03176468eb7e9ecdb70b7b2195d20449e32e39e0"
+    },
+    {
+      "path": "public/companion/skins/yume/original-ears/Yume/motions/Yume_mood_shy_hide_turn.komo.json",
+      "bytes": 79176,
+      "sha256": "dc2a23698abf14deba9b16740093825bf534c48b0ac17d14ef575a5d988cf4e3"
+    },
+    {
+      "path": "public/companion/skins/yume/original-ears/Yume/motions/Yume_mood_surprised_jolt.komo.json",
+      "bytes": 59699,
+      "sha256": "f623a9611cfa24e25bfdff3fe071e7719289cfe70cdff63f86dd427e7cf615e8"
+    },
+    {
+      "path": "public/companion/skins/yume/original-ears/Yume/motions/Yume_mood_surprised_wait_what.komo.json",
+      "bytes": 64026,
+      "sha256": "855e84e545cbbe9958f32acbcb66c8b6d0626852c921b54558a29afc2bebcc07"
+    },
+    {
+      "path": "public/companion/skins/yume/original-ears/Yume/motions/Yume_music_bounce_loop.komo.json",
+      "bytes": 114675,
+      "sha256": "2e64ebd8c06c255d809284cfad6bc5e13a3ba1a2beb8b4eddb76a2fa8f74b88a"
+    },
+    {
+      "path": "public/companion/skins/yume/original-ears/Yume/textures/face-atlas.png",
+      "bytes": 947310,
+      "sha256": "d04a78d82c9d6338fee485c41a76379e195c14c41377d30643e8f01176da15ab"
+    },
+    {
+      "path": "public/companion/skins/yume/original-ears/Yume/textures/mouth-skin-clean.png",
+      "bytes": 52388,
+      "sha256": "b6a489729542f5dc889a2abc6072593b08c26f599f00a39ea8ea14cb1e4b6615"
+    },
+    {
+      "path": "public/companion/skins/yume/original-ears/Yume/textures/tex_00.png",
+      "bytes": 969886,
+      "sha256": "4b11d5b923fcbe1119ee76eebdcc4903fd391e4ffe977952455cdbe3ae0643ec"
+    },
+    {
+      "path": "public/companion/skins/yume/original-ears/Yume/textures/tex_01.png",
+      "bytes": 1178821,
+      "sha256": "fe8b01f3726852b36cad2276bedc85ffc616d06d30346ee80df0bfb2fe67a298"
+    },
+    {
+      "path": "public/companion/skins/yume/original-ears/Yume/Yume.kophys.json",
+      "bytes": 63612,
+      "sha256": "e72ab0b2ac22a5124abe10fd8b232514f13e1487d77c82a9bc476d0cb71e51f2"
+    },
+    {
+      "path": "public/companion/skins/yume/original-ears/Yume/Yume.kopose.json",
+      "bytes": 190,
+      "sha256": "e868666501b58aff1ea7e71c810f2c1d2351d69fe58a4f8774acc5064549d2a6"
+    },
+    {
+      "path": "public/companion/skins/yume/original-ears/Yume/Yume.korig.bin",
+      "bytes": 2701772,
+      "sha256": "f7b474c98a14436e9d8649c4250060393502aeeeeca5aedc243139cbaeeae489"
+    },
+    {
+      "path": "public/companion/skins/yume/original-ears/Yume/Yume.korig.json",
+      "bytes": 614355,
+      "sha256": "9f4ae84dd73d8da0ba6435a1bc249175e59bf81eb5cdc275fcf030a4a2a1cfc6"
+    },
+    {
+      "path": "public/companion/skins/yume/sapphire-nocturne/EarAssets/azure-ears.png",
+      "bytes": 591833,
+      "sha256": "7fcec5eef790218a224fb5a6471dfbd30f9100c3986195e8f0947a2c39a84f2f"
+    },
+    {
+      "path": "public/companion/skins/yume/sapphire-nocturne/EarAssets/white-tufts.png",
+      "bytes": 242206,
+      "sha256": "f47d065fb080ed114d4f44b47666a2217017a09837424851dbdb3787e7d86043"
+    },
+    {
+      "path": "public/companion/skins/yume/sapphire-nocturne/manifest.index.json",
+      "bytes": 18475,
+      "sha256": "e24f3f8ffe0977cca2bb853178300914e3641ad9307ce7ab569fef1f5f31977e"
+    },
+    {
+      "path": "public/companion/skins/yume/sapphire-nocturne/Nari/motions/Nari_anim_09.komo.json",
+      "bytes": 8796,
+      "sha256": "a25c590e7097893343752b78122ba67f2af4bd4931f5a760e540483d79930945"
+    },
+    {
+      "path": "public/companion/skins/yume/sapphire-nocturne/tunes/Yume.kotune.json",
+      "bytes": 530,
+      "sha256": "02cb1651ecd73103a66bd507f3d056265416ec7b9c16dfd4894d54812c7ece66"
+    },
+    {
+      "path": "public/companion/skins/yume/sapphire-nocturne/Yume/azure-bust-seam.png",
+      "bytes": 47782,
+      "sha256": "82f9ca8380db68a74d940ac43e90cdff8f5c5e68eb487e2544e98fb223bba96b"
+    },
+    {
+      "path": "public/companion/skins/yume/sapphire-nocturne/Yume/expressions/Crying.koexp.json",
+      "bytes": 151,
+      "sha256": "23c4db1b770337d9a34ac3ad0bc8ad47b3e441c244a95406b02dd2dc0e7dfd11"
+    },
+    {
+      "path": "public/companion/skins/yume/sapphire-nocturne/Yume/expressions/HeartEye.koexp.json",
+      "bytes": 95,
+      "sha256": "2855aa9fe4b3c08f2fa787c941c3dc21e5b1f45dfaff8b40c063375eee9bb3cc"
+    },
+    {
+      "path": "public/companion/skins/yume/sapphire-nocturne/Yume/expressions/HeartHands.koexp.json",
+      "bytes": 96,
+      "sha256": "727207c73bdbb2c89ec393e007178ff4f9062dca934873385d61130d8f733733"
+    },
+    {
+      "path": "public/companion/skins/yume/sapphire-nocturne/Yume/expressions/Shy.koexp.json",
+      "bytes": 96,
+      "sha256": "8e90f066304f500fe0f3c523f85703e62572ddb491e6b1978a4239ebe9bd2621"
+    },
+    {
+      "path": "public/companion/skins/yume/sapphire-nocturne/Yume/expressions/StarEye.koexp.json",
+      "bytes": 95,
+      "sha256": "3eb9088a57d03757bda6eefd76a1875e5effdb467fc223afe1c7a64ccd5a1c0e"
+    },
+    {
+      "path": "public/companion/skins/yume/sapphire-nocturne/Yume/expressions/Wave.koexp.json",
+      "bytes": 96,
+      "sha256": "25d45aca27a3f89cdc28a9a15a6feb2ce7fb775e91e7cc8993f9dead2ba4f3e1"
+    },
+    {
+      "path": "public/companion/skins/yume/sapphire-nocturne/Yume/motions/Yume_anim_04.komo.json",
+      "bytes": 5880,
+      "sha256": "213de7d9929d3d3d0735d4062fc56b6cde3db8b6e7b0d983a31b4c8f2c60692d"
+    },
+    {
+      "path": "public/companion/skins/yume/sapphire-nocturne/Yume/motions/Yume_anim_05.komo.json",
+      "bytes": 5885,
+      "sha256": "b56c9063c6f7d7a4ca3b78dd062f8f46ea2093cdd98aa4d20ef50452ad0db6f7"
+    },
+    {
+      "path": "public/companion/skins/yume/sapphire-nocturne/Yume/motions/Yume_bright_bounce.komo.json",
+      "bytes": 31727,
+      "sha256": "0edab761b571c29362dbae9defe38eaf2d9871614f8a37ffd410aea04e418493"
+    },
+    {
+      "path": "public/companion/skins/yume/sapphire-nocturne/Yume/motions/Yume_chat_01_attentive.komo.json",
+      "bytes": 63867,
+      "sha256": "6064d930f46a43f7c6c9606d21a761342c2f20ff77498bc03d63d12bfe9376fb"
+    },
+    {
+      "path": "public/companion/skins/yume/sapphire-nocturne/Yume/motions/Yume_chat_02_listen_tilt.komo.json",
+      "bytes": 92985,
+      "sha256": "27971a45997b17a3deffc908d8a2ed3ef82657ca69357d7a2d005c435dfc8c7a"
+    },
+    {
+      "path": "public/companion/skins/yume/sapphire-nocturne/Yume/motions/Yume_chat_03_shy_glance.komo.json",
+      "bytes": 68123,
+      "sha256": "1c7213951a8e6c07f7bf775cd758d000a3ba78314aaed7397aef4213e79e5910"
+    },
+    {
+      "path": "public/companion/skins/yume/sapphire-nocturne/Yume/motions/Yume_chat_04_nod_along.komo.json",
+      "bytes": 91322,
+      "sha256": "c36cde9cf176a2b4e18257aaf02ef519f26819efad84fa545fc4475b555e9da3"
+    },
+    {
+      "path": "public/companion/skins/yume/sapphire-nocturne/Yume/motions/Yume_chat_05_readjust.komo.json",
+      "bytes": 87024,
+      "sha256": "af768e35e5cc34fb09d8dead8612ddc820258641eff23cb19ef5d4e3e9cdef9f"
+    },
+    {
+      "path": "public/companion/skins/yume/sapphire-nocturne/Yume/motions/Yume_cheeky_swing_wink.komo.json",
+      "bytes": 68664,
+      "sha256": "882775de7d51057d22c651f829d120cb65a242bf2ebb58e7db96210c1b05a2d1"
+    },
+    {
+      "path": "public/companion/skins/yume/sapphire-nocturne/Yume/motions/Yume_games_board_scan.komo.json",
+      "bytes": 85517,
+      "sha256": "0d2a0f4ff8749e40798fe48e7fe20c1a316836963dd98c4aa6fcc55c5e22a762"
+    },
+    {
+      "path": "public/companion/skins/yume/sapphire-nocturne/Yume/motions/Yume_idle_01_hmph_look_away.komo.json",
+      "bytes": 110019,
+      "sha256": "e4a484e283d5c3a3c40909e73c85d09b0dce7974450720f4398f6681059250f8"
+    },
+    {
+      "path": "public/companion/skins/yume/sapphire-nocturne/Yume/motions/Yume_idle_03_brisk_nods.komo.json",
+      "bytes": 52077,
+      "sha256": "67c21f3718472bf984ecf4a5ee256715dd30e08143b914a4ccf3c9d6293a4d5c"
+    },
+    {
+      "path": "public/companion/skins/yume/sapphire-nocturne/Yume/motions/Yume_idle_05_flustered.komo.json",
+      "bytes": 104509,
+      "sha256": "aee59464f686cec69709db418b2797501af80ca6d1773e38fc69e2bb5ce11df3"
+    },
+    {
+      "path": "public/companion/skins/yume/sapphire-nocturne/Yume/motions/Yume_idle_10_smug_wink.komo.json",
+      "bytes": 89572,
+      "sha256": "68429f032307b91a3fbbb55617467d92354b70d46280d9e0c543e4d004201daf"
+    },
+    {
+      "path": "public/companion/skins/yume/sapphire-nocturne/Yume/motions/Yume_idle_11_double_take.komo.json",
+      "bytes": 83598,
+      "sha256": "5ab489f9de12af5904561e12fcd70ddb5ff1936c422c07a06dc950748c51eba2"
+    },
+    {
+      "path": "public/companion/skins/yume/sapphire-nocturne/Yume/motions/Yume_idle_12_pout.komo.json",
+      "bytes": 91624,
+      "sha256": "ef84ab0ee9780f03be56830063e3d631325b156ea2a5197522e6173bcd16ea77"
+    },
+    {
+      "path": "public/companion/skins/yume/sapphire-nocturne/Yume/motions/Yume_idle_13_victory.komo.json",
+      "bytes": 97691,
+      "sha256": "07cc450675f3ce264ce693a752575750479cd488c1ce56f64a41dfe543e3dc2f"
+    },
+    {
+      "path": "public/companion/skins/yume/sapphire-nocturne/Yume/motions/Yume_mood_angry_seriously.komo.json",
+      "bytes": 67496,
+      "sha256": "c62bef01031ee2dd32a9b391d699b4036987c26c7bc78a781af02fbfefd5cc21"
+    },
+    {
+      "path": "public/companion/skins/yume/sapphire-nocturne/Yume/motions/Yume_mood_flirty_chin_tilt.komo.json",
+      "bytes": 78368,
+      "sha256": "3dd983ace89879423aa977ac16a11e5487912352e5f95736c1b3042ec3d90f30"
+    },
+    {
+      "path": "public/companion/skins/yume/sapphire-nocturne/Yume/motions/Yume_mood_flirty_glance.komo.json",
+      "bytes": 76883,
+      "sha256": "6aeda13a8f1bb267ad53db7f3f3d27ae18e78710e80754575e99e7f8340afa30"
+    },
+    {
+      "path": "public/companion/skins/yume/sapphire-nocturne/Yume/motions/Yume_mood_flirty_retreat.komo.json",
+      "bytes": 74398,
+      "sha256": "ec63277afc9986dca91b475999e4e2a8c87295438a3dcf1bd43b80aab3ddcc50"
+    },
+    {
+      "path": "public/companion/skins/yume/sapphire-nocturne/Yume/motions/Yume_mood_happy_pleased.komo.json",
+      "bytes": 73636,
+      "sha256": "8447d94ba084759d55830f7553074906ea3bbf8f0b8d2eb325ad45968c43e394"
+    },
+    {
+      "path": "public/companion/skins/yume/sapphire-nocturne/Yume/motions/Yume_mood_happy_proud.komo.json",
+      "bytes": 73756,
+      "sha256": "118643a9e9313db36400bd468f755fa94356d40daa6c5dcb090bd91f371896cc"
+    },
+    {
+      "path": "public/companion/skins/yume/sapphire-nocturne/Yume/motions/Yume_mood_loving_bashful.komo.json",
+      "bytes": 76625,
+      "sha256": "2fb650e0d0d279a62a89b4986e0626a3f7ad0bd171027b2f4e1c6ea85165204a"
+    },
+    {
+      "path": "public/companion/skins/yume/sapphire-nocturne/Yume/motions/Yume_mood_loving_lean.komo.json",
+      "bytes": 83161,
+      "sha256": "a5a8f18978a279e93dc9998ef5d671a912e32d3c95fac5875c135674f9cab191"
+    },
+    {
+      "path": "public/companion/skins/yume/sapphire-nocturne/Yume/motions/Yume_mood_loving_soft.komo.json",
+      "bytes": 78909,
+      "sha256": "f6cd28f2575081ea20647b64e683b45a5ebb1fdf645f6e4da91ce18c4584f465"
+    },
+    {
+      "path": "public/companion/skins/yume/sapphire-nocturne/Yume/motions/Yume_mood_playful_tease.komo.json",
+      "bytes": 71463,
+      "sha256": "ff3d63ecbc2568570188ec92c3070362fd2fbd76df68fd718930c67a3ce1ac31"
+    },
+    {
+      "path": "public/companion/skins/yume/sapphire-nocturne/Yume/motions/Yume_mood_sad_hide.komo.json",
+      "bytes": 70943,
+      "sha256": "11fc34cc4c60c6e88c6d3cf219fe67a382e0b65e55becdad5bfc27a7953bca99"
+    },
+    {
+      "path": "public/companion/skins/yume/sapphire-nocturne/Yume/motions/Yume_mood_sad_look_down.komo.json",
+      "bytes": 60539,
+      "sha256": "76546619d3147dc7b48a2d7ea24dda00be9e2d0ffa10a5c4cfdf8f6b6b65248b"
+    },
+    {
+      "path": "public/companion/skins/yume/sapphire-nocturne/Yume/motions/Yume_mood_sad_tremble.komo.json",
+      "bytes": 57607,
+      "sha256": "188a7888f4b675889456e178ebc084dc1974099f4fb34c31930966a641609ab5"
+    },
+    {
+      "path": "public/companion/skins/yume/sapphire-nocturne/Yume/motions/Yume_mood_sexual_heated_lean.komo.json",
+      "bytes": 111588,
+      "sha256": "cec2b2ea31916b75eab2cc2eb37e952d5da03317ae57d28d5fc36ffa480177f4"
+    },
+    {
+      "path": "public/companion/skins/yume/sapphire-nocturne/Yume/motions/Yume_mood_sexual_slow_look.komo.json",
+      "bytes": 105193,
+      "sha256": "c7e1e78b9e4d1312044ab242ecf237f2f0368aac94de278d93cd2e8d0d3071bb"
+    },
+    {
+      "path": "public/companion/skins/yume/sapphire-nocturne/Yume/motions/Yume_mood_sexual_sultry_gaze.komo.json",
+      "bytes": 108678,
+      "sha256": "fbda25c2286fe8ff3e304b1405640491a24f83506b4ba7a6c8ff75824640da53"
+    },
+    {
+      "path": "public/companion/skins/yume/sapphire-nocturne/Yume/motions/Yume_mood_shy_fidget.komo.json",
+      "bytes": 73903,
+      "sha256": "90cf1c0bc1dd77b7f25778da03176468eb7e9ecdb70b7b2195d20449e32e39e0"
+    },
+    {
+      "path": "public/companion/skins/yume/sapphire-nocturne/Yume/motions/Yume_mood_shy_hide_turn.komo.json",
+      "bytes": 79176,
+      "sha256": "dc2a23698abf14deba9b16740093825bf534c48b0ac17d14ef575a5d988cf4e3"
+    },
+    {
+      "path": "public/companion/skins/yume/sapphire-nocturne/Yume/motions/Yume_mood_surprised_jolt.komo.json",
+      "bytes": 59699,
+      "sha256": "f623a9611cfa24e25bfdff3fe071e7719289cfe70cdff63f86dd427e7cf615e8"
+    },
+    {
+      "path": "public/companion/skins/yume/sapphire-nocturne/Yume/motions/Yume_mood_surprised_wait_what.komo.json",
+      "bytes": 64026,
+      "sha256": "855e84e545cbbe9958f32acbcb66c8b6d0626852c921b54558a29afc2bebcc07"
+    },
+    {
+      "path": "public/companion/skins/yume/sapphire-nocturne/Yume/motions/Yume_music_bounce_loop.komo.json",
+      "bytes": 114675,
+      "sha256": "2e64ebd8c06c255d809284cfad6bc5e13a3ba1a2beb8b4eddb76a2fa8f74b88a"
+    },
+    {
+      "path": "public/companion/skins/yume/sapphire-nocturne/Yume/textures/continuous-body.png",
+      "bytes": 277700,
+      "sha256": "8faeca95f9badca89938f93cf12bb1c8ab8f363b2ea3ebafc4375266c88a825e"
+    },
+    {
+      "path": "public/companion/skins/yume/sapphire-nocturne/Yume/textures/face-atlas.png",
+      "bytes": 947310,
+      "sha256": "d04a78d82c9d6338fee485c41a76379e195c14c41377d30643e8f01176da15ab"
+    },
+    {
+      "path": "public/companion/skins/yume/sapphire-nocturne/Yume/textures/mouth-skin-clean.png",
+      "bytes": 52388,
+      "sha256": "b6a489729542f5dc889a2abc6072593b08c26f599f00a39ea8ea14cb1e4b6615"
+    },
+    {
+      "path": "public/companion/skins/yume/sapphire-nocturne/Yume/textures/nocturne_00.png",
+      "bytes": 991181,
+      "sha256": "7a971f94447ec2f3fc9f4b7a92451321c22259c0e53cf169390f3e7c9e847e9a"
+    },
+    {
+      "path": "public/companion/skins/yume/sapphire-nocturne/Yume/textures/nocturne_01.png",
+      "bytes": 1639011,
+      "sha256": "f5adf6935f6b24b05b45135893d78193b7ddcb5c70889ef4734ba6dac624777d"
+    },
+    {
+      "path": "public/companion/skins/yume/sapphire-nocturne/Yume/textures/nocturne_02.png",
+      "bytes": 1148845,
+      "sha256": "5b8f97b33fba5bc29e95b7393d614b25c56d3cac7634ca653a22f80a9968b80c"
+    },
+    {
+      "path": "public/companion/skins/yume/sapphire-nocturne/Yume/textures/nocturne_03.png",
+      "bytes": 684595,
+      "sha256": "4740b0ccda838c90adc52b64d8d83fc55e01e0f99835be05d703e5e8c3f7d45d"
+    },
+    {
+      "path": "public/companion/skins/yume/sapphire-nocturne/Yume/textures/nocturne_hard.png",
+      "bytes": 61383,
+      "sha256": "5149d5955b5b3812f20447582dbccfdd83bd992f82bfe21c63957a51df1ff1b8"
+    },
+    {
+      "path": "public/companion/skins/yume/sapphire-nocturne/Yume/textures/outfit_00.png",
+      "bytes": 452815,
+      "sha256": "0622dc2fdb79408f2d4241fa3d6d9eb0bc3962cb7618536d3ee661251c83a3d9"
+    },
+    {
+      "path": "public/companion/skins/yume/sapphire-nocturne/Yume/textures/outfit_01.png",
+      "bytes": 1227233,
+      "sha256": "2406fc412cc2fe04b74bbc7133afca28ce17dfa98417eea113e3bcc318a60f75"
+    },
+    {
+      "path": "public/companion/skins/yume/sapphire-nocturne/Yume/textures/outfit_02.png",
+      "bytes": 1107237,
+      "sha256": "d8eaa55d5c34aba7b3176d7876b88cd9c510f9a8b7b036ed215393cfd9bf6bda"
+    },
+    {
+      "path": "public/companion/skins/yume/sapphire-nocturne/Yume/textures/tex_00.png",
+      "bytes": 969886,
+      "sha256": "4b11d5b923fcbe1119ee76eebdcc4903fd391e4ffe977952455cdbe3ae0643ec"
+    },
+    {
+      "path": "public/companion/skins/yume/sapphire-nocturne/Yume/textures/tex_01.png",
+      "bytes": 1178821,
+      "sha256": "fe8b01f3726852b36cad2276bedc85ffc616d06d30346ee80df0bfb2fe67a298"
+    },
+    {
+      "path": "public/companion/skins/yume/sapphire-nocturne/Yume/Yume.kophys.json",
+      "bytes": 86758,
+      "sha256": "975e7ed3fb4308046d113df34edc6e2cbe67f5c1de91c0c0afe8d664fd14488e"
+    },
+    {
+      "path": "public/companion/skins/yume/sapphire-nocturne/Yume/Yume.kopose.json",
+      "bytes": 190,
+      "sha256": "e868666501b58aff1ea7e71c810f2c1d2351d69fe58a4f8774acc5064549d2a6"
+    },
+    {
+      "path": "public/companion/skins/yume/sapphire-nocturne/Yume/Yume.korig.bin",
+      "bytes": 2800212,
+      "sha256": "978a9c0fafe84cc863b95818e226bfbba2924385f55093c268362c345b668571"
+    },
+    {
+      "path": "public/companion/skins/yume/sapphire-nocturne/Yume/Yume.korig.json",
+      "bytes": 4058357,
+      "sha256": "f887612cc60fff2ebbea0c340228401cc79d4b609df280125e9ed7a6b9d7f6a5"
+    }
+  ]
+}

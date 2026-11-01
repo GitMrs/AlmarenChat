@@ -2,6 +2,8 @@
 
 来源：<https://nariyume.com/app/>，公开清单：<https://nariyume.com/testing/models/index.json>。
 
+以后继续同步请先阅读 [皮肤同步维护文档](./SKIN-SYNC.md)。本次资源包版本、配置及本地文件校验基线已保存到 [2026-11-01-baseline.json](./upstream/2026-11-01-baseline.json)，不再依赖下方提及的临时目录。
+
 本次下载并比较了 Nari、Yume 的 8 个 HD 资源包。现有动作曲线没有变化；两处额外的 `Nari_anim_09` 是已有共用动作。经典无猫耳原版、角色行为、语音和聊天流程未修改。
 
 同步范围：
