@@ -134,10 +134,18 @@ function decryptAndUnpack(koroFilePath, charName, outDir, salt) {
   if (charName === 'Nari' && manifest.index.korig?.startsWith('Yume/')) {
     const sourceDir = path.join(outDir, 'Yume');
     const targetDir = path.join(outDir, 'Nari');
-    if (fs.existsSync(sourceDir)) fs.renameSync(sourceDir, targetDir);
+    if (fs.existsSync(sourceDir)) {
+      // New hybrid packs also contain Nari identity/texture files. Merge the
+      // skeleton directory without overwriting any existing destination file.
+      fs.cpSync(sourceDir, targetDir, { recursive: true, force: false, errorOnExist: true });
+      fs.rmSync(sourceDir, { recursive: true });
+    }
 
-    const replaceYumePrefix = value =>
-      typeof value === 'string' ? value.replace(/^Yume\//, 'Nari/') : value;
+    const replaceYumePrefix = value => {
+      if (typeof value !== 'string') return value;
+      return value.replace(/^Yume\//, 'Nari/')
+        .replace(/(^|\/)Yume\.(korig\.(?:json|bin)|kophys\.json|kopose\.json)$/, '$1Nari.$2');
+    };
     const rewritePaths = value => {
       if (Array.isArray(value)) return value.map(rewritePaths);
       if (value && typeof value === 'object') {
@@ -159,6 +167,10 @@ function decryptAndUnpack(koroFilePath, charName, outDir, salt) {
     const oldBin = path.join(targetDir, 'Yume.korig.bin');
     const newBin = path.join(targetDir, 'Nari.korig.bin');
     if (fs.existsSync(oldBin)) fs.renameSync(oldBin, newBin);
+    for (const suffix of ['kophys.json', 'kopose.json']) {
+      const oldFile = path.join(targetDir, `Yume.${suffix}`);
+      if (fs.existsSync(oldFile)) fs.renameSync(oldFile, path.join(targetDir, `Nari.${suffix}`));
+    }
   }
 
   fs.writeFileSync(path.join(outDir, 'manifest.index.json'), JSON.stringify(manifest.index, null, 2));
@@ -237,7 +249,7 @@ async function main() {
       char: 'Nari',
       skinId: 'sakura-reverie',
       label: '樱花梦境泳装',
-      url: 'https://nariyume.com/testing/models/Nari.sakura-reverie.base.hd.1ea6e5f6fd799366.koro',
+      url: 'https://nariyume.com/testing/models/Nari.sakura-reverie.base.hd.bac4a0f0973dfc3d.koro',
       outDir: 'public/companion/skins/nari/sakura-reverie',
       background: '/companion/backgrounds/sakura-reverie-day-v003.webp',
       card: '/companion/wardrobe/cards/Nari.sakura-reverie.webp',
@@ -257,7 +269,7 @@ async function main() {
       char: 'Yume',
       skinId: 'azure-streetwear',
       label: '蔚蓝机能潮服',
-      url: 'https://nariyume.com/testing/models/Yume.azure-streetwear.base.hd.2cfde4ee7752460d.koro',
+      url: 'https://nariyume.com/testing/models/Yume.azure-streetwear.base.hd.0f58a2ccf6295160.koro',
       outDir: 'public/companion/skins/yume/azure-streetwear',
       background: '/companion/backgrounds/streetwear-day-v003.webp',
       card: '/companion/wardrobe/cards/Yume.azure-streetwear.webp',
@@ -267,7 +279,7 @@ async function main() {
       char: 'Yume',
       skinId: 'sapphire-nocturne',
       label: '蓝宝石晚宴夜曲',
-      url: 'https://nariyume.com/testing/models/Yume.sapphire-nocturne.base.hd.9d0c099b5a6f5f8e.koro',
+      url: 'https://nariyume.com/testing/models/Yume.sapphire-nocturne.base.hd.ad4b5849cf6d7ae1.koro',
       outDir: 'public/companion/skins/yume/sapphire-nocturne',
       background: '/companion/backgrounds/nocturne-day-v003.webp',
       card: '/companion/wardrobe/cards/Yume.sapphire-nocturne.webp',
@@ -277,7 +289,7 @@ async function main() {
       char: 'Yume',
       skinId: 'azure-reverie',
       label: '蔚蓝梦境泳装',
-      url: 'https://nariyume.com/testing/models/Yume.azure-reverie.base.hd.550e270322be9e2e.koro',
+      url: 'https://nariyume.com/testing/models/Yume.azure-reverie.base.hd.f61f96fc69d69acc.koro',
       outDir: 'public/companion/skins/yume/azure-reverie',
       background: '/companion/backgrounds/reverie-day-v003.webp',
       card: '/companion/wardrobe/cards/Yume.azure-reverie.webp',
@@ -287,7 +299,7 @@ async function main() {
       char: 'Yume',
       skinId: 'original-ears',
       label: '猫耳兽耳萌态',
-      url: 'https://nariyume.com/testing/models/Yume.original.hd.699728ba6501a550.koro',
+      url: 'https://nariyume.com/testing/models/Yume.original.hd.23581498b689b4fd.koro',
       outDir: 'public/companion/skins/yume/original-ears',
       background: '/companion/backgrounds/yume_room_day.jpg',
       card: '/companion/wardrobe/cards/Yume.ears.webp',
@@ -301,7 +313,8 @@ async function main() {
   const skinCatalog = [];
 
   for (const s of skins) {
-    const tmpPack = path.join(tmpDir, `${s.char}.${s.skinId}.koro`);
+    // The content hash in the filename prevents reusing a stale cached pack.
+    const tmpPack = path.join(tmpDir, path.basename(new URL(s.url).pathname));
     fetchFile(s.url, tmpPack);
     const index = decryptAndUnpack(tmpPack, s.char, s.outDir, salt);
     
