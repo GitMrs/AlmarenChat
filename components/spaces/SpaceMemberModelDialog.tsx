@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import Avatar from '@/components/shared/Avatar';
 import ModelPicker from '@/components/shared/ModelPicker';
+import { TEXT_MODEL_PRESETS } from '@/lib/client/model-presets';
 import { agents as agentsApi, user as userApi } from '@/lib/client/api';
 import type { Agent, AgentModelSettingsResponse, SpaceMember } from '@/types';
 
@@ -33,15 +34,6 @@ interface SpaceMemberModelDialogProps {
     apiKey: string | null;
   }) => Promise<void>;
 }
-
-const PRESET_MODELS = [
-  { label: 'DeepSeek-V3', value: 'deepseek-chat', desc: '极速通用' },
-  { label: 'DeepSeek-R1', value: 'deepseek-reasoner', desc: '深度推理' },
-  { label: 'GPT-4o', value: 'gpt-4o', desc: '全能旗舰' },
-  { label: 'GPT-4o mini', value: 'gpt-4o-mini', desc: '轻量经济' },
-  { label: 'Claude 3.5 Sonnet', value: 'claude-3-5-sonnet-20241022', desc: '编程与写作' },
-  { label: 'Qwen-Max', value: 'qwen-max', desc: '通义旗舰' },
-];
 
 export default function SpaceMemberModelDialog({
   open,
@@ -320,7 +312,7 @@ export default function SpaceMemberModelDialog({
             placeholder={inherited?.modelName ? `${inherited.modelName}（留空继承）` : '模型名称（留空继承）'}
             searchPlaceholder="输入关键词搜索已获取的模型..."
             actionText="手动填写其他模型"
-            quickPresets={PRESET_MODELS}
+            quickPresets={TEXT_MODEL_PRESETS}
           />
 
           {/* 4. 模型测试连接功能 */}

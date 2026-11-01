@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import LoginRequired from '@/components/auth/LoginRequired';
 import ModelPicker from '@/components/shared/ModelPicker';
+import { TEXT_MODEL_PRESETS } from '@/lib/client/model-presets';
 import WeatherLocationSettings from './WeatherLocationSettings';
 import { auth, user as userApi } from '@/lib/client/api';
 import {
@@ -635,12 +636,7 @@ export default function SettingsPanel() {
                   label="模型名称"
                   placeholder="例如 deepseek-chat、deepseek-reasoner、gpt-4o"
                   disabled={!customModelEnabled}
-                  quickPresets={[
-                    { label: 'DeepSeek-V3', value: 'deepseek-chat' },
-                    { label: 'DeepSeek-R1', value: 'deepseek-reasoner' },
-                    { label: 'GPT-4o', value: 'gpt-4o' },
-                    { label: 'Claude 3.5 Sonnet', value: 'claude-3-5-sonnet-20241022' },
-                  ]}
+                  quickPresets={TEXT_MODEL_PRESETS}
                 />
 
                 <div className="space-y-1.5">
