@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowLeft, BookOpen, Bot, ChevronDown, ChevronUp, Cpu, Database, Info, Loader2, MessageSquarePlus, Plus, QrCode, RefreshCw, Sparkles, X } from 'lucide-react';
+import { ArrowLeft, BookOpen, Bot, ChevronDown, ChevronUp, Cpu, Database, Info, Loader2, MessageSquarePlus, PanelLeftClose, PanelLeftOpen, Plus, QrCode, RefreshCw, Sparkles, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -138,6 +138,8 @@ export default function AgentDetailsPanel({
   onRefreshDailyStudy,
   onDiscussDailyStudy,
 }: AgentDetailsPanelProps) {
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const collapsed = sidebarCollapsed;
   const memoryEnabled = isLoggedIn && conversationMode === 'MAIN';
   const activeMemoryEnabled = useRef(memoryEnabled);
   activeMemoryEnabled.current = memoryEnabled;
@@ -1298,7 +1300,18 @@ export default function AgentDetailsPanel({
       {conversationDrawer}
       {memoryDrawer}
       {studyDrawer}
-      <aside className="hidden w-[340px] shrink-0 overflow-y-auto border-r border-black/[0.06] bg-white/80 p-5 backdrop-blur lg:flex lg:flex-col">
+      {collapsed && (
+        <aside aria-label="已收起的 Agent 侧栏" className="hidden w-16 shrink-0 flex-col items-center gap-4 border-r border-black/[0.06] bg-white/80 py-5 backdrop-blur lg:flex">
+          <button type="button" onClick={() => setSidebarCollapsed(false)} aria-label="展开 Agent 侧栏" aria-expanded={false} aria-controls="agent-chat-sidebar" title="展开侧栏" className="rounded-xl p-2 text-slate-600 transition hover:bg-slate-100 active:bg-slate-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500">
+            <PanelLeftOpen size={20} />
+          </button>
+          <Avatar src={displayAgent.avatar} alt={displayAgent.name} size="sm" />
+          <button type="button" onClick={onBack} aria-label="返回" title="返回" className="rounded-xl p-2 text-slate-600 transition hover:bg-slate-100 active:bg-slate-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500">
+            <ArrowLeft size={20} />
+          </button>
+        </aside>
+      )}
+      <aside id="agent-chat-sidebar" className={cn('hidden w-[340px] shrink-0 overflow-y-auto border-r border-black/[0.06] bg-white/80 p-5 backdrop-blur', !collapsed && 'lg:flex lg:flex-col')}>
         <div className="mb-6 flex items-center justify-between gap-2">
           <button
             onClick={onBack}
@@ -1308,22 +1321,31 @@ export default function AgentDetailsPanel({
             返回
           </button>
 
-          {displayAgent.companionCharacterId && onToggleCompanionView && (
-            <button
-              type="button"
-              onClick={onToggleCompanionView}
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-amber-300/60 bg-gradient-to-r from-amber-500/15 via-rose-500/15 to-orange-500/15 px-3 py-2 text-xs font-black text-amber-950 transition hover:shadow-xs hover:border-amber-400 active:scale-[0.99] cursor-pointer"
-              title={viewMode === 'companion' ? '切换回标准文字聊天界面' : '进入全屏 3D/Live2D 面对面陪伴模式'}
-            >
-              <Sparkles size={14} className="text-amber-600" />
-              <span>{viewMode === 'companion' ? '文字模式' : '陪伴模式'}</span>
-            </button>
-          )}
+          <button type="button" onClick={() => setSidebarCollapsed(true)} aria-label="收起 Agent 侧栏" aria-expanded={true} aria-controls="agent-chat-sidebar" title="收起侧栏" className="shrink-0 rounded-xl p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-950 active:bg-slate-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500">
+            <PanelLeftClose size={20} />
+          </button>
         </div>
 
         <div className="shrink-0 overflow-hidden rounded-[32px] border border-black/[0.06] bg-[#fbfaf7] shadow-sm">
           <div className="h-2" style={{ backgroundColor: categoryColor }} />
-          <div className="p-5 text-center">
+          <div className="relative p-5 text-center">
+            {displayAgent.companionCharacterId && onToggleCompanionView && (
+              <button
+                type="button"
+                onClick={onToggleCompanionView}
+                aria-label={viewMode === 'companion' ? '切换到文字模式' : '切换到陪伴模式'}
+                title={viewMode === 'companion' ? '切换到文字模式' : '切换到陪伴模式'}
+                style={{
+                  color: categoryColor,
+                  borderColor: `color-mix(in srgb, ${categoryColor} 30%, transparent)`,
+                  backgroundColor: `color-mix(in srgb, ${categoryColor} 8%, white)`,
+                  outlineColor: categoryColor,
+                }}
+                className="absolute right-3 top-3 inline-flex h-8 items-center justify-center rounded-full border px-3 text-xs font-bold shadow-sm transition hover:brightness-95 active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2"
+              >
+                {viewMode === 'companion' ? '文字' : '陪伴'}
+              </button>
+            )}
             <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-[24px] bg-white shadow-sm">
               <Avatar src={displayAgent.avatar} alt={displayAgent.name} size="lg" />
             </div>

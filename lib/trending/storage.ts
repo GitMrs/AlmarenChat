@@ -1,6 +1,7 @@
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { TrendingSnapshot } from './types';
+import { normalizeBlockBeatsItemLink } from './blockbeats-links.mjs';
 
 const TRENDING_DIR = path.join(process.cwd(), 'data', 'trending');
 const HISTORY_DIR = path.join(TRENDING_DIR, 'history');
@@ -91,6 +92,9 @@ export async function readSnapshot(
     const content = await readFile(filePath, 'utf8');
     const parsed = JSON.parse(content) as TrendingSnapshot;
     if (parsed && Array.isArray(parsed.items)) {
+      if (sourceId === 'blockbeats') {
+        parsed.items = parsed.items.map(normalizeBlockBeatsItemLink);
+      }
       return parsed;
     }
     return null;

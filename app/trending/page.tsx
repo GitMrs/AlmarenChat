@@ -519,11 +519,11 @@ export default function TrendingPage() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2.5">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-2.5">
             {/* AI Summary Button */}
             <button
               onClick={handleToggleSummary}
-              className={`flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-bold transition shadow-sm ${
+              className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl px-3 py-2 text-xs font-bold transition shadow-sm sm:px-3.5 ${
                 summaryOpen
                   ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-amber-500/25 ring-2 ring-amber-400/50'
                   : 'bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500 text-white shadow-orange-500/20 hover:opacity-95'
@@ -531,7 +531,8 @@ export default function TrendingPage() {
               title="查看 AI 提炼的全网热点脉络与深度早报"
             >
               <Sparkles size={14} className={summaryLoading ? 'animate-spin' : ''} />
-              <span>
+              <span className="sm:hidden">{summaryOpen ? '收起简报' : selectedDate === 'today' ? 'AI 早报' : 'AI 日报'}</span>
+              <span className="hidden sm:inline">
                 {summaryOpen
                   ? '收起 AI 简报'
                   : selectedDate === 'today'
@@ -544,17 +545,18 @@ export default function TrendingPage() {
             <button
               onClick={handleSmartRefresh}
               disabled={refreshing || loading || selectedDate !== 'today'}
-              className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-              title="按当前所选分类或平台精准刷新"
+              className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-50 sm:px-3.5 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+              title={`${getRefreshButtonLabel()}：按当前所选分类或平台精准刷新`}
             >
               <RefreshCw size={14} className={refreshing ? 'animate-spin text-amber-500' : ''} />
-              <span>{getRefreshButtonLabel()}</span>
+              <span className="sm:hidden">{selectedDate !== 'today' ? '历史只读' : refreshing ? '刷新中' : '刷新热榜'}</span>
+              <span className="hidden sm:inline">{getRefreshButtonLabel()}</span>
             </button>
 
             {/* Network Diagnostics Button */}
             <button
               onClick={() => setNetworkModalOpen(true)}
-              className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-sm transition hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+              className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-sm transition hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
               title="全链路网络与本地代理体检（一键诊断 7890 代理、微软 Edge TTS 与 OKX 连通状态）"
             >
               <Activity size={14} className="text-sky-500" />
@@ -564,9 +566,9 @@ export default function TrendingPage() {
         </div>
 
         {/* 历史时光机选择器（极简一体化时光胶囊） */}
-        <div className="relative z-30 mb-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 rounded-2xl border border-slate-200/80 bg-white/70 p-2.5 shadow-sm backdrop-blur-sm dark:border-slate-800 dark:bg-slate-900/60">
-          <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1.5 px-2 text-xs font-black text-slate-700 dark:text-slate-200">
+        <div className="relative z-30 mb-4 flex items-center justify-between gap-1 rounded-2xl border border-slate-200/80 bg-white/70 p-2 shadow-sm backdrop-blur-sm sm:flex-wrap sm:gap-x-3 sm:gap-y-2 sm:p-2.5 dark:border-slate-800 dark:bg-slate-900/60">
+          <div className="flex shrink-0 items-center gap-2">
+            <div className="hidden items-center gap-1.5 px-2 text-xs font-black text-slate-700 sm:flex dark:text-slate-200">
               <History size={15} className="text-amber-500" />
               <span>时光穿梭机：</span>
             </div>
@@ -577,14 +579,15 @@ export default function TrendingPage() {
             />
           </div>
 
-          <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2">
+          <div className="ml-auto flex min-w-0 items-center justify-end gap-1 sm:flex-wrap sm:gap-2">
             {selectedDate !== 'today' && (
               <button
                 onClick={() => handleDateChange('today')}
-                className="flex items-center gap-1 text-xs font-bold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 px-3 py-1.5 rounded-xl hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition"
+                className="hidden items-center gap-1 text-xs font-bold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 px-3 py-1.5 rounded-xl hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition sm:flex"
                 title="快速重置时光机回到今日实时热榜"
               >
-                <span>回到今日实时 →</span>
+                <span className="sm:hidden">回到今日</span>
+                <span className="hidden sm:inline">回到今日实时 →</span>
               </button>
             )}
             <TrendingWeather />

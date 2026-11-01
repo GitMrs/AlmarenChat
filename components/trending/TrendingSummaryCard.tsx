@@ -219,11 +219,11 @@ export default function TrendingSummaryCard({
 
       {/* Header bar */}
       <div className="relative z-10 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-amber-200/50 pb-4 dark:border-amber-800/30">
-        <div className="flex items-center gap-3">
+        <div className="flex min-w-0 items-center gap-3">
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-tr from-amber-500 via-orange-500 to-rose-500 text-white shadow-md shadow-orange-500/20">
             <Sparkles size={20} className="animate-pulse" />
           </span>
-          <div>
+          <div className="min-w-0 flex-1 [overflow-wrap:anywhere]">
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-base font-black text-slate-900 dark:text-white">
                 {isHistorical ? `📜 ${dateLabel} 舆情深度全景情报` : '✨ AI 全网热点脉络提炼'}
@@ -372,7 +372,7 @@ export default function TrendingSummaryCard({
             暂无热点提炼结果，可点击「重新提炼」按钮生成。
           </div>
         ) : (
-          <div className="prose prose-slate max-w-none text-xs sm:text-sm leading-relaxed dark:prose-invert">
+          <div className="prose prose-slate min-w-0 max-w-none text-xs leading-relaxed [overflow-wrap:anywhere] [&_pre]:max-w-full [&_pre]:overflow-x-auto [&_table]:block [&_table]:max-w-full [&_table]:overflow-x-auto sm:text-sm dark:prose-invert">
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               components={{
@@ -411,7 +411,7 @@ export default function TrendingSummaryCard({
 
       {/* Footer */}
       {!loading && summary && (
-        <div className="relative z-10 mt-4 flex items-center justify-between border-t border-amber-200/40 pt-3 text-xs dark:border-amber-800/30">
+        <div className="relative z-10 mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-amber-200/40 pt-3 text-xs dark:border-amber-800/30">
           <div className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400">
             <Flame size={12} className="text-orange-500 fill-orange-500" />
             <span>全网舆情深度洞察</span>

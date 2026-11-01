@@ -136,7 +136,7 @@ export async function getOrGenerateTrendingSummary(options?: {
     try {
       const content = await readFile(cacheFilePath, 'utf8');
       const cached = JSON.parse(content);
-      if (cached && cached.summary) {
+      if (cached?.formatVersion === 2 && cached.finishReason === 'stop' && cached.summary?.trim()) {
         // 历史数据永久有效；今日数据如果在有效期内直接返回
         const isFresh = isHistorical || (Date.now() - new Date(cached.updatedAt).getTime() < SUMMARY_TTL_MS);
         if (isFresh) {
@@ -198,6 +198,7 @@ ${distilledText}
 
 请你从宏观全局视角，输出一份言简意赅、见解深刻的【${briefTitle}】。
 请严格按以下三段式 Markdown 结构输出，语言犀利、专业、直击本质，严禁打官腔套话：
+全文保持简洁，三部分均须完整，优先精简表述，不要省略结尾。仅依据提供的事件作答，区分事件事实与分析推断。
 
 ${firstSection}
 
@@ -224,16 +225,27 @@ ${thirdSection}`;
       },
     ],
     temperature: 0.6,
-    max_tokens: 1200,
   });
 
-  const generatedSummary = completion.choices?.[0]?.message?.content?.trim() || '暂无提炼结果';
+  const choice = completion.choices?.[0];
+  if (choice?.finish_reason === 'length') {
+    throw new Error('简报生成达到输出上限，内容未完整生成，请重新提炼。此次结果未保存。');
+  }
+  if (choice?.finish_reason !== 'stop') {
+    throw new Error('简报生成未正常结束，请稍后重新提炼。此次结果未保存。');
+  }
+  const generatedSummary = choice.message?.content?.trim();
+  if (!generatedSummary) {
+    throw new Error('模型未返回简报正文，请稍后重新提炼。此次结果未保存。');
+  }
   const now = new Date().toISOString();
 
   // 6. 异步写入缓存落盘（历史归档一次写入永久有效；今日写入半小时缓存）
   try {
     await mkdir(cacheDir, { recursive: true });
     const cachePayload = {
+      formatVersion: 2,
+      finishReason: choice.finish_reason,
       summary: generatedSummary,
       date: queryDate,
       category,

@@ -202,7 +202,7 @@ export default function TrendingCalendarPicker({
       {/* 唯一一体化时光机触发胶囊 */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className={`flex items-center gap-2 rounded-xl px-3.5 py-1.5 text-xs font-bold transition shadow-sm ${
+        className={`flex items-center gap-2 whitespace-nowrap rounded-xl px-3 py-1.5 text-xs font-bold transition shadow-sm sm:px-3.5 ${
           isOpen
             ? isTodayActive
               ? 'ring-2 ring-amber-400 bg-amber-500 text-white shadow-amber-500/25'
@@ -222,7 +222,8 @@ export default function TrendingCalendarPicker({
           ) : (
             <Calendar size={13} className="text-white" />
           )}
-          <span>{getTriggerLabel()}</span>
+          <span className="sm:hidden">{isTodayActive ? `今日 · ${todayStr.slice(5)}` : selectedDate}</span>
+          <span className="hidden sm:inline">{getTriggerLabel()}</span>
           {!isTodayActive && (
             <span className="rounded bg-white/20 px-1 py-0.2 text-[10px] text-white">
               历史
@@ -237,7 +238,7 @@ export default function TrendingCalendarPicker({
 
       {/* 优雅日历浮层 Popover */}
       {isOpen && (
-        <div className="absolute left-0 top-full z-[100] mt-2 w-80 rounded-3xl border border-slate-200 bg-white p-4 shadow-2xl ring-1 ring-black/5 dark:border-slate-800 dark:bg-slate-900 dark:ring-white/10 animate-in fade-in zoom-in-95 duration-150">
+        <div className="absolute left-0 top-full z-[100] mt-2 w-80 max-w-[calc(100vw-3.5rem)] rounded-3xl border border-slate-200 bg-white p-4 shadow-2xl ring-1 ring-black/5 dark:border-slate-800 dark:bg-slate-900 dark:ring-white/10 animate-in fade-in zoom-in-95 duration-150">
           {/* 1. 顶部高频快捷直达：今日实时、昨天、前天 */}
           <div className="mb-3 border-b border-slate-100 pb-3 dark:border-slate-800">
             <div className="mb-1.5 flex items-center justify-between px-1 text-[11px] font-bold text-slate-400 dark:text-slate-500">

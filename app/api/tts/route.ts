@@ -68,10 +68,14 @@ export async function GET(request: Request) {
       console.warn('[TTS GET Timeout]:', error.message);
       return NextResponse.json({ error: error.message }, { status: 504 });
     }
-    if (error.message?.includes('non-101') || error.message?.includes('ECONNRESET')) {
+    if (error.code === 'TTS_HANDSHAKE_FORBIDDEN') {
+      console.warn('[TTS GET Handshake Rejected]:', error.message);
+      return NextResponse.json({ error: 'Edge TTS 拒绝连接（HTTP 403），请检查握手协议兼容性、服务器时间或服务访问限制。', code: error.code }, { status: 502 });
+    }
+    if (error.code === 'TTS_CONNECTION_ERROR' || error.message?.includes('non-101') || error.message?.includes('ECONNRESET')) {
       console.warn('[TTS GET Network Error]:', error.message);
       return NextResponse.json(
-        { error: 'Edge TTS 语音服务连接受阻（网络中断或非101状态），请检查网络代理环境' },
+        { error: 'Edge TTS 连接失败，请检查网络或代理；握手被拒绝时也可能是协议兼容性问题。' },
         { status: 502 }
       );
     }
@@ -135,10 +139,14 @@ export async function POST(request: Request) {
       console.warn('[TTS POST Timeout]:', error.message);
       return NextResponse.json({ error: error.message }, { status: 504 });
     }
-    if (error.message?.includes('non-101') || error.message?.includes('ECONNRESET')) {
+    if (error.code === 'TTS_HANDSHAKE_FORBIDDEN') {
+      console.warn('[TTS POST Handshake Rejected]:', error.message);
+      return NextResponse.json({ error: 'Edge TTS 拒绝连接（HTTP 403），请检查握手协议兼容性、服务器时间或服务访问限制。', code: error.code }, { status: 502 });
+    }
+    if (error.code === 'TTS_CONNECTION_ERROR' || error.message?.includes('non-101') || error.message?.includes('ECONNRESET')) {
       console.warn('[TTS POST Network Error]:', error.message);
       return NextResponse.json(
-        { error: 'Edge TTS 语音服务连接受阻（网络中断或非101状态），请检查网络代理环境' },
+        { error: 'Edge TTS 连接失败，请检查网络或代理；握手被拒绝时也可能是协议兼容性问题。' },
         { status: 502 }
       );
     }

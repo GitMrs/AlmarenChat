@@ -260,17 +260,17 @@ export default function TrendingWeather() {
   return (
     <div ref={container} className="relative min-w-0 text-xs text-slate-600 dark:text-slate-300">
       {/* 顶部触发栏按钮 */}
-      <div className="flex min-h-8 flex-wrap items-center justify-end gap-x-2 gap-y-1">
+      <div className="flex min-h-8 items-center justify-end gap-x-0.5 gap-y-1 sm:flex-wrap sm:gap-x-2">
         <WeatherLocationPicker value={location} loading={locationLoading} error={locationError} onOpen={() => setDetailsOpen(false)} onChange={saveLocation} />
         {location && (
           <button
             ref={detailsTrigger}
             type="button"
             onClick={() => setDetailsOpen(!detailsOpen)}
-            aria-label="查看天气详情"
+            aria-label={weather ? `查看天气详情：${condition}，${weather.observations.temp}℃` : '查看天气详情'}
             aria-expanded={detailsOpen}
             aria-controls="trending-weather-details"
-            className="flex min-h-8 items-center gap-1.5 rounded-xl px-2 py-1 transition hover:bg-slate-100 dark:hover:bg-slate-800"
+            className="flex min-h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl px-2 py-1 transition hover:bg-slate-100 dark:hover:bg-slate-800"
             title={weather ? `查看天气详情${observationTime ? ` · ${observationTime} 观测` : ''}` : '查看天气详情'}
           >
             {loading ? (
@@ -278,7 +278,7 @@ export default function TrendingWeather() {
             ) : weather ? (
               <>
                 <TriggerIcon size={16} className="text-sky-500" />
-                <span>{condition}</span>
+                <span className="hidden sm:inline">{condition}</span>
                 <span className="font-semibold text-slate-900 dark:text-white">{weather.observations.temp}℃</span>
               </>
             ) : (

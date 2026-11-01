@@ -1,4 +1,5 @@
 import vm from 'node:vm';
+import { blockBeatsDetailUrl } from './blockbeats-links.mjs';
 import type { NormalizedHotItem } from './types';
 
 /**
@@ -391,13 +392,15 @@ export function parseBlockBeatsHtml(flashHtml?: string, articleHtml?: string): N
     for (const day of days) {
       for (const c of (day.children || [])) {
         if (!c.title) continue;
+        const detailUrl = blockBeatsDetailUrl('flash', c.id);
+        if (!detailUrl) continue;
         const cleanDesc = (c.content || '').replace(/<[^>]+>/g, '').replace(/BlockBeats 消息[，,]?\s*/g, '').trim();
         items.push({
           id: `bb-flash-${c.id}`,
           source: 'blockbeats',
           sourceName: '律动 BlockBeats',
           title: c.title.trim(),
-          url: c.url || (`https://www.theblockbeats.info/flash/${c.id}`),
+          url: detailUrl,
           desc: cleanDesc || '律动实时快讯',
           heat: c.is_hot ? '🔥 热门快讯' : c.is_first ? '⚡ 首发快讯' : '快讯',
           thumbnail: c.img_url || c.c_img_url || undefined,
@@ -415,13 +418,15 @@ export function parseBlockBeatsHtml(flashHtml?: string, articleHtml?: string): N
     const list = d?.data?.[0]?.list || [];
     for (const a of list) {
       if (!a.title) continue;
+      const detailUrl = blockBeatsDetailUrl('art', a.article_id || a.id);
+      if (!detailUrl) continue;
       const tags = Array.isArray(a.tag_list) ? a.tag_list.filter(Boolean) : [];
       items.push({
         id: `bb-art-${a.article_id || a.id}`,
         source: 'blockbeats',
         sourceName: '律动 BlockBeats',
         title: a.title.trim(),
-        url: `https://www.theblockbeats.info/article/${a.article_id || a.id}`,
+        url: detailUrl,
         desc: (a.abstract || '').trim() || '律动深度行业专栏研报',
         heat: '📰 深度' + (tags.length ? ` · ${tags.slice(0, 2).join('/')}` : ''),
         thumbnail: a.img_url || a.c_img_url || undefined,
