@@ -1222,15 +1222,24 @@ function CompanionSession({
   // 4. 语音播放完了，若仍在连击，紧接着播放连击语音
   const handleCharacterTap = (e: React.MouseEvent) => {
     const target = e.target as Element;
-    if (!usable || !target.matches('canvas.companion-canvas')) return;
-    if (pointerHitRef.current === false) { pointerHitRef.current = null; return; }
+    const isCanvasTarget = target.matches('canvas.companion-canvas');
+    // canvas 覆盖整个舞台，透明区域的事件仍然会落到 canvas；未命中模型时视为背景点击。
+    const isCanvasBackground = isCanvasTarget && pointerHitRef.current === false;
+    const isSceneBackground = isCanvasBackground
+      || target === e.currentTarget
+      || Boolean(target.closest?.('.companion-scene-backdrop'));
+    if (!usable || (!isCanvasTarget && !isSceneBackground)) return;
     if (['nari', 'yume'].includes(character.id)) {
-      const region = stage.current?.hitTest ? stage.current.hitTest(e.clientX, e.clientY) : 'body';
+      // 模型命中区域使用分区反馈；背景点击使用普通的身体区域反馈。
+      const region = isSceneBackground
+        ? 'body'
+        : (stage.current?.hitTest ? stage.current.hitTest(e.clientX, e.clientY) : 'body');
       if (!region) return;
       lastTouchRegionRef.current = region;
-      const rect = target.getBoundingClientRect();
+      const rect = (isCanvasTarget ? target : e.currentTarget).getBoundingClientRect();
       lastTouchSideRef.current = e.clientX < rect.left + rect.width / 2 ? 1 : -1;
     }
+    if (isSceneBackground) pointerHitRef.current = null;
     if (Date.now() - lastHoldEndRef.current < 400) return;
 
     // 若刚才是在按住拖拽视线引导（释放后 400ms 内），不误触发角色轻点对白与粒子
