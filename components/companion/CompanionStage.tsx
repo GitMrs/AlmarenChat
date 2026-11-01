@@ -15,8 +15,10 @@ import {
   type LookAtState,
 } from '@/lib/companion/motion';
 import { PhysicsPlayer, type CompanionPhysics } from '@/lib/companion/physics';
+import { hitCharacter } from '@/lib/companion/touch-hit.mjs';
 
 export type FramingMode = 'auto' | 'closeup' | 'half' | 'full';
+export type TouchRegion = 'head' | 'face' | 'body';
 
 export interface StageSnapshot {
   time: number;
@@ -34,6 +36,7 @@ export interface StageHandle {
   stopSpeaking(): void;
   setParameter(id: string, value: number): void;
   getParameter(id: string): number | undefined;
+  hitTest?(clientX: number, clientY: number): TouchRegion | null;
 }
 
 export interface StageProps {
@@ -163,6 +166,7 @@ interface StageRuntime {
   uncompressedHeight?: number;
   cameraHalfHeight?: number;
   cameraCenterY?: number;
+  hitTest?: (clientX: number, clientY: number) => TouchRegion | null;
 }
 
 const resourceJsonCache = new Map<string, any>();
@@ -315,6 +319,9 @@ const KoroStage = forwardRef<StageHandle, StageProps>(function KoroStage(props, 
     getParameter(id: string) {
       return runtime.current.model?.getParameter(id);
     },
+    hitTest(clientX: number, clientY: number) {
+      return runtime.current.hitTest?.(clientX, clientY) ?? null;
+    },
   }), []);
 
   useEffect(() => {
@@ -438,6 +445,7 @@ const KoroStage = forwardRef<StageHandle, StageProps>(function KoroStage(props, 
     const onPointerDown = (event: PointerEvent) => {
       if (!canvas || !active) return;
       if (event.button !== 0 && event.pointerType === 'mouse') return;
+      if (['nari', 'yume'].includes(character.id) && !runtime.current.hitTest?.(event.clientX, event.clientY)) return;
       isPointerDown = true;
       isDragging = false;
       dragStartX = event.clientX;
@@ -551,6 +559,12 @@ const KoroStage = forwardRef<StageHandle, StageProps>(function KoroStage(props, 
       const bounds = projectionFor(model);
       const projection = new Float32Array(16);
       projection[10] = projection[15] = 1;
+      const hitProjection = new Float32Array(16);
+      runtime.current.hitTest = (clientX, clientY) => {
+        const rect = canvas.getBoundingClientRect();
+        if (!active || !rect.width || !rect.height) return null;
+        return hitCharacter({ x: (clientX - rect.left) / rect.width, y: (clientY - rect.top) / rect.height }, hitProjection, bounds, model!.man.art_meshes);
+      };
 
       const frame = (now: number) => {
         if (!active || !model || gl.isContextLost()) return;
@@ -766,6 +780,14 @@ const KoroStage = forwardRef<StageHandle, StageProps>(function KoroStage(props, 
           projection[5] = -1 / halfHeight;
           projection[12] = -centerX / halfWidth;
           projection[13] = centerY / halfHeight;
+          hitProjection.set(projection);
+          const translation = (model.man as any).model_translation;
+          if (translation?.format === 'koro-model-translation/1') {
+            const gain = translation.gain_parameter && model.paramIndex.has(translation.gain_parameter)
+              ? Math.max(0, Math.min(1, model.getParameter(translation.gain_parameter) ?? 0)) : 1;
+            const shift = Math.max(-translation.max_y, Math.min(translation.max_y, (model.getParameter(translation.parameter) ?? 0) * translation.scale_y)) * gain;
+            if (Number.isFinite(shift)) hitProjection[13] += projection[5] * shift;
+          }
           gl.bindFramebuffer(gl.FRAMEBUFFER, null);
           gl.viewport(0, 0, canvas.width, canvas.height);
           gl.clearColor(0, 0, 0, 0);
@@ -809,13 +831,15 @@ const KoroStage = forwardRef<StageHandle, StageProps>(function KoroStage(props, 
       window.removeEventListener('pointercancel', onPointerUp);
       window.removeEventListener('blur', onPointerUp);
       runtime.current.model = null;
+      runtime.current.hitTest = undefined;
       if (model) model.dispose();
       else textures.forEach(texture => gl.deleteTexture(texture));
       if (!canvas.isConnected) gl.getExtension('WEBGL_lose_context')?.loseContext();
     };
   }, [character]);
 
-  return <canvas ref={canvasRef} className="companion-canvas" aria-label={`${character.name} 动态角色`} data-model-ready={ready} />;
+  return <canvas ref={canvasRef} className="companion-canvas" aria-label={`${character.name} 动态角色`} data-model-ready={ready}
+    onContextMenu={event => { if (['nari', 'yume'].includes(character.id)) event.preventDefault(); }} />;
 });
 
 const CompanionStage = forwardRef<StageHandle, StageProps>(function CompanionStage(props, ref) {

@@ -39,6 +39,9 @@ export interface CompanionSkin {
     equipMessage?: string;
     startupLines?: readonly string[];
     tapLines?: readonly string[];
+    /** Indices into tapLines: reuse matching recordings for burst/protection feedback. */
+    tapReactions?: { rapid: readonly number[]; surrender: number };
+    touchLines?: { head: readonly number[]; face: readonly number[]; body: readonly number[]; hold: readonly number[] };
     dragLines?: readonly string[];
     tapSymbols?: readonly string[];
     /** Extra conversational flavor; the character's core persona remains authoritative. */
@@ -359,6 +362,8 @@ export const nariSkins: readonly CompanionSkin[] = [
     nativeDefaults: nariHybridNativeDefaults,
     motions: nariHybridMotions,
     interaction: {
+      touchLines: { head: [5], face: [1], body: [3, 4, 6], hold: [4] },
+      tapReactions: { rapid: [0, 2], surrender: 2 },
       equipMessage: '【樱花机能潮服】上线！今天也要帅气地出发~',
       promptHint: '保持 Sunny 的温柔人格，语气更轻快利落，偶尔使用街头、樱花和出发的意象，避免变成攻击性或傲慢角色。',
       startupLines: [
@@ -430,6 +435,8 @@ export const nariSkins: readonly CompanionSkin[] = [
     nativeDefaults: nariHybridNativeDefaults,
     motions: nariHybridMotions,
     interaction: {
+      touchLines: { head: [3], face: [4], body: [6], hold: [1, 5] },
+      tapReactions: { rapid: [0, 2], surrender: 2 },
       equipMessage: '换上【玫瑰华服礼服】啦，今晚请让我陪你赴一场温柔的舞会。',
       promptHint: '保持 Sunny 的温柔人格，语气更优雅从容，可以使用舞会、玫瑰和礼服意象，避免过度戏剧化。',
       startupLines: [
@@ -511,6 +518,8 @@ export const nariSkins: readonly CompanionSkin[] = [
     nativeDefaults: nariHybridNativeDefaults,
     motions: nariHybridMotions,
     interaction: {
+      touchLines: { head: [2], face: [4], body: [1, 5], hold: [6] },
+      tapReactions: { rapid: [0, 3], surrender: 3 },
       equipMessage: '换好【樱花梦境泳装】啦，一起去吹吹海风吧~',
       promptHint: '保持 Sunny 的温柔人格，语气清爽轻柔，可以使用海风、浪花、阳光和夏日梦境意象，避免把换装误认为人格改变。',
       startupLines: [
@@ -560,6 +569,8 @@ export const nariSkins: readonly CompanionSkin[] = [
     tuning: 'Nari/Nari.kotune.json',
     physics: 'Nari/Nari.kophys.json',
     interaction: {
+      touchLines: { head: [2], face: [5], body: [3, 6], hold: [1] },
+      tapReactions: { rapid: [0, 4], surrender: 4 },
       equipMessage: '猫耳模式启动！今天也要元气满满地陪着你喵~',
       promptHint: '保持 Sunny 的温柔人格，增加少量可爱的猫耳拟声词或“喵”作为点缀，避免每句话都使用猫娘口癖。',
       startupLines: [
@@ -666,6 +677,8 @@ export const yumeSkins: readonly CompanionSkin[] = [
     pose: 'Yume/Yume.kopose.json',
     nativeDefaults: { Param16: 0, Param79: 0, ParamOutfit: 2 },
     interaction: {
+      touchLines: { head: [1], face: [2], body: [4, 5], hold: [1] },
+      tapReactions: { rapid: [0, 3, 6], surrender: 3 },
       equipMessage: '【蔚蓝机能潮服】启动！怎么样，本小姐是不是很酷？',
       promptHint: '保持 Yume 的傲娇元气人格，语气更利落俏皮；可以加入蔚蓝街头、装备和出发意象，偶尔嘴硬但不要变得冷漠。',
       startupLines: [
@@ -727,6 +740,8 @@ export const yumeSkins: readonly CompanionSkin[] = [
     pose: 'Yume/Yume.kopose.json',
     nativeDefaults: { Param16: 0, Param79: 0, ParamOutfit: 3 },
     interaction: {
+      touchLines: { head: [1], face: [6], body: [2, 4], hold: [4] },
+      tapReactions: { rapid: [0, 3, 5], surrender: 5 },
       equipMessage: '换上【蓝宝石晚宴夜曲】啦，今晚可要好好欣赏本小姐哦。',
       promptHint: '保持 Yume 的傲娇和元气，在表达上更优雅克制；可以使用晚宴、蓝宝石、星夜和音乐意象，保留嘴硬心软的反差。',
       startupLines: [
@@ -788,6 +803,8 @@ export const yumeSkins: readonly CompanionSkin[] = [
     pose: 'Yume/Yume.kopose.json',
     nativeDefaults: { Param16: 0, Param79: 0, ParamOutfit: 1 },
     interaction: {
+      touchLines: { head: [2], face: [3], body: [6], hold: [5, 6] },
+      tapReactions: { rapid: [0, 1, 4], surrender: 1 },
       equipMessage: '【蔚蓝梦境泳装】换好啦！走吧，去海边玩一会儿~',
       promptHint: '保持 Yume 的傲娇元气人格，语气清爽轻快；可以使用海浪、泳池、阳光和夏日意象，表现出想玩又嘴硬的感觉。',
       startupLines: [
@@ -839,6 +856,8 @@ export const yumeSkins: readonly CompanionSkin[] = [
     pose: 'Yume/Yume.kopose.json',
     nativeDefaults: { Param16: 0, Param79: 0, ParamCatEars: 1, ParamOutfit: 0 },
     interaction: {
+      touchLines: { head: [2], face: [5], body: [3, 6], hold: [4] },
+      tapReactions: { rapid: [0, 1, 4], surrender: 1 },
       equipMessage: '深海猫耳模式启动！哼，今天可以特别允许你摸一下。',
       promptHint: '保持 Yume 的傲娇元气人格，增加少量深海猫耳元素和“喵”作为点缀；不要让猫耳口癖覆盖原本的傲娇性格。',
       startupLines: [

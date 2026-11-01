@@ -86,8 +86,9 @@ export const yumeBehavior: CompanionBehavior = {
       targetExpression: defaultExpression,
       line: {
         id: 'surrender',
-        text: '停……停手啦！受不了啦！(>_<)',
-        seconds: 2.0,
+        text: '别戳我啦',
+        audioUrl: '/companion/audio/voice/yume/tap_03.mp3',
+        seconds: 1.375,
       },
     };
   },

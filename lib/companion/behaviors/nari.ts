@@ -101,7 +101,7 @@ export const nariBehavior: CompanionBehavior = {
       targetExpression: defaultExpression,
       line: {
         id: 'surrender',
-        text: '呀~ 投降啦，真的好痒呀！(*ﾉωﾉ)',
+        text: '好啦好啦，手下留情嘛~',
         audioUrl: '/companion/audio/voice/nari/tap_09.mp3',
         seconds: 2.2,
       },

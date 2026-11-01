@@ -70,6 +70,10 @@ Nari 梦境服装当前包含 34 个贴图槽位，有两个槽位引用同一�
 
 `behaviors/nari.ts`、`behaviors/yume.ts`、`voice.ts`、`voice-dataset.json` 和已有音频为另一组维护对象。换装资源更新不自动意味着台词、触碰部位规则或配音更新；如需调整，应单独确认事件 → 动作/表情 → 字幕/音频的绑定。
 
+后续互动绑定修复在 `interaction.tapReactions` 中配置连击和保护反馈对应的 tapLines 索引；索引与原录音序号绑定，调整台词顺序时必须同时核对。详见 [互动审计及第一轮修复](./INTERACTION-AUDIT-20261101.md)。2026-11-01 资源基线保留初次皮肤同步时的状态，不因之后的互动代码改动而改写。
+
+第二轮补充 `interaction.touchLines` 的 head / face / body / hold 索引，`voice.ts` 为经典原版复用基础录音池。`CompanionStage.hitTest` 和 `touch-hit.mjs` 根据当前相机、网格判断角色范围；以后修改渲染投影、模型平移或网格结构时，也必须回归触碰命中。部位比例为模型坐标近似值，不可按 PC/H5 屏幕固定高度重新切分。
+
 ## 下次同步流程
 
 1. 记录 `git status`，备份将改动的 `public/companion/skins/` 与配置文件。保留当前基线，不先覆盖。

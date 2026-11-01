@@ -91,6 +91,20 @@ export function getRapidTapLine(characterId: string, previousText?: string): Voi
   };
 }
 
+// Region feedback reuses the exact subtitle/recording pair; no invented audio.
+export function getTouchVoiceLine(characterId: string, kind: 'head' | 'face' | 'body' | 'hold', previousText?: string): VoiceLine {
+  const who = characterId === 'yume' ? 'yume' : 'nari';
+  const indices = who === 'nari'
+    ? { head: [13, 19, 26], face: [1, 18, 32], body: [2, 6, 28], hold: [11, 34, 35] }
+    : { head: [8, 26, 38], face: [1, 24, 31], body: [0, 17, 42], hold: [12, 14, 47] };
+  const pool = indices[kind];
+  const entries = dataset[who].tap;
+  const choices = pool.filter(index => entries[index].text !== previousText);
+  const candidates = choices.length ? choices : pool;
+  const index = candidates[Math.floor(Math.random() * candidates.length)];
+  return { ...entries[index], audioUrl: `/companion/audio/voice/${who}/tap_${String(index + 1).padStart(2, '0')}.mp3` };
+}
+
 // Nari 精选入场与问候语音 (包含早/中/晚时段专属关怀)
 export const nariStartupLines: VoiceLine[] = [
   { id: 'nari_startup_01', text: '嘿，你回来啦！', audioUrl: '/companion/audio/voice/nari/startup_01.mp3', seconds: 1.78 },

@@ -4,11 +4,11 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Brain, Check, ChevronDown, ChevronRight, ChevronUp, Eye, LayoutGrid, Loader2, MessageCircle, Mic, MicOff, Pause, PhoneCall, PhoneOff, Play, RotateCcw, SendHorizonal, Settings, Shirt, Sliders, Smile, Sparkles, Volume2, VolumeX, X } from 'lucide-react';
-import CompanionStage, { type FramingMode, type StageHandle, type StageSnapshot } from './CompanionStage';
+import CompanionStage, { type FramingMode, type StageHandle, type StageSnapshot, type TouchRegion } from './CompanionStage';
 import CallOverlay, { type CallPhase } from './CallOverlay';
 import { CallSoundManager, VoiceRecognitionManager } from '@/lib/companion/call-audio';
 import { companionCharacters, type CompanionCharacter, type CompanionSkin } from '@/lib/companion/catalog';
-import { getRandomTapLine, getRapidTapLine, getRandomStartupLine, getRandomDragLine, type VoiceLine } from '@/lib/companion/voice';
+import { getRandomTapLine, getRapidTapLine, getRandomStartupLine, getRandomDragLine, getTouchVoiceLine, type VoiceLine } from '@/lib/companion/voice';
 import '@/app/companion/companion.css';
 
 import { getCompanionBehavior, type QuickPromptItem } from '@/lib/companion/behaviors';
@@ -247,6 +247,13 @@ function CompanionSession({
 
   const handleSelectSkin = (skin: CompanionSkin) => {
     if (skin.id === currentSkinId) return;
+    pendingEquipLineRef.current = null;
+    comboCountRef.current = 0;
+    exhaustedUntilRef.current = 0;
+    lastTapLineTextRef.current = undefined;
+    dragStartRef.current = null;
+    lastHoldEndRef.current = -Infinity;
+    pointerHitRef.current = null;
     setCurrentSkinId(skin.id);
     onCompanionSkinChange?.(skin);
     if (typeof window !== 'undefined') {
@@ -435,6 +442,9 @@ function CompanionSession({
 
   const tapBubbleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastTapTimeRef = useRef<number>(0);
+  const lastTouchRegionRef = useRef<TouchRegion>('body');
+  const lastHoldEndRef = useRef(-Infinity);
+  const pointerHitRef = useRef<boolean | null>(null);
   const lastTapLineTextRef = useRef<string | undefined>(undefined);
   const isPlayingVoiceRef = useRef<boolean>(false);
   const comboCountRef = useRef<number>(0);
@@ -658,15 +668,27 @@ function CompanionSession({
     void playChatReply(reply);
   }, [reply, ready, callPhase]);
 
-  const selectTapLine = (kind: 'tap' | 'rapid'): VoiceLine => {
+  const selectTapLine = (kind: 'tap' | 'rapid' | 'surrender' | 'hold', region?: TouchRegion): VoiceLine => {
     // 换装皮肤优先使用专属录制的高保真本地音频与字幕反馈；默认初始外观使用基础角色配音库。
     const isOriginalSkin = !activeSkin || activeSkin.id === 'original' || activeSkin.id === 'default';
     const skinLines = !isOriginalSkin ? activeSkin.interaction?.tapLines : null;
     if (skinLines?.length) {
-      const candidates = skinLines.filter(text => text !== lastTapLineTextRef.current);
-      const pool = candidates.length ? candidates : skinLines;
-      const text = pool[Math.floor(Math.random() * pool.length)];
-      const lineIdx = skinLines.indexOf(text);
+      const reactions = activeSkin?.interaction?.tapReactions;
+      const validIndex = (index: number) => Number.isInteger(index) && index >= 0 && index < skinLines.length;
+      const rapid = reactions?.rapid.filter(validIndex) ?? [];
+      const surrender = reactions && validIndex(reactions.surrender) ? reactions.surrender : undefined;
+      const all = skinLines.map((_, index) => index);
+      const touch = activeSkin?.interaction?.touchLines;
+      const regionIndices = (kind === 'hold' ? touch?.hold : kind === 'tap' && region ? touch?.[region] : undefined)?.filter(validIndex);
+      let indices = kind === 'surrender' && surrender !== undefined ? [surrender]
+        : kind === 'rapid' && rapid.length ? rapid
+        : regionIndices?.length ? regionIndices
+        : kind === 'tap' && reactions ? all.filter(index => !rapid.includes(index) && index !== surrender) : all;
+      if (!indices.length) indices = all;
+      const candidates = indices.filter(index => skinLines[index] !== lastTapLineTextRef.current);
+      const pool = candidates.length ? candidates : indices;
+      const lineIdx = pool[Math.floor(Math.random() * pool.length)];
+      const text = skinLines[lineIdx];
       const filename = `tap_${String(lineIdx + 1).padStart(2, '0')}.mp3`;
       return {
         id: `skin-${activeSkin?.id ?? 'default'}-${kind}`,
@@ -674,12 +696,16 @@ function CompanionSession({
         audioUrl: `/companion/audio/voice/${character.id}/skins/${activeSkin?.id}/${filename}`,
       };
     }
+    if (['nari', 'yume'].includes(character.id) && (region || kind === 'hold')) {
+      return getTouchVoiceLine(character.id, kind === 'hold' ? 'hold' : region!, lastTapLineTextRef.current);
+    }
     return kind === 'tap'
       ? getRandomTapLine(character.id, lastTapLineTextRef.current)
       : getRapidTapLine(character.id, lastTapLineTextRef.current);
   };
 
   const prepareTapVoice = (kind: 'tap' | 'rapid') => {
+    if (kind === 'tap' && ['nari', 'yume'].includes(character.id)) return;
     if (!voiceEnabled || !sfxEnabled || preparedTapVoicesRef.current.has(kind)) return;
     const line = selectTapLine(kind);
     if (!line.audioUrl) return;
@@ -733,6 +759,9 @@ function CompanionSession({
     if (!usable || dragStartRef.current || e.isPrimary === false || (e.pointerType === 'mouse' && e.button !== 0)) return;
     const target = e.target as HTMLCanvasElement | null;
     if (!target?.matches?.('canvas.companion-canvas')) return;
+    const region = stage.current?.hitTest ? stage.current.hitTest(e.clientX, e.clientY) : 'body';
+    pointerHitRef.current = region !== null;
+    if (['nari', 'yume'].includes(character.id) && !region) return;
     try {
       target.setPointerCapture(e.pointerId);
     } catch {
@@ -797,6 +826,9 @@ function CompanionSession({
           playDragVoice();
         }
       }
+    } else if (e?.type === 'pointerup' && dragDuration >= 700 && ['nari', 'yume'].includes(character.id)) {
+      lastHoldEndRef.current = now;
+      handleCharacterTap(e, true);
     }
   };
 
@@ -1002,20 +1034,22 @@ function CompanionSession({
     playVoice(line, { targetMotionId, targetExpression });
   };
 
-  // 角色模型准备就绪后，播放亲切的进场问候或换装亮相宣言（支持切换伴侣与换装时触发）
+  // Equip feedback waits for current speech/streaming, rather than an old reply object.
   useEffect(() => {
-    if (!ready || isStreaming || reply) return;
-
-    // 优先播放换装亮相语音与口型动画
-    if (pendingEquipLineRef.current) {
-      const equipLine = pendingEquipLineRef.current;
+    if (!ready || isStreaming || isSpeaking || callPhase !== 'idle' || chatAbortControllerRef.current) return;
+    const equipLine = pendingEquipLineRef.current;
+    if (!equipLine) return;
+    const timer = setSessionTimeout(() => {
+      if (pendingEquipLineRef.current !== equipLine) return;
       pendingEquipLineRef.current = null;
-      const timer = setSessionTimeout(() => {
-        playVoice(equipLine, { targetExpression: '开心' });
-      }, 350);
-      return () => clearSessionTimeout(timer);
-    }
+      const reaction = getCompanionReplyReaction(character, 'happy');
+      playVoice(equipLine, { targetMotionId: reaction.motionId, targetExpression: reaction.expressionId });
+    }, 350);
+    return () => clearSessionTimeout(timer);
+  }, [ready, currentSkinId, isStreaming, isSpeaking, callPhase]);
 
+  useEffect(() => {
+    if (!ready || isStreaming || reply || pendingEquipLineRef.current) return;
     if (externalMessages?.some(message => message.id !== 'greeting') || lastStartupCharIdRef.current === character.id) return;
     lastStartupCharIdRef.current = character.id;
 
@@ -1050,7 +1084,7 @@ function CompanionSession({
   }, []);
 
   // 播放触碰反馈语音（支持日常问候、急促连击台词、求饶三种档位）
-  const playTapVoice = (combo: number) => {
+  const playTapVoice = (combo: number, hold = false) => {
     const now = Date.now();
     const kind = combo >= 3 ? 'rapid' : 'tap';
     const prepared = preparedTapVoicesRef.current.get(kind);
@@ -1062,10 +1096,17 @@ function CompanionSession({
     let targetExpression = '';
     let targetMotionId = '';
 
-    if (combo >= 5) {
+    if (hold) {
+      line = selectTapLine('hold', lastTouchRegionRef.current);
+      const reaction = getCompanionReplyReaction(character, 'calm');
+      targetExpression = reaction.expressionId;
+      targetMotionId = reaction.motionId || '';
+    } else if (combo >= 5) {
       // 🌟 Level 3: 连击 5 次以上，触发【求饶/娇嗔保护态】！
       const reaction = behavior.getSurrenderReaction(character, tapExpression);
-      line = reaction.line || { id: 'surrender', text: '好啦好啦，手下留情嘛~ 🌸', seconds: 2.2 };
+      line = activeSkin?.interaction?.tapLines?.length && activeSkin.id !== 'original'
+        ? selectTapLine('surrender')
+        : reaction.line || { id: 'surrender', text: '好啦好啦，手下留情嘛~ 🌸', seconds: 2.2 };
       targetExpression = reaction.targetExpression || tapExpression;
       targetMotionId = reaction.targetMotionId || '';
 
@@ -1080,14 +1121,21 @@ function CompanionSession({
       targetMotionId = reaction.targetMotionId || '';
     } else {
       // 🌟 Level 1: 正常单次轻戳日常问候
-      line = preparedTapVoicesRef.current.get('tap')?.line ?? selectTapLine('tap');
+      line = ['nari', 'yume'].includes(character.id)
+        ? selectTapLine('tap', lastTouchRegionRef.current)
+        : preparedTapVoicesRef.current.get('tap')?.line ?? selectTapLine('tap');
       const reaction = behavior.getRandomTapReaction(character, tapExpression);
       targetExpression = reaction.targetExpression || '';
       targetMotionId = reaction.targetMotionId || '';
+      if (['nari', 'yume'].includes(character.id)) {
+        const regionReaction = getCompanionReplyReaction(character, lastTouchRegionRef.current === 'head' ? 'happy' : lastTouchRegionRef.current === 'face' ? 'shy' : 'surprised');
+        targetExpression = regionReaction.expressionId;
+        targetMotionId = regionReaction.motionId || targetMotionId;
+      }
     }
 
     lastTapLineTextRef.current = line.text;
-    playVoice(line, { targetMotionId, targetExpression, combo, isTap: true });
+    playVoice(line, { targetMotionId, targetExpression, combo, isTap: !hold });
     if (combo < 5) prepareTapVoice(kind);
   };
 
@@ -1096,9 +1144,16 @@ function CompanionSession({
   // 2. 眼睛按照模型自身动作与待机节奏自然眨眼，绝不随点击暴力快速眨眼
   // 3. 播放语音中做禁用不要覆盖，只累计点击次数
   // 4. 语音播放完了，若仍在连击，紧接着播放连击语音
-  const handleCharacterTap = (e: React.MouseEvent) => {
+  const handleCharacterTap = (e: React.MouseEvent, hold = false) => {
     const target = e.target as Element;
     if (!usable || !target.matches('canvas.companion-canvas')) return;
+    if (pointerHitRef.current === false) { pointerHitRef.current = null; return; }
+    if (['nari', 'yume'].includes(character.id)) {
+      const region = stage.current?.hitTest ? stage.current.hitTest(e.clientX, e.clientY) : 'body';
+      if (!region) return;
+      lastTouchRegionRef.current = region;
+    }
+    if (!hold && Date.now() - lastHoldEndRef.current < 400) return;
 
     // 若刚才是在按住拖拽视线引导（释放后 400ms 内），不误触发角色轻点对白与粒子
     if (Date.now() - lastDragEndRef.current < 400) {
@@ -1106,6 +1161,12 @@ function CompanionSession({
     }
 
     const now = Date.now();
+    if (hold) {
+      comboCountRef.current = 0;
+      lastTapTimeRef.current = 0;
+      if (!isPlayingVoiceRef.current && now >= exhaustedUntilRef.current) playTapVoice(1, true);
+      return;
+    }
 
     // 1. 生成点击位置的浮动心动粒子 (❤️ / 🌸 / ✨)
     const rect = e.currentTarget.getBoundingClientRect();
