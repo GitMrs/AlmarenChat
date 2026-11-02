@@ -14,7 +14,7 @@ import { ensurePersonalAssistant } from '@/lib/personal-assistant/profile';
 import { archiveOldMainChatMessages, loadAssistantMemoryContext } from '@/lib/personal-assistant/experience-memory';
 import { buildAssistantHistory } from '@/lib/personal-assistant/history-context.mjs';
 import { buildRecentStateContinuityGuidance } from '@/lib/chat/conversation-continuity.mjs';
-import { syncRecentStates } from '@/lib/chat/recent-state-store';
+import { applyRecentStateMessage, syncRecentStates } from '@/lib/chat/recent-state-store';
 import { dispatchContextCandidates, planContextSources } from '@/lib/memory/context-dispatcher.mjs';
 import { buildReminderExtractionPrompt, parseReminderExtraction } from '@/lib/personal-assistant/reminder-extraction.mjs';
 import { classifyReminderRequest } from '@/lib/personal-assistant/reminder-intent.mjs';
@@ -287,6 +287,13 @@ export async function POST(request: Request) {
           return { content: racedReply.content, streamContent: racedReply.content };
         }
         throw error;
+      }
+
+      const persistedUserMessage = await prisma.message.findUnique({ where: { id: userMessageId } });
+      if (persistedUserMessage) {
+        await applyRecentStateMessage({ conversationId: binding.conversationId, message: persistedUserMessage }).catch((error: any) => {
+          console.warn('[recent-state] apply failed:', error?.message);
+        });
       }
 
       return {

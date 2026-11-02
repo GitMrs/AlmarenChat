@@ -23,7 +23,7 @@ import { loadAgentModelSetting, resolveUserModelConfig } from '@/app/api/_lib/ag
 import { CONVERSATION_GROUNDING_GUIDANCE } from '@/lib/chat/conversation-grounding.mjs';
 import { buildRecentStateContinuityGuidance } from '@/lib/chat/conversation-continuity.mjs';
 import { buildAgentIdentitySystem, buildAgentRuntimeSystem } from '@/lib/chat/agent-prompt.mjs';
-import { syncRecentStates } from '@/lib/chat/recent-state-store';
+import { applyRecentStateMessage, syncRecentStates } from '@/lib/chat/recent-state-store';
 import { dispatchContextCandidates, planContextSources } from '@/lib/memory/context-dispatcher.mjs';
 
 const TEXT_CHAT_COST = 1;
@@ -266,13 +266,16 @@ export async function POST(request: Request) {
 
     // Save user message
     if (resolvedConversationId && !skipPersistUserMessage) {
-      await prisma.message.create({
+      const persistedUserMessage = await prisma.message.create({
         data: {
           conversationId: resolvedConversationId,
           role: 'user',
           content: textMessage,
           attachments: imageAttachments.length > 0 ? imageAttachments : undefined,
         },
+      });
+      await applyRecentStateMessage({ conversationId: resolvedConversationId, message: persistedUserMessage }).catch((error: any) => {
+        console.warn('[recent-state] apply failed:', error?.message);
       });
     }
     let fullContent = '';

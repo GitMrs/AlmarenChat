@@ -18,7 +18,7 @@ import { archiveOldMainChatMessages, loadAssistantMemoryContext } from '@/lib/pe
 import { loadUserMemoryItems } from '@/lib/personal-assistant/user-memory';
 import { buildAssistantHistory } from '@/lib/personal-assistant/history-context.mjs';
 import { buildRecentStateContinuityGuidance } from '@/lib/chat/conversation-continuity.mjs';
-import { syncRecentStates } from '@/lib/chat/recent-state-store';
+import { applyRecentStateMessage, syncRecentStates } from '@/lib/chat/recent-state-store';
 import { dispatchContextCandidates, planContextSources } from '@/lib/memory/context-dispatcher.mjs';
 import { parseMcpServers } from '@/lib/agents/runtime/mcp-config.mjs';
 import { createAssistantToolBroker } from '@/lib/personal-assistant/tool-broker.mjs';
@@ -264,7 +264,7 @@ export async function POST(request: Request) {
       },
     });
     messages.splice(0, messages.length, ...preparedContext.messages);
-    await prisma.message.create({
+    const persistedUserMessage = await prisma.message.create({
       data: {
         id: userMessageId,
         conversationId,
@@ -273,6 +273,9 @@ export async function POST(request: Request) {
         content: messageForModel,
         attachments: imageAttachments.length ? imageAttachments : undefined,
       },
+    });
+    await applyRecentStateMessage({ conversationId, message: persistedUserMessage }).catch((error: any) => {
+      console.warn('[recent-state] apply failed:', error?.message);
     });
 
     const broker = createAssistantToolBroker({ servers: localMode ? [] : parseMcpServers(userSettings.assistantMcpServers).filter((server) => server.enabled !== false) });

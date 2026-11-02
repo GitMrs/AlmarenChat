@@ -23,7 +23,7 @@ import { CONVERSATION_GROUNDING_GUIDANCE } from '@/lib/chat/conversation-groundi
 import { stripHistoryRetrievalNotices } from '@/lib/personal-assistant/retrieval-notice.mjs';
 import { buildRecentStateContinuityGuidance } from '@/lib/chat/conversation-continuity.mjs';
 import { buildAgentIdentitySystem, buildAgentRuntimeSystem } from '@/lib/chat/agent-prompt.mjs';
-import { syncRecentStates } from '@/lib/chat/recent-state-store';
+import { applyRecentStateMessage, syncRecentStates } from '@/lib/chat/recent-state-store';
 import { dispatchContextCandidates, planContextSources } from '@/lib/memory/context-dispatcher.mjs';
 
 export const runtime = 'nodejs';
@@ -246,7 +246,7 @@ export async function POST(request: Request) {
       select: { id: true },
     });
     if (!existingUserMessage) {
-      await prisma.message.create({
+      const persistedUserMessage = await prisma.message.create({
         data: {
           id: userMessageId,
           conversationId,
@@ -258,6 +258,11 @@ export async function POST(request: Request) {
       }).catch((error: any) => {
         if (error?.code !== 'P2002') throw error;
       });
+      if (persistedUserMessage) {
+        await applyRecentStateMessage({ conversationId, message: persistedUserMessage }).catch((error: any) => {
+          console.warn('[recent-state] apply failed:', error?.message);
+        });
+      }
     }
 
     const finalizeResponse = async (modelContent: string) => {

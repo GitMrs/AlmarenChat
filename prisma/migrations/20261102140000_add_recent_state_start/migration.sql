@@ -1,0 +1,1 @@
+ALTER TABLE "RecentState" ADD COLUMN "startsAt" DATETIME;
