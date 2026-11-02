@@ -506,7 +506,7 @@ function startBinding(binding) {
 
   bot.use(
     messageFilter({ dedup: { windowMs: 60_000, maxSize: 5_000 } }),
-    contentSanitizer(),
+    contentSanitizer({ parseFaceTags: true }),
     concurrencyGuard({ strategy: 'queue', maxQueue: 5, maxProcessingMs: 190_000 })
   );
   bot.on('ready', () => {
