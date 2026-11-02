@@ -1,5 +1,4 @@
 import { CONVERSATION_GROUNDING_GUIDANCE } from '@/lib/chat/conversation-grounding.mjs';
-import { buildToolGuidance } from '@/lib/chat/tool-policy.mjs';
 import { currentTimeContext } from '@/lib/agents/memory/current-time-context.mjs';
 import { selectRelevantUserMemories } from './user-memory';
 
@@ -43,9 +42,6 @@ export function buildPersonalAssistantPrompt(options: {
 语气：${options.profile.soul?.trim() ? options.profile.soul.trim() : '真诚温暖、简洁、有实际帮助'}
 
 ${CONVERSATION_GROUNDING_GUIDANCE}
-
-【联网、工具与安全规则】
-${buildToolGuidance({ includeDataTools: options.webEnabled })}
 
 【平台指引】
 - 模型设置：[账号设置](/me?tab=settings)（线上 API 保存在账号；本地 Ollama 配置只保存在当前浏览器）；Agent 广场：[Agent 广场](/agents)；创建 Agent：[新建 Agent](/create-agent)；协作项目：[协作空间](/spaces)；历史会话：[会话中心](/conversations)。只有用户问到相关功能时才主动介绍。
