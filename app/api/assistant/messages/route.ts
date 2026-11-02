@@ -12,12 +12,12 @@ import { reserveChatQuota } from '@/lib/chat/chat-quota';
 import { createModelClient, resolveModelName } from '@/lib/core/model-client';
 import { createChatWebTools, runAutoWebChat } from '@/lib/web/auto-web';
 import { ensurePersonalAssistant } from '@/lib/personal-assistant/profile';
-import { buildAssistantContextParts } from '@/lib/personal-assistant/prompt-builder';
+import { buildAssistantContextParts, buildPersonalAssistantRuntimeContext } from '@/lib/personal-assistant/prompt-builder';
 import { buildAssistantActivityContext, buildAssistantPlatformContext } from '@/lib/personal-assistant/platform-context';
 import { archiveOldMainChatMessages, loadAssistantMemoryContext } from '@/lib/personal-assistant/experience-memory';
 import { loadUserMemoryItems } from '@/lib/personal-assistant/user-memory';
 import { buildAssistantHistory } from '@/lib/personal-assistant/history-context.mjs';
-import { buildConversationContinuityGuidance } from '@/lib/chat/conversation-continuity.mjs';
+import { buildCompanionContinuityGuidance } from '@/lib/chat/conversation-continuity.mjs';
 import { parseMcpServers } from '@/lib/agents/runtime/mcp-config.mjs';
 import { createAssistantToolBroker } from '@/lib/personal-assistant/tool-broker.mjs';
 import { buildRetrievalNotice } from '@/lib/personal-assistant/retrieval-notice.mjs';
@@ -205,7 +205,7 @@ export async function POST(request: Request) {
     let toolCalled = false;
     const retrievalNotice = () => buildRetrievalNotice({ toolCalled });
 
-    const continuityGuidance = buildConversationContinuityGuidance({ message: messageForModel, history: memoryContext.history });
+    const continuityGuidance = buildCompanionContinuityGuidance({ message: messageForModel, history: memoryContext.history });
     const contextParts = buildAssistantContextParts({
       userName: userSettings.name,
       profile,
@@ -216,7 +216,12 @@ export async function POST(request: Request) {
       experienceContext: memoryContext.experienceContext,
       query: messageForModel,
     });
-    const systemPrompt = `${contextParts.requiredSystem}\n\n${continuityGuidance}`;
+    const systemPrompt = contextParts.requiredSystem;
+    const runtimeSystem = buildPersonalAssistantRuntimeContext({
+      channel: 'WEB',
+      continuityGuidance,
+      defaultWeatherLocation: userSettings.defaultWeatherLocation,
+    });
     const compressedHistory = buildAssistantHistory(memoryContext.history);
     const userContent = imageAttachments.length
       ? [
@@ -244,7 +249,7 @@ export async function POST(request: Request) {
 
     const preparedContext = await prepareConversationContext({
       userId, conversationId: conversationId, maxMessages: contextLimit,
-      requiredSystem: systemPrompt, optional: contextParts.optional,
+      requiredSystem: systemPrompt, runtimeSystem, optional: contextParts.optional,
       currentMessage: { role: 'user', content: userContent }, modelName: usesCustomModel ? userSettings.modelName : '', modelContextWindow: userSettings.modelContextWindow,
       summarize: localMode ? undefined : async (prompt: string) => {
         const response = await client.chat.completions.create({ model, messages: [{ role: 'user', content: prompt }], temperature: 0.1 }, { timeout: 20_000, maxRetries: 0 });

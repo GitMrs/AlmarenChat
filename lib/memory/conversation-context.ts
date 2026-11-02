@@ -1,5 +1,5 @@
 import prisma from '@/app/api/_lib/db';
-import { composeConversationRequest, continuousRecentSuffix, conversationBudget, estimateRequestTokens, quotedWorkingSummary, extractiveWorkingSummary, WORKING_SUMMARY_MAX_CHARS } from './conversation-context-policy.mjs';
+import { composeConversationRequest, continuousRecentSuffix, conversationBudget, estimateRequestTokens, quotedWorkingSummary, extractiveWorkingSummary, WORKING_SUMMARY_MAX_CHARS, RUNTIME_TIME_PRIORITY_GUIDANCE } from './conversation-context-policy.mjs';
 
 const RELATIVE_TIME_PATTERN = /(?:今天|昨天|前天|明天|后天|现在|刚才|今晚|明晚|本周|这周|下周|上周|当天|当时)/u;
 const ABSOLUTE_DATE_PATTERN = /(?:20\d{2}[-年]\d{1,2}[-月]\d{1,2}(?:日|T)|\d{1,2}月\d{1,2}日|\d{4}-\d{2}-\d{2})/u;
@@ -16,6 +16,7 @@ interface Options {
   conversationId: string;
   maxMessages: number;
   requiredSystem?: string;
+  runtimeSystem?: string;
   optional?: Array<{ name: string; content: string }>;
   currentMessage: { role: string; content: any };
   modelName?: string;
@@ -41,7 +42,11 @@ export async function prepareConversationContext(options: Options) {
   ]);
   let history = tail.reverse();
   const limits = conversationBudget(options.modelName, options.modelContextWindow);
-  const fixedCost = estimateRequestTokens([{ role: 'system', content: options.requiredSystem || '' }, options.currentMessage]);
+  const fixedCost = estimateRequestTokens([
+    { role: 'system', content: options.requiredSystem || '' },
+    { role: 'system', content: [options.runtimeSystem, RUNTIME_TIME_PRIORITY_GUIDANCE].filter(Boolean).join('\n\n') },
+    options.currentMessage,
+  ]);
   if (fixedCost > limits.inputBudget) throw new Error('系统提示与当前输入已超出上下文预算，不能静默截断本轮内容');
   let recent = continuousRecentSuffix(history, options.maxMessages, limits.inputBudget - fixedCost);
   let state = stored;
@@ -77,7 +82,7 @@ ${excerpts}`);
         summary = valid ? value.trim() : extractiveWorkingSummary(appended);
       } else summary = excerpts;
     }
-    result = composeConversationRequest({ requiredSystem: options.requiredSystem, summary, recent, currentMessage: options.currentMessage, optional: options.optional, budget: limits.inputBudget });
+    result = composeConversationRequest({ requiredSystem: options.requiredSystem, runtimeSystem: options.runtimeSystem, summary, recent, currentMessage: options.currentMessage, optional: options.optional, budget: limits.inputBudget });
     if (result) break;
     if (recent.length <= 1) throw new Error('会话摘要与最近对话超出预算，未推进交接边界，请缩小输入或提高模型窗口配置');
     const reduced = continuousRecentSuffix(recent, recent.length - 1, Math.max(0, limits.inputBudget - fixedCost - estimateRequestTokens([{ content: summary }])));

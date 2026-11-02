@@ -9,11 +9,11 @@ import { reserveChatQuota } from '@/lib/chat/chat-quota';
 import { createModelClient, resolveModelName } from '@/lib/core/model-client';
 import { createChatWebTools, runAutoWebChat } from '@/lib/web/auto-web';
 import { buildAssistantActivityContext, buildAssistantPlatformContext } from '@/lib/personal-assistant/platform-context';
-import { buildAssistantContextParts } from '@/lib/personal-assistant/prompt-builder';
+import { buildAssistantContextParts, buildPersonalAssistantRuntimeContext } from '@/lib/personal-assistant/prompt-builder';
 import { ensurePersonalAssistant } from '@/lib/personal-assistant/profile';
 import { archiveOldMainChatMessages, loadAssistantMemoryContext } from '@/lib/personal-assistant/experience-memory';
 import { buildAssistantHistory } from '@/lib/personal-assistant/history-context.mjs';
-import { buildConversationContinuityGuidance } from '@/lib/chat/conversation-continuity.mjs';
+import { buildCompanionContinuityGuidance } from '@/lib/chat/conversation-continuity.mjs';
 import { buildReminderExtractionPrompt, parseReminderExtraction } from '@/lib/personal-assistant/reminder-extraction.mjs';
 import { classifyReminderRequest } from '@/lib/personal-assistant/reminder-intent.mjs';
 import { explicitMemoryPrompt, parseExplicitMemory } from '@/lib/personal-assistant/memory-intent.mjs';
@@ -171,11 +171,12 @@ export async function POST(request: Request) {
         experienceContext: memoryContext.experienceContext,
         query: message,
       });
-    const systemPrompt = [
-      contextParts.requiredSystem,
-      buildConversationContinuityGuidance({ message, history: memoryContext.history }),
-      '【当前渠道】：你正在 QQ 私聊中回复用户。QQ 与网页共用同一个主聊天上下文；不要提供站内相对链接，可以使用 QQ 支持的标准 Markdown，但避免 HTML 和复杂表格，回答保持适合即时消息阅读。长期记忆、任务和提醒也与网页共享。用户要求提醒时不要声称已经创建，系统会在回复末尾附加真实创建结果。',
-    ].filter(Boolean).join('\n\n');
+    const systemPrompt = contextParts.requiredSystem;
+    const runtimeSystem = buildPersonalAssistantRuntimeContext({
+      channel: 'QQ',
+      continuityGuidance: buildCompanionContinuityGuidance({ message, history: memoryContext.history }),
+      defaultWeatherLocation: userSettings.defaultWeatherLocation,
+    });
     logModelTimeContext({ entry: 'qq-assistant', model: model, source: 'server-clock', messages: [{ role: 'system', content: systemPrompt }] });
 
     const compressedHistory = buildAssistantHistory(memoryContext.history);
@@ -200,7 +201,7 @@ export async function POST(request: Request) {
     const userMessageId = eventMessageId('user', binding.appId, eventId);
     const preparedContext = await prepareConversationContext({
       userId, conversationId: binding.conversationId, maxMessages: contextLimit, excludeMessageIds: [userMessageId],
-      requiredSystem: systemPrompt, optional: contextParts.optional,
+      requiredSystem: systemPrompt, runtimeSystem, optional: contextParts.optional,
       currentMessage: { role: 'user', content: userContent }, modelName: usesCustomModel ? userSettings.modelName : '', modelContextWindow: userSettings.modelContextWindow,
       summarize: async (prompt: string) => {
         const response = await client.chat.completions.create({ model, messages: [{ role: 'user', content: prompt }], temperature: 0.1 }, { timeout: 20_000, maxRetries: 0 });
