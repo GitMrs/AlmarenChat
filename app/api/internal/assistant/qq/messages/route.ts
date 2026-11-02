@@ -67,6 +67,7 @@ export async function POST(request: Request) {
     }
 
     const assistantMessageId = eventMessageId('assistant', binding.appId, eventId);
+    const userMessageId = eventMessageId('user', binding.appId, eventId);
     const existingReply = await prisma.message.findUnique({
       where: { id: assistantMessageId },
       select: { content: true, conversationId: true, conversation: { select: { userId: true } } },
@@ -98,7 +99,7 @@ export async function POST(request: Request) {
     );
     const memoryReply = await handleQQMemoryRequest({
       userId, conversationId: binding.conversationId, message,
-      userMessageId: eventMessageId('user', binding.appId, eventId), assistantMessageId,
+      userMessageId, assistantMessageId,
       normalize: async (content) => {
         try {
           const memoryClient = createModelClient(usesCustomModel ? userSettings.apiBaseUrl : undefined, usesCustomModel ? userSettings.apiKey : undefined);
@@ -208,7 +209,6 @@ export async function POST(request: Request) {
       { role: 'user', content: userContent },
     ];
 
-    const userMessageId = eventMessageId('user', binding.appId, eventId);
     const preparedContext = await prepareConversationContext({
       userId, conversationId: binding.conversationId, maxMessages: contextLimit, excludeMessageIds: [userMessageId],
       requiredSystem: systemPrompt, runtimeSystem, optional: optionalContext,
@@ -219,6 +219,29 @@ export async function POST(request: Request) {
       },
     });
     modelMessages.splice(0, modelMessages.length, ...preparedContext.messages);
+    const existingUserMessage = await prisma.message.findUnique({
+      where: { id: userMessageId },
+      select: { id: true },
+    });
+    if (!existingUserMessage) {
+      const persistedUserMessage = await prisma.message.create({
+        data: {
+          id: userMessageId,
+          conversationId: binding.conversationId,
+          role: 'user',
+          source: 'QQ',
+          content: message,
+          attachments: imageAttachments.length ? imageAttachments : undefined,
+        },
+      }).catch((error: any) => {
+        if (error?.code !== 'P2002') throw error;
+      });
+      if (persistedUserMessage) {
+        await applyRecentStateMessage({ conversationId: binding.conversationId, message: persistedUserMessage }).catch((error: any) => {
+          console.warn('[recent-state] apply failed:', error?.message);
+        });
+      }
+    }
     const memoryTools = createMemoryTools({ userId, kind: 'assistant', conversationId: binding.conversationId }, preparedContext.history.map(item => item.id));
     const finalizeResponse = async (modelContent: string) => {
       const normalizedModelContent = stripRetrievalNotices(modelContent).trim();
@@ -263,16 +286,6 @@ export async function POST(request: Request) {
             },
           })),
           prisma.message.create({
-            data: {
-              id: userMessageId,
-              conversationId: binding.conversationId,
-              role: 'user',
-              source: 'QQ',
-              content: message,
-              attachments: imageAttachments.length ? imageAttachments : undefined,
-            },
-          }),
-          prisma.message.create({
             data: { id: assistantMessageId, conversationId: binding.conversationId, role: 'assistant', source: 'QQ', content, attachments: web.attachments() as any },
           }),
           prisma.conversation.update({
@@ -287,13 +300,6 @@ export async function POST(request: Request) {
           return { content: racedReply.content, streamContent: racedReply.content };
         }
         throw error;
-      }
-
-      const persistedUserMessage = await prisma.message.findUnique({ where: { id: userMessageId } });
-      if (persistedUserMessage) {
-        await applyRecentStateMessage({ conversationId: binding.conversationId, message: persistedUserMessage }).catch((error: any) => {
-          console.warn('[recent-state] apply failed:', error?.message);
-        });
       }
 
       return {

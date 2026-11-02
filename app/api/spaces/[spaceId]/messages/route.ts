@@ -40,6 +40,7 @@ import { recordSpaceAgentExperiences } from '@/app/api/_lib/agent-personal-memor
 import { prepareSpaceMessageRuntime } from '@/lib/space/space-message-runtime';
 import { loadAgentWorldContext } from '@/lib/world/context';
 import { buildConversationContinuityGuidance } from '@/lib/chat/conversation-continuity.mjs';
+import { logModelRequest } from '@/lib/chat/model-request-log.mjs';
 
 const MESSAGE_PAGE_SIZE = 40;
 const READ_ONLY_WORKSPACE_TOOLS = new Set(['list_files', 'read_file', 'check_files']);
@@ -1081,12 +1082,17 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
             tools: availableTools,
             requestCompletion: async (conversation: any[], tools: any[]) => {
               const hasTools = Array.isArray(tools) && tools.length > 0;
-              const completionStream = await client.chat.completions.create({
+              const requestBody: any = {
                 model,
                 messages: conversation as any,
                 stream: true,
                 ...(hasTools ? { tools: tools as any, tool_choice: 'auto' } : {}),
-              }, { signal: abortController.signal });
+              };
+              logModelRequest({
+                entry: 'space-native',
+                body: { spaceId, agentId: targetAgent.id, interactionMode: normalizedInteractionMode, request: requestBody },
+              });
+              const completionStream = await client.chat.completions.create(requestBody, { signal: abortController.signal });
               return collectChatCompletionStream(completionStream, {
                 onContentDelta: (delta: string) => emit({ type: 'text_delta', delta }),
               });
