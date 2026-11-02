@@ -281,7 +281,10 @@ export async function POST(request: Request) {
       }
     }
 
-    logModelTimeContext({ entry: 'personal-assistant', model: localMode ? null : model, source: 'server-clock', messages: [{ role: 'system', content: systemPrompt }] });
+    logModelTimeContext({ entry: 'personal-assistant', model: localMode ? null : model, source: 'server-clock', messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'system', content: runtimeSystem },
+    ] });
 
     if (localMode) {
       return NextResponse.json({ messages, conversationId, conversationMode, contextManifest: preparedContext.manifest });

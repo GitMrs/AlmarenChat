@@ -177,7 +177,10 @@ export async function POST(request: Request) {
       continuityGuidance: buildRecentStateContinuityGuidance({ message, history: memoryContext.history }),
       defaultWeatherLocation: userSettings.defaultWeatherLocation,
     });
-    logModelTimeContext({ entry: 'qq-assistant', model: model, source: 'server-clock', messages: [{ role: 'system', content: systemPrompt }] });
+    logModelTimeContext({ entry: 'qq-assistant', model: model, source: 'server-clock', messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'system', content: runtimeSystem },
+    ] });
 
     const compressedHistory = buildAssistantHistory(memoryContext.history);
     const userContent = imageAttachments.length
