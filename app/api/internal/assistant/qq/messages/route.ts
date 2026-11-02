@@ -13,7 +13,7 @@ import { buildAssistantContextParts, buildPersonalAssistantRuntimeContext } from
 import { ensurePersonalAssistant } from '@/lib/personal-assistant/profile';
 import { archiveOldMainChatMessages, loadAssistantMemoryContext } from '@/lib/personal-assistant/experience-memory';
 import { buildAssistantHistory } from '@/lib/personal-assistant/history-context.mjs';
-import { buildCompanionContinuityGuidance } from '@/lib/chat/conversation-continuity.mjs';
+import { buildRecentStateContinuityGuidance } from '@/lib/chat/conversation-continuity.mjs';
 import { buildReminderExtractionPrompt, parseReminderExtraction } from '@/lib/personal-assistant/reminder-extraction.mjs';
 import { classifyReminderRequest } from '@/lib/personal-assistant/reminder-intent.mjs';
 import { explicitMemoryPrompt, parseExplicitMemory } from '@/lib/personal-assistant/memory-intent.mjs';
@@ -174,7 +174,7 @@ export async function POST(request: Request) {
     const systemPrompt = contextParts.requiredSystem;
     const runtimeSystem = buildPersonalAssistantRuntimeContext({
       channel: 'QQ',
-      continuityGuidance: buildCompanionContinuityGuidance({ message, history: memoryContext.history }),
+      continuityGuidance: buildRecentStateContinuityGuidance({ message, history: memoryContext.history }),
       defaultWeatherLocation: userSettings.defaultWeatherLocation,
     });
     logModelTimeContext({ entry: 'qq-assistant', model: model, source: 'server-clock', messages: [{ role: 'system', content: systemPrompt }] });

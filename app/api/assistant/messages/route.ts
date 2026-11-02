@@ -17,7 +17,7 @@ import { buildAssistantActivityContext, buildAssistantPlatformContext } from '@/
 import { archiveOldMainChatMessages, loadAssistantMemoryContext } from '@/lib/personal-assistant/experience-memory';
 import { loadUserMemoryItems } from '@/lib/personal-assistant/user-memory';
 import { buildAssistantHistory } from '@/lib/personal-assistant/history-context.mjs';
-import { buildCompanionContinuityGuidance } from '@/lib/chat/conversation-continuity.mjs';
+import { buildRecentStateContinuityGuidance } from '@/lib/chat/conversation-continuity.mjs';
 import { parseMcpServers } from '@/lib/agents/runtime/mcp-config.mjs';
 import { createAssistantToolBroker } from '@/lib/personal-assistant/tool-broker.mjs';
 import { buildRetrievalNotice } from '@/lib/personal-assistant/retrieval-notice.mjs';
@@ -205,7 +205,7 @@ export async function POST(request: Request) {
     let toolCalled = false;
     const retrievalNotice = () => buildRetrievalNotice({ toolCalled });
 
-    const continuityGuidance = buildCompanionContinuityGuidance({ message: messageForModel, history: memoryContext.history });
+    const continuityGuidance = buildRecentStateContinuityGuidance({ message: messageForModel, history: memoryContext.history });
     const contextParts = buildAssistantContextParts({
       userName: userSettings.name,
       profile,

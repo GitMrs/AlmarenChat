@@ -21,7 +21,7 @@ import { archiveAgentChat } from '@/app/api/_lib/agent-personal-memory';
 import { loadAgentWorldContext } from '@/lib/world/context';
 import { loadAgentModelSetting, resolveUserModelConfig } from '@/app/api/_lib/agent-model';
 import { CONVERSATION_GROUNDING_GUIDANCE } from '@/lib/chat/conversation-grounding.mjs';
-import { buildConversationContinuityGuidance } from '@/lib/chat/conversation-continuity.mjs';
+import { buildRecentStateContinuityGuidance } from '@/lib/chat/conversation-continuity.mjs';
 
 const TEXT_CHAT_COST = 1;
 const IMAGE_CHAT_COST = 3;
@@ -191,7 +191,7 @@ export async function POST(request: Request) {
       usesAgentMemory ? loadAgentMemoryContext({ userId, agentId: memoryAgentId, query: textMessage, conversationId: resolvedConversationId || undefined, recentMessageIds: normalizedHistory.map(item => item.id) }) : Promise.resolve(''),
       loadAgentWorldContext({ agentId: conversationSettings?.agentId || agentId, query: textMessage, history: normalizedHistory }),
     ]);
-    const continuityGuidance = buildConversationContinuityGuidance({ message: textMessage, history: normalizedHistory });
+    const continuityGuidance = buildRecentStateContinuityGuidance({ message: textMessage, history: normalizedHistory });
     const optionalContext = [{ name: '相关记忆与历史原文', content: employeeMemory }, { name: '世界事件', content: worldContext }];
     let finalContext = [currentTimeContext(), continuityGuidance, context, CONVERSATION_GROUNDING_GUIDANCE].filter(Boolean).join('\n\n');
     if (knowledgeEnabled && agentId && textMessage.trim()) {
