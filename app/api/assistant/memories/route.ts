@@ -8,7 +8,7 @@ export async function GET(request: Request) {
   try {
     const userId = requireAuth(request);
     const agentId = new URL(request.url).searchParams.get('agentId')?.trim() || null;
-    const memories = await prisma.assistantMemoryItem.findMany({ where: { userId, status: { not: 'PENDING_QQ' }, ...(agentId ? { agentId } : { agentId: null }) }, orderBy: { updatedAt: 'desc' } });
+    const memories = await prisma.assistantMemoryItem.findMany({ where: { userId, status: { in: ['ACTIVE', 'DISABLED'] }, ...(agentId ? { agentId } : { agentId: null }) }, orderBy: { updatedAt: 'desc' } });
     return NextResponse.json({ memories });
   } catch (error: any) {
     if (error.message === 'Unauthorized') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -23,6 +23,9 @@ export async function POST(request: Request) {
     const agentId = typeof body.agentId === 'string' && body.agentId.trim() ? body.agentId.trim() : null;
     const content = typeof body.content === 'string' ? body.content.trim().slice(0, 500) : '';
     const category = typeof body.category === 'string' ? body.category.trim().slice(0, 40) : 'preference';
+    const factKey = typeof body.factKey === 'string' && body.factKey.trim() ? body.factKey.trim().slice(0, 120) : null;
+    const evidenceQuote = typeof body.evidenceQuote === 'string' && body.evidenceQuote.trim() ? body.evidenceQuote.trim().slice(0, 500) : null;
+    const requestedSourceMessageId = typeof body.sourceMessageId === 'string' && body.sourceMessageId.trim() ? body.sourceMessageId.trim().slice(0, 200) : null;
     if (!content) return NextResponse.json({ error: '记忆内容不能为空' }, { status: 400 });
     const existingMemories = await prisma.assistantMemoryItem.findMany({
       where: { userId, agentId, status: 'ACTIVE' },
@@ -32,8 +35,21 @@ export async function POST(request: Request) {
       isDuplicateMemory(content, [memory.content])
     ));
     if (duplicate) return NextResponse.json({ memory: duplicate, duplicate: true });
-    const memory = await prisma.assistantMemoryItem.create({
-      data: { id: randomUUID(), userId, agentId, category: category || 'preference', content, status: 'ACTIVE' },
+    const sourceMessage = requestedSourceMessageId ? await prisma.message.findFirst({
+      where: { id: requestedSourceMessageId, role: 'user', conversation: { userId } }, select: { id: true, content: true },
+    }) : null;
+    const sourceMessageId = sourceMessage && (!evidenceQuote || sourceMessage.content.includes(evidenceQuote)) ? sourceMessage.id : null;
+    const memory = await prisma.$transaction(async (tx) => {
+      const created = await tx.assistantMemoryItem.create({
+        data: { id: randomUUID(), userId, agentId, category: category || 'preference', content, status: 'ACTIVE', trustStatus: 'VERIFIED', confidence: 1, factKey, evidenceQuote, sourceMessageId },
+      });
+      if (factKey) {
+        await tx.assistantMemoryItem.updateMany({
+          where: { userId, agentId, factKey, status: 'ACTIVE', id: { not: created.id } },
+          data: { status: 'SUPERSEDED', supersededById: created.id },
+        });
+      }
+      return created;
     });
     return NextResponse.json({ memory, duplicate: false });
   } catch (error: any) {

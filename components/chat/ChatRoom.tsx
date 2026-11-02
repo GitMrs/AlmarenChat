@@ -27,6 +27,7 @@ import { companionReplyInstruction, createCompanionReplyParser } from '@/lib/com
 import { CONVERSATION_GROUNDING_GUIDANCE } from '@/lib/chat/conversation-grounding.mjs';
 import { buildRecentStateContinuityGuidance } from '@/lib/chat/conversation-continuity.mjs';
 import { currentTimeContext } from '@/lib/agents/memory/current-time-context.mjs';
+import { dispatchContextCandidates, planContextSources } from '@/lib/memory/context-dispatcher.mjs';
 import type { CompanionReply } from '@/lib/companion/reply';
 import type { AgentDailyStudyRecord, AgentStudyItem } from '@/lib/agent-study/types';
 import { agentMemories, generateConversationImage, streamChat, conversations as conversationsApi, agents as agentsApi, user as userApi, uploads } from '@/lib/client/api';
@@ -916,7 +917,8 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
           postedCurrentMessageId = persistedUser.message.id;
         }
 
-        const memoryState = conversationMode === 'MAIN'
+        const contextPlan = planContextSources(content);
+        const memoryState = conversationMode === 'MAIN' && contextPlan.memory
           ? await agentMemories.context(displayAgent?.id || agentId, localConversationId, content, controller.signal)
           : { context: '', archivedThrough: null };
         const modelMessages: { role: 'system' | 'user' | 'assistant'; content: any }[] = historySource
@@ -940,7 +942,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
           ];
         }
         let worldContext = '';
-        if (isWorldEventAgent(displayAgent?.id || agentId) && resolveWorldEventQuery(content, history)) {
+        if (contextPlan.world && isWorldEventAgent(displayAgent?.id || agentId) && resolveWorldEventQuery(content, history)) {
           try {
             worldContext = (await conversationsApi.worldContext(localConversationId, content, controller.signal)).context;
           } catch (error) {
@@ -950,7 +952,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
         }
         const memoryContext = memoryState.context;
         let knowledgeContext = '';
-        if (content.trim()) {
+        if (contextPlan.knowledge) {
           try {
             const { hits } = await agentsApi.searchKnowledge(displayAgent?.id || agentId, content, controller.signal);
             knowledgeContext = formatKnowledgeContext(hits.filter((hit) => hit.score >= 0.35), { scopeLabel: '角色专属知识库' });
@@ -966,7 +968,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
         const systemPrompt = [currentTimeContext(), displayAgent?.systemPrompt, continuityGuidance, CONVERSATION_GROUNDING_GUIDANCE, isCompanionSend ? companionReplyInstruction : '', companionSkinInstruction].filter(Boolean).join('\n\n');
         const preparedContext = await conversationsApi.prepareContext(localConversationId, {
           requiredSystem: systemPrompt,
-          optional: [{ name: '相关记忆与历史原文', content: memoryContext }, { name: '角色知识库', content: knowledgeContext }, { name: '世界事件', content: worldContext }],
+          optional: dispatchContextCandidates(content, [{ name: '相关记忆与历史原文', content: memoryContext }, { name: '角色知识库', content: knowledgeContext }, { name: '世界事件', content: worldContext }]),
           currentContent: modelMessages.at(-1)?.content || content,
           maxMessages: contextMessageLimit, currentMessageId: postedCurrentMessageId, reuseLastUserMessage: options.reuseLastUserMessage,
         }, controller.signal);

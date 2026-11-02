@@ -22,6 +22,9 @@ import { loadAgentWorldContext } from '@/lib/world/context';
 import { loadAgentModelSetting, resolveUserModelConfig } from '@/app/api/_lib/agent-model';
 import { CONVERSATION_GROUNDING_GUIDANCE } from '@/lib/chat/conversation-grounding.mjs';
 import { buildRecentStateContinuityGuidance } from '@/lib/chat/conversation-continuity.mjs';
+import { buildAgentIdentitySystem, buildAgentRuntimeSystem } from '@/lib/chat/agent-prompt.mjs';
+import { syncRecentStates } from '@/lib/chat/recent-state-store';
+import { dispatchContextCandidates, planContextSources } from '@/lib/memory/context-dispatcher.mjs';
 
 const TEXT_CHAT_COST = 1;
 const IMAGE_CHAT_COST = 3;
@@ -86,7 +89,7 @@ export async function POST(request: Request) {
     let conversationSettings = conversationId
       ? await prisma.conversation.findFirst({
           where: { id: conversationId, userId, kind: 'AGENT' },
-          select: { contextMessageLimit: true, agentId: true, agentMode: true },
+          select: { contextMessageLimit: true, agentId: true, agentMode: true, agentName: true, agentTone: true, agentDescription: true, agentSystemPrompt: true },
         })
       : null;
     if (conversationId && !conversationSettings) {
@@ -147,7 +150,7 @@ export async function POST(request: Request) {
     if (!conversationSettings && resolvedConversationId) {
       conversationSettings = await prisma.conversation.findFirst({
           where: { id: resolvedConversationId, userId, kind: 'AGENT' },
-          select: { contextMessageLimit: true, agentId: true, agentMode: true },
+          select: { contextMessageLimit: true, agentId: true, agentMode: true, agentName: true, agentTone: true, agentDescription: true, agentSystemPrompt: true },
         });
     }
     if (resolvedConversationId && !conversationSettings) {
@@ -187,14 +190,30 @@ export async function POST(request: Request) {
 
     const memoryAgentId = conversationSettings?.agentId || agentId;
     const usesAgentMemory = conversationSettings?.agentMode === 'MAIN';
+    const contextPlan = planContextSources(textMessage);
     const [employeeMemory, worldContext] = await Promise.all([
-      usesAgentMemory ? loadAgentMemoryContext({ userId, agentId: memoryAgentId, query: textMessage, conversationId: resolvedConversationId || undefined, recentMessageIds: normalizedHistory.map(item => item.id) }) : Promise.resolve(''),
-      loadAgentWorldContext({ agentId: conversationSettings?.agentId || agentId, query: textMessage, history: normalizedHistory }),
+      usesAgentMemory && contextPlan.memory ? loadAgentMemoryContext({ userId, agentId: memoryAgentId, query: textMessage, conversationId: resolvedConversationId || undefined, recentMessageIds: normalizedHistory.map(item => item.id) }) : Promise.resolve(''),
+      contextPlan.world ? loadAgentWorldContext({ agentId: conversationSettings?.agentId || agentId, query: textMessage, history: normalizedHistory }) : Promise.resolve(''),
     ]);
-    const continuityGuidance = buildRecentStateContinuityGuidance({ message: textMessage, history: normalizedHistory });
+    let recentStates: any[] = [];
+    if (resolvedConversationId) {
+      try { recentStates = await syncRecentStates({ conversationId: resolvedConversationId, history: normalizedHistory }); }
+      catch (error: any) { console.warn('[recent-state] sync failed:', error?.message); }
+    }
+    const continuityGuidance = buildRecentStateContinuityGuidance({ message: textMessage, history: normalizedHistory, states: recentStates });
+    const identitySystem = buildAgentIdentitySystem({
+      name: conversationSettings?.agentName || agentSnapshot?.name || 'Agent',
+      systemPrompt: conversationSettings?.agentSystemPrompt || agentSnapshot?.systemPrompt || context || '',
+      description: conversationSettings?.agentDescription || agentSnapshot?.description || '',
+      tone: conversationSettings?.agentTone || agentSnapshot?.tone || '',
+    });
+    const runtimeSystem = buildAgentRuntimeSystem({
+      timeContext: currentTimeContext(),
+      continuityGuidance,
+      groundingGuidance: CONVERSATION_GROUNDING_GUIDANCE,
+    });
     const optionalContext = [{ name: '相关记忆与历史原文', content: employeeMemory }, { name: '世界事件', content: worldContext }];
-    let finalContext = [currentTimeContext(), continuityGuidance, context, CONVERSATION_GROUNDING_GUIDANCE].filter(Boolean).join('\n\n');
-    if (knowledgeEnabled && agentId && textMessage.trim()) {
+    if (knowledgeEnabled && agentId && contextPlan.knowledge) {
       try {
         const hits = await getKnowledgeHits({ agentId, userId }, textMessage);
         // 过滤出具备足够语义相关度的优质切片（余弦相似度 >= 0.35）
@@ -206,9 +225,11 @@ export async function POST(request: Request) {
         console.warn('[chat/knowledge] Knowledge hit retrieval failed:', err?.message);
       }
     }
+    const dispatchedContext = dispatchContextCandidates(textMessage, optionalContext);
 
-    if (companionReply) finalContext = [finalContext, companionReplyInstruction].filter(Boolean).join('\n\n');
-    if (finalContext) openaiMessages.unshift({ role: 'system', content: finalContext });
+    const companionRuntime = companionReply ? [runtimeSystem, companionReplyInstruction].filter(Boolean).join('\n\n') : runtimeSystem;
+    if (identitySystem) openaiMessages.unshift({ role: 'system', content: identitySystem });
+    if (companionRuntime) openaiMessages.splice(identitySystem ? 1 : 0, 0, { role: 'system', content: companionRuntime });
 
     const lastMessage = openaiMessages[openaiMessages.length - 1];
     const textAlreadyInMessages = imageAttachments.length === 0 && lastMessage?.role === 'user' && lastMessage.content === textMessage;
@@ -232,7 +253,7 @@ export async function POST(request: Request) {
     const preparedContext = resolvedConversationId ? await prepareConversationContext({
       userId, conversationId: resolvedConversationId, maxMessages: contextLimit,
       excludeMessageIds: skipPersistUserMessage && normalizedHistory.at(-1)?.role === 'user' ? [normalizedHistory.at(-1).id] : [],
-      requiredSystem: finalContext, optional: optionalContext, currentMessage: openaiMessages.at(-1),
+      requiredSystem: identitySystem, runtimeSystem: companionRuntime, optional: dispatchedContext, currentMessage: openaiMessages.at(-1),
       modelName: model, modelContextWindow: userSettings.modelContextWindow,
       summarize: async prompt => {
         const response = await client.chat.completions.create({ model, messages: [{ role: 'user', content: prompt }], temperature: 0.1 }, { timeout: 20_000, maxRetries: 0 });
@@ -241,7 +262,7 @@ export async function POST(request: Request) {
     }) : null;
     if (preparedContext) openaiMessages.splice(0, openaiMessages.length, ...preparedContext.messages);
 
-    logModelTimeContext({ entry: 'agent-chat', model: model, source: 'server-clock', messages: [{ role: 'system', content: finalContext }] });
+    logModelTimeContext({ entry: 'agent-chat', model: model, source: 'server-clock', messages: [{ role: 'system', content: identitySystem }, { role: 'system', content: companionRuntime }] });
 
     // Save user message
     if (resolvedConversationId && !skipPersistUserMessage) {

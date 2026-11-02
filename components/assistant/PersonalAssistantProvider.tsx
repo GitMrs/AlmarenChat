@@ -490,10 +490,10 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
   const [busyConversationId, setBusyConversationId] = useState<string | null>(null);
   const [pendingDeleteConversation, setPendingDeleteConversation] = useState<AssistantConversationSummary | null>(null);
   const [deletingConversation, setDeletingConversation] = useState(false);
-  const [bubbleSuggestions, setBubbleSuggestions] = useState<Record<string, Array<{ content: string; category: string }>>>({});
+  const [bubbleSuggestions, setBubbleSuggestions] = useState<Record<string, Array<{ content: string; category: string; factKey?: string; evidenceQuote?: string; sourceMessageId?: string }>>>({});
   const [savedTips, setSavedTips] = useState<Record<string, string>>({});
   const [topicSummaryModal, setTopicSummaryModal] = useState<{
-    suggestions: Array<{ content: string; category: string }>;
+    suggestions: Array<{ content: string; category: string; factKey?: string; evidenceQuote?: string; sourceMessageId?: string }>;
     selected: Set<number>;
   } | null>(null);
   const [extractingSummary, setExtractingSummary] = useState(false);
@@ -1109,6 +1109,7 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
     userMessage?: string;
     assistantMessage?: string;
     conversationId?: string;
+    sourceMessageId?: string;
   }) => {
     const modelConfig = { ...readBrowserModelConfigForScope('GLOBAL'), source: modelSource };
     if (modelSource !== 'OLLAMA') return assistant.extractMemories(payload);
@@ -1251,6 +1252,7 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
           userMessage: content,
           assistantMessage: answer,
           conversationId: data.conversationId,
+          sourceMessageId: userMessage.id,
         }).then((extractRes) => {
           if (extractRes?.suggestions && extractRes.suggestions.length > 0) {
             setBubbleSuggestions((prev) => ({
@@ -1303,9 +1305,9 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
     }
   };
 
-  const acceptBubbleSuggestion = async (msgId: string, sug: { content: string; category: string }, index: number) => {
+  const acceptBubbleSuggestion = async (msgId: string, sug: { content: string; category: string; factKey?: string; evidenceQuote?: string; sourceMessageId?: string }, index: number) => {
     try {
-      await assistant.addMemory({ content: sug.content, category: sug.category });
+      await assistant.addMemory({ content: sug.content, category: sug.category, factKey: sug.factKey, evidenceQuote: sug.evidenceQuote, sourceMessageId: sug.sourceMessageId });
       window.dispatchEvent(new Event('personal-assistant-updated'));
       setBubbleSuggestions((prev) => {
         const next = { ...prev };
@@ -1397,7 +1399,7 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
     if (topicSummaryModal && topicSummaryModal.selected.size > 0) {
       const toSave = topicSummaryModal.suggestions.filter((_, i) => topicSummaryModal.selected.has(i));
       await Promise.allSettled(
-        toSave.map((item) => assistant.addMemory({ content: item.content, category: item.category }))
+        toSave.map((item) => assistant.addMemory({ content: item.content, category: item.category, factKey: item.factKey, evidenceQuote: item.evidenceQuote, sourceMessageId: item.sourceMessageId }))
       );
       window.dispatchEvent(new Event('personal-assistant-updated'));
     }

@@ -17,6 +17,7 @@ export async function loadUserMemoryItems(userId: string, agentId?: string | nul
     where: {
       userId,
       status: 'ACTIVE',
+      trustStatus: 'VERIFIED',
       AND: [memoryCandidateWhere(query, ['category', 'content'])],
       ...(agentId ? { agentId } : { agentId: null }),
     },

@@ -75,10 +75,12 @@ export async function prepareConversationContext(options: Options) {
 
 时间必须保留原消息的时间锚点：凡出现“今天、昨天、明天、现在、刚才、本周、下周”等相对时间，必须在同一条内容中写明它相对于哪一天，例如“[时间锚点：2026-10-31，北京时间] 用户当时说‘明天不上班’，仅表示2026-11-01，不得推断当前或下一次对话的明天”。相对时间不能脱离原消息日期单独保存，也不能把历史的“现在”改写成当前的现在。无法确定对应日期时写“日期未知，需按来源ID回查”，不要猜测。
 
-输出必须包括【当前目标】【用户已确认】【助理待确认】【进度与取消】【来源ID】五项；没有明确记录的项填未知，不推断用户授权。用户当时说过的内容要注明消息时间；“用户已确认”只表示当时明确说过，不表示现在仍有效。来源ID至少保留本次新加入的一条真实消息ID。输出不超过4000字符，直接输出摘要。
+只保留最多3个仍在进行或可能继续的当前话题；已经结束、与当前进度无关的闲聊和助理长篇解释不要保留，它们由经历归档负责。优先记录用户原话、用户纠正、明确决定、尚未确认的问题和下一步。助理内容只能放在【助理待确认】，不得改写成用户事实。
+
+输出必须包括【当前目标】【用户已确认】【助理待确认】【进度与取消】【来源ID】五项；没有明确记录的项填未知，不推断用户授权。用户当时说过的内容要注明消息时间；“用户已确认”只表示当时明确说过，不表示现在仍有效。来源ID至少保留本次新加入的一条真实消息ID。输出不超过2200字符，直接输出摘要。
 
 ${excerpts}`);
-        const valid = value?.trim() && value.length <= 4000 && ['【当前目标】', '【用户已确认】', '【助理待确认】', '【进度与取消】', '【来源ID】'].every(label => value.includes(label)) && pending.some(message => value.includes(message.id)) && !hasUnanchoredRelativeTime(value);
+        const valid = value?.trim() && value.length <= 2200 && ['【当前目标】', '【用户已确认】', '【助理待确认】', '【进度与取消】', '【来源ID】'].every(label => value.includes(label)) && pending.some(message => value.includes(message.id)) && !hasUnanchoredRelativeTime(value);
         summary = valid ? value.trim() : extractiveWorkingSummary(appended);
       } else summary = excerpts;
     }

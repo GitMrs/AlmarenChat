@@ -14,6 +14,8 @@ import { ensurePersonalAssistant } from '@/lib/personal-assistant/profile';
 import { archiveOldMainChatMessages, loadAssistantMemoryContext } from '@/lib/personal-assistant/experience-memory';
 import { buildAssistantHistory } from '@/lib/personal-assistant/history-context.mjs';
 import { buildRecentStateContinuityGuidance } from '@/lib/chat/conversation-continuity.mjs';
+import { syncRecentStates } from '@/lib/chat/recent-state-store';
+import { dispatchContextCandidates, planContextSources } from '@/lib/memory/context-dispatcher.mjs';
 import { buildReminderExtractionPrompt, parseReminderExtraction } from '@/lib/personal-assistant/reminder-extraction.mjs';
 import { classifyReminderRequest } from '@/lib/personal-assistant/reminder-intent.mjs';
 import { explicitMemoryPrompt, parseExplicitMemory } from '@/lib/personal-assistant/memory-intent.mjs';
@@ -146,17 +148,18 @@ export async function POST(request: Request) {
       tasks: profile.includeTaskContext,
       chats: profile.includeChatContext,
     };
+    const contextPlan = planContextSources(message);
     const [memoryContext, memories, platformContext, activityContext] = await Promise.all([
       loadAssistantMemoryContext({
         userId,
         conversationId: binding.conversationId,
         query: message,
         historyLimit: contextLimit,
-        includeExperiences: true,
+        includeExperiences: contextPlan.experience,
       }),
-      loadUserMemoryItems(userId, null, 40, message),
-      buildAssistantPlatformContext(userId, contextSources, message),
-      buildAssistantActivityContext(userId, message, contextSources),
+      contextPlan.memory ? loadUserMemoryItems(userId, null, 40, message) : Promise.resolve([]),
+      contextPlan.platform ? buildAssistantPlatformContext(userId, contextSources, message) : Promise.resolve(null),
+      contextPlan.activity ? buildAssistantActivityContext(userId, message, contextSources) : Promise.resolve(null),
     ]);
     let reportStatus: ((label: string) => void) | undefined;
     const web = createChatWebTools({ apiKey: userSettings.tavilyApiKey, defaultWeatherLocation: userSettings.defaultWeatherLocation, history: memoryContext.history, signal: request.signal, onStatus: (label: string) => reportStatus?.(label) });
@@ -172,9 +175,13 @@ export async function POST(request: Request) {
         query: message,
       });
     const systemPrompt = contextParts.requiredSystem;
+    const optionalContext = dispatchContextCandidates(message, contextParts.optional);
+    let recentStates: any[] = [];
+    try { recentStates = await syncRecentStates({ conversationId: binding.conversationId, history: memoryContext.history }); }
+    catch (error: any) { console.warn('[recent-state] sync failed:', error?.message); }
     const runtimeSystem = buildPersonalAssistantRuntimeContext({
       channel: 'QQ',
-      continuityGuidance: buildRecentStateContinuityGuidance({ message, history: memoryContext.history }),
+      continuityGuidance: buildRecentStateContinuityGuidance({ message, history: memoryContext.history, states: recentStates }),
       defaultWeatherLocation: userSettings.defaultWeatherLocation,
     });
     logModelTimeContext({ entry: 'qq-assistant', model: model, source: 'server-clock', messages: [
@@ -204,7 +211,7 @@ export async function POST(request: Request) {
     const userMessageId = eventMessageId('user', binding.appId, eventId);
     const preparedContext = await prepareConversationContext({
       userId, conversationId: binding.conversationId, maxMessages: contextLimit, excludeMessageIds: [userMessageId],
-      requiredSystem: systemPrompt, runtimeSystem, optional: contextParts.optional,
+      requiredSystem: systemPrompt, runtimeSystem, optional: optionalContext,
       currentMessage: { role: 'user', content: userContent }, modelName: usesCustomModel ? userSettings.modelName : '', modelContextWindow: userSettings.modelContextWindow,
       summarize: async (prompt: string) => {
         const response = await client.chat.completions.create({ model, messages: [{ role: 'user', content: prompt }], temperature: 0.1 }, { timeout: 20_000, maxRetries: 0 });

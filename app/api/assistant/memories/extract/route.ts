@@ -19,7 +19,7 @@ function isTrivial(text: string): boolean {
   return TRIVIAL_INPUTS.has(cleaned);
 }
 
-function extractJsonArray(raw: string): Array<{ content: string; category?: string }> {
+function extractJsonArray(raw: string): Array<{ content: string; category?: string; factKey?: string; evidenceQuote?: string }> {
   try {
     const cleaned = raw.replace(/```json\s*|```/g, '').trim();
     const match = cleaned.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
@@ -31,7 +31,9 @@ function extractJsonArray(raw: string): Array<{ content: string; category?: stri
       .map((item: any) => {
         const content = typeof item === 'string' ? item : (typeof item?.content === 'string' ? item.content : '');
         const category = typeof item?.category === 'string' ? item.category : 'preference';
-        return { content: content.trim(), category };
+        const factKey = typeof item?.factKey === 'string' ? item.factKey.trim().slice(0, 120) : '';
+        const evidenceQuote = typeof item?.evidenceQuote === 'string' ? item.evidenceQuote.trim().slice(0, 500) : '';
+        return { content: content.trim(), category, ...(factKey ? { factKey } : {}), ...(evidenceQuote ? { evidenceQuote } : {}) };
       })
       .filter((item) => item.content.length >= 3 && item.content.length <= 100);
   } catch {
@@ -47,6 +49,8 @@ export async function POST(request: Request) {
     const agentId = typeof body.agentId === 'string' && body.agentId.trim() ? body.agentId.trim() : null;
 
     let dialogueContext = '';
+    let userEvidenceText = '';
+    let userEvidenceMessages: Array<{ id?: string; content: string }> = [];
     let explicitContent: string | null = null;
 
     if (mode === 'single') {
@@ -68,6 +72,9 @@ export async function POST(request: Request) {
         return NextResponse.json({ suggestions: [] });
       }
       dialogueContext = `用户说：${userMsg}\n助理回复：${assistantMsg.slice(0, 300)}`;
+      userEvidenceText = userMsg;
+      const requestedSourceId = typeof body.sourceMessageId === 'string' ? body.sourceMessageId.trim() : '';
+      userEvidenceMessages = requestedSourceId ? [{ id: requestedSourceId, content: userMsg }] : [{ content: userMsg }];
     } else {
       const conversationId = typeof body.conversationId === 'string' ? body.conversationId.trim() : '';
       if (!conversationId) return NextResponse.json({ suggestions: [] });
@@ -82,7 +89,7 @@ export async function POST(request: Request) {
           messages: {
             orderBy: { createdAt: 'desc' },
             take: 16,
-            select: { role: true, content: true },
+            select: { id: true, role: true, content: true },
           },
         },
       });
@@ -96,6 +103,8 @@ export async function POST(request: Request) {
         .reverse()
         .map((m) => `${m.role === 'user' ? '用户' : '助理'}：${m.content.slice(0, 300)}`)
         .join('\n');
+      userEvidenceText = messages.filter((message) => message.role === 'user').map((message) => message.content).join('\n');
+      userEvidenceMessages = messages.filter((message) => message.role === 'user').map((message) => ({ id: message.id, content: message.content }));
     }
 
     const existingMemories = await prisma.assistantMemoryItem.findMany({
@@ -116,6 +125,8 @@ export async function POST(request: Request) {
 3. 绝对不要重复提取用户已经存在的记忆！
 4. 语言必须精炼（一句话，10~30个字以内，客观描述，如：“平时喝咖啡习惯不加糖”）。
 5. 如果对话中没有任何值得长期记忆的个人信息，提取结果必须为空数组 []。
+6. factKey 只在能明确判断为同一项可变事实时填写“对象.方面”，例如“用户.饮食.辣度”；不要把具体值写进键里。拿不准时留空。
+7. evidenceQuote 必须逐字引用用户原话，不能引用助理的话，也不能改写。
 
 【用户已有记忆库】：
 ${existingListStr}
@@ -128,7 +139,9 @@ ${dialogueContext}
   "extracted": [
     {
       "content": "提取的事实内容",
-      "category": "preference"
+      "category": "preference",
+      "factKey": "用户.对象.方面",
+      "evidenceQuote": "用户原话"
     }
   ]
 }`;
@@ -179,6 +192,14 @@ ${dialogueContext}
       if (!fingerprint || knownFingerprints.has(fingerprint)) return false;
       knownFingerprints.add(fingerprint);
       return true;
+    }).map((item) => {
+      const evidenceQuote = 'evidenceQuote' in item ? item.evidenceQuote : undefined;
+      const sourceMessageId = evidenceQuote ? userEvidenceMessages.find((message) => message.content.includes(evidenceQuote))?.id : undefined;
+      return {
+        ...item,
+        ...(evidenceQuote && userEvidenceText.includes(evidenceQuote) ? {} : { evidenceQuote: undefined }),
+        ...(sourceMessageId ? { sourceMessageId } : {}),
+      };
     });
 
     return NextResponse.json({ suggestions: finalSuggestions.slice(0, 3) });

@@ -22,6 +22,9 @@ import { loadAgentModelSetting, resolveUserModelConfig } from '@/app/api/_lib/ag
 import { CONVERSATION_GROUNDING_GUIDANCE } from '@/lib/chat/conversation-grounding.mjs';
 import { stripHistoryRetrievalNotices } from '@/lib/personal-assistant/retrieval-notice.mjs';
 import { buildRecentStateContinuityGuidance } from '@/lib/chat/conversation-continuity.mjs';
+import { buildAgentIdentitySystem, buildAgentRuntimeSystem } from '@/lib/chat/agent-prompt.mjs';
+import { syncRecentStates } from '@/lib/chat/recent-state-store';
+import { dispatchContextCandidates, planContextSources } from '@/lib/memory/context-dispatcher.mjs';
 
 export const runtime = 'nodejs';
 
@@ -153,13 +156,14 @@ export async function POST(request: Request) {
     }));
     const sourceHistory = normalizedHistory;
 
+    const contextPlan = planContextSources(message);
     const [agentMemory, worldContext] = await Promise.all([
-      loadAgentMemoryContext({ userId, agentId, query: message, conversationId, recentMessageIds: normalizedHistory.map(item => item.id) }),
-      loadAgentWorldContext({ agentId, query: message, history: normalizedHistory }),
+      contextPlan.memory ? loadAgentMemoryContext({ userId, agentId, query: message, conversationId, recentMessageIds: normalizedHistory.map(item => item.id) }) : Promise.resolve(''),
+      contextPlan.world ? loadAgentWorldContext({ agentId, query: message, history: normalizedHistory }) : Promise.resolve(''),
     ]);
 
     let knowledgeContext = '';
-    try {
+    if (contextPlan.knowledge) try {
       const hits = await getKnowledgeHits({ agentId, userId }, message);
       const relevantHits = hits.filter((hit) => hit.score >= 0.35);
       if (relevantHits.length > 0) {
@@ -170,16 +174,21 @@ export async function POST(request: Request) {
     }
 
     const agentName = conversation.agentName || agent?.name || 'Agent';
-    const systemPrompt = [
-      conversation.agentSystemPrompt || agent?.systemPrompt || '',
-      `【当前 Agent】你正在以「${agentName}」的身份回复用户。`,
-      agent?.description ? `【角色描述】${agent.description}` : '',
-      agent?.tone ? `【表达语气】${agent.tone}` : '',
-      currentTimeContext(),
-      buildRecentStateContinuityGuidance({ message, history: normalizedHistory }),
-      CONVERSATION_GROUNDING_GUIDANCE,
-      '【当前渠道】你正在 QQ 私聊中回复用户。请使用适合即时消息阅读的标准 Markdown，避免 HTML、复杂表格和站内相对链接。',
-    ].filter(Boolean).join('\n\n');
+    let recentStates: any[] = [];
+    try { recentStates = await syncRecentStates({ conversationId, history: normalizedHistory }); }
+    catch (error: any) { console.warn('[recent-state] sync failed:', error?.message); }
+    const identitySystem = buildAgentIdentitySystem({
+      name: agentName,
+      systemPrompt: conversation.agentSystemPrompt || agent?.systemPrompt || '',
+      description: conversation.agentDescription || agent?.description || '',
+      tone: conversation.agentTone || agent?.tone || '',
+    });
+    const runtimeSystem = buildAgentRuntimeSystem({
+      channel: 'QQ',
+      timeContext: currentTimeContext(),
+      continuityGuidance: buildRecentStateContinuityGuidance({ message, history: normalizedHistory, states: recentStates }),
+      groundingGuidance: CONVERSATION_GROUNDING_GUIDANCE,
+    });
 
     const client = createModelClient(modelConfig.apiBaseUrl, modelConfig.apiKey);
     const model = resolveModelName(modelConfig.modelName);
@@ -199,8 +208,9 @@ export async function POST(request: Request) {
         role: item.role === 'user' ? ('user' as const) : ('assistant' as const),
         content: item.content,
       }));
-    if (systemPrompt) openaiMessages.unshift({ role: 'system', content: systemPrompt });
-    logModelTimeContext({ entry: 'qq-agent', model: model, source: 'server-clock', messages: [{ role: 'system', content: systemPrompt }] });
+    if (identitySystem) openaiMessages.unshift({ role: 'system', content: identitySystem });
+    if (runtimeSystem) openaiMessages.splice(identitySystem ? 1 : 0, 0, { role: 'system', content: runtimeSystem });
+    logModelTimeContext({ entry: 'qq-agent', model: model, source: 'server-clock', messages: [{ role: 'system', content: identitySystem }, { role: 'system', content: runtimeSystem }] });
 
 
     if (imageAttachments.length > 0) {
@@ -219,8 +229,8 @@ export async function POST(request: Request) {
     }
 
     const preparedContext = await prepareConversationContext({
-      userId, conversationId, maxMessages: contextLimit, requiredSystem: systemPrompt,
-      optional: [{ name: '相关记忆与历史原文', content: agentMemory }, { name: '世界事件', content: worldContext }, { name: '知识库', content: knowledgeContext }],
+      userId, conversationId, maxMessages: contextLimit, requiredSystem: identitySystem, runtimeSystem,
+      optional: dispatchContextCandidates(message, [{ name: '相关记忆与历史原文', content: agentMemory }, { name: '世界事件', content: worldContext }, { name: '知识库', content: knowledgeContext }]),
       currentMessage: openaiMessages.at(-1), excludeMessageIds: [userMessageId, assistantMessageId],
       modelName: model, modelContextWindow: userSettings.modelContextWindow,
       summarize: async prompt => {

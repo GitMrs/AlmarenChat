@@ -144,7 +144,7 @@ export const auth = {
 
 export const agentMemories = {
   get: (agentId: string) => request<{ memories: AgentMemoryItem[]; experiences: AgentExperience[]; growthEvents: AgentGrowthEvent[]; growthState: AgentGrowthState }>(`/agents/${encodeURIComponent(agentId)}/memories`),
-  add: (agentId: string, data: { content: string; category?: string; conversationId?: string }) => request<{ memory: AgentMemoryItem; duplicate?: boolean }>(`/agents/${encodeURIComponent(agentId)}/memories`, { method: 'POST', body: JSON.stringify(data) }),
+  add: (agentId: string, data: { content: string; category?: string; conversationId?: string; factKey?: string; evidenceQuote?: string; sourceMessageId?: string }) => request<{ memory: AgentMemoryItem; duplicate?: boolean }>(`/agents/${encodeURIComponent(agentId)}/memories`, { method: 'POST', body: JSON.stringify(data) }),
   update: (agentId: string, id: string, data: { content?: string; category?: string; status?: 'ACTIVE' | 'DISABLED' }) => request<{ memory: AgentMemoryItem }>(`/agents/${encodeURIComponent(agentId)}/memories/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(data) }),
   remove: (agentId: string, id: string) => request<{ success: boolean }>(`/agents/${encodeURIComponent(agentId)}/memories/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   extract: (agentId: string, data: { conversationId: string; userMessage: string; assistantMessage: string; localOnly?: boolean; localResponse?: string }) => request<{ suggestions: Array<{ content: string; category: string }>; modelMessages?: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> }>(`/agents/${encodeURIComponent(agentId)}/memories/extract`, { method: 'POST', body: JSON.stringify(data) }),
@@ -194,7 +194,7 @@ export const assistant = {
     }),
   updateProfile: (data: Partial<PersonalAssistantProfile>) =>
     request<{ profile: PersonalAssistantProfile }>('/assistant/profile', { method: 'PATCH', body: JSON.stringify(data) }),
-  addMemory: (data: { content: string; category?: string; agentId?: string }) =>
+  addMemory: (data: { content: string; category?: string; agentId?: string; factKey?: string; evidenceQuote?: string; sourceMessageId?: string }) =>
     request<{ memory: AssistantMemoryItem }>('/assistant/memories', { method: 'POST', body: JSON.stringify(data) }),
   updateMemory: (id: string, data: { content?: string; status?: 'ACTIVE' | 'DISABLED' }) =>
     request<{ memory: AssistantMemoryItem }>(`/assistant/memories/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
@@ -206,13 +206,14 @@ export const assistant = {
     mode: 'single' | 'conversation';
     userMessage?: string;
     assistantMessage?: string;
+    sourceMessageId?: string;
     conversationId?: string;
     agentId?: string;
     localOnly?: boolean;
     localResponse?: string;
   }) =>
     request<{
-      suggestions: Array<{ content: string; category: string }>;
+      suggestions: Array<{ content: string; category: string; factKey?: string; evidenceQuote?: string; sourceMessageId?: string }>;
       modelMessages?: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>;
     }>('/assistant/memories/extract', {
       method: 'POST',

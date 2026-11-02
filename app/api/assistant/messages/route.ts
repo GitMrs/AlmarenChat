@@ -18,6 +18,8 @@ import { archiveOldMainChatMessages, loadAssistantMemoryContext } from '@/lib/pe
 import { loadUserMemoryItems } from '@/lib/personal-assistant/user-memory';
 import { buildAssistantHistory } from '@/lib/personal-assistant/history-context.mjs';
 import { buildRecentStateContinuityGuidance } from '@/lib/chat/conversation-continuity.mjs';
+import { syncRecentStates } from '@/lib/chat/recent-state-store';
+import { dispatchContextCandidates, planContextSources } from '@/lib/memory/context-dispatcher.mjs';
 import { parseMcpServers } from '@/lib/agents/runtime/mcp-config.mjs';
 import { createAssistantToolBroker } from '@/lib/personal-assistant/tool-broker.mjs';
 import { buildRetrievalNotice } from '@/lib/personal-assistant/retrieval-notice.mjs';
@@ -189,23 +191,27 @@ export async function POST(request: Request) {
       tasks: profile.includeTaskContext,
       chats: profile.includeChatContext,
     };
+    const contextPlan = planContextSources(messageForModel);
     const [memoryContext, memories, platformContext, activityContext] = await Promise.all([
       loadAssistantMemoryContext({
         userId,
         conversationId,
         query: messageForModel,
         historyLimit: contextLimit,
-        includeExperiences: conversationMode === 'MAIN',
+        includeExperiences: conversationMode === 'MAIN' && contextPlan.experience,
       }),
-      loadUserMemoryItems(userId, null, 40, messageForModel),
-      buildAssistantPlatformContext(userId, contextSources, textMessage),
-      buildAssistantActivityContext(userId, textMessage, contextSources),
+      contextPlan.memory ? loadUserMemoryItems(userId, null, 40, messageForModel) : Promise.resolve([]),
+      contextPlan.platform ? buildAssistantPlatformContext(userId, contextSources, textMessage) : Promise.resolve(null),
+      contextPlan.activity ? buildAssistantActivityContext(userId, textMessage, contextSources) : Promise.resolve(null),
     ]);
     
     let toolCalled = false;
     const retrievalNotice = () => buildRetrievalNotice({ toolCalled });
 
-    const continuityGuidance = buildRecentStateContinuityGuidance({ message: messageForModel, history: memoryContext.history });
+    let recentStates: any[] = [];
+    try { recentStates = await syncRecentStates({ conversationId, history: memoryContext.history }); }
+    catch (error: any) { console.warn('[recent-state] sync failed:', error?.message); }
+    const continuityGuidance = buildRecentStateContinuityGuidance({ message: messageForModel, history: memoryContext.history, states: recentStates });
     const contextParts = buildAssistantContextParts({
       userName: userSettings.name,
       profile,
@@ -217,6 +223,7 @@ export async function POST(request: Request) {
       query: messageForModel,
     });
     const systemPrompt = contextParts.requiredSystem;
+    const optionalContext = dispatchContextCandidates(messageForModel, contextParts.optional);
     const runtimeSystem = buildPersonalAssistantRuntimeContext({
       channel: 'WEB',
       continuityGuidance,
@@ -249,7 +256,7 @@ export async function POST(request: Request) {
 
     const preparedContext = await prepareConversationContext({
       userId, conversationId: conversationId, maxMessages: contextLimit,
-      requiredSystem: systemPrompt, runtimeSystem, optional: contextParts.optional,
+      requiredSystem: systemPrompt, runtimeSystem, optional: optionalContext,
       currentMessage: { role: 'user', content: userContent }, modelName: usesCustomModel ? userSettings.modelName : '', modelContextWindow: userSettings.modelContextWindow,
       summarize: localMode ? undefined : async (prompt: string) => {
         const response = await client.chat.completions.create({ model, messages: [{ role: 'user', content: prompt }], temperature: 0.1 }, { timeout: 20_000, maxRetries: 0 });

@@ -170,7 +170,12 @@ export interface AssistantMemoryItem {
   agentId?: string | null;
   category: string;
   content: string;
-  status: 'ACTIVE' | 'DISABLED';
+  status: 'ACTIVE' | 'DISABLED' | 'SUPERSEDED' | 'DISPUTED';
+  trustStatus?: 'VERIFIED' | 'CANDIDATE' | 'DISPUTED';
+  confidence?: number;
+  factKey?: string | null;
+  supersededById?: string | null;
+  evidenceQuote?: string | null;
   occurrenceCount: number;
   createdAt: string;
   updatedAt: string;
@@ -182,6 +187,12 @@ export interface AgentMemoryItem {
   category: string;
   content: string;
   status: 'ACTIVE' | 'DISABLED' | 'DELETED';
+  trustStatus?: 'VERIFIED' | 'CANDIDATE' | 'DISPUTED';
+  confidence?: number;
+  factKey?: string | null;
+  supersededById?: string | null;
+  evidenceQuote?: string | null;
+  sourceMessageId?: string | null;
   createdAt: string;
   updatedAt: string;
 }

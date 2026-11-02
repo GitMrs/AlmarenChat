@@ -125,11 +125,17 @@ model AgentMemoryItem {
   category        String   @default("preference")
   content         String
   status          String   @default("ACTIVE")
+  trustStatus     String   @default("VERIFIED")
+  confidence      Float    @default(1)
+  factKey         String?
+  supersededById  String?
+  evidenceQuote   String?
   sourceMessageId String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
   @@index([userId, agentId, status, updatedAt])
+  @@index([userId, agentId, factKey, status])
 }
 
 model AgentExperience {
@@ -614,6 +620,7 @@ model Conversation {
   updatedAt            DateTime                  @updatedAt
   messages             Message[]
   contextState         ConversationContextState?
+  recentStates         RecentState[]
   assistantExperiences AssistantExperience[]
   personalAssistant    PersonalAssistantProfile?
   assistantQQBinding   AssistantQQBinding?
@@ -634,6 +641,23 @@ model ConversationContextState {
   version          Int          @default(0)
   lastRequest      Json?
   updatedAt        DateTime     @updatedAt
+}
+
+model RecentState {
+  id              String       @id @default(uuid())
+  conversationId  String
+  conversation    Conversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  topic           String
+  value           String
+  status          String       @default("UNCONFIRMED")
+  mentionedAt     DateTime
+  expiresAt       DateTime
+  sourceMessageId String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@index([conversationId, status, expiresAt])
+  @@index([conversationId, mentionedAt])
 }
 
 model Message {
@@ -678,6 +702,11 @@ model AssistantMemoryItem {
   category        String   @default("preference")
   content         String
   status          String   @default("ACTIVE")
+  trustStatus     String   @default("VERIFIED")
+  confidence      Float    @default(1)
+  factKey         String?
+  supersededById  String?
+  evidenceQuote   String?
   sourceMessageId String?
   occurrenceCount Int      @default(1)
   createdAt       DateTime @default(now())
@@ -685,6 +714,7 @@ model AssistantMemoryItem {
 
   @@index([userId, status, updatedAt])
   @@index([userId, agentId, status, updatedAt])
+  @@index([userId, agentId, factKey, status])
 }
 
 model AssistantExperience {
