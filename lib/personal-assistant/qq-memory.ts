@@ -56,8 +56,13 @@ export async function handleQQMemoryRequest(options: {
       }
     }
 
+    // 普通聊天没有记忆状态时不要执行写操作，避免每条 QQ 消息都争抢数据库写锁。
+    if (reply === null && !pending) return null;
+
     // Pending candidates are never supplied to the model as confirmed memories.
-    await tx.assistantMemoryItem.deleteMany({ where: { userId, agentId: null, status: 'PENDING_QQ' } });
+    if (pending || reply !== null) {
+      await tx.assistantMemoryItem.deleteMany({ where: { userId, agentId: null, status: 'PENDING_QQ' } });
+    }
     if (reply === null) return null;
     if (candidate) {
       await tx.assistantMemoryItem.create({ data: {
