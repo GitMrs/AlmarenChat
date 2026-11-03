@@ -1,5 +1,4 @@
 import type { Agent } from '@/types';
-import { GAMING_AGENTS } from './gaming-agents';
 import { COMPANION_AGENTS } from '../../companion/agents';
 
 const CATEGORY_MAP: Record<string, string> = {
@@ -71,17 +70,14 @@ export async function getBuiltInAgents(): Promise<Agent[]> {
 
   try {
     const rawAgents: RawAgent[] = await import('@/src/lib/agent.json').then((m) => m.default);
-    const reservedIds = new Set([
-      ...COMPANION_AGENTS.map((agent) => agent.id),
-      ...GAMING_AGENTS.map((agent) => agent.id),
-    ]);
+    const reservedIds = new Set(COMPANION_AGENTS.map((agent) => agent.id));
     const standardAgents = rawAgents
       .filter((raw) => !reservedIds.has(raw.identifier))
       .map(transformAgent);
-    agentsCache = [...COMPANION_AGENTS, ...GAMING_AGENTS, ...standardAgents];
+    agentsCache = [...COMPANION_AGENTS, ...standardAgents];
     return agentsCache;
   } catch {
-    return [...COMPANION_AGENTS, ...GAMING_AGENTS];
+    return [...COMPANION_AGENTS];
   }
 }
 

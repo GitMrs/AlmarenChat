@@ -63,7 +63,7 @@ lib/
 
 | 目录 | 职责 | 典型模块 |
 | --- | --- | --- |
-| `agents/data/` | 内置 Agent 静态数据与转换 | `agents-data`、`agent-avatar`、`gaming-agents` |
+| `agents/data/` | 内置 Agent 数据读取与转换；游戏角色统一来自 `src/lib/agent.json` | `agents-data`、`agent-avatar` |
 | `agents/model/` | Agent 模型配置的读取与解析 | `agent-model-config` |
 | `agents/runtime/` | Agent 执行时：工具循环、技能注册、MCP、权限、重试链、运行证据、完成/等待策略、任务执行计划 | `tool-loop`、`runtime-tools`、`skill-registry`、`agent-runtime-v3-policy`、`run-retry-policy`、`runtime-permission-broker`、`task-execution-plan` |
 | `agents/memory/` | 记忆加载、个人记忆、记忆策略、上下文压缩 | `agent-memory`、`agent-memory-service`、`agent-personal-memory`、`context-compression`、`current-time-context` |

@@ -2,10 +2,12 @@ import { NextResponse } from 'next/server';
 import { getUserIdFromRequest } from '@/app/api/_lib/auth';
 import { getSpaceForUser } from '@/app/api/_lib/spaces';
 import { recordGameExperienceRollup, recordSpaceAgentExperiences } from '@/app/api/_lib/agent-personal-memory';
-import { GAMING_AGENTS } from '@/lib/agents/data/gaming-agents';
+import rawAgents from '@/src/lib/agent.json';
 
 const GAME_TYPES = new Set(['gomoku', 'undercover', 'trpg', 'turtlesoup', 'live']);
-const GAMING_AGENT_IDS = new Set(GAMING_AGENTS.map((agent) => agent.id));
+const GAMING_AGENT_IDS = new Set(
+  rawAgents.filter((agent) => agent.identifier.startsWith('gaming-')).map((agent) => agent.identifier)
+);
 
 function cleanText(value: unknown, limit: number) {
   return typeof value === 'string' ? value.replace(/\s+/g, ' ').trim().slice(0, limit) : '';
