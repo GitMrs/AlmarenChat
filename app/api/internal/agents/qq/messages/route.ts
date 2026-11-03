@@ -23,6 +23,7 @@ import { CONVERSATION_GROUNDING_GUIDANCE } from '@/lib/chat/conversation-groundi
 import { stripHistoryRetrievalNotices } from '@/lib/personal-assistant/retrieval-notice.mjs';
 import { buildRecentStateContinuityGuidance } from '@/lib/chat/conversation-continuity.mjs';
 import { buildAgentIdentitySystem, buildAgentRuntimeSystem } from '@/lib/chat/agent-prompt.mjs';
+import { getBuiltInAgents } from '@/lib/agents/data/agents-data';
 import { applyRecentStateMessage, syncRecentStates } from '@/lib/chat/recent-state-store';
 import { dispatchContextCandidates, planContextSources } from '@/lib/memory/context-dispatcher.mjs';
 
@@ -120,7 +121,8 @@ export async function POST(request: Request) {
     });
     if (!userSettings) return NextResponse.json({ error: '用户不存在' }, { status: 404 });
 
-    const agent = (await prisma.agent.findUnique({ where: { id: agentId } })) || findCompanionAgent(agentId);
+    const builtInAgent = (await getBuiltInAgents()).find((item) => item.id === agentId);
+    const agent = builtInAgent || (await prisma.agent.findUnique({ where: { id: agentId } })) || findCompanionAgent(agentId);
     const agentModelSetting = await loadAgentModelSetting(userId, agentId);
     const modelConfig = resolveUserModelConfig(userSettings, agentModelSetting);
     const quota = await reserveChatQuota({
@@ -173,11 +175,11 @@ export async function POST(request: Request) {
       console.warn('[agent-qq/knowledge] Knowledge hit retrieval failed:', error?.message);
     }
 
-    const agentName = conversation.agentName || agent?.name || 'Agent';
+    const agentName = builtInAgent?.name || conversation.agentName || agent?.name || 'Agent';
     let recentStates: any[] = [];
     try { recentStates = await syncRecentStates({ conversationId, history: normalizedHistory }); }
     catch (error: any) { console.warn('[recent-state] sync failed:', error?.message); }
-    const identitySystem = buildAgentIdentitySystem({
+    const identitySystem = buildAgentIdentitySystem(builtInAgent || {
       name: agentName,
       systemPrompt: conversation.agentSystemPrompt || agent?.systemPrompt || '',
       description: conversation.agentDescription || agent?.description || '',

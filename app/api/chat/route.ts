@@ -7,6 +7,7 @@ import path from 'node:path';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { findCompanionAgent } from '@/lib/companion/agents';
+import { getBuiltInAgents } from '@/lib/agents/data/agents-data';
 import { companionReplyInstruction, createCompanionReplyParser } from '@/lib/companion/reply-protocol.mjs';
 import { createChatWebTools, runAutoWebChat } from '@/lib/web/auto-web';
 import { createAgentGrowthTools } from '@/lib/agents/growth/agent-growth';
@@ -95,6 +96,10 @@ export async function POST(request: Request) {
     if (conversationId && !conversationSettings) {
       return NextResponse.json({ error: 'Conversation not found' }, { status: 404 });
     }
+    // Built-in profiles follow the current catalog, even for existing conversations.
+    const builtInAgent = (await getBuiltInAgents()).find(
+      (agent) => agent.id === (conversationSettings?.agentId || agentId)
+    );
     const agentModelSetting = await loadAgentModelSetting(userId, conversationSettings?.agentId || agentId);
     const modelConfig = resolveUserModelConfig(userSettings, agentModelSetting);
     const quota = await reserveChatQuota({
@@ -119,7 +124,7 @@ export async function POST(request: Request) {
     let resolvedConversationId: string | null = conversationId || null;
 
     if (userId && !resolvedConversationId && agentId) {
-      const agent = (await prisma.agent.findUnique({ where: { id: agentId } })) || findCompanionAgent(agentId);
+      const agent = builtInAgent || (await prisma.agent.findUnique({ where: { id: agentId } })) || findCompanionAgent(agentId);
       const snapshot = agent || agentSnapshot || {};
       const existingMain = await prisma.conversation.findFirst({
         where: { userId, agentId, kind: 'AGENT', agentMode: 'MAIN' },
@@ -201,7 +206,7 @@ export async function POST(request: Request) {
       catch (error: any) { console.warn('[recent-state] sync failed:', error?.message); }
     }
     const continuityGuidance = buildRecentStateContinuityGuidance({ message: textMessage, history: normalizedHistory, states: recentStates });
-    const identitySystem = buildAgentIdentitySystem({
+    const identitySystem = buildAgentIdentitySystem(builtInAgent || {
       name: conversationSettings?.agentName || agentSnapshot?.name || 'Agent',
       systemPrompt: conversationSettings?.agentSystemPrompt || agentSnapshot?.systemPrompt || context || '',
       description: conversationSettings?.agentDescription || agentSnapshot?.description || '',

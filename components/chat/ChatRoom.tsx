@@ -314,15 +314,14 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
           return;
         }
 
-        // Try API first, fall back to built-in
-        let found: Agent | undefined;
-        if (agentId) {
+        const builtInAgents = await getBuiltInAgents();
+        let found: Agent | undefined = builtInAgents.find((item) => item.id === agentId);
+        if (agentId && !found) {
           try {
             const result = await agentsApi.get(agentId);
             found = result.agent;
           } catch {
-            const builtIn = await getBuiltInAgents();
-            found = builtIn.find((item) => item.id === agentId);
+            found = undefined;
           }
         }
 
@@ -373,6 +372,8 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
               greeting: found?.greeting,
               voice: (conversation as any).agentVoice || found?.voice,
               companionCharacterId: found?.companionCharacterId || getCompanionCharacterId(conversation.agentId),
+              // Old snapshots are only a fallback for custom or removed Agents.
+              ...builtInAgents.find((item) => item.id === conversation.agentId),
             });
             setConversationMode((conversation as any).agentMode === 'TEMPORARY' ? 'TEMPORARY' : 'MAIN');
             const conversationList = await conversationsApi.list({ agentId: conversation.agentId || agentId, limit: 100, includeLastMessage: false, includeArchived: true }).catch(() => ({ conversations: [] }));
