@@ -175,15 +175,15 @@ export async function POST(request: Request) {
       console.warn('[agent-qq/knowledge] Knowledge hit retrieval failed:', error?.message);
     }
 
-    const agentName = builtInAgent?.name || conversation.agentName || agent?.name || 'Agent';
+    const agentName = conversation.agentName || builtInAgent?.name || agent?.name || 'Agent';
     let recentStates: any[] = [];
     try { recentStates = await syncRecentStates({ conversationId, history: normalizedHistory }); }
     catch (error: any) { console.warn('[recent-state] sync failed:', error?.message); }
-    const identitySystem = buildAgentIdentitySystem(builtInAgent || {
+    const identitySystem = buildAgentIdentitySystem({
       name: agentName,
-      systemPrompt: conversation.agentSystemPrompt || agent?.systemPrompt || '',
-      description: conversation.agentDescription || agent?.description || '',
-      tone: conversation.agentTone || agent?.tone || '',
+      systemPrompt: conversation.agentSystemPrompt || builtInAgent?.systemPrompt || agent?.systemPrompt || '',
+      description: conversation.agentDescription || builtInAgent?.description || agent?.description || '',
+      tone: conversation.agentTone || builtInAgent?.tone || agent?.tone || '',
     });
     const runtimeSystem = buildAgentRuntimeSystem({
       channel: 'QQ',

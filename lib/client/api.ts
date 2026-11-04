@@ -375,6 +375,7 @@ export const agents = {
   list: () => request<{ agents: any[] }>('/agents'),
   mine: () => request<{ agents: any[] }>('/agents?scope=mine'),
   get: (id: string) => request<{ agent: any }>(`/agents/${id}`),
+  reset: (id: string) => request<{ success: true }>(`/agents/${encodeURIComponent(id)}/reset`, { method: 'POST' }),
   getMainConversation: (id: string) => request<{ conversation: any; created: boolean }>(`/agents/${id}/main-conversation`, {
     method: 'POST',
   }),

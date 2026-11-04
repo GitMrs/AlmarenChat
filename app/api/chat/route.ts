@@ -206,11 +206,11 @@ export async function POST(request: Request) {
       catch (error: any) { console.warn('[recent-state] sync failed:', error?.message); }
     }
     const continuityGuidance = buildRecentStateContinuityGuidance({ message: textMessage, history: normalizedHistory, states: recentStates });
-    const identitySystem = buildAgentIdentitySystem(builtInAgent || {
-      name: conversationSettings?.agentName || agentSnapshot?.name || 'Agent',
-      systemPrompt: conversationSettings?.agentSystemPrompt || agentSnapshot?.systemPrompt || context || '',
-      description: conversationSettings?.agentDescription || agentSnapshot?.description || '',
-      tone: conversationSettings?.agentTone || agentSnapshot?.tone || '',
+    const identitySystem = buildAgentIdentitySystem({
+      name: conversationSettings?.agentName || builtInAgent?.name || agentSnapshot?.name || 'Agent',
+      systemPrompt: conversationSettings?.agentSystemPrompt || builtInAgent?.systemPrompt || agentSnapshot?.systemPrompt || context || '',
+      description: conversationSettings?.agentDescription || builtInAgent?.description || agentSnapshot?.description || '',
+      tone: conversationSettings?.agentTone || builtInAgent?.tone || agentSnapshot?.tone || '',
     });
     const runtimeSystem = buildAgentRuntimeSystem({
       timeContext: currentTimeContext(),

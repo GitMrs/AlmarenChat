@@ -139,6 +139,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
   const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
   const [activeActionMessageId, setActiveActionMessageId] = useState<string | null>(null);
   const [confirmClearOpen, setConfirmClearOpen] = useState(false);
+  const [resetWithClear, setResetWithClear] = useState(false);
   const [clearingMessages, setClearingMessages] = useState(false);
   const [userSettings, setUserSettings] = useState<{
     apiBaseUrl?: string;
@@ -439,6 +440,16 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
     const targetAgentId = conversationAgent?.id || agent?.id || agentId;
     if (!targetAgentId || conversationMode === 'MAIN') return;
     router.replace(`/chat/${targetAgentId}`);
+  };
+
+  const resetAgentRelationship = async () => {
+    const targetAgentId = conversationAgent?.id || agent?.id || agentId;
+    if (!targetAgentId || conversationMode !== 'MAIN' || isStreaming) return;
+    await agentsApi.reset(targetAgentId);
+    setMessages([]);
+    setHasMoreMessages(false);
+    setStreamingContent('');
+    setStreamingReasoning('');
   };
 
   const createTemporaryConversation = async () => {
@@ -1153,12 +1164,15 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
     const targetConversationId = conversationId || existingConversationId;
     setClearingMessages(true);
     try {
-      if (targetConversationId) {
+      if (resetWithClear) {
+        await resetAgentRelationship();
+      } else if (targetConversationId) {
         await conversationsApi.clearMessages(targetConversationId);
       }
       setMessages([]);
       setHasMoreMessages(false);
       setConfirmClearOpen(false);
+      setResetWithClear(false);
     } catch (error: any) {
       console.error('Clear messages failed:', error);
     } finally {
@@ -1314,6 +1328,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
         onArchiveConversation={archiveConversation}
         onDeleteConversation={deleteConversation}
         onRenameConversation={renameConversation}
+        onResetAgent={resetAgentRelationship}
         viewMode={viewMode}
         onToggleCompanionView={companionCharacterId ? toggleCompanionView : undefined}
         dailyStudy={dailyStudy}
@@ -1526,15 +1541,31 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
       <ConfirmDialog
         open={confirmClearOpen}
         title="清空当前聊天消息？"
-        description={conversationMode === 'MAIN'
-          ? '原始消息将被删除，无法恢复。个人记忆、知识库、活动记录与对话归档仍会保留；如需遗忘，请到对应入口单独管理。'
-          : '当前聊天的原始消息将被删除，无法恢复。个人记忆、知识库和活动记录不受影响。'}
+        description={<>
+          <p>{conversationMode === 'MAIN'
+            ? '原始消息将被删除，无法恢复。默认保留个人记忆、知识库、活动记录与对话归档。'
+            : '当前聊天的原始消息将被删除，无法恢复。个人记忆、知识库和活动记录不受影响。'}</p>
+          {conversationMode === 'MAIN' && (
+            <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-2xl border border-rose-200/80 bg-rose-50/70 p-3 text-left">
+              <input
+                type="checkbox"
+                checked={resetWithClear}
+                onChange={(event) => setResetWithClear(event.target.checked)}
+                className="mt-1 h-4 w-4 accent-rose-500"
+              />
+              <span>
+                <span className="block text-sm font-black text-rose-800">同时重置 Agent 关系</span>
+                <span className="mt-1 block text-xs leading-5 text-rose-700/80">一并清除长期记忆、聊天经历、记忆规则和成长状态，并使用最新的人设重新开始。</span>
+              </span>
+            </label>
+          )}
+        </>}
         icon={<Trash2 size={20} />}
         cancelText="先保留"
         confirmText="确认清空"
         destructive
         loading={clearingMessages}
-        onCancel={() => setConfirmClearOpen(false)}
+        onCancel={() => { setConfirmClearOpen(false); setResetWithClear(false); }}
         onConfirm={handleClearMessages}
       />
       <ConfirmDialog

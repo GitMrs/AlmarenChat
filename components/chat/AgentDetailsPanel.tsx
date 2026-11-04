@@ -76,6 +76,7 @@ type AgentDetailsPanelProps = {
   onArchiveConversation: (conversationId: string, archived: boolean) => void;
   onDeleteConversation: (conversationId: string) => void;
   onRenameConversation: (conversationId: string) => void;
+  onResetAgent: () => Promise<void>;
   viewMode?: 'chat' | 'companion';
   onToggleCompanionView?: () => void;
   dailyStudy?: AgentDailyStudyRecord | null;
@@ -127,6 +128,7 @@ export default function AgentDetailsPanel({
   onArchiveConversation,
   onDeleteConversation,
   onRenameConversation,
+  onResetAgent,
   viewMode = 'chat',
   onToggleCompanionView,
   dailyStudy,
@@ -153,6 +155,8 @@ export default function AgentDetailsPanel({
   const [memoryEditorOpen, setMemoryEditorOpen] = useState(false);
   const [memoryNotice, setMemoryNotice] = useState('');
   const [memoryError, setMemoryError] = useState('');
+  const [resetAgentOpen, setResetAgentOpen] = useState(false);
+  const [resettingAgent, setResettingAgent] = useState(false);
   const [deleteMemoryTarget, setDeleteMemoryTarget] = useState<AgentMemoryItem | null>(null);
   const [toggleMemoryTarget, setToggleMemoryTarget] = useState<{ memory: AgentMemoryItem; nextStatus: 'ACTIVE' | 'DISABLED' } | null>(null);
   const [togglingMemory, setTogglingMemory] = useState(false);
@@ -612,6 +616,17 @@ export default function AgentDetailsPanel({
       <span className="flex shrink-0 items-center rounded-full bg-white px-2 py-0.5 text-[11px] font-black text-sky-700 border border-sky-200/60 shadow-2xs">
         {knowledgeDocCount ?? 0}
       </span>
+    </button>
+  );
+
+  const resetAgentButton = (
+    <button
+      type="button"
+      onClick={() => setResetAgentOpen(true)}
+      className="flex w-full items-center justify-center gap-2 rounded-2xl border border-rose-200/80 bg-rose-50/70 px-4 py-3 text-sm font-black text-rose-700 transition hover:border-rose-300 hover:bg-rose-50 cursor-pointer"
+    >
+      <RefreshCw size={15} />
+      重置 Agent 关系
     </button>
   );
 
@@ -1252,6 +1267,33 @@ export default function AgentDetailsPanel({
   );
   return (
     <>
+      <ConfirmDialog
+        open={resetAgentOpen}
+        title={`重置${displayAgent.name}？`}
+        description="这会清除你与该 Agent 的聊天记录、近期状态、长期记忆、聊天经历、记忆规则和成长状态。Agent 人设、知识库、模型设置和 QQ 绑定会保留，操作无法撤销。"
+        cancelText="取消"
+        confirmText="确认重置"
+        destructive
+        loading={resettingAgent}
+        onCancel={() => setResetAgentOpen(false)}
+        onConfirm={async () => {
+          if (resettingAgent) return;
+          setResettingAgent(true);
+          setMemoryError('');
+          try {
+            await onResetAgent();
+            setAgentMemories([]);
+            setAgentExperiences([]);
+            setAgentGrowthEvents([]);
+            setResetAgentOpen(false);
+            setMemoryNotice('已重置与该 Agent 的关系状态。');
+          } catch (error: any) {
+            setMemoryError(error?.message || '重置 Agent 失败');
+          } finally {
+            setResettingAgent(false);
+          }
+        }}
+      />
       {editExperience && memoryEnabled && <AgentExperienceEditor key={editExperience.id} experience={editExperience} sourceLabel={ACTIVITY_SOURCE_LABELS[editExperience.sourceType || 'TASK'] || '空间活动'} onCancel={() => setEditExperience(null)} onSave={summary => updateExperience(editExperience, { summary })} />}
       <ConfirmDialog
         open={Boolean(experienceAction)}
@@ -1390,6 +1432,7 @@ export default function AgentDetailsPanel({
           {detailsOpen && (
             <div className="mt-5 max-h-[calc(100vh-430px)] min-h-0 space-y-4 overflow-y-auto border-t border-black/[0.06] pt-5 pr-1">
               <AgentDetailBody displayAgent={displayAgent} />
+              {memoryEnabled && resetAgentButton}
             </div>
           )}
         </div>
@@ -1465,6 +1508,7 @@ export default function AgentDetailsPanel({
                 {displayAgent.description || '这个 Agent 会根据你的问题给出清晰、具体、可执行的帮助。'}
               </p>
               <AgentDetailBody displayAgent={displayAgent} />
+              {memoryEnabled && resetAgentButton}
             </div>
           </div>
         </div>
