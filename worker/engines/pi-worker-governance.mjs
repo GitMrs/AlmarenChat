@@ -28,6 +28,7 @@ import { loadSkillPackage, readSkillPackageFile } from '../../lib/agents/runtime
 import { runSandboxedSkillProcess } from '../runtime/sandbox-runner.mjs';
 import { searchWeb } from '../../lib/agents/runtime/runtime-tools.mjs';
 import { fetchWebPage } from '../../lib/web/web-fetch.mjs';
+import { RESPONSE_GROUNDING_GUIDANCE } from '../../lib/chat/conversation-grounding.mjs';
 import { createHttpMcpClient, mcpToolName } from '../../lib/agents/runtime/mcp-client.mjs';
 
 const READ_TOOLS = new Set(['list_files', 'read_file', 'check_files']);
@@ -487,6 +488,7 @@ function taskPrompt(request, skill) {
   return {
     systemPrompt: [
       agentPrompt,
+      RESPONSE_GROUNDING_GUIDANCE,
       request.agent?.memoryContext || '',
       '你正在通过 Almaren Worker 管理的 Pi 执行引擎完成一个已批准步骤。只能使用本轮提供的工具。',
       request.mode === 'executor'

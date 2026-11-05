@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import Database from 'better-sqlite3';
 import { createDiscussionRuntime } from './discussion-runtime.mjs';
+import { RESPONSE_GROUNDING_GUIDANCE } from '../../lib/chat/conversation-grounding.mjs';
 
 function fixture(overrides = {}) {
   const db = new Database(':memory:');
@@ -85,7 +86,11 @@ function insertDiscussion(db, overrides = {}) {
 }
 
 test('discussion runtime persists one member turn and advances the sequence', async () => {
-  const current = fixture();
+  let systemPrompt;
+  const current = fixture({ runLoop: async ({ messages }) => {
+    systemPrompt = messages[0].content;
+    return { content: '成员观点' };
+  } });
   const discussion = insertDiscussion(current.db);
   await current.runtime.processDiscussion(discussion);
 
@@ -97,6 +102,9 @@ test('discussion runtime persists one member turn and advances the sequence', as
   const message = current.db.prepare('SELECT * FROM "SpaceMessage"').get();
   assert.equal(message.speakerAgentId, 'frontend');
   assert.equal(message.content, '成员观点');
+  assert.ok(systemPrompt.includes(RESPONSE_GROUNDING_GUIDANCE));
+  assert.match(systemPrompt, /前端工程师/);
+  assert.match(systemPrompt, /不得创建任务方案/);
   current.db.close();
 });
 

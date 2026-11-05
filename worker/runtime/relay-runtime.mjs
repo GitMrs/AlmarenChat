@@ -10,6 +10,7 @@ import {
 } from '../../lib/workspace/game/relay/gomoku.mjs';
 import { relayStageDecision } from '../../lib/workspace/game/relay/stage-policy.mjs';
 import { currentTimeContext } from '../../lib/agents/memory/current-time-context.mjs';
+import { RESPONSE_GROUNDING_GUIDANCE } from '../../lib/chat/conversation-grounding.mjs';
 import { recordSpaceAgentExperiences } from './agent-memory-store.mjs';
 
 const RELAY_ACTION_TOOL = {
@@ -461,6 +462,7 @@ export function createRelayRuntime({
               content: [
                 currentTimeContext(),
                 currentAgent.systemPrompt || currentAgent.description || `你是 ${currentAgent.name}。`,
+                RESPONSE_GROUNDING_GUIDANCE,
                 currentAgent.memoryContext || '',
                 context.projectMemory || '',
                 `你正在参加一个持久化接力协作，当前只以“${currentAgent.name}”身份完成自己这一轮。`,
@@ -485,6 +487,7 @@ export function createRelayRuntime({
               content: [
                 currentTimeContext(),
                 currentAgent.systemPrompt || currentAgent.description || `你是 ${currentAgent.name}。`,
+                RESPONSE_GROUNDING_GUIDANCE,
                 currentAgent.memoryContext || '',
                 context.projectMemory || '',
                 `你正在参加由空间协调者组织的接力协作。当前只以“${currentAgent.name}”身份完成自己这一轮。`,

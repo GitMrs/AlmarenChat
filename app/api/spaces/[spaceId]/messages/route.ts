@@ -36,6 +36,7 @@ import { createGomokuState } from '@/lib/workspace/game/relay/gomoku.mjs';
 import { relayStagePolicy } from '@/lib/workspace/game/relay/stage-policy.mjs';
 import { loadAgentMemoryContext } from '@/lib/agents/memory/agent-memory';
 import { currentTimeContext } from '@/lib/agents/memory/current-time-context.mjs';
+import { RESPONSE_GROUNDING_GUIDANCE } from '@/lib/chat/conversation-grounding.mjs';
 import { recordSpaceAgentExperiences } from '@/app/api/_lib/agent-personal-memory';
 import { prepareSpaceMessageRuntime } from '@/lib/space/space-message-runtime';
 import { loadAgentWorldContext } from '@/lib/world/context';
@@ -970,6 +971,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
       spaceKnowledgeContext,
       spaceMessageRuntime.promptContext,
       targetAgent.systemPrompt || targetAgent.description || `你是 ${targetAgent.name}。`,
+      RESPONSE_GROUNDING_GUIDANCE,
       agentMemory,
       formatMembersContext(allAgents, targetAgent, { autoBotChat: isAutoRelayEnabled }),
       useIsolatedContext ? '当前是一个独立直播上下文。只允许璐璐和可可参与，不得提及、@或邀请空间中的其他成员；不要引用直播之外的历史对话、任务或游戏。' : '',

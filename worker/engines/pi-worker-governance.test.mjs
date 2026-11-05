@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import test from 'node:test';
 import { createPiWorkerGovernance } from './pi-worker-governance.mjs';
+import { RESPONSE_GROUNDING_GUIDANCE } from '../../lib/chat/conversation-grounding.mjs';
 
 function request(overrides = {}) {
   return {
@@ -58,6 +59,8 @@ test('Pi Worker governance accepts only validated structured completion', async 
   const options = await build(request({
     validateSubmission: async () => ({ ok: true, manifest }),
   }));
+  assert.ok(options.systemPrompt.includes(RESPONSE_GROUNDING_GUIDANCE));
+  assert.match(options.systemPrompt, /必须通过 submit_task_result 提交/);
   const tool = options.tools.find((item) => item.name === 'submit_task_result');
   const result = await tool.execute('call-2', { summary: '文章已经完成', remainingIssues: [] });
 
@@ -95,6 +98,7 @@ test('Pi Worker governance lets advisor tasks return reviewed text without submi
   const build = createPiWorkerGovernance({ db: {}, reserveRequest: () => ({}) });
   const options = await build(request({ mode: 'advisor' }));
 
+  assert.ok(options.systemPrompt.includes(RESPONSE_GROUNDING_GUIDANCE));
   assert.equal(options.tools.some((item) => item.name === 'submit_task_result'), false);
   assert.equal(options.resolveResult({ finalContent: '风险结论', status: 'completed' }), '风险结论');
   assert.equal(options.resolveExecutionResult().result, undefined);

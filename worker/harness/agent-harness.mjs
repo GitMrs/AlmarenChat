@@ -16,6 +16,7 @@ import { generateImageToolSchema, generateImagesToolSchema, generateWorkspaceIma
 import { continuationIterationsFromAnswer } from '../../lib/agents/runtime/agent-wait-policy.mjs';
 import { taskContextTargetTokens } from '../../lib/core/model-limits.mjs';
 import { currentTimeContext } from '../../lib/agents/memory/current-time-context.mjs';
+import { RESPONSE_GROUNDING_GUIDANCE } from '../../lib/chat/conversation-grounding.mjs';
 
 const READ_TOOLS = new Set(['list_files', 'read_file', 'check_files']);
 export const EXECUTOR_TOOL_ITERATIONS = 10;
@@ -183,6 +184,7 @@ export async function runExecutorHarness({
       content:
         `${currentTimeContext()}\n\n` +
         `${agent.systemPrompt || agent.description || `你是${agent.name}。`}\n\n` +
+        `${RESPONSE_GROUNDING_GUIDANCE}\n\n` +
         `${agent.memoryContext ? `${agent.memoryContext}\n\n` : ''}` +
         (canProduceArtifacts
           ? '你正在执行用户已确认方案中的单个步骤。你可以使用当前 Skill 已授权的工具查看资料并生成当前空间内的任务产物。'
@@ -583,6 +585,7 @@ export async function runAdvisorHarness({
         role: 'system',
         content: `${currentTimeContext()}\n\n` +
           `${agent.systemPrompt || agent.description || `你是${agent.name}。`}\n\n` +
+          `${RESPONSE_GROUNDING_GUIDANCE}\n\n` +
           `${agent.memoryContext ? `${agent.memoryContext}\n\n` : ''}` +
           '你是本任务的专业顾问，负责产出当前步骤需要的判断、规则、约束和可供后续执行者直接采用的建议。' +
           '你可以使用只读工具查看和检查当前空间工作区，不要声称做过未实际执行的操作。' +

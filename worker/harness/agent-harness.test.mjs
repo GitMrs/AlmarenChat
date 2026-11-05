@@ -6,6 +6,7 @@ import path from 'node:path';
 import { ADVISOR_MAX_ATTEMPTS, ADVISOR_TOOL_ITERATIONS, EXECUTOR_MAX_ATTEMPTS, EXECUTOR_TOOL_ITERATIONS, runAdvisorHarness, runExecutorHarness } from './agent-harness.mjs';
 import { ADVISOR_MODEL_REQUEST_LIMIT, EXECUTOR_MODEL_REQUEST_LIMIT } from '../../lib/agents/runtime/task-execution-plan.mjs';
 import { executeWorkspaceTool } from '../../lib/agents/runtime/runtime-tools.mjs';
+import { RESPONSE_GROUNDING_GUIDANCE } from '../../lib/chat/conversation-grounding.mjs';
 
 const run = { id: 'run-1', input: '完成页面', runtimeVersion: 3 };
 const task = {
@@ -84,6 +85,8 @@ test('executor harness owns prompts and the model tool loop', async () => {
     workspaceOptions: {},
   });
   assert.equal(result.result, '页面已经完成。');
+  assert.ok(request.messages[0].content.includes(RESPONSE_GROUNDING_GUIDANCE));
+  assert.ok(request.messages[0].content.includes(agent.systemPrompt));
   assert.match(request.messages[1].content, /产品规则/);
   assert.match(request.messages[1].content, /本步骤验收标准（仅对当前步骤负责）/);
   assert.match(request.messages[1].content, /index\.html 可以直接打开/);
@@ -639,6 +642,7 @@ test('read-only advisor can inspect the workspace but cannot mutate it', async (
     fakeMode: false,
     completeMessage: async (_model, messages, tools) => {
       toolNames = tools.map((tool) => tool.function.name);
+      assert.ok(messages[0].content.includes(RESPONSE_GROUNDING_GUIDANCE));
       assert.match(messages[0].content, /只读工具/);
       assert.match(messages[0].content, /提交前必须逐条自检/);
       assert.match(messages[1].content, /本步骤验收标准（仅对当前步骤负责）/);

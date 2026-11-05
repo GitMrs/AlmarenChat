@@ -8,6 +8,7 @@ import {
 import { runToolLoop } from '../../lib/agents/runtime/tool-loop.mjs';
 import { chooseNextGroupChatSpeaker, groupChatTurnLimit, nextGroupChatPosition } from '../policies/group-chat-scheduler.mjs';
 import { currentTimeContext } from '../../lib/agents/memory/current-time-context.mjs';
+import { RESPONSE_GROUNDING_GUIDANCE } from '../../lib/chat/conversation-grounding.mjs';
 import { recordSpaceAgentExperiences } from './agent-memory-store.mjs';
 
 const DISCUSSION_READ_TOOLS = new Set(['list_files', 'read_file', 'check_files']);
@@ -236,6 +237,7 @@ export function createDiscussionRuntime({
               content: [
                 currentTimeContext(),
                 currentAgent.systemPrompt || currentAgent.description || `你是 ${currentAgent.name}。`,
+                RESPONSE_GROUNDING_GUIDANCE,
                 currentAgent.memoryContext || '',
                 context.projectMemory || '',
                 `你正在以“${currentAgent.name}”的身份参加空间多人讨论。${roundInstruction}`,

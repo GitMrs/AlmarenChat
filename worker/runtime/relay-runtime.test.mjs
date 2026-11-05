@@ -4,6 +4,7 @@ import Database from 'better-sqlite3';
 import { createCollaborationState } from '../../lib/workspace/game/relay/collaboration.mjs';
 import { createGomokuState } from '../../lib/workspace/game/relay/gomoku.mjs';
 import { createRelayRuntime } from './relay-runtime.mjs';
+import { RESPONSE_GROUNDING_GUIDANCE } from '../../lib/chat/conversation-grounding.mjs';
 
 function fixture({ action = { row: 8, column: 8, comment: '占据中心' }, runLoop, completeMessage } = {}) {
   const db = new Database(':memory:');
@@ -44,7 +45,8 @@ function fixture({ action = { row: 8, column: 8, comment: '占据中心' }, runL
     loadRunContext: () => ({ agents, model: {} }),
     persistSpaceMemory: () => {},
     now: () => '2026-09-07T00:00:00.000Z',
-    runLoop: runLoop || (async ({ executeTool }) => {
+    runLoop: runLoop || (async ({ messages, executeTool }) => {
+      assert.ok(messages[0].content.includes(RESPONSE_GROUNDING_GUIDANCE));
       await executeTool('submit_relay_action', action);
     }),
     executeWorkspace: async (_options, name, args) => {
@@ -265,6 +267,7 @@ test('generic collaboration ends with one visible coordinator summary', async ()
         });
         return;
       }
+      assert.ok(messages[0].content.includes(RESPONSE_GROUNDING_GUIDANCE));
       await executeTool('submit_relay_turn', { content: '方案已经满足完成条件。', status: 'COMPLETE' });
     },
   });
