@@ -12,7 +12,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ ag
     const summary = body.summary === undefined ? undefined : typeof body.summary === 'string' ? body.summary.trim() : '';
     if (summary !== undefined && (!summary || summary.length > 2_000)) return NextResponse.json({ error: '经历内容需为 1～2000 字' }, { status: 400 });
     if (body.status !== undefined && !['ACTIVE', 'DISABLED', 'DELETED'].includes(body.status)) return NextResponse.json({ error: '无效的经历状态' }, { status: 400 });
-    const result = await prisma.agentExperience.updateMany({ where: { id: experienceId, userId, agentId, status: { not: 'DELETED' } }, data: { ...(summary !== undefined ? { summary, edited: true } : {}), ...(body.status ? { status: body.status } : {}) } });
+    const result = await prisma.agentExperience.updateMany({ where: { id: experienceId, userId, agentId, status: { not: 'DELETED' } }, data: { ...(summary !== undefined ? { summary, edited: true, memoryTypes: [], memorySegments: [] } : {}), ...(body.status ? { status: body.status } : {}) } });
     if (!result.count) return NextResponse.json({ error: '经历不存在' }, { status: 404 });
     return NextResponse.json({ experience: await prisma.agentExperience.findFirst({ where: { id: experienceId, userId, agentId } }) });
   } catch (error: any) {

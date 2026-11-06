@@ -147,7 +147,7 @@ export const agentMemories = {
   add: (agentId: string, data: { content: string; category?: string; conversationId?: string; factKey?: string; evidenceQuote?: string; sourceMessageId?: string }) => request<{ memory: AgentMemoryItem; duplicate?: boolean }>(`/agents/${encodeURIComponent(agentId)}/memories`, { method: 'POST', body: JSON.stringify(data) }),
   update: (agentId: string, id: string, data: { content?: string; category?: string; status?: 'ACTIVE' | 'DISABLED' }) => request<{ memory: AgentMemoryItem }>(`/agents/${encodeURIComponent(agentId)}/memories/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(data) }),
   remove: (agentId: string, id: string) => request<{ success: boolean }>(`/agents/${encodeURIComponent(agentId)}/memories/${encodeURIComponent(id)}`, { method: 'DELETE' }),
-  extract: (agentId: string, data: { conversationId: string; userMessage: string; assistantMessage: string; localOnly?: boolean; localResponse?: string }) => request<{ suggestions: Array<{ content: string; category: string }>; modelMessages?: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> }>(`/agents/${encodeURIComponent(agentId)}/memories/extract`, { method: 'POST', body: JSON.stringify(data) }),
+  extract: (agentId: string, data: { conversationId: string; userMessage: string; assistantMessage: string; localOnly?: boolean; localResponse?: string }) => request<{ suggestions: Array<{ content: string; category: string; factKey?: string; evidenceQuote?: string; sourceMessageId?: string }>; modelMessages?: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> }>(`/agents/${encodeURIComponent(agentId)}/memories/extract`, { method: 'POST', body: JSON.stringify(data) }),
   context: (agentId: string, conversationId: string, query: string, signal?: AbortSignal) => request<{ context: string; archivedThrough?: { id: string; createdAt: string } | null }>(`/agents/${encodeURIComponent(agentId)}/memories/context`, { method: 'POST', body: JSON.stringify({ conversationId, query }), signal }),
   updateExperience: (agentId: string, id: string, data: { summary?: string; status?: 'ACTIVE' | 'DISABLED' | 'DELETED' }) => request<{ experience: AgentExperience }>(`/agents/${encodeURIComponent(agentId)}/experiences/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(data) }),
 };
@@ -412,12 +412,12 @@ export const agents = {
       method: 'DELETE',
     }),
   growth: (id: string) => request<AgentGrowthProfile>(`/agents/${id}/memory`),
-  addGrowthRule: (id: string, data: { category: string; title: string; instruction: string }) =>
+  addGrowthRule: (id: string, data: { category: string; title: string; instruction: string; scope?: 'AGENT' | 'SPACE' | 'TASK'; spaceId?: string | null; taskId?: string | null }) =>
     request<AgentGrowthProfile>(`/agents/${id}/memory`, {
       method: 'POST',
       body: JSON.stringify(data),
     }),
-  updateGrowthRule: (id: string, data: { id: string; action: string; category?: string; title?: string; instruction?: string }) =>
+  updateGrowthRule: (id: string, data: { id: string; action: string; category?: string; title?: string; instruction?: string; scope?: 'AGENT' | 'SPACE' | 'TASK'; spaceId?: string | null; taskId?: string | null }) =>
     request<AgentGrowthProfile>(`/agents/${id}/memory`, {
       method: 'PATCH',
       body: JSON.stringify(data),

@@ -5,7 +5,7 @@ import { requireAgentMemoryAccess } from '@/app/api/_lib/agent-personal-memory';
 import { loadAgentModelSetting, resolveUserModelConfig } from '@/app/api/_lib/agent-model';
 import { createModelClient, resolveModelName } from '@/lib/core/model-client';
 import { memoryFingerprint } from '@/lib/personal-assistant/memory-dedup.mjs';
-import { explicitMemoryContent, explicitMemoryPrompt, parseExplicitMemory, shouldExtractMemorySuggestion } from '@/lib/personal-assistant/memory-intent.mjs';
+import { explicitMemoryContent, explicitMemoryPrompt, parseExplicitMemory, shouldExtractMemorySuggestion, normalizeMemorySuggestion } from '@/lib/personal-assistant/memory-intent.mjs';
 
 export async function POST(request: Request, { params }: { params: Promise<{ agentId: string }> }) {
   try {
@@ -22,10 +22,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ age
     const modelMessages = [{ role: 'user' as const, content: explicit ? explicitMemoryPrompt(explicit) : [
       '提取当前用户明确表达、值得这个 Agent 长期记住的稳定偏好、习惯、背景或交互约定。',
       '只使用用户明确表达的事实；不把助理推测、一次性请求或虚构游戏内容当成用户事实。每条不超过100字；没有值得保留的信息就返回空数组。',
+      '计划、待办、当前状态、事件和经历只留在对应的上下文或归档，不提取为长期记忆。decision 仅用于用户明确确认的持续性决策，不是尚未执行的计划。',
+      'evidenceQuote 必须逐字引用本轮用户原话；没有用户原话证据则不提取。factKey 仅在明确是同一项可变事实时填写，不确定则留空。',
       `已有记忆：${memories.map(item => item.content).join('\n')}`,
       `用户原话：${userMessage}`,
       `助理回应（仅供理解上下文）：${String(body.assistantMessage || '').slice(0, 500)}`,
-      '只输出 JSON：{"extracted":[{"content":"记忆内容","category":"preference|tech|rule|project|fact"}]}',
+      '只输出 JSON：{"extracted":[{"content":"记忆内容","category":"stable_fact|preference|relationship|decision|rule","evidenceQuote":"用户原话","factKey":"对象.方面"}]}',
     ].join('\n\n') }];
     if (body.localOnly === true) return NextResponse.json({ suggestions: [], modelMessages });
     let raw = typeof body.localResponse === 'string' ? body.localResponse : '';
@@ -41,20 +43,24 @@ export async function POST(request: Request, { params }: { params: Promise<{ age
         if (!explicit) throw error;
       }
     }
-    let candidates: Array<{ content: string; category?: string }> = [];
+    let candidates: Array<{ content: string; category?: string; evidenceQuote?: string; factKey?: string }> = [];
     if (explicit) candidates = [parseExplicitMemory(raw, explicit)];
     else {
       const parsed = JSON.parse(raw.replace(/^```(?:json)?\s*|\s*```$/g, '').trim());
       candidates = Array.isArray(parsed) ? parsed : Array.isArray(parsed.extracted) ? parsed.extracted : [];
     }
     const known = new Set(memories.map(item => memoryFingerprint(item.content)));
-    const suggestions = candidates.filter(item => {
-      if (typeof item?.content !== 'string' || !item.content.trim() || item.content.length > (explicit ? 500 : 100)) return false;
+    const sourceMessage = candidates.length ? await prisma.message.findFirst({
+      where: { conversationId: conversation.id, role: 'user', content: userMessage },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], select: { id: true, content: true },
+    }) : null;
+    const suggestions = candidates.map(item => normalizeMemorySuggestion(item, [sourceMessage || { content: userMessage }], explicit)).filter(item => {
+      if (!item) return false;
       const fingerprint = memoryFingerprint(item.content);
       if (!fingerprint || known.has(fingerprint)) return false;
       known.add(fingerprint);
       return true;
-    }).slice(0, 3).map(item => ({ content: item.content.trim(), category: ['preference', 'tech', 'rule', 'project', 'fact'].includes(item.category || '') ? item.category : 'fact' }));
+    }).slice(0, 3);
     return NextResponse.json({ suggestions });
   } catch (error: any) {
     if (error.message === 'Unauthorized' || error.message === 'Agent not found') return NextResponse.json({ error: error.message }, { status: error.message === 'Unauthorized' ? 401 : 404 });

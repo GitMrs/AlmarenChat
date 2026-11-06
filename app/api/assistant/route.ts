@@ -15,7 +15,7 @@ export async function GET(request: Request) {
         take: 60,
       }),
       prisma.assistantMemoryItem.findMany({
-        where: { userId, agentId, status: { not: 'PENDING_QQ' } },
+        where: { userId, agentId, status: { in: ['ACTIVE', 'DISABLED', 'SUPERSEDED'] } },
         orderBy: { updatedAt: 'desc' },
       }),
       prisma.assistantExperience.findMany({

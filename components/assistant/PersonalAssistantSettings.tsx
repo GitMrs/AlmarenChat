@@ -582,6 +582,8 @@ export default function PersonalAssistantSettings() {
     );
   }
 
+  const currentMemories = memories.filter((m) => m.status === 'ACTIVE' || m.status === 'DISABLED');
+  const memoryHistory = memories.filter((m) => m.status === 'SUPERSEDED');
   const activeMemoryCount = memories.filter((m) => m.status === 'ACTIVE').length;
   const qqErrorNotice = qqAssistantErrorNotice(qqBinding?.lastError);
 
@@ -1223,12 +1225,12 @@ export default function PersonalAssistantSettings() {
 
         {/* 记忆列表 */}
         <div className="space-y-2.5 pt-1">
-          {memories.length === 0 ? (
+          {currentMemories.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-black/10 py-12 text-center text-sm font-semibold text-slate-400">
               小伴还没有长期记忆，在上方输入一条添加吧
             </div>
           ) : (
-            memories.map((item) => {
+            currentMemories.map((item) => {
               const busy = memoryBusyId === item.id;
               const isActive = item.status === 'ACTIVE';
               return (
@@ -1285,6 +1287,13 @@ export default function PersonalAssistantSettings() {
             })
           )}
         </div>
+
+          {memoryHistory.length > 0 && (
+            <details className="border-t border-black/[0.07] pt-3">
+              <summary className="cursor-pointer text-xs font-bold text-slate-500">历史版本（只读） · {memoryHistory.length}</summary>
+              {memoryHistory.map((memory) => <p key={memory.id} className="mt-2 whitespace-pre-wrap rounded-xl bg-slate-50 p-3 text-xs leading-5 text-slate-500">{memory.content}</p>)}
+            </details>
+          )}
 
         <div className="border-t border-black/[0.06] pt-5">
           <div className="flex items-start justify-between gap-3">

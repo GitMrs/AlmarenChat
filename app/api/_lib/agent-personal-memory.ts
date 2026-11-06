@@ -4,6 +4,7 @@ import { reviewAgentChatArchive } from '@/lib/agents/growth/chat-review';
 import prisma from '@/app/api/_lib/db';
 import { resolveAgent } from '@/app/api/_lib/spaces';
 import { buildSpaceExperience } from '@/lib/agents/memory/agent-personal-memory.mjs';
+import { archiveMemorySegments, archiveMemoryTypes } from '@/lib/memory/chat-archive.mjs';
 
 export async function requireAgentMemoryAccess(userId: string, agentId: string) {
   const agent = await resolveAgent(agentId, userId);
@@ -31,7 +32,7 @@ export async function recordSpaceAgentExperiences(options: {
       await tx.agentExperience.upsert({
         where: { userId_agentId_taskId: { userId: options.userId, agentId, taskId: episode.taskId } },
         create: { ...episode, userId: options.userId, agentId, spaceId: options.spaceId, outcome: 'ACCEPTED' },
-        update: { title: episode.title, ...(!existing?.edited ? { summary: episode.summary } : {}) },
+        update: { title: episode.title, ...(!existing?.edited ? { summary: episode.summary, memoryTypes: episode.memoryTypes, memorySegments: episode.memorySegments } : {}) },
       });
       recorded += 1;
     }
@@ -112,10 +113,12 @@ export async function recordGameExperienceRollup(options: {
         create: {
           userId: options.userId, agentId, spaceId: options.spaceId, taskId,
           title: `${label} · ${options.date}`, summary, outcome: 'ACCEPTED', sourceType: 'GAME', tags,
+          memoryTypes: ['episode'],
+          memorySegments: [{ source: 'space', type: 'episode', content: summary }],
         },
         update: {
           title: `${label} · ${options.date}`, tags,
-          ...(!existing?.edited ? { summary } : {}),
+          ...(!existing?.edited ? { summary, memoryTypes: ['episode'], memorySegments: [{ source: 'space', type: 'episode', content: summary }] } : {}),
         },
       });
       recorded += 1;
@@ -163,7 +166,7 @@ export async function archiveAgentChat(userId: string, agentId: string, conversa
     if (current?.taskId !== previous?.taskId) throw new Error('对话归档已更新，请刷新后重试');
     return tx.agentExperience.upsert({
       where: { userId_agentId_taskId: { userId, agentId, taskId: `${prefix}${last.id}` } },
-      create: { userId, agentId, taskId: `${prefix}${last.id}`, title, summary, sourceType: 'CHAT', outcome: 'ACCEPTED', createdAt: last.createdAt, tags: [`from-time:${references.startAt.toISOString()}`, `through-id:${references.lastMessageId}`, `through-time:${references.endAt.toISOString()}`, ...references.messageIds.map(id => `message:${id}`)] },
+      create: { userId, agentId, taskId: `${prefix}${last.id}`, title, summary, sourceType: 'CHAT', outcome: 'ACCEPTED', createdAt: last.createdAt, memoryTypes: archiveMemoryTypes(summary), memorySegments: archiveMemorySegments(summary), tags: [`from-time:${references.startAt.toISOString()}`, `through-id:${references.lastMessageId}`, `through-time:${references.endAt.toISOString()}`, ...references.messageIds.map(id => `message:${id}`)] },
       update: {},
     });
   });

@@ -2,25 +2,17 @@ import { NextResponse } from 'next/server';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { requireAgentMemoryAccess } from '@/app/api/_lib/agent-personal-memory';
+import { updatePersonalMemory } from '@/lib/memory/personal-memory-update.mjs';
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ agentId: string; memoryId: string }> }) {
   try {
     const userId = requireAuth(request);
     const { agentId, memoryId } = await params;
     await requireAgentMemoryAccess(userId, agentId);
-    const body = await request.json();
-    const content = body.content === undefined ? undefined : typeof body.content === 'string' ? body.content.trim() : '';
-    if (content !== undefined && (!content || content.length > 500)) return NextResponse.json({ error: '记忆内容需为 1～500 字' }, { status: 400 });
-    if (body.status !== undefined && !['ACTIVE', 'DISABLED'].includes(body.status)) return NextResponse.json({ error: '无效的记忆状态' }, { status: 400 });
-    if (body.category !== undefined && !['preference', 'tech', 'rule', 'project', 'fact'].includes(body.category)) return NextResponse.json({ error: '无效的记忆类型' }, { status: 400 });
-    const updated = await prisma.agentMemoryItem.updateMany({
-      where: { id: memoryId, userId, agentId, status: { not: 'DELETED' }, ...(body.category !== undefined ? { category: { not: 'skill' } } : {}) },
-      data: { ...(content !== undefined ? { content } : {}), ...(body.category !== undefined ? { category: body.category } : {}), ...(body.status ? { status: body.status } : {}) },
-    });
-    if (!updated.count) return NextResponse.json({ error: '记忆不存在' }, { status: 404 });
-    return NextResponse.json({ memory: await prisma.agentMemoryItem.findFirst({ where: { id: memoryId, userId, agentId } }) });
+    const memory = await updatePersonalMemory(prisma, 'agentMemoryItem', { id: memoryId, userId, agentId }, await request.json());
+    return NextResponse.json({ memory });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: error.message === 'Unauthorized' ? 401 : error.message === 'Agent not found' ? 404 : 500 });
+    return NextResponse.json({ error: error.message }, { status: error.status || (error.message === 'Unauthorized' ? 401 : error.message === 'Agent not found' ? 404 : 500) });
   }
 }
 

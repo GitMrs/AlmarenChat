@@ -569,7 +569,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
     try {
       await Promise.all([...pendingMemorySuggestions.selected].map((index) => {
         const suggestion = pendingMemorySuggestions.suggestions[index];
-        return agentMemories.add(pendingMemorySuggestions.agentId, { content: suggestion.content, category: suggestion.category, conversationId: pendingMemorySuggestions.conversationId });
+        return agentMemories.add(pendingMemorySuggestions.agentId, { ...suggestion, conversationId: pendingMemorySuggestions.conversationId });
       }));
       setPendingMemorySuggestions(null);
     } finally {

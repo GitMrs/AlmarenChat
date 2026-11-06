@@ -2,7 +2,7 @@
 
 import { Check, Loader2, Sparkles, X } from 'lucide-react';
 
-export type MemorySuggestion = { content: string; category: string };
+export type MemorySuggestion = { content: string; category: string; factKey?: string; evidenceQuote?: string; sourceMessageId?: string };
 
 type MemorySuggestionDialogProps = {
   suggestions: MemorySuggestion[];

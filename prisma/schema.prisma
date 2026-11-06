@@ -153,6 +153,8 @@ model AgentExperience {
   status     String   @default("ACTIVE")
   edited     Boolean  @default(false)
   tags       Json?
+  memoryTypes Json?
+  memorySegments Json?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
@@ -190,6 +192,10 @@ model AgentMemoryRule {
   title         String
   instruction   String
   status        String   @default("PENDING")
+  scope         String   @default("AGENT")
+  spaceId       String?
+  taskId        String?
+  supersededById String?
   evidenceCount Int      @default(1)
   sourceIds     Json?
   createdAt     DateTime @default(now())
@@ -728,6 +734,8 @@ model AssistantExperience {
   messageCount   Int
   startAt        DateTime
   endAt          DateTime
+  memoryTypes    Json?
+  memorySegments Json?
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
   messages       Message[]

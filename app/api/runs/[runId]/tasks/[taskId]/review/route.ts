@@ -182,6 +182,7 @@ export async function POST(
         await recordAgentCorrection(transaction, {
           userId,
           agentId: task.agentId,
+          spaceId: existing.spaceId,
           taskId,
           runId,
           eventId: reviewEvent.id,

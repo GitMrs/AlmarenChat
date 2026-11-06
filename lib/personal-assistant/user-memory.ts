@@ -1,5 +1,6 @@
 import { rankMemoryRecords, memoryCandidateWhere } from '@/lib/memory/memory-recall.mjs';
 import prisma from '@/app/api/_lib/db';
+import { personalMemorySections } from '@/lib/agents/memory/agent-personal-memory.mjs';
 
 export interface UserMemoryItem {
   category: string;
@@ -27,14 +28,6 @@ export async function loadUserMemoryItems(userId: string, agentId?: string | nul
   });
 }
 
-const CATEGORY_LABELS: Record<string, string> = {
-  preference: '偏好习惯',
-  tech: '技术选型',
-  rule: '交互准则',
-  project: '项目背景',
-  fact: '已知事实',
-};
-
 /**
  * 将检索出的记忆转化为具有“老搭档默契”的 Agent 伙伴心智 System Prompt
  */
@@ -46,16 +39,12 @@ export function buildUserMemoryContext(
   const selected = selectRelevantUserMemories(memories, query, 6);
   if (selected.length === 0) return '';
 
-  const memoryLines = selected.map((m) => {
-    const label = CATEGORY_LABELS[m.category] || m.category || '已知事实';
-    return `- [${label}] ${m.content}`;
-  }).join('\n');
-
   return [
     '【你与该用户积累的专属认知与长期记忆】：',
-    memoryLines,
+    ...personalMemorySections(selected),
     '',
     '【运用准则】：',
     '以上是你与该用户在过往相处中沉淀的长期认知。请将其作为回答的默认前提，自然顺应其偏好；除非用户主动问起或确认，无需刻意声明“我查了记忆库”或生硬背诵这些偏好。',
+    '交互约定只在当前用户、当前 Agent 和原有适用场景使用；用户本轮明确指令优先，不把历史建议当成永久规则。',
   ].join('\n');
 }

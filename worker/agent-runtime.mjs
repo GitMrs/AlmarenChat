@@ -1052,6 +1052,7 @@ async function executeTask(run, task, context, previousResults) {
           userId: run.userId,
           spaceId: run.spaceId,
           agentId: assignedAgent.id,
+          taskId: task.id,
           query: `${task.title}\n${task.instruction}\n${task.acceptanceCriteria || ''}`,
         }),
       };

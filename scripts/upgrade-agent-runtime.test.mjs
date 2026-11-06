@@ -1,7 +1,26 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import Database from 'better-sqlite3';
+import { readFileSync } from 'node:fs';
 import { inspectKnownMigrationRepair, inspectPrismaBaseline } from './upgrade-agent-runtime.mjs';
+
+for (const migration of ['20261106100000_add_experience_memory_types', '20261106110000_add_agent_memory_rule_scope']) {
+  test(`deployment recognizes memory fields already added by the custom upgrade: ${migration}`, () => {
+    const db = new Database(':memory:');
+    try {
+      db.exec(`CREATE TABLE User (id TEXT PRIMARY KEY);
+        CREATE TABLE AgentExperience (id TEXT PRIMARY KEY);
+        CREATE TABLE AssistantExperience (id TEXT PRIMARY KEY);
+        CREATE TABLE AgentMemoryRule (id TEXT PRIMARY KEY);
+        CREATE TABLE _prisma_migrations (migration_name TEXT, started_at DATETIME, finished_at DATETIME, rolled_back_at DATETIME);`);
+      db.exec(readFileSync(new URL(`../prisma/migrations/${migration}/migration.sql`, import.meta.url), 'utf8'));
+      db.prepare('INSERT INTO _prisma_migrations VALUES (?, ?, NULL, NULL)').run(migration, '2026-11-06');
+      assert.deepEqual(inspectKnownMigrationRepair(db), {
+        action: 'resolve', migration, reason: 'migration-failed-but-schema-present',
+      });
+    } finally { db.close(); }
+  });
+}
 
 function baselineDatabase() {
   const db = new Database(':memory:');

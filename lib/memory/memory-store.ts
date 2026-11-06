@@ -1,5 +1,5 @@
 import prisma from '@/app/api/_lib/db';
-import { memoryCandidateWhere, recallExperiences, normalizeExperience, memoryArchiveDateFilter, memoryDateQuery } from './memory-recall.mjs';
+import { memoryCandidateWhere, memoryArchiveCandidateWhere, recallExperiences, normalizeExperience, memoryArchiveDateFilter, memoryDateQuery } from './memory-recall.mjs';
 
 export interface MemoryScope {
   userId: string;
@@ -32,11 +32,11 @@ export async function searchMemoryArchives(scope: MemoryScope, query: string, pa
   if (!Number.isInteger(page) || page < 1 || page > 1000) throw new Error('无效的记忆页码');
   if (!Number.isInteger(offset) || offset < 0 || offset > 120) throw new Error('无效的记忆结果偏移');
   const conversationId = await ownedScope(scope);
-  const where = { ...archiveWhere(scope, conversationId), AND: [memoryCandidateWhere(query), memoryArchiveDateFilter(query, scope.kind)] };
+  const where = { ...archiveWhere(scope, conversationId), AND: [memoryArchiveCandidateWhere(query), memoryArchiveDateFilter(query, scope.kind)] };
   const batch = 120;
   const rows: any[] = scope.kind === 'assistant'
-    ? await prisma.assistantExperience.findMany({ where, orderBy: [{ endAt: 'desc' }, { id: 'desc' }], skip: (page - 1) * batch, take: batch + 1, select: { id: true, summary: true, startAt: true, endAt: true } })
-    : await prisma.agentExperience.findMany({ where, orderBy: [{ createdAt: memoryDateQuery(query) ? 'asc' : 'desc' }, { id: 'desc' }], skip: (page - 1) * batch, take: batch + 1, select: { id: true, summary: true, title: true, tags: true, createdAt: true } });
+    ? await prisma.assistantExperience.findMany({ where, orderBy: [{ endAt: 'desc' }, { id: 'desc' }], skip: (page - 1) * batch, take: batch + 1, select: { id: true, summary: true, startAt: true, endAt: true, memorySegments: true } })
+    : await prisma.agentExperience.findMany({ where, orderBy: [{ createdAt: memoryDateQuery(query) ? 'asc' : 'desc' }, { id: 'desc' }], skip: (page - 1) * batch, take: batch + 1, select: { id: true, summary: true, title: true, tags: true, createdAt: true, memorySegments: true } });
   const ranked = recallExperiences(rows.slice(0, batch).map(normalizeExperience), query, { maxArchives: batch, maxChars: 130_000 }).items
     .sort((a, b) => b.score - a.score || new Date(b.endAt).getTime() - new Date(a.endAt).getTime());
   const items = ranked.slice(offset, offset + 4);

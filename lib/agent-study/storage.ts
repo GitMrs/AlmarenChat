@@ -342,11 +342,21 @@ export async function syncStudyToAgentExperience(
           summary,
           outcome: 'ACCEPTED',
           sourceType: 'STUDY',
+          memoryTypes: ['episode'],
+          memorySegments: [{
+            source: 'agent',
+            type: 'episode',
+            content: summary,
+          }],
           tags: ['study', item.source, `heat:${item.heat || ''}`],
         },
         update: {
           title,
-          ...(!existing?.edited ? { summary } : {}),
+          ...(!existing?.edited ? { summary, memoryTypes: ['episode'], memorySegments: [{
+            source: 'agent',
+            type: 'episode',
+            content: summary,
+          }] } : {}),
           updatedAt: new Date(),
         },
       });

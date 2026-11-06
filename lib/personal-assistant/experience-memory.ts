@@ -1,6 +1,6 @@
-import { memoryCandidateWhere, recallExperiences, memoryArchiveDateFilter } from '@/lib/memory/memory-recall.mjs';
+import { memoryArchiveCandidateWhere, recallExperiences, memoryArchiveDateFilter } from '@/lib/memory/memory-recall.mjs';
 import { recallOriginalDetails } from '@/lib/memory/memory-store';
-import { CHAT_ARCHIVE_TRIGGER, CHAT_ARCHIVE_BATCH, limitChatArchiveBatch, buildChatArchiveFallback, buildAssistantArchivePrompt, chatArchiveReferences, selectChatArchiveBatch, summarizeChatArchive } from '@/lib/memory/chat-archive.mjs';
+import { CHAT_ARCHIVE_TRIGGER, CHAT_ARCHIVE_BATCH, limitChatArchiveBatch, buildChatArchiveFallback, buildAssistantArchivePrompt, chatArchiveReferences, selectChatArchiveBatch, summarizeChatArchive, archiveMemoryTypes, archiveMemorySegments } from '@/lib/memory/chat-archive.mjs';
 import { randomUUID } from 'node:crypto';
 import prisma from '@/app/api/_lib/db';
 import { formatAssistantHistoryTimestamp } from '@/lib/personal-assistant/history-context.mjs';
@@ -81,6 +81,8 @@ export async function archiveOldMainChatMessages(options: {
           messageCount: references.messageCount,
           startAt: references.startAt,
           endAt: references.endAt,
+          memoryTypes: archiveMemoryTypes(summary),
+          memorySegments: archiveMemorySegments(summary),
         },
       });
       const claimed = await tx.message.updateMany({
@@ -157,6 +159,8 @@ export async function manualArchiveAssistantMessages(options: {
         messageCount: references.messageCount,
         startAt: references.startAt,
         endAt: references.endAt,
+        memoryTypes: archiveMemoryTypes(summary),
+        memorySegments: archiveMemorySegments(summary),
       },
     });
     const claimed = await tx.message.updateMany({
@@ -206,10 +210,10 @@ export async function loadAssistantMemoryContext(options: {
     }),
     options.includeExperiences
       ? prisma.assistantExperience.findMany({
-          where: { userId: options.userId, conversationId: options.conversationId, AND: [memoryCandidateWhere(options.query), memoryArchiveDateFilter(options.query, 'assistant')] },
+          where: { userId: options.userId, conversationId: options.conversationId, AND: [memoryArchiveCandidateWhere(options.query), memoryArchiveDateFilter(options.query, 'assistant')] },
           orderBy: { endAt: 'desc' },
           take: 120,
-          select: { id: true, summary: true, messageCount: true, startAt: true, endAt: true },
+          select: { id: true, summary: true, messageCount: true, startAt: true, endAt: true, memorySegments: true },
         })
       : Promise.resolve([]),
   ]);

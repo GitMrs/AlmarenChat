@@ -11,9 +11,10 @@ const CATEGORY_LABELS: Record<string, string> = {
   capability: '能力经验',
 };
 
-type RuleDraft = Pick<AgentMemoryRule, 'category' | 'title' | 'instruction'>;
+type RuleDraft = Pick<AgentMemoryRule, 'category' | 'title' | 'instruction' | 'scope' | 'spaceId' | 'taskId'>;
+const SCOPE_LABELS = { AGENT: '此员工的所有场景', SPACE: '仅来源空间', TASK: '仅原任务' };
 
-const EMPTY_DRAFT: RuleDraft = { category: 'method', title: '', instruction: '' };
+const EMPTY_DRAFT: RuleDraft = { category: 'method', title: '', instruction: '', scope: 'AGENT' };
 
 export default function AgentGrowthPanel({ agentId }: { agentId: string }) {
   const [profile, setProfile] = useState<AgentGrowthProfile | null>(null);
@@ -36,12 +37,14 @@ export default function AgentGrowthPanel({ agentId }: { agentId: string }) {
     pending: profile?.rules.filter((item) => item.status === 'PENDING') || [],
     active: profile?.rules.filter((item) => item.status === 'ACTIVE') || [],
     disabled: profile?.rules.filter((item) => item.status === 'DISABLED') || [],
+    superseded: profile?.rules.filter((item) => item.status === 'SUPERSEDED') || [],
   }), [profile]);
 
   const ruleDraft = (rule: AgentMemoryRule) => edits[rule.id] || {
     category: rule.category,
     title: rule.title,
     instruction: rule.instruction,
+    scope: rule.scope || 'AGENT', spaceId: rule.spaceId, taskId: rule.taskId,
   };
 
   const changeRule = (rule: AgentMemoryRule, patch: Partial<RuleDraft>) => {
@@ -101,6 +104,9 @@ export default function AgentGrowthPanel({ agentId }: { agentId: string }) {
       category: 'capability',
       title: experience.title,
       instruction: `处理类似“${experience.title}”的工作时，参考这次已验收成果形成的方法：${experience.summary}`.slice(0, 1_200),
+      scope: experience.spaceId ? ((!experience.sourceType || experience.sourceType === 'TASK') ? 'TASK' : 'SPACE') : 'AGENT',
+      spaceId: experience.spaceId,
+      taskId: !experience.sourceType || experience.sourceType === 'TASK' ? experience.taskId : null,
     });
     document.getElementById('agent-growth-new-rule')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   };
@@ -109,10 +115,23 @@ export default function AgentGrowthPanel({ agentId }: { agentId: string }) {
     return <div className="flex min-h-64 items-center justify-center text-slate-400"><Loader2 className="animate-spin" size={24} /></div>;
   }
 
+  const scopeEditor = (value: RuleDraft, onChange: (scope: RuleDraft['scope']) => void) => (
+    <label className="flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-500">
+      适用范围
+      <select aria-label="经验适用范围" value={value.scope} onChange={event => onChange(event.target.value as RuleDraft['scope'])} className="h-9 rounded-lg border border-black/[0.08] bg-white px-2 text-sm text-slate-700">
+        <option value="TASK" disabled={!value.spaceId || !value.taskId}>仅原任务</option>
+        <option value="SPACE" disabled={!value.spaceId}>仅来源空间</option>
+        <option value="AGENT">此员工的所有场景</option>
+      </select>
+      <span>扩大范围后，经验会用于对应范围内的相关工作。</span>
+    </label>
+  );
+
   const editor = (rule: AgentMemoryRule) => {
     const value = ruleDraft(rule);
     return (
       <div className="grid gap-3">
+        {scopeEditor(value, scope => changeRule(rule, { scope }))}
         <div className="grid gap-3 sm:grid-cols-[150px_minmax(0,1fr)]">
           <select
             value={value.category}
@@ -147,7 +166,7 @@ export default function AgentGrowthPanel({ agentId }: { agentId: string }) {
         <div className="mb-4 flex items-end justify-between gap-4">
           <div>
             <h2 className="text-lg font-black text-slate-950">待确认经验</h2>
-            <p className="mt-1 text-sm text-slate-500">来自用户返工与纠正，确认后才会影响这个员工在其他空间的工作。</p>
+            <p className="mt-1 text-sm text-slate-500">来自用户返工与纠正，默认仅用于原任务；确认前可调整适用范围。</p>
           </div>
           <span className="text-sm font-black text-amber-700">{groups.pending.length}</span>
         </div>
@@ -174,6 +193,7 @@ export default function AgentGrowthPanel({ agentId }: { agentId: string }) {
           <p className="mt-1 text-sm text-slate-500">你直接添加的内容视为已确认，会立即用于这个员工之后的相关任务。</p>
         </div>
         <div className="grid gap-3 border-y border-black/[0.06] py-4">
+          {scopeEditor(draft, scope => setDraft(current => ({ ...current, scope })))}
           <div className="grid gap-3 sm:grid-cols-[150px_minmax(0,1fr)]">
             <select value={draft.category} onChange={(event) => setDraft((current) => ({ ...current, category: event.target.value as RuleDraft['category'] }))} className="h-10 rounded-lg border border-black/[0.08] bg-white px-3 text-sm font-bold text-slate-700 outline-none focus:border-slate-400">
               {Object.entries(CATEGORY_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
@@ -194,7 +214,7 @@ export default function AgentGrowthPanel({ agentId }: { agentId: string }) {
             const editing = Boolean(edits[rule.id]);
             return (
               <article key={rule.id} className="rounded-lg border border-black/[0.07] bg-white p-4">
-                {editing ? editor(rule) : <><div className="text-xs font-black text-emerald-700">{CATEGORY_LABELS[rule.category]}</div><h3 className="mt-1 font-black text-slate-900">{rule.title}</h3><p className="mt-2 text-sm leading-6 text-slate-600">{rule.instruction}</p></>}
+                {editing ? editor(rule) : <><div className="text-xs font-black text-emerald-700">{CATEGORY_LABELS[rule.category]} · {SCOPE_LABELS[rule.scope || 'AGENT']}</div><h3 className="mt-1 font-black text-slate-900">{rule.title}</h3><p className="mt-2 text-sm leading-6 text-slate-600">{rule.instruction}</p></>}
                 <div className="mt-4 flex items-center justify-between gap-2 border-t border-black/[0.05] pt-3">
                   <span className="text-xs font-semibold text-slate-400">证据 {rule.evidenceCount} 次</span>
                   <div className="flex gap-1">
@@ -209,6 +229,14 @@ export default function AgentGrowthPanel({ agentId }: { agentId: string }) {
           {groups.active.length === 0 && <div className="py-8 text-sm font-semibold text-slate-400">这个员工还没有已确认的工作方法。</div>}
         </div>
         {groups.disabled.length > 0 && <div className="mt-5 border-t border-black/[0.06] pt-4"><div className="mb-3 text-sm font-black text-slate-500">已停用</div><div className="flex flex-wrap gap-2">{groups.disabled.map((rule) => <div key={rule.id} className="inline-flex max-w-full items-center gap-2 rounded-lg bg-slate-100 px-3 py-2 text-sm font-bold text-slate-500"><span className="truncate">{rule.title}</span><button type="button" title="重新启用" onClick={() => updateRule(rule, 'enable')}><RotateCcw size={14} /></button><button type="button" title="删除" onClick={() => deleteRule(rule)}><Trash2 size={14} /></button></div>)}</div></div>}
+        {groups.superseded.length > 0 && <details className="mt-5 border-t border-black/[0.06] pt-4">
+          <summary className="cursor-pointer text-sm font-black text-slate-500">已被替代的历史版本（{groups.superseded.length}）</summary>
+          <div className="mt-3 grid gap-3">{groups.superseded.map(rule => <article key={rule.id} className="rounded-lg bg-slate-50 p-3 text-sm text-slate-500">
+            <div className="font-bold">{rule.title} · {SCOPE_LABELS[rule.scope || 'AGENT']}</div>
+            <p className="mt-1 whitespace-pre-wrap">{rule.instruction}</p>
+            <p className="mt-2 text-xs">已由后续版本替代，仅供查阅，不再用于工作。</p>
+          </article>)}</div>
+        </details>}
       </section>
 
       <section>

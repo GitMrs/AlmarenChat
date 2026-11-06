@@ -521,7 +521,7 @@ export default function SpaceOperationsCenter(props: Props) {
                 <div className="mt-4 grid grid-cols-3 border-y border-black/[0.07] py-4 text-center">
                   <div><div className="text-xl font-black text-slate-800">{props.learning.proposals.filter((item) => item.status === 'pending').length}</div><div className="mt-1 text-xs font-bold text-slate-400">待确认</div></div>
                   <div className="border-x border-black/[0.06]"><div className="text-xl font-black text-slate-800">{props.learning.rules.filter((item) => item.status === 'active').length}</div><div className="mt-1 text-xs font-bold text-slate-400">已生效</div></div>
-                  <div><div className="text-xl font-black text-slate-800">{[...props.learning.proposals, ...props.learning.rules].reduce((sum, item) => sum + item.occurrences, 0)}</div><div className="mt-1 text-xs font-bold text-slate-400">累计发现</div></div>
+                  <div><div className="text-xl font-black text-slate-800">{[...props.learning.proposals, ...props.learning.rules.filter((item) => item.status !== 'superseded')].reduce((sum, item) => sum + item.occurrences, 0)}</div><div className="mt-1 text-xs font-bold text-slate-400">累计发现</div></div>
                 </div>
               )}
             </section>
@@ -540,7 +540,7 @@ export default function SpaceOperationsCenter(props: Props) {
                 </div>
               ))}
 
-              {props.learning?.rules.map((item) => (
+              {props.learning?.rules.filter((item) => item.status === 'active' || item.status === 'disabled').map((item) => (
                 <div key={item.id} className={`rounded-lg border p-4 ${item.status === 'active' ? 'border-black/[0.08] bg-white' : 'border-black/[0.06] bg-slate-50 opacity-70'}`}>
                   <div className="flex items-center justify-between gap-3 text-[11px] font-black text-slate-400"><span>{LEARNING_CATEGORY_LABELS[item.category]} · {item.status === 'active' ? '已生效' : '已停用'}</span><span>发现 {item.occurrences} 次</span></div>
                   <input value={item.title} maxLength={120} onChange={(event) => props.onUpdateLearningDraft('rules', item.id, 'title', event.target.value)} aria-label="成长规则标题" className="mt-2 w-full border-0 bg-transparent text-sm font-black text-slate-800 outline-none" />
@@ -551,6 +551,18 @@ export default function SpaceOperationsCenter(props: Props) {
                   </div>
                 </div>
               ))}
+
+              {props.learning?.rules.some((item) => item.status === 'superseded') && (
+                <details className="border-t border-black/[0.07] pt-4">
+                  <summary className="cursor-pointer text-xs font-black text-slate-500">查看历史版本（只读）</summary>
+                  {props.learning.rules.filter((item) => item.status === 'superseded').map((item) => (
+                    <div key={item.id} className="mt-3 rounded-lg border border-black/[0.06] bg-slate-50 p-4">
+                      <div className="text-xs font-black text-slate-500">{item.title} · 已取代</div>
+                      <p className="mt-2 whitespace-pre-wrap text-xs leading-5 text-slate-500">{item.instruction}</p>
+                    </div>
+                  ))}
+                </details>
+              )}
 
               {props.learning && props.learning.rules.length === 0 && props.learning.proposals.every((item) => item.status !== 'pending') && <div className="border-y border-dashed border-slate-200 py-14 text-center text-sm font-semibold text-slate-400">暂无成长经验</div>}
             </section>

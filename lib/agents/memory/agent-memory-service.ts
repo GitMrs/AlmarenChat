@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Prisma } from '@/src/generated/prisma/client';
 import prisma from '@/app/api/_lib/db';
-import { agentMemoryRuleKey, correctionMemoryCandidate } from '@/lib/agents/memory/agent-memory-policy.mjs';
+import { agentMemoryRuleKey, agentMemoryRuleScope, correctionMemoryCandidate } from '@/lib/agents/memory/agent-memory-policy.mjs';
 
 function cleanText(value: unknown, limit: number) {
   return String(value || '').replace(/\s+/g, ' ').trim().slice(0, limit);
@@ -40,11 +40,12 @@ export async function synchronizeAgentMemory(userId: string, agentId: string) {
       where: {
         agentId,
         type: 'TASK_REVISION_REQUESTED',
+        actor: 'user',
         run: { userId },
       },
       orderBy: { createdAt: 'desc' },
       take: 100,
-      select: { id: true, runId: true, taskId: true, payload: true, createdAt: true },
+      select: { id: true, runId: true, taskId: true, payload: true, createdAt: true, run: { select: { spaceId: true } } },
     }),
   ]);
 
@@ -57,7 +58,10 @@ export async function synchronizeAgentMemory(userId: string, agentId: string) {
           spaceId: task.run.spaceId,
           runId: task.run.id,
           title: cleanText(task.title, 160),
-          ...(!existing?.edited ? { summary: cleanText(task.result, 2_000) } : {}),
+          ...(!existing?.edited ? {
+            summary: cleanText(task.result, 2_000), memoryTypes: ['episode'],
+            memorySegments: [{ source: 'agent', type: 'episode', content: cleanText(task.result, 2_000) }],
+          } : {}),
           outcome: 'ACCEPTED',
           tags: [task.mode, task.skillId].filter(Boolean),
         },
@@ -70,6 +74,8 @@ export async function synchronizeAgentMemory(userId: string, agentId: string) {
           taskId: task.id,
           title: cleanText(task.title, 160) || '未命名任务',
           summary: cleanText(task.result, 2_000),
+          memoryTypes: ['episode'],
+          memorySegments: [{ source: 'agent', type: 'episode', content: cleanText(task.result, 2_000) }],
           outcome: 'ACCEPTED',
           tags: [task.mode, task.skillId].filter(Boolean),
         },
@@ -84,6 +90,7 @@ export async function synchronizeAgentMemory(userId: string, agentId: string) {
         feedback: payload.feedback,
         taskId: event.taskId,
         runId: event.runId,
+        spaceId: event.run.spaceId,
       });
       if (!candidate) continue;
       const existing = await tx.agentMemoryRule.findUnique({
@@ -114,7 +121,7 @@ export async function synchronizeAgentMemory(userId: string, agentId: string) {
 
 export async function recordAgentCorrection(
   tx: Prisma.TransactionClient,
-  options: { userId: string; agentId: string; taskId: string; runId: string; eventId: string; feedback: string }
+  options: { userId: string; agentId: string; spaceId: string; taskId: string; runId: string; eventId: string; feedback: string }
 ) {
   const agent = await tx.agent.findFirst({
     where: { id: options.agentId, agentType: 'EMPLOYEE' },
@@ -147,12 +154,25 @@ export async function recordAgentCorrection(
   });
 }
 
-export function manualAgentMemoryRule(input: { category?: unknown; title?: unknown; instruction?: unknown }) {
+export function manualAgentMemoryRule(input: { category?: unknown; title?: unknown; instruction?: unknown; scope?: unknown; spaceId?: unknown; taskId?: unknown }) {
   const category = ['method', 'correction', 'capability'].includes(String(input.category))
     ? String(input.category)
     : 'method';
   const title = cleanText(input.title, 120);
   const instruction = cleanText(input.instruction, 1_200);
   if (!title || !instruction) throw new Error('标题和经验内容不能为空');
-  return { category, title, instruction, key: agentMemoryRuleKey(category, instruction) };
+  const scope = agentMemoryRuleScope(input);
+  return { category, title, instruction, ...scope, key: agentMemoryRuleKey(category, instruction, scope) };
+}
+
+export async function validateAgentMemoryRuleScope(tx: Prisma.TransactionClient, userId: string, agentId: string, rule: ReturnType<typeof manualAgentMemoryRule>) {
+  if (rule.scope === 'AGENT') return;
+  const space = await tx.space.findFirst({ where: { id: rule.spaceId, userId }, select: { id: true } });
+  if (!space) throw new Error('规则来源空间不存在或无权访问');
+  if (rule.scope === 'TASK') {
+    const task = await tx.agentTask.findFirst({
+      where: { id: rule.taskId, agentId, run: { userId, spaceId: rule.spaceId } }, select: { id: true },
+    });
+    if (!task) throw new Error('规则来源任务不存在或不属于当前 Agent 和空间');
+  }
 }

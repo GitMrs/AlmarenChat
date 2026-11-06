@@ -3,7 +3,7 @@ import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { createModelClient, resolveModelName } from '@/lib/core/model-client';
 import { memoryFingerprint } from '@/lib/personal-assistant/memory-dedup.mjs';
-import { explicitMemoryContent, explicitMemoryPrompt, parseExplicitMemory } from '@/lib/personal-assistant/memory-intent.mjs';
+import { explicitMemoryContent, explicitMemoryPrompt, parseExplicitMemory, normalizeMemorySuggestion } from '@/lib/personal-assistant/memory-intent.mjs';
 
 export const runtime = 'nodejs';
 
@@ -49,7 +49,6 @@ export async function POST(request: Request) {
     const agentId = typeof body.agentId === 'string' && body.agentId.trim() ? body.agentId.trim() : null;
 
     let dialogueContext = '';
-    let userEvidenceText = '';
     let userEvidenceMessages: Array<{ id?: string; content: string }> = [];
     let explicitContent: string | null = null;
 
@@ -72,7 +71,6 @@ export async function POST(request: Request) {
         return NextResponse.json({ suggestions: [] });
       }
       dialogueContext = `用户说：${userMsg}\n助理回复：${assistantMsg.slice(0, 300)}`;
-      userEvidenceText = userMsg;
       const requestedSourceId = typeof body.sourceMessageId === 'string' ? body.sourceMessageId.trim() : '';
       userEvidenceMessages = requestedSourceId ? [{ id: requestedSourceId, content: userMsg }] : [{ content: userMsg }];
     } else {
@@ -94,7 +92,7 @@ export async function POST(request: Request) {
         },
       });
       if (!conversation) return NextResponse.json({ error: '会话不存在' }, { status: 404 });
-      if (!agentId && conversation.assistantMode !== 'MAIN') return NextResponse.json({ suggestions: [] });
+      if (agentId ? conversation.agentMode !== 'MAIN' : conversation.assistantMode !== 'MAIN') return NextResponse.json({ suggestions: [] });
 
       const messages = conversation.messages;
       if (messages.length < 2) return NextResponse.json({ suggestions: [] });
@@ -103,7 +101,6 @@ export async function POST(request: Request) {
         .reverse()
         .map((m) => `${m.role === 'user' ? '用户' : '助理'}：${m.content.slice(0, 300)}`)
         .join('\n');
-      userEvidenceText = messages.filter((message) => message.role === 'user').map((message) => message.content).join('\n');
       userEvidenceMessages = messages.filter((message) => message.role === 'user').map((message) => ({ id: message.id, content: message.content }));
     }
 
@@ -127,6 +124,7 @@ export async function POST(request: Request) {
 5. 如果对话中没有任何值得长期记忆的个人信息，提取结果必须为空数组 []。
 6. factKey 只在能明确判断为同一项可变事实时填写“对象.方面”，例如“用户.饮食.辣度”；不要把具体值写进键里。拿不准时留空。
 7. evidenceQuote 必须逐字引用用户原话，不能引用助理的话，也不能改写。
+8. category 只使用 stable_fact、preference、relationship、decision、rule。计划、待办、当前状态、事件和经历只留在上下文或归档，不作为长期记忆候选；decision 仅用于用户已明确确认的持续性决策。
 
 【用户已有记忆库】：
 ${existingListStr}
@@ -187,19 +185,12 @@ ${dialogueContext}
     const rawSuggestions = explicitContent ? [parseExplicitMemory(rawResponse, explicitContent)] : extractJsonArray(rawResponse);
 
     const knownFingerprints = new Set(existingMemories.map((memory) => memoryFingerprint(memory.content)));
-    const finalSuggestions = rawSuggestions.filter((item) => {
+    const finalSuggestions = rawSuggestions.map(item => normalizeMemorySuggestion(item, userEvidenceMessages, explicitContent)).filter((item) => {
+      if (!item) return false;
       const fingerprint = memoryFingerprint(item.content);
       if (!fingerprint || knownFingerprints.has(fingerprint)) return false;
       knownFingerprints.add(fingerprint);
       return true;
-    }).map((item) => {
-      const evidenceQuote = 'evidenceQuote' in item ? item.evidenceQuote : undefined;
-      const sourceMessageId = evidenceQuote ? userEvidenceMessages.find((message) => message.content.includes(evidenceQuote))?.id : undefined;
-      return {
-        ...item,
-        ...(evidenceQuote && userEvidenceText.includes(evidenceQuote) ? {} : { evidenceQuote: undefined }),
-        ...(sourceMessageId ? { sourceMessageId } : {}),
-      };
     });
 
     return NextResponse.json({ suggestions: finalSuggestions.slice(0, 3) });

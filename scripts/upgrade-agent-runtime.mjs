@@ -456,6 +456,7 @@ export function upgradeAgentMemories(db) {
     CREATE INDEX IF NOT EXISTS "AgentMemoryItem_userId_agentId_status_updatedAt_idx" ON "AgentMemoryItem"("userId", "agentId", "status", "updatedAt");
   `);
   const columns = table => db.prepare(`PRAGMA table_info("${table}")`).all().map(column => column.name);
+  if (!columns('AgentMemoryItem').includes('trustStatus')) db.exec(`ALTER TABLE "AgentMemoryItem" ADD COLUMN "trustStatus" TEXT NOT NULL DEFAULT 'VERIFIED'`);
   if (columns('AssistantMemoryItem').includes('agentId')) db.exec(`
     INSERT OR IGNORE INTO "AgentMemoryItem" ("id", "userId", "agentId", "category", "content", "status", "sourceMessageId", "createdAt", "updatedAt")
     SELECT "id", "userId", "agentId", "category", "content", "status", "sourceMessageId", "createdAt", "updatedAt"
@@ -465,6 +466,18 @@ export function upgradeAgentMemories(db) {
     if (!columns('AgentExperience').includes('sourceType')) db.exec(`ALTER TABLE "AgentExperience" ADD COLUMN "sourceType" TEXT NOT NULL DEFAULT 'TASK'`);
     if (!columns('AgentExperience').includes('status')) db.exec(`ALTER TABLE "AgentExperience" ADD COLUMN "status" TEXT NOT NULL DEFAULT 'ACTIVE'`);
     if (!columns('AgentExperience').includes('edited')) db.exec(`ALTER TABLE "AgentExperience" ADD COLUMN "edited" BOOLEAN NOT NULL DEFAULT false`);
+  }
+  for (const table of ['AgentExperience', 'AssistantExperience']) {
+    const existing = columns(table);
+    if (!existing.length) continue;
+    for (const column of ['memoryTypes', 'memorySegments']) {
+      if (!existing.includes(column)) db.exec(`ALTER TABLE "${table}" ADD COLUMN "${column}" JSONB`);
+    }
+  }
+  if (columns('AgentMemoryRule').length) {
+    for (const [column, definition] of Object.entries({ scope: "TEXT NOT NULL DEFAULT 'AGENT'", spaceId: 'TEXT', taskId: 'TEXT', supersededById: 'TEXT' })) {
+      if (!columns('AgentMemoryRule').includes(column)) db.exec(`ALTER TABLE "AgentMemoryRule" ADD COLUMN "${column}" ${definition}`);
+    }
   }
 }
 

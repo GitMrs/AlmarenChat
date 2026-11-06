@@ -73,7 +73,11 @@ export interface AgentMemoryRule {
   category: 'method' | 'correction' | 'capability';
   title: string;
   instruction: string;
-  status: 'PENDING' | 'ACTIVE' | 'DISABLED' | 'IGNORED';
+  status: 'PENDING' | 'ACTIVE' | 'DISABLED' | 'IGNORED' | 'SUPERSEDED';
+  scope: 'AGENT' | 'SPACE' | 'TASK';
+  spaceId?: string | null;
+  taskId?: string | null;
+  supersededById?: string | null;
   evidenceCount: number;
   sourceIds?: string[] | null;
   createdAt: string;
@@ -186,7 +190,7 @@ export interface AgentMemoryItem {
   agentId: string;
   category: string;
   content: string;
-  status: 'ACTIVE' | 'DISABLED' | 'DELETED';
+  status: 'ACTIVE' | 'DISABLED' | 'DELETED' | 'SUPERSEDED';
   trustStatus?: 'VERIFIED' | 'CANDIDATE' | 'DISPUTED';
   confidence?: number;
   factKey?: string | null;
@@ -696,7 +700,8 @@ export interface SpaceLearningItem {
   category: SpaceLearningCategory;
   title: string;
   instruction: string;
-  status: 'pending' | 'ignored' | 'active' | 'disabled';
+  status: 'pending' | 'ignored' | 'active' | 'disabled' | 'superseded' | 'deleted';
+  supersededById?: string;
   occurrences: number;
   evidence: SpaceLearningEvidence[];
   createdAt: string;

@@ -33,6 +33,9 @@ const AGENT_MEMORY_CATEGORY_LABELS: Record<string, string> = {
   tech: '技术选型',
   project: '项目背景',
   fact: '已知事实',
+  stable_fact: '已知事实',
+  relationship: '关系记忆',
+  decision: '已确认决策',
   skill: '旧版研习参考',
 };
 
@@ -372,7 +375,7 @@ export default function AgentDetailsPanel({
       ? await agentMemoryApi.update(agentId, renameMemoryTarget.id, data)
       : await agentMemoryApi.add(agentId, data);
     if (activeAgentId.current !== agentId || !activeMemoryEnabled.current) return;
-    setAgentMemories((items) => [result.memory, ...items.filter(item => item.id !== result.memory.id)]);
+    setAgentMemories((items) => [result.memory, ...items.filter(item => item.id !== result.memory.id).map(item => renameMemoryTarget && item.id === renameMemoryTarget.id ? { ...item, status: 'SUPERSEDED' as const, supersededById: result.memory.id } : item)]);
     setMemoryNotice('duplicate' in result && result.duplicate ? '这条记忆已经存在，已保留原记录。' : result.memory.status === 'DISABLED' ? '记忆已更新，仍处于停用状态。' : renameMemoryTarget ? '记忆已更新。' : '记忆已保存，后续主聊天会按需使用。');
     setMemoryError('');
     setMemoryEditorOpen(false);
@@ -544,7 +547,8 @@ export default function AgentDetailsPanel({
     }
   };
 
-  const personalMemories = agentMemories.filter((memory) => memory.category !== 'skill');
+  const personalMemories = agentMemories.filter((memory) => memory.category !== 'skill' && ['ACTIVE', 'DISABLED'].includes(memory.status));
+  const memoryHistory = agentMemories.filter((memory) => memory.status === 'SUPERSEDED');
   const legacyStudyReferences = agentMemories.filter((memory) => memory.category === 'skill');
   const activityExperiences = agentExperiences.filter((experience) => experience.sourceType !== 'CHAT');
   const chatArchives = agentExperiences.filter((experience) => experience.sourceType === 'CHAT');
@@ -995,8 +999,8 @@ export default function AgentDetailsPanel({
         </div>
   );
   const memoryGroups = [
-    { title: '偏好与约定', items: agentMemories.filter((memory) => ['preference', 'rule'].includes(memory.category)) },
-    { title: '已知事实与背景', items: agentMemories.filter((memory) => !['preference', 'rule', 'skill'].includes(memory.category)) },
+    { title: '偏好与约定', items: personalMemories.filter((memory) => ['preference', 'rule'].includes(memory.category)) },
+    { title: '已知事实与背景', items: personalMemories.filter((memory) => !['preference', 'rule', 'skill'].includes(memory.category)) },
   ];
   const renderAgentMemory = (memory: AgentMemoryItem) => (
     <div
@@ -1167,6 +1171,12 @@ export default function AgentDetailsPanel({
                     </section>
                   ))}
                 </>
+              )}
+              {!memoryLoading && memoryHistory.length > 0 && (
+                <details className="border-t border-black/[0.07] pt-3">
+                  <summary className="cursor-pointer text-xs font-bold text-slate-500">历史版本（只读） · {memoryHistory.length}</summary>
+                  {memoryHistory.map((memory) => <p key={memory.id} className="mt-2 whitespace-pre-wrap rounded-xl bg-slate-50 p-3 text-xs leading-5 text-slate-500">{memory.content}</p>)}
+                </details>
               )}
             </div>
           </>
@@ -1465,7 +1475,7 @@ export default function AgentDetailsPanel({
             title="查看与管理个人记忆"
           >
             <Sparkles size={12} className="text-amber-600 fill-amber-600" />
-            <span>{agentMemories.length}</span>
+            <span>{personalMemories.length}</span>
           </button>}
           <button
             onClick={onOpenMobileDetails}

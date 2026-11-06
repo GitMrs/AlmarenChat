@@ -1,5 +1,5 @@
 import prisma from '@/app/api/_lib/db';
-import { explicitMemoryContent, memoryConfirmation } from './memory-intent.mjs';
+import { explicitMemoryContent, memoryConfirmation, normalizeMemorySuggestion } from './memory-intent.mjs';
 import { isDuplicateMemory } from './memory-dedup.mjs';
 
 export async function handleQQMemoryRequest(options: {
@@ -14,7 +14,7 @@ export async function handleQQMemoryRequest(options: {
   const requested = explicitMemoryContent(message);
   const decision = memoryConfirmation(message);
   const candidate = requested && requested.length <= 500 && !/^(?:这个|那个|刚才的|上面说的)[。！!]?$/u.test(requested)
-    ? await options.normalize(requested)
+    ? normalizeMemorySuggestion(await options.normalize(requested), [{ id: userMessageId, content: message }], requested)
     : null;
 
   return prisma.$transaction(async (tx) => {
@@ -27,7 +27,7 @@ export async function handleQQMemoryRequest(options: {
     const latest = await tx.message.findFirst({
       where: { conversationId }, orderBy: { createdAt: 'desc' },
     });
-    const canConfirm = pending && latest?.id === pending.sourceMessageId
+    const canConfirm = pending && (latest?.id === pending.id || latest?.id === pending.sourceMessageId)
       && latest.source === 'QQ' && Date.now() - pending.createdAt.getTime() < 30 * 60_000;
     let reply: string | null = null;
 
@@ -50,7 +50,7 @@ export async function handleQQMemoryRequest(options: {
         });
         const duplicate = isDuplicateMemory(pending.content, existing.map((item) => item.content));
         if (!duplicate) {
-          await tx.assistantMemoryItem.update({ where: { id: pending.id }, data: { status: 'ACTIVE' } });
+          await tx.assistantMemoryItem.update({ where: { id: pending.id }, data: { status: 'ACTIVE', trustStatus: 'VERIFIED', confidence: 1 } });
         }
         reply = `${duplicate ? '长期记忆中已有' : '已存入长期记忆'}：${pending.content}`;
       }
@@ -66,7 +66,7 @@ export async function handleQQMemoryRequest(options: {
     if (reply === null) return null;
     if (candidate) {
       await tx.assistantMemoryItem.create({ data: {
-        userId, agentId: null, ...candidate, status: 'PENDING_QQ', sourceMessageId: assistantMessageId,
+        id: assistantMessageId, userId, agentId: null, ...candidate, status: 'PENDING_QQ', sourceMessageId: userMessageId,
       } });
     }
     await tx.message.create({ data: { id: userMessageId, conversationId, role: 'user', source: 'QQ', content: message } });
