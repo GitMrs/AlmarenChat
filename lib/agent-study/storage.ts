@@ -109,7 +109,7 @@ export async function setAgentStudySourceMode(
 /**
  * 判断 Agent 是否开启了自主学习
  * 优先从数据库 AgentModelSetting 表中读取该用户的针对该 Agent 的设置
- * 默认规则：仅 Sunny (companion-nari / nari) 默认开启，其余默认关闭
+ * 默认规则：所有 Agent 默认关闭，按用户设置开启
  */
 export async function isAgentStudyEnabled(
   agentId: string,
@@ -154,8 +154,7 @@ export async function isAgentStudyEnabled(
     return cache[agentId];
   }
 
-  // 默认规则：仅 Sunny 默认开启
-  return agentId === 'companion-nari' || agentId === 'nari';
+  return false;
 }
 
 /**

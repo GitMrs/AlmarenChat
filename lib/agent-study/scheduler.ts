@@ -13,7 +13,7 @@ import { getLocalISODate, loadDailyStudyRecord } from './storage';
  * - 今日记录已存在则跳过（记录文件即完成标记）
  * - 用户最后一条消息距今超过 DAILY_STUDY_ACTIVE_DAYS（默认 3 天）→ 休眠，不再偷偷学习
  * - 单个 Agent 失败不影响其他；当天最多 DAILY_STUDY_MAX_ATTEMPTS 次，失败按冷却时间重试
- * - 用户回来聊天时走懒生成路径自动唤醒，无需调度器特殊处理
+ * - 用户回来聊天后，后续调度会按最近消息时间重新判断活跃状态；页面读取不触发生成
  */
 
 export interface DailyStudyTickDeps {

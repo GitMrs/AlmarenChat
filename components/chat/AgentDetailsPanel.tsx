@@ -197,8 +197,6 @@ export default function AgentDetailsPanel({
   const [bilibiliQrStatus, setBilibiliQrStatus] = useState<'waiting' | 'scanned'>('waiting');
   const [bilibiliLoginBusy, setBilibiliLoginBusy] = useState(false);
   const [bilibiliLoginError, setBilibiliLoginError] = useState('');
-  const refreshDailyStudyRef = useRef(onRefreshDailyStudy);
-  refreshDailyStudyRef.current = onRefreshDailyStudy;
 
   useEffect(() => {
     let cancelled = false;
@@ -262,7 +260,6 @@ export default function AgentDetailsPanel({
         if (result.status === 'success') {
           setBilibiliQr(null);
           setBilibiliConnection({ connected: true, profile: result.profile, lastError: result.warning || null });
-          refreshDailyStudyRef.current?.();
         }
       } catch (error: any) {
         if (!stopped && error?.status >= 500) {
@@ -716,7 +713,7 @@ export default function AgentDetailsPanel({
                 </span>
               </div>
               <p className="text-[11px] font-medium text-slate-400 mt-0.5">
-                {studyEnabled ? '开启后每天自选 3 篇全网热点研习并主动分享' : '目前仅 Sunny 默认开启自学，你可以随时为该角色开启'}
+                {studyEnabled ? '已开启，将按调度设置自动学习；开启时不会立即学习' : '自主学习默认关闭，你可以随时为该角色开启'}
               </p>
             </div>
           </div>
@@ -941,6 +938,18 @@ export default function AgentDetailsPanel({
                 className="mt-4 inline-flex items-center gap-1.5 rounded-full bg-slate-950 px-5 py-2 text-xs font-black text-white shadow-xs hover:bg-slate-800 transition active:scale-95 cursor-pointer"
               >
                 <span>立即为 {displayAgent.name} 开启</span>
+              </button>
+            </div>
+          ) : !dailyStudy && !loadingDailyStudy ? (
+            <div className="my-6 rounded-3xl border border-dashed border-slate-200 bg-[#fbfaf7] p-8 text-center">
+              <h3 className="text-sm font-black text-slate-900">今日暂无学习记录</h3>
+              <p className="mt-1.5 text-xs leading-5 text-slate-500">自主学习已开启，等待后台按调度设置执行。也可以手动开始本次学习。</p>
+              <button
+                type="button"
+                onClick={onRefreshDailyStudy}
+                className="mt-4 rounded-full bg-slate-950 px-5 py-2 text-xs font-black text-white"
+              >
+                立即学习
               </button>
             </div>
           ) : (

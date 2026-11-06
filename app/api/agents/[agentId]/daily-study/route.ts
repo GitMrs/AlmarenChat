@@ -5,6 +5,7 @@ import { resolveAgent } from '@/app/api/_lib/spaces';
 import { loadAgentModelSetting, resolveUserModelConfig } from '@/app/api/_lib/agent-model';
 import {
   getOrGenerateDailyStudy,
+  loadDailyStudyRecord,
   markDailyStudyShared,
   isAgentStudyEnabled,
   setAgentStudyEnabled,
@@ -33,6 +34,11 @@ export async function GET(
 
     if (!enabled) {
       return NextResponse.json({ study: null, enabled: false, sourceMode });
+    }
+
+    if (!refresh) {
+      const study = await loadDailyStudyRecord(agentId, date, userId);
+      return NextResponse.json({ study, enabled: true, sourceMode });
     }
 
     const [user, setting] = await Promise.all([
@@ -73,18 +79,7 @@ export async function POST(
       if (typeof body.enabled !== 'boolean') return NextResponse.json({ error: 'enabled 必须是布尔值' }, { status: 400 });
       const enabled = body.enabled;
       await setAgentStudyEnabled(agentId, enabled, userId);
-      let study = null;
-      if (enabled) {
-        const [user, setting] = await Promise.all([
-          prisma.user.findUnique({ where: { id: userId }, select: { customModelEnabled: true, modelName: true, apiBaseUrl: true, apiKey: true } }),
-          loadAgentModelSetting(userId, agentId),
-        ]);
-        study = await getOrGenerateDailyStudy(agentId, userId, {
-          date: body.date,
-          forceRefresh: false,
-          modelConfig: resolveUserModelConfig(user, setting),
-        });
-      }
+      const study = enabled ? await loadDailyStudyRecord(agentId, body.date, userId) : null;
       return NextResponse.json({ success: true, enabled, study });
     }
 
