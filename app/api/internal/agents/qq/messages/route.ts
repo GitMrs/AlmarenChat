@@ -9,6 +9,7 @@ import prisma from '@/app/api/_lib/db';
 import { reserveChatQuota } from '@/lib/chat/chat-quota';
 import { createModelClient, resolveModelName } from '@/lib/core/model-client';
 import { createChatWebTools, runAutoWebChat } from '@/lib/web/auto-web';
+import { createCapabilityHelpTool } from '@/lib/capabilities/help.mjs';
 import { createAgentGrowthTools } from '@/lib/agents/growth/agent-growth';
 import { loadAgentMemoryContext } from '@/lib/agents/memory/agent-memory';
 import { currentTimeContext } from '@/lib/agents/memory/current-time-context.mjs';
@@ -199,6 +200,8 @@ export async function POST(request: Request) {
       apiKey: userSettings.tavilyApiKey,
       defaultWeatherLocation: userSettings.defaultWeatherLocation,
       history: sourceHistory,
+      query: message,
+      capabilityEntry: 'agent',
       signal: request.signal,
       onStatus: (label: string) => reportStatus?.(label),
     });
@@ -242,6 +245,9 @@ export async function POST(request: Request) {
     });
     openaiMessages.splice(0, openaiMessages.length, ...preparedContext.messages);
     const memoryTools = createMemoryTools({ userId, kind: 'agent', agentId, conversationId }, preparedContext.history.map(item => item.id));
+    const capabilityHelp = createCapabilityHelpTool({ entry: 'agent', query: message,
+      loadableCapabilities: web.loadableCapabilities,
+      getAvailableToolNames: () => [...web.tools, ...growth.tools, ...memoryTools.tools].map(tool => tool.function.name) });
 
     const existingUserMessage = await prisma.message.findUnique({
       where: { id: userMessageId },
@@ -317,8 +323,8 @@ export async function POST(request: Request) {
               web,
               contextBudget: preparedContext.manifest.hardInputBudget,
               onContextUsage: usage => recordConversationUsage(userId, conversationId, preparedContext.manifest, usage),
-              extraTools: [...(growth?.tools || []), ...memoryTools.tools],
-              callTool: (name, args) => name === 'memory_search' || name === 'memory_read' ? memoryTools.execute(name, args) : growth?.execute(name, args),
+              extraTools: [...(growth?.tools || []), ...memoryTools.tools, capabilityHelp.tool],
+              callTool: (name, args) => name === 'capability_help' ? capabilityHelp.execute(args) : name === 'memory_search' || name === 'memory_read' ? memoryTools.execute(name, args) : growth?.execute(name, args),
               signal: request.signal,
               onText: (delta: string) => emit({ type: 'delta', content: delta }),
             });
@@ -348,8 +354,8 @@ export async function POST(request: Request) {
       web,
       contextBudget: preparedContext.manifest.hardInputBudget,
       onContextUsage: usage => recordConversationUsage(userId, conversationId, preparedContext.manifest, usage),
-      extraTools: [...(growth?.tools || []), ...memoryTools.tools],
-      callTool: (name, args) => name === 'memory_search' || name === 'memory_read' ? memoryTools.execute(name, args) : growth?.execute(name, args),
+      extraTools: [...(growth?.tools || []), ...memoryTools.tools, capabilityHelp.tool],
+      callTool: (name, args) => name === 'capability_help' ? capabilityHelp.execute(args) : name === 'memory_search' || name === 'memory_read' ? memoryTools.execute(name, args) : growth?.execute(name, args),
       signal: request.signal,
     });
     const content = await finalizeResponse(modelContent);

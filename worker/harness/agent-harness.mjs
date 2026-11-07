@@ -17,6 +17,7 @@ import { continuationIterationsFromAnswer } from '../../lib/agents/runtime/agent
 import { taskContextTargetTokens } from '../../lib/core/model-limits.mjs';
 import { currentTimeContext } from '../../lib/agents/memory/current-time-context.mjs';
 import { RESPONSE_GROUNDING_GUIDANCE } from '../../lib/chat/conversation-grounding.mjs';
+import { filterToolSchemas, resolveCapabilities } from '../../lib/capabilities/resolver.mjs';
 
 const READ_TOOLS = new Set(['list_files', 'read_file', 'check_files']);
 export const EXECUTOR_TOOL_ITERATIONS = 10;
@@ -64,6 +65,16 @@ const SUBMIT_TASK_RESULT_TOOL = {
 
 function needsResearch(run, task) {
   return wantsWebResearch(`${task.title}\n${task.instruction}`);
+}
+
+function activeBilibiliToolSchemas(run, task, context) {
+  const resolution = resolveCapabilities({
+    entry: 'task',
+    query: `${run?.input || ''}\n${task?.title || ''}\n${task?.instruction || ''}`,
+    phase: 'task',
+    permittedCapabilities: context?.bilibiliTools ? ['bilibili'] : [],
+  });
+  return filterToolSchemas(context?.bilibiliTools?.tools || [], resolution);
 }
 
 function taskAcceptanceSection(task) {
@@ -136,6 +147,9 @@ export async function runExecutorHarness({
   if (fakeMode) {
     return { result: `[测试结果] ${agent.name}已完成“${task.title}”，目标是：${run.input}`, paused: false };
   }
+
+  const activeBilibiliSchemas = activeBilibiliToolSchemas(run, task, context);
+  const activeBilibiliNames = new Set(activeBilibiliSchemas.map((tool) => tool.function.name));
 
   const skill = taskSkill(task);
   const workspaceWriteAllowed = authorizationAllowsCapability(context.authorization, 'workspace_write')
@@ -255,7 +269,7 @@ export async function runExecutorHarness({
         ...(imageGenerationAllowed && skillAllowsTool(skill, 'generate_images') ? [generateImagesToolSchema] : []),
         ...(imageGenerationAllowed && skillAllowsTool(skill, 'generate_image') ? [generateImageToolSchema] : []),
         ...(skillReferenceTool ? [skillReferenceTool] : []),
-        ...(context.bilibiliTools?.tools || []),
+        ...activeBilibiliSchemas,
         REQUEST_USER_INPUT_TOOL,
         SUBMIT_TASK_RESULT_TOOL,
       ],
@@ -295,7 +309,7 @@ export async function runExecutorHarness({
         ).finally(progress.flush);
       },
       executeTool: trackToolExecution({ emit, runId: run.id, taskId: task.id, agentId: agent.id, agentName: agent.name }, (name, args) => {
-        if (context.bilibiliTools?.owns(name)) {
+        if (activeBilibiliNames.has(name) && context.bilibiliTools?.owns(name)) {
           return context.bilibiliTools.execute(name, args, abortController.signal).then((result) => {
             emit(run.id, 'TOOL_COMPLETED', `${agent.name}已读取 B 站数据`, {
               taskId: task.id,
@@ -558,6 +572,8 @@ export async function runAdvisorHarness({
   registerWorkspaceFile,
 }) {
   if (fakeMode) return `[测试建议] ${agent.name}已完成“${task.title}”。`;
+  const activeBilibiliSchemas = activeBilibiliToolSchemas(run, task, context);
+  const activeBilibiliNames = new Set(activeBilibiliSchemas.map((tool) => tool.function.name));
   const skill = taskSkill(task);
   const skillReferenceTool = spaceSkillReferenceToolSchema(skill);
   const skillWorkspaceWriteAllowed = workspaceWriteAllowed
@@ -609,7 +625,7 @@ export async function runAdvisorHarness({
         ? [safeCommandToolSchema]
         : []),
       ...(skillReferenceTool ? [skillReferenceTool] : []),
-      ...(context.bilibiliTools?.tools || []),
+      ...activeBilibiliSchemas,
     ];
     const loopResult = await runToolLoop({
       messages,
@@ -650,7 +666,7 @@ export async function runAdvisorHarness({
         ).finally(progress.flush);
       },
       executeTool: trackToolExecution({ emit, runId: run.id, taskId: task.id, agentId: agent.id, agentName: agent.name }, (name, args) => {
-        if (context.bilibiliTools?.owns(name)) {
+        if (activeBilibiliNames.has(name) && context.bilibiliTools?.owns(name)) {
           return context.bilibiliTools.execute(name, args, abortController.signal).then((result) => {
             emit?.(run.id, 'TOOL_COMPLETED', `${agent.name}已读取 B 站数据`, {
               taskId: task.id,

@@ -35,6 +35,7 @@ import Avatar from '@/components/shared/Avatar';
 import PersonalAssistantSettings from '@/components/assistant/PersonalAssistantSettings';
 import BotBindingsManager from '@/components/settings/BotBindingsManager';
 import McpServerManager from '@/components/mcp/McpServerManager';
+import ExternalCapabilitiesPanel from '@/components/settings/ExternalCapabilitiesPanel';
 import { agents as agentsApi, auth, conversations as conversationsApi, favorites as favoritesApi, spaceShares as spaceSharesApi, spaces as spacesApi } from '@/lib/client/api';
 import type { Agent, SpaceFileShare } from '@/types';
 import { cn } from '@/lib/client/utils';
@@ -52,7 +53,7 @@ function MeContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const requestedTab = searchParams.get('tab');
-  const activeTab = requestedTab === 'settings' || requestedTab === 'shares' || requestedTab === 'assistant' || requestedTab === 'mcp' || requestedTab === 'bots' ? requestedTab : 'assets';
+  const activeTab = requestedTab === 'settings' || requestedTab === 'shares' || requestedTab === 'assistant' || requestedTab === 'mcp' || requestedTab === 'bots' || requestedTab === 'capabilities' ? requestedTab : 'assets';
   const [myAgents, setMyAgents] = useState<Agent[]>([]);
   const [favoriteAgents, setFavoriteAgents] = useState<any[]>([]);
   const [recentConversations, setRecentConversations] = useState<any[]>([]);
@@ -203,7 +204,7 @@ function MeContent() {
     }
   };
 
-  const switchTab = (tab: 'assets' | 'shares' | 'settings' | 'assistant' | 'mcp' | 'bots') => {
+  const switchTab = (tab: 'assets' | 'shares' | 'settings' | 'assistant' | 'mcp' | 'bots' | 'capabilities') => {
     router.push(tab === 'assets' ? '/me' : `/me?tab=${tab}`);
   };
 
@@ -270,6 +271,7 @@ function MeContent() {
             { id: 'shares', label: '内容共享', icon: Globe2 },
             { id: 'assistant', label: '助理设置', icon: MessageCircleHeart },
             { id: 'bots', label: 'Bot 管理', icon: Bot },
+            { id: 'capabilities', label: '外挂能力', icon: Sparkles },
             { id: 'mcp', label: 'MCP 工具', icon: Blocks },
             { id: 'settings', label: '账号设置', icon: SlidersHorizontal },
           ].map((tab) => {
@@ -278,7 +280,7 @@ function MeContent() {
             return (
               <button
                 key={tab.id}
-                onClick={() => switchTab(tab.id as 'assets' | 'shares' | 'settings' | 'assistant' | 'mcp' | 'bots')}
+                onClick={() => switchTab(tab.id as 'assets' | 'shares' | 'settings' | 'assistant' | 'mcp' | 'bots' | 'capabilities')}
                 className={cn(
                   'inline-flex cursor-pointer items-center gap-2 rounded-full px-4 py-2 text-sm font-black transition',
                   active ? 'bg-slate-950 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-950'
@@ -400,6 +402,8 @@ function MeContent() {
         {!needsLogin && activeTab === 'bots' && <BotBindingsManager />}
 
         {!needsLogin && activeTab === 'mcp' && <McpServerManager />}
+
+        {!needsLogin && activeTab === 'capabilities' && <ExternalCapabilitiesPanel />}
 
         {!needsLogin && activeTab === 'shares' && (
           <section className="space-y-5">

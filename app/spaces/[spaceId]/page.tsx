@@ -9,6 +9,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import AppShell from '@/components/layout/AppShell';
 import Avatar from '@/components/shared/Avatar';
+import CapabilityOverview from '@/components/shared/CapabilityOverview';
 import LoginRequired from '@/components/auth/LoginRequired';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import ComposerShell from '@/components/chat/ComposerShell';
@@ -5361,6 +5362,7 @@ export default function SpaceDetailPage() {
                   ) : (
                     <div className="space-y-4">
                       {sidePanel === 'settings' && <>
+                      <CapabilityOverview entry="space" bilibiliSpace={space.templateId === 'bilibili-creator'} />
                       {isPiSpace ? (
                         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
                           <div className="text-sm font-black text-amber-800">旧版 Pi 项目空间</div>

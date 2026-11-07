@@ -92,6 +92,9 @@ test('worker model client sends DeepSeek-compatible tool requests', async () => 
   assert.deepEqual(current.reservations, [[{ marker: 'db' }, 'run-1', 'task-1', 'now']]);
   assert.equal(current.completions.length, 1);
   assert.equal(current.completions[0].requestChars > 0, true);
+  assert.equal(current.completions[0].toolCount, 1);
+  assert.deepEqual(current.completions[0].toolNames, ['submit_action']);
+  assert.equal(current.completions[0].toolSchemaChars, JSON.stringify(tools).length);
   assert.equal(current.completions[0].estimatedInputTokens > 0, true);
   assert.equal(current.completions[0].estimatedOutputTokens, 2);
   assert.equal(

@@ -8,6 +8,7 @@ import prisma from '@/app/api/_lib/db';
 import { reserveChatQuota } from '@/lib/chat/chat-quota';
 import { createModelClient, resolveModelName } from '@/lib/core/model-client';
 import { createChatWebTools, runAutoWebChat } from '@/lib/web/auto-web';
+import { createCapabilityHelpTool } from '@/lib/capabilities/help.mjs';
 import { buildAssistantActivityContext, buildAssistantPlatformContext } from '@/lib/personal-assistant/platform-context';
 import { buildAssistantContextParts, buildPersonalAssistantRuntimeContext } from '@/lib/personal-assistant/prompt-builder';
 import { ensurePersonalAssistant } from '@/lib/personal-assistant/profile';
@@ -163,7 +164,7 @@ export async function POST(request: Request) {
       contextPlan.activity ? buildAssistantActivityContext(userId, message, contextSources) : Promise.resolve(null),
     ]);
     let reportStatus: ((label: string) => void) | undefined;
-    const web = createChatWebTools({ apiKey: userSettings.tavilyApiKey, defaultWeatherLocation: userSettings.defaultWeatherLocation, history: memoryContext.history, signal: request.signal, onStatus: (label: string) => reportStatus?.(label) });
+    const web = createChatWebTools({ apiKey: userSettings.tavilyApiKey, defaultWeatherLocation: userSettings.defaultWeatherLocation, history: memoryContext.history, query: message, capabilityEntry: 'assistant', signal: request.signal, onStatus: (label: string) => reportStatus?.(label) });
 
     const contextParts = buildAssistantContextParts({
         userName: userSettings.name,
@@ -243,6 +244,9 @@ export async function POST(request: Request) {
       }
     }
     const memoryTools = createMemoryTools({ userId, kind: 'assistant', conversationId: binding.conversationId }, preparedContext.history.map(item => item.id));
+    const capabilityHelp = createCapabilityHelpTool({ entry: 'assistant', query: message,
+      loadableCapabilities: web.loadableCapabilities,
+      getAvailableToolNames: () => [...web.tools, ...memoryTools.tools].map(tool => tool.function.name) });
     const finalizeResponse = async (modelContent: string) => {
       const normalizedModelContent = stripRetrievalNotices(modelContent).trim();
       if (!normalizedModelContent) throw new Error('模型没有返回可展示的正文');
@@ -318,7 +322,7 @@ export async function POST(request: Request) {
 
           try {
             reportStatus = (label: string) => emit({ type: 'status', label });
-            const modelContent = await runAutoWebChat({ client, model, messages: modelMessages, web, contextBudget: preparedContext.manifest.hardInputBudget, onContextUsage: usage => recordConversationUsage(userId, binding.conversationId, preparedContext.manifest, usage), extraTools: memoryTools.tools, callTool: memoryTools.execute, signal: request.signal, onText: (delta: string) => emit({ type: 'delta', content: delta }) });
+            const modelContent = await runAutoWebChat({ client, model, messages: modelMessages, web, contextBudget: preparedContext.manifest.hardInputBudget, onContextUsage: usage => recordConversationUsage(userId, binding.conversationId, preparedContext.manifest, usage), extraTools: [...memoryTools.tools, capabilityHelp.tool], callTool: (name: string, args: any) => name === 'capability_help' ? capabilityHelp.execute(args) : memoryTools.execute(name, args), signal: request.signal, onText: (delta: string) => emit({ type: 'delta', content: delta }) });
 
             const finalized = await finalizeResponse(modelContent);
             emit({ type: 'done', content: finalized.streamContent, conversationId: binding.conversationId });
@@ -339,7 +343,7 @@ export async function POST(request: Request) {
       });
     }
 
-    const modelContent = await runAutoWebChat({ client, model, messages: modelMessages, web, contextBudget: preparedContext.manifest.hardInputBudget, onContextUsage: usage => recordConversationUsage(userId, binding.conversationId, preparedContext.manifest, usage), extraTools: memoryTools.tools, callTool: memoryTools.execute, signal: request.signal });
+    const modelContent = await runAutoWebChat({ client, model, messages: modelMessages, web, contextBudget: preparedContext.manifest.hardInputBudget, onContextUsage: usage => recordConversationUsage(userId, binding.conversationId, preparedContext.manifest, usage), extraTools: [...memoryTools.tools, capabilityHelp.tool], callTool: (name: string, args: any) => name === 'capability_help' ? capabilityHelp.execute(args) : memoryTools.execute(name, args), signal: request.signal });
     if (!modelContent?.trim()) throw new Error('模型没有返回可展示的正文');
     const finalized = await finalizeResponse(modelContent);
     return NextResponse.json({ content: finalized.content, conversationId: binding.conversationId });

@@ -5,13 +5,23 @@ import { createChatDataTools } from '../chat/chat-data-tools.mjs';
 import { platformWeather, pendingWeatherQuery, normalizeWeatherLocation } from '../misc/weather.mjs';
 import { queryCryptoMarket } from '../workspace/crypto/market-tools';
 import { getAvailableSources, getTrendingSnapshot } from '../trending';
+import { resolveCapabilities } from '../capabilities/resolver.mjs';
+import { getReadOnlyExternalCapabilityIds } from '../capabilities/registry.mjs';
 
 export { AUTO_WEB_GUIDANCE, AUTO_WEB_SCHEMAS, runAutoWebChat } from './auto-web-core.mjs';
 export { DATA_TOOL_GUIDANCE, TOOL_DECISION_POLICY, TOOL_SAFETY_POLICY, buildToolGuidance } from '../chat/tool-policy.mjs';
 
-export function createChatWebTools(options: { apiKey?: string | null; defaultWeatherLocation?: unknown; signal?: AbortSignal; onStatus?: (label: string) => void; history?: any[]; cryptoContext?: (data: any) => string } = {}) {
+export function createChatWebTools(options: { apiKey?: string | null; defaultWeatherLocation?: unknown; signal?: AbortSignal; onStatus?: (label: string) => void; history?: any[]; cryptoContext?: (data: any) => string; query?: string; capabilityEntry?: 'assistant' | 'agent' | 'space' | 'task'; phase?: 'chat' | 'explore' | 'artifact' | 'task'; enabledCapabilities?: string[]; permittedCapabilities?: string[]; disabledCapabilities?: string[] } = {}) {
   const defaultWeatherLocation = normalizeWeatherLocation(options.defaultWeatherLocation);
   const pendingWeather = pendingWeatherQuery(options.history || []);
+  const entry = options.capabilityEntry || 'assistant';
+  const resolution = resolveCapabilities({ entry, query: options.query || '', phase: options.phase, enabledCapabilities: options.enabledCapabilities, requestedCapabilities: pendingWeather ? ['weather'] : [], permittedCapabilities: options.permittedCapabilities, disabledCapabilities: options.disabledCapabilities } as any);
+  const loadable = resolveCapabilities({
+    entry,
+    requestedCapabilities: getReadOnlyExternalCapabilityIds(entry),
+    permittedCapabilities: options.permittedCapabilities,
+    disabledCapabilities: options.disabledCapabilities,
+  } as any);
   const web = createAutoWebTools({
     ...options,
     search: (query: string) => searchWebWithSources(query, options.apiKey),
@@ -27,6 +37,8 @@ export function createChatWebTools(options: { apiKey?: string | null; defaultWea
       },
       trendingSources: getAvailableSources().map((source) => source.id),
     }),
+    availableToolNames: resolution.tools,
+    loadableCapabilities: loadable.capabilities,
     pendingWeather,
   });
   if (defaultWeatherLocation) {

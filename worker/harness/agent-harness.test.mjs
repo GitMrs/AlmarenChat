@@ -659,6 +659,41 @@ test('read-only advisor can inspect the workspace but cannot mutate it', async (
   assert.equal(result, '建议先确认验收标准。');
 });
 
+test('worker only exposes authorized Bilibili tools when the task mentions Bilibili', async () => {
+  const bilibiliTools = {
+    tools: [{
+      type: 'function',
+      function: { name: 'bilibili_search', description: '搜索 B 站', parameters: { type: 'object', properties: {} } },
+    }],
+    owns: (name) => name === 'bilibili_search',
+    execute: async () => ({ ok: true }),
+    guidance: 'B 站工具说明',
+  };
+  const observe = async (instruction) => {
+    let names = [];
+    await runAdvisorHarness({
+      run,
+      task: { ...task, instruction },
+      agent,
+      context: { ...context, bilibiliTools },
+      previousResults: [],
+      fakeMode: false,
+      completeMessage: async (_model, _messages, tools) => {
+        names = tools.map((tool) => tool.function.name);
+        return { content: '建议完成。' };
+      },
+      isCancelled: () => false,
+      taskTimeoutMs: 30_000,
+      workspaceWriteAllowed: false,
+      baselinePaths: new Set(),
+      workspaceOptions: {},
+    });
+    return names;
+  };
+  assert.equal((await observe('整理当前页面规则')).includes('bilibili_search'), false);
+  assert.equal((await observe('整理 Bilibili 视频规则')).includes('bilibili_search'), true);
+});
+
 test('authorized advisor can create a staged workspace artifact', async () => {
   const projectRoot = await mkdtemp(path.join(tmpdir(), 'advisor-harness-'));
   const registered = [];

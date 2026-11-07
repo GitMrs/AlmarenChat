@@ -30,8 +30,12 @@ import { searchWeb } from '../../lib/agents/runtime/runtime-tools.mjs';
 import { fetchWebPage } from '../../lib/web/web-fetch.mjs';
 import { RESPONSE_GROUNDING_GUIDANCE } from '../../lib/chat/conversation-grounding.mjs';
 import { createHttpMcpClient, mcpToolName } from '../../lib/agents/runtime/mcp-client.mjs';
+import { resolveCapabilities } from '../../lib/capabilities/resolver.mjs';
+import { getCapability } from '../../lib/capabilities/registry.mjs';
+import { createCapabilityHelpTool } from '../../lib/capabilities/help.mjs';
 
 const READ_TOOLS = new Set(['list_files', 'read_file', 'check_files']);
+const WEB_TOOLS = new Set(getCapability('web').tools);
 const TOOL_LABELS = {
   list_files: '列出文件',
   read_file: '读取文件',
@@ -142,6 +146,19 @@ function schemaTool(schema, execute) {
 async function createPiCapabilityTools(request, skill, state) {
   const tools = [];
   if (authorizationAllowsCapability(request.context?.authorization, 'web_research')) {
+    state.webLoaded = resolveCapabilities({
+      entry: 'task', phase: 'task', permittedCapabilities: ['web'],
+      query: `${request.run?.input || request.run?.goal || ''}\n${request.task?.title || ''}\n${request.task?.instruction || ''}`,
+    }).capabilities.includes('web');
+    tools.push(schemaTool({ function: {
+      name: 'capability_load',
+      description: '当前步骤需要外部资料时加载已授权的联网能力；只加入工具，不执行查询，不改变任务权限。',
+      parameters: { type: 'object', additionalProperties: false, required: ['capability'], properties: { capability: { type: 'string', enum: ['web'] } } },
+    } }, async (_toolCallId, args) => {
+      if (args?.capability !== 'web') return toolResult({ error: '当前任务不允许加载此能力' }, true);
+      state.webLoaded = true;
+      return toolResult({ ok: true, message: '联网工具已加入本轮，尚未取得外部数据。' });
+    }));
     let webOperationCount = 0;
     const searched = new Set();
     const fetched = new Set();
@@ -155,6 +172,7 @@ async function createPiCapabilityTools(request, skill, state) {
         },
       },
     }, async (_toolCallId, args) => {
+      if (!state.webLoaded) return toolResult({ error: '本轮尚未加载联网能力' }, true);
       const query = String(args.query || '').trim();
       const key = query.toLocaleLowerCase();
       if (searched.has(key)) return toolResult({ query, reused: true, message: '该关键词本轮已经搜索，请使用之前的结果' });
@@ -187,6 +205,7 @@ async function createPiCapabilityTools(request, skill, state) {
         },
       },
     }, async (_toolCallId, args, signal) => {
+        if (!state.webLoaded) return toolResult({ error: '本轮尚未加载联网能力' }, true);
         const url = String(args.url || '').trim();
         const key = url.toLocaleLowerCase();
         if (fetched.has(key)) return toolResult({ url, reused: true, message: '该地址本轮已经读取，请使用之前的结果' });
@@ -210,21 +229,27 @@ async function createPiCapabilityTools(request, skill, state) {
   }
   const mcpServers = Array.isArray(request.context?.mcpServers) ? request.context.mcpServers : [];
   if (mcpServers.length > 0 && authorizationAllowsCapability(request.context?.authorization, 'web_research')) {
-    for (const server of mcpServers.slice(0, 4)) {
+    const availableServers = [];
+    for (const server of mcpServers.filter((server) => server.enabled !== false).slice(0, 4)) {
       try {
         const client = createHttpMcpClient({ url: server.url, headers: server.headers || {} });
         const remoteTools = await client.listTools();
         for (const remoteTool of remoteTools) {
           const remoteName = String(remoteTool?.name || '').trim();
           if (!remoteName) continue;
+          const toolName = mcpToolName(server.id || 'server', remoteName);
+          state.mcpToolOwners.set(toolName, String(server.id || 'server'));
           tools.push(schemaTool({
             function: {
-              name: mcpToolName(server.id || 'server', remoteName),
+              name: toolName,
               description: `MCP ${server.id || 'server'}：${String(remoteTool.description || remoteName).slice(0, 800)}`,
               parameters: remoteTool.inputSchema && typeof remoteTool.inputSchema === 'object'
                 ? remoteTool.inputSchema : { type: 'object', additionalProperties: true },
             },
           }, async (_toolCallId, args) => {
+            if (!state.activeMcpServers.has(String(server.id || 'server'))) {
+              return toolResult({ error: '本轮尚未加载此 MCP 服务' }, true);
+            }
             try {
               const result = await client.callTool(remoteName, args || {});
               request.emit?.(request.run.id, 'MCP_TOOL_COMPLETED', `已调用 MCP 工具：${remoteName}`, {
@@ -237,6 +262,7 @@ async function createPiCapabilityTools(request, skill, state) {
             }
           }));
         }
+        if (remoteTools.length) availableServers.push(String(server.id || 'server'));
       } catch (error) {
         request.emit?.(request.run.id, 'MCP_DISCOVERY_FAILED', `MCP 服务不可用：${String(server.id || 'server')}`, {
           taskId: request.task.id, agentId: request.agent?.id || null,
@@ -244,6 +270,16 @@ async function createPiCapabilityTools(request, skill, state) {
         });
       }
     }
+    if (availableServers.length) tools.push(schemaTool({
+      function: {
+        name: 'mcp_load', description: `需要已授权的 MCP 服务时加载其工具定义，不执行远程操作。可选服务：${availableServers.join('、')}。`,
+        parameters: { type: 'object', additionalProperties: false, required: ['serverId'], properties: { serverId: { type: 'string', enum: availableServers } } },
+      },
+    }, async (_toolCallId, args) => {
+      if (!availableServers.includes(args.serverId)) return toolResult({ error: '当前任务未授权此 MCP 服务' }, true);
+      state.activeMcpServers.add(args.serverId);
+      return toolResult({ ok: true, message: '服务工具已加入本轮，尚未执行远程操作。' });
+    }));
   }
   if (skill.packagePath && Array.isArray(skill.referenceFiles) && skill.referenceFiles.length > 0) {
     tools.push(schemaTool({
@@ -440,7 +476,15 @@ async function createPiCapabilityTools(request, skill, state) {
   }
   const bilibiliTools = request.context?.bilibiliTools;
   if (bilibiliTools) {
+    const resolution = resolveCapabilities({
+      entry: 'task',
+      query: `${request.run?.input || request.run?.goal || ''}\n${request.task?.title || ''}\n${request.task?.instruction || ''}`,
+      phase: 'task',
+      permittedCapabilities: ['bilibili'],
+    });
+    const activeBilibiliNames = new Set(resolution.tools);
     for (const schema of bilibiliTools.tools) {
+      if (!activeBilibiliNames.has(schema.function.name)) continue;
       tools.push(schemaTool(schema, async (_toolCallId, args, signal) => {
         try {
           const result = await bilibiliTools.execute(schema.function.name, args, signal);
@@ -550,10 +594,21 @@ export function createPiWorkerGovernance({
           packageEntrypoints: packageInfo.manifest?.entrypoints || [],
         }
       : selectedSkill;
-    const state = { paused: false, submitted: false, result: '', manifest: null };
+    const state = { paused: false, submitted: false, result: '', manifest: null, mcpToolOwners: new Map(), activeMcpServers: new Set() };
     const prompt = taskPrompt(request, skill);
     const workspaceTools = createPiWorkspaceTools(request, skill);
     const capabilityTools = await createPiCapabilityTools(request, skill, state);
+    const getActiveToolNames = () => [...workspaceTools, ...capabilityTools, ...(request.piTools || [])]
+      .filter((tool) => !WEB_TOOLS.has(tool.name) || state.webLoaded)
+      .filter((tool) => !state.mcpToolOwners.has(tool.name) || state.activeMcpServers.has(state.mcpToolOwners.get(tool.name)))
+      .map((tool) => tool.name).concat(['capability_help', 'request_user_input', ...(request.mode === 'executor' ? ['submit_task_result'] : [])]);
+    const help = createCapabilityHelpTool({
+      entry: 'task',
+      phase: 'task',
+      getAvailableToolNames: getActiveToolNames,
+      loadableCapabilities: capabilityTools.some((tool) => tool.name === 'capability_load') ? ['web'] : [],
+    });
+    const helpTool = schemaTool(help.tool, async () => toolResult(await help.execute()));
 
     const requestInputTool = defineTool({
       name: 'request_user_input',
@@ -627,7 +682,8 @@ export function createPiWorkerGovernance({
       thinkingLevel: request.thinkingLevel || 'medium',
       systemPrompt: prompt.systemPrompt,
       message: prompt.message,
-      tools: [...workspaceTools, ...capabilityTools, ...(request.piTools || []), requestInputTool, ...(request.mode === 'executor' ? [submitTool] : [])],
+      tools: [...workspaceTools, ...capabilityTools, ...(request.piTools || []), helpTool, requestInputTool, ...(request.mode === 'executor' ? [submitTool] : [])],
+      getActiveToolNames,
       isCancelled: request.isCancelled,
       beforeModelRequest: ({ index }) => {
         if (request.isCancelled?.()) throw Object.assign(new Error('步骤已取消'), { code: 'EXECUTION_CANCELLED' });
@@ -651,6 +707,9 @@ export function createPiWorkerGovernance({
         iteration: event.index,
         durationMs: event.durationMs,
         requestChars: event.requestChars,
+        toolCount: event.toolCount,
+        toolSchemaChars: event.toolSchemaChars,
+        toolNames: event.toolNames,
         estimatedInputTokens: event.estimatedInputTokens,
         estimatedOutputTokens: event.estimatedOutputTokens,
         estimatedTotalTokens: event.estimatedInputTokens + event.estimatedOutputTokens,

@@ -11,6 +11,7 @@ import { requireAuth } from '@/app/api/_lib/auth';
 import { reserveChatQuota } from '@/lib/chat/chat-quota';
 import { createModelClient, resolveModelName } from '@/lib/core/model-client';
 import { createChatWebTools, runAutoWebChat } from '@/lib/web/auto-web';
+import { createCapabilityHelpTool } from '@/lib/capabilities/help.mjs';
 import { ensurePersonalAssistant } from '@/lib/personal-assistant/profile';
 import { buildAssistantContextParts, buildPersonalAssistantRuntimeContext } from '@/lib/personal-assistant/prompt-builder';
 import { buildAssistantActivityContext, buildAssistantPlatformContext } from '@/lib/personal-assistant/platform-context';
@@ -279,7 +280,6 @@ export async function POST(request: Request) {
     });
 
     const broker = createAssistantToolBroker({ servers: localMode ? [] : parseMcpServers(userSettings.assistantMcpServers).filter((server) => server.enabled !== false) });
-    const assistantTools = localMode ? [] : await broker.discover();
     const memoryTools = conversationMode === 'MAIN' && !localMode ? createMemoryTools({ userId, kind: 'assistant', conversationId }, preparedContext.history.map(item => item.id)) : null;
 
     if (memoryContext.history.length === 0) {
@@ -306,7 +306,11 @@ export async function POST(request: Request) {
       async start(controller) {
         let fullContent = '';
         const emit = (event: Record<string, unknown>) => controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
-        const web = createChatWebTools({ apiKey: userSettings.tavilyApiKey, defaultWeatherLocation: userSettings.defaultWeatherLocation, history: memoryContext.history, signal: modelAbortController.signal, onStatus: (label: string) => emit({ type: 'status', label }) });
+        const web = createChatWebTools({ apiKey: userSettings.tavilyApiKey, defaultWeatherLocation: userSettings.defaultWeatherLocation, history: memoryContext.history, query: textMessage, capabilityEntry: 'assistant', signal: modelAbortController.signal, onStatus: (label: string) => emit({ type: 'status', label }) });
+        const capabilityHelp = createCapabilityHelpTool({ entry: 'assistant', query: textMessage,
+          loadableCapabilities: web.loadableCapabilities,
+          getAvailableToolNames: () => [...web.tools, ...broker.modelTools(), ...(memoryTools?.tools || [])].map(tool => tool.function.name) });
+        const currentExtraTools = () => [...broker.modelTools(), ...(memoryTools?.tools || []), capabilityHelp.tool];
         const messageAttachments = () => web.attachments() as any;
         const persistAssistantMessage = async () => {
           if (!fullContent.trim()) return;
@@ -327,7 +331,7 @@ export async function POST(request: Request) {
           });
         };
         try {
-          await runAutoWebChat({ client, model, messages, web, contextBudget: preparedContext.manifest.hardInputBudget, onContextUsage: usage => recordConversationUsage(userId, conversationId, preparedContext.manifest, usage), extraTools: [...assistantTools.map((tool) => ({ type: 'function', function: tool })), ...(memoryTools?.tools || [])], callTool: async (name: string, args: any) => { if (name === 'memory_search' || name === 'memory_read') return memoryTools?.execute(name, args); toolCalled = true; return broker.call(name, args); }, signal: modelAbortController.signal, onText: (text: string) => { fullContent += text; emit({ type: 'text_delta', text }); } });
+          await runAutoWebChat({ client, model, messages, web, contextBudget: preparedContext.manifest.hardInputBudget, onContextUsage: usage => recordConversationUsage(userId, conversationId, preparedContext.manifest, usage), extraTools: currentExtraTools(), getExtraTools: currentExtraTools, callTool: async (name: string, args: any) => { if (name === 'capability_help') return capabilityHelp.execute(args); if (name === 'memory_search' || name === 'memory_read') return memoryTools?.execute(name, args); if (name !== 'mcp_load') toolCalled = true; return broker.call(name, args); }, signal: modelAbortController.signal, onText: (text: string) => { fullContent += text; emit({ type: 'text_delta', text }); } });
           if (!fullContent) throw new Error('模型没有返回正文');
           const notice = retrievalNotice();
           fullContent += notice;

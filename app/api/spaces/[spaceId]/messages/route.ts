@@ -15,6 +15,7 @@ import {
 } from '@/app/api/_lib/spaces';
 import { describeWorkspaceArtifact, executeWorkspaceTool, workspaceToolSchemas } from '@/lib/agents/runtime/runtime-tools.mjs';
 import { createChatWebTools } from '@/lib/web/auto-web';
+import { createCapabilityHelpTool } from '@/lib/capabilities/help.mjs';
 import { stripHistoryRetrievalNotices } from '@/lib/personal-assistant/retrieval-notice.mjs';
 import { createBilibiliAgentTools } from '@/lib/bilibili/agent-tools.mjs';
 import { createAgentGrowthTools } from '@/lib/agents/growth/agent-growth';
@@ -42,6 +43,8 @@ import { prepareSpaceMessageRuntime } from '@/lib/space/space-message-runtime';
 import { loadAgentWorldContext } from '@/lib/world/context';
 import { buildConversationContinuityGuidance } from '@/lib/chat/conversation-continuity.mjs';
 import { logModelRequest } from '@/lib/chat/model-request-log.mjs';
+import { filterToolSchemas, resolveCapabilities } from '@/lib/capabilities/resolver.mjs';
+import { getReadOnlyExternalCapabilityIds } from '@/lib/capabilities/registry.mjs';
 
 const MESSAGE_PAGE_SIZE = 40;
 const READ_ONLY_WORKSPACE_TOOLS = new Set(['list_files', 'read_file', 'check_files']);
@@ -424,8 +427,14 @@ async function handlePiMessage(options: {
       const send = (event: Record<string, unknown>) => {
         try { controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`)); } catch { /* Pi continues and persists after a client disconnect */ }
       };
-      const web = createChatWebTools({ apiKey: settings.tavilyApiKey, defaultWeatherLocation: settings.defaultWeatherLocation, onStatus: (label: string) => send({ type: 'status', label }) });
+      const spacePhase = interactionMode === 'chat' ? 'chat' : 'explore';
+      const permittedExternal = allowWebSearch
+        ? [...getReadOnlyExternalCapabilityIds('space'), ...(space.templateId === 'bilibili-creator' ? ['bilibili'] : [])]
+        : [];
+      const capabilityResolution = resolveCapabilities({ entry: 'space', query: textMessage, phase: spacePhase, permittedCapabilities: permittedExternal } as any);
+      const web = createChatWebTools({ apiKey: settings.tavilyApiKey, defaultWeatherLocation: settings.defaultWeatherLocation, query: textMessage, capabilityEntry: 'space', phase: spacePhase, permittedCapabilities: permittedExternal, onStatus: (label: string) => send({ type: 'status', label }) });
       const bilibili = allowWebSearch ? createSpaceBilibiliTools(userId, spaceId, space) : null;
+      const activeBilibiliTools = filterToolSchemas(bilibili?.tools || [], capabilityResolution);
       try {
         let result;
         let coordinationRequest: Record<string, unknown> | null = null;
@@ -459,10 +468,14 @@ async function handlePiMessage(options: {
               coordinationRequest = request;
               return true;
             },
-            queryTools: [...web.tools, ...(bilibili?.tools || [])],
+            queryTools: [...web.allTools, ...activeBilibiliTools],
+            loadableCapabilities: web.loadableCapabilities,
+            activeQueryToolNames: () => [...web.tools, ...activeBilibiliTools].map(tool => tool.function.name),
             queryGuidance: [web.guidance, bilibili?.guidance].filter(Boolean).join('\n\n'),
             queryTool: (name: string, args: any, signal: AbortSignal) =>
-              bilibili?.owns(name) ? bilibili.execute(name, args, signal) : web.execute(name, args, signal),
+              activeBilibiliTools.some((tool) => tool.function.name === name) && bilibili?.owns(name)
+                ? bilibili.execute(name, args, signal)
+                : web.execute(name, args, signal),
             onMutation: (relativePath: string) => changedPaths.add(relativePath),
             onTextDelta: (delta: string) => send({ type: 'text_delta', delta }),
             onTextReset: () => send({ type: 'text_reset' }),
@@ -911,21 +924,34 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
       : null;
     let reportQueryStatus: ((label: string) => void) | undefined;
     let spaceMessageRuntime: Awaited<ReturnType<typeof prepareSpaceMessageRuntime>>;
-    const web = createChatWebTools({ apiKey: settings.tavilyApiKey, defaultWeatherLocation: settings.defaultWeatherLocation, history: rawHistory, signal: request.signal, onStatus: (label: string) => reportQueryStatus?.(label), cryptoContext: (data: any) => spaceMessageRuntime?.marketContext?.(data) || '' });
+    const spacePhase = normalizedInteractionMode === 'chat' ? 'chat' : selectedWork ? 'task' : 'explore';
+    const permittedExternal = allowWebSearch
+      ? [...getReadOnlyExternalCapabilityIds('space'), ...(space.templateId === 'bilibili-creator' ? ['bilibili'] : [])]
+      : [];
+    const capabilityResolution = resolveCapabilities({ entry: 'space', query: textMessage, phase: spacePhase, permittedCapabilities: permittedExternal } as any);
+    const web = createChatWebTools({ apiKey: settings.tavilyApiKey, defaultWeatherLocation: settings.defaultWeatherLocation, history: rawHistory, query: textMessage, capabilityEntry: 'space', phase: spacePhase, permittedCapabilities: permittedExternal, signal: request.signal, onStatus: (label: string) => reportQueryStatus?.(label), cryptoContext: (data: any) => spaceMessageRuntime?.marketContext?.(data) || '' });
     const bilibili = !useIsolatedContext ? createSpaceBilibiliTools(userId, spaceId, space) : null;
+    const activeBilibiliTools = filterToolSchemas(bilibili?.tools || [], capabilityResolution);
     const growth = targetAgent.id !== SPACE_COORDINATOR.id
       ? createAgentGrowthTools({ userId, agentId: targetAgent.id, spaceId })
       : null;
     const availableTools = [
+      ...filterToolSchemas([
       ...(selectedWork ? workspaceToolSchemas.filter((tool: any) => READ_ONLY_WORKSPACE_TOOLS.has(tool.function.name)) : []),
-      ...(allowWebSearch ? web.tools : []),
-      ...(bilibili ? bilibili.tools : []),
       ...(growth ? growth.tools : []),
       ...(!isMultiReply ? [TASK_PROPOSAL_TOOL] : []),
       ...(relayTool ? [relayTool] : []),
       ...(discussionTool ? [discussionTool] : []),
       ...(skillReferenceTool ? [skillReferenceTool] : []),
+      ], capabilityResolution),
+      ...(allowWebSearch ? web.tools : []),
+      ...activeBilibiliTools,
     ];
+    const capabilityHelp = createCapabilityHelpTool({ entry: 'space', phase: spacePhase, query: textMessage,
+      loadableCapabilities: allowWebSearch ? web.loadableCapabilities : [],
+      getAvailableToolNames: () => [...availableTools, ...(allowWebSearch ? web.tools : [])].map(tool => tool.function.name),
+      permittedCapabilities: permittedExternal });
+    availableTools.push(capabilityHelp.tool);
     const chatGuidance = normalizedInteractionMode === 'chat'
       ? [
           '当前是空间闲聊，不是任务执行轮次。请先像空间里的真实成员一样回应当前话题：理解上下文，接住用户的情绪或观点，必要时表达自己的判断、补充、反驳或提出一个自然的问题。不要因为用户讨论了一个想法，就立刻拆成任务、要求验收或把自己说成已经开始执行。',
@@ -1083,6 +1109,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
             messages: openaiMessages,
             tools: availableTools,
             requestCompletion: async (conversation: any[], tools: any[]) => {
+              tools = [...new Map([...tools, ...(allowWebSearch ? web.tools : [])].map(tool => [tool.function.name, tool])).values()];
               const hasTools = Array.isArray(tools) && tools.length > 0;
               const requestBody: any = {
                 model,
@@ -1100,8 +1127,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
               });
             },
             executeTool: async (name: string, args: Record<string, unknown>) => {
+              if (name === 'capability_help') return capabilityHelp.execute(args);
               if (growth?.owns(name)) return growth.execute(name, args);
-              if (bilibili?.owns(name)) return bilibili.execute(name, args, abortController.signal);
+              if (activeBilibiliTools.some((tool) => tool.function.name === name) && bilibili?.owns(name)) return bilibili.execute(name, args, abortController.signal);
               if (web.tools.some((tool) => tool.function.name === name)) return allowWebSearch ? web.execute(name, args, abortController.signal) : { ok: false, error: '隔离互动场景不提供联网工具' };
               if (name === 'propose_task') {
                 if (taskProposal) return { ok: false, error: '本轮已经生成任务方案' };

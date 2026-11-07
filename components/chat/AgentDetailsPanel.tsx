@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import Avatar from '@/components/shared/Avatar';
+import CapabilityOverview from '@/components/shared/CapabilityOverview';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import KnowledgeManager from '@/components/agent/KnowledgeManager';
 import SpaceMemberModelDialog from '@/components/spaces/SpaceMemberModelDialog';
@@ -109,6 +110,7 @@ function AgentDetailBody({ displayAgent }: { displayAgent: DisplayAgent }) {
           </ReactMarkdown>
         </div>
       </div>
+      <CapabilityOverview entry="agent" />
     </>
   );
 }

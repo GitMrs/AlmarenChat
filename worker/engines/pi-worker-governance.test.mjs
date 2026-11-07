@@ -81,6 +81,48 @@ test('Pi Worker governance rejects an unstructured executor ending', async () =>
   );
 });
 
+test('Pi Worker capability help reflects actual task tools and cannot grant permissions', async () => {
+  const build = createPiWorkerGovernance({ db: {}, reserveRequest: () => ({}) });
+  const options = await build(request());
+  const help = options.tools.find((tool) => tool.name === 'capability_help');
+  assert.ok(help);
+  const result = await help.execute('help-1', {});
+  const capabilities = result.details.capabilities;
+  assert.equal(capabilities.find((item) => item.id === 'web').status, '当前不可用');
+  assert.equal(capabilities.find((item) => item.id === 'bilibili').status, '当前不可用');
+  assert.equal(options.tools.some((tool) => tool.name === 'web_search'), false);
+});
+
+test('Pi Worker loads authorized research tools only when needed without performing a query', async () => {
+  const build = createPiWorkerGovernance({ db: {}, reserveRequest: () => ({}) });
+  let consumed = 0;
+  const context = {
+    ...request().context,
+    authorization: { capabilities: ['web_research'], networkPolicy: 'allowed' },
+    runtimePermissions: { consume: () => { consumed += 1; return { allowed: true }; } },
+  };
+  const options = await build(request({ context }));
+  assert.equal(options.getActiveToolNames().includes('web_search'), false);
+  assert.equal(options.getActiveToolNames().includes('capability_load'), true);
+  const search = options.tools.find((tool) => tool.name === 'web_search');
+  assert.equal((await search.execute('early', { query: 'test' })).isError, true);
+  const help = options.tools.find((tool) => tool.name === 'capability_help');
+  assert.equal((await help.execute('help', {})).details.capabilities.find((item) => item.id === 'web').status, '可按需使用');
+  const loader = options.tools.find((tool) => tool.name === 'capability_load');
+  assert.equal((await loader.execute('wrong', { capability: 'bilibili' })).isError, true);
+  assert.equal(options.getActiveToolNames().includes('web_search'), false);
+  await loader.execute('load', { capability: 'web' });
+  await loader.execute('again', { capability: 'web' });
+  assert.equal(consumed, 0);
+  assert.equal(options.getActiveToolNames().filter((name) => name === 'web_search').length, 1);
+  assert.equal(options.getActiveToolNames().includes('web_fetch'), true);
+  assert.equal((await help.execute('loaded', {})).details.capabilities.find((item) => item.id === 'web').status, '本轮已加载');
+  const explicit = await build(request({ context, task: { ...request().task, instruction: '搜索最新公开资料' } }));
+  assert.equal(explicit.getActiveToolNames().includes('web_search'), true);
+  const denied = await build(request());
+  assert.equal(denied.tools.some((tool) => tool.name === 'capability_load'), false);
+});
+
 test('Pi Worker governance auto-recovers when valid artifacts were produced', async () => {
   const manifest = { entries: [{ path: 'article.md' }], validation: { valid: true } };
   const build = createPiWorkerGovernance({ db: {}, reserveRequest: () => ({}) });
@@ -214,7 +256,29 @@ test('Pi Worker exposes controlled web search only with web research authorizati
   assert.equal(denied.tools.some((item) => item.name === 'web_search'), false);
 });
 
-test('Pi Worker exposes controlled web fetch for explicit public URLs', async () => {
+test('Pi Worker only exposes Bilibili tools for a related authorized task', async () => {
+  const build = createPiWorkerGovernance({ db: {}, reserveRequest: () => ({}) });
+  const bilibiliTools = {
+    tools: [{
+      type: 'function',
+      function: { name: 'bilibili_search', description: '搜索 B 站', parameters: { type: 'object', properties: {} } },
+    }],
+    execute: async () => ({ ok: true }),
+  };
+  const baseContext = {
+    model: { apiKey: 'key', baseURL: 'https://example.com/v1', name: 'model' },
+    space: {}, bilibiliTools,
+  };
+  const unrelated = await build(request({ context: baseContext }));
+  assert.equal(unrelated.tools.some((item) => item.name === 'bilibili_search'), false);
+  const related = await build(request({
+    context: baseContext,
+    task: { ...request().task, instruction: '整理 Bilibili 视频资料' },
+  }));
+  assert.equal(related.tools.some((item) => item.name === 'bilibili_search'), true);
+});
+
+test('Pi Worker fetches public URLs after loading authorized research tools', async () => {
   const originalFetch = globalThis.fetch;
   const events = [];
   globalThis.fetch = async (url) => ({
@@ -235,6 +299,7 @@ test('Pi Worker exposes controlled web fetch for explicit public URLs', async ()
     }));
     const tool = options.tools.find((item) => item.name === 'web_fetch');
     assert.ok(tool);
+    await options.tools.find((item) => item.name === 'capability_load').execute('load-web', { capability: 'web' });
     const result = await tool.execute('fetch-1', { url: 'https://example.com/hot.json' });
     assert.equal(result.isError, false);
     assert.match(result.content[0].text, /示例/);
@@ -270,6 +335,13 @@ test('Pi Worker discovers and invokes an authorized remote MCP tool', async () =
     }));
     const tool = options.tools.find((item) => item.name === 'mcp_research_lookup');
     assert.ok(tool);
+    assert.equal(options.getActiveToolNames().includes('mcp_research_lookup'), false);
+    assert.equal((await tool.execute('hidden-call', { q: 'agent' })).isError, true);
+    assert.deepEqual(calls, ['tools/list']);
+    const loader = options.tools.find((item) => item.name === 'mcp_load');
+    assert.equal((await loader.execute('denied-load', { serverId: 'not-authorized' })).isError, true);
+    await loader.execute('load-call', { serverId: 'research' });
+    assert.equal(options.getActiveToolNames().includes('mcp_research_lookup'), true);
     const result = await tool.execute('mcp-call', { q: 'agent' });
     assert.equal(result.isError, false);
     assert.deepEqual(calls, ['tools/list', 'tools/call']);
