@@ -4,7 +4,7 @@ import path from 'node:path';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { resolveStudioWorkspace } from '@/lib/coding-agents/sandbox';
-import { discoverWorkspaceSkills, resolveWorkspaceSkill } from '@/lib/coding-agents/workspace-skills';
+import { discoverWorkspaceSkills, resolveWorkspaceSkill, discoverLegacyUserSkills, importLegacyUserSkills } from '@/lib/coding-agents/workspace-skills';
 
 export interface WorkspaceSkillItem {
   id: string;
@@ -146,6 +146,7 @@ export async function GET(
     return NextResponse.json({
       skills,
       presets: SKILL_PRESETS,
+      legacySkillCount: (await discoverLegacyUserSkills(workspaceDir)).length,
     });
   } catch (err: unknown) {
     const errMsg = err instanceof Error ? err.message : String(err);
@@ -174,6 +175,10 @@ export async function POST(
 
     let skillId = '';
     let skillContent = '';
+
+    if (body.action === 'import-legacy') {
+      return NextResponse.json({ success: true, ...await importLegacyUserSkills(workspaceDir) });
+    }
 
     if (body.action === 'preset') {
       const preset = SKILL_PRESETS.find((p) => p.id === body.presetId);

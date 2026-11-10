@@ -180,6 +180,8 @@ export default function StudioPage() {
   const [workspaceSkills, setWorkspaceSkills] = useState<WorkspaceSkill[]>([]);
   const [skillPresets, setSkillPresets] = useState<any[]>([]);
   const [isLoadingSkills, setIsLoadingSkills] = useState(false);
+  const [legacySkillCount, setLegacySkillCount] = useState(0);
+  const [isImportingSkills, setIsImportingSkills] = useState(false);
   const [showSkillModal, setShowSkillModal] = useState(false);
   const [skillModalTab, setSkillModalTab] = useState<'presets' | 'custom'>('presets');
   const [newSkillName, setNewSkillName] = useState('');
@@ -1221,16 +1223,43 @@ export default function StudioPage() {
       const res = await fetch(`/api/studio/workspaces/${targetId}/skills`, {
         headers: { Authorization: `Bearer ${token}` },
       });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || '读取技能列表失败');
+      }
       if (res.ok) {
         const data = await res.json();
         if (activeWorkspaceIdRef.current !== targetId) return;
         setWorkspaceSkills(data.skills || []);
         setSkillPresets(data.presets || []);
+        setLegacySkillCount(data.legacySkillCount || 0);
       }
-    } catch {
-      // Ignore
+    } catch (error) {
+      if (activeWorkspaceIdRef.current === targetId) alert(error instanceof Error ? error.message : '读取技能列表失败');
     } finally {
       if (activeWorkspaceIdRef.current === targetId) setIsLoadingSkills(false);
+    }
+  };
+
+  const handleImportLegacySkills = async () => {
+    const targetId = activeWorkspaceId;
+    if (!targetId || isImportingSkills || isStreaming) return;
+    setIsImportingSkills(true);
+    try {
+      const res = await fetch(`/api/studio/workspaces/${targetId}/skills`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${getAuthToken()}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'import-legacy' }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '导入旧版技能失败');
+      if (activeWorkspaceIdRef.current !== targetId) return;
+      if (data.skipped?.length) alert(`以下同名技能未覆盖，旧文件仍保留：${data.skipped.join('、')}`);
+      await fetchWorkspaceSkills(targetId);
+    } catch (error) {
+      if (activeWorkspaceIdRef.current === targetId) alert(error instanceof Error ? error.message : '导入旧版技能失败');
+    } finally {
+      setIsImportingSkills(false);
     }
   };
 
@@ -2091,6 +2120,9 @@ export default function StudioPage() {
         isStreaming={isStreaming}
         workspaceSkills={workspaceSkills}
         isLoadingSkills={isLoadingSkills}
+        legacySkillCount={legacySkillCount}
+        isImportingSkills={isImportingSkills}
+        handleImportLegacySkills={handleImportLegacySkills}
         skillPresets={skillPresets}
         activeWorkspace={activeWorkspace}
         setShowSkillModal={setShowSkillModal}

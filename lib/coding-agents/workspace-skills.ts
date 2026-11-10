@@ -72,8 +72,48 @@ export async function resolveWorkspaceSkill(workspaceDir: string, id: string) {
 }
 
 export async function discoverWorkspaceSkills(workspaceDir: string) {
+  return readSkills(await prepareWorkspaceSkills(workspaceDir));
+}
+
+async function legacyUserSkillsDirectory(workspaceDir: string) {
+  return safeJoinReal(path.dirname(path.dirname(path.resolve(workspaceDir))), '.pi_agent/skills');
+}
+
+export async function discoverLegacyUserSkills(workspaceDir: string) {
+  const directory = await legacyUserSkillsDirectory(workspaceDir);
+  return directory ? readSkills(directory) : [];
+}
+
+export async function importLegacyUserSkills(workspaceDir: string) {
+  const legacyDir = await legacyUserSkillsDirectory(workspaceDir);
+  const targetDir = await prepareWorkspaceSkills(workspaceDir);
+  const imported: string[] = [];
+  const skipped: string[] = [];
+  if (!legacyDir) return { imported, skipped };
+  for (const skill of await readSkills(legacyDir)) {
+    const source = await safeJoinReal(legacyDir, skill.id);
+    const target = await safeJoinReal(targetDir, skill.id);
+    if (!source || !target) continue;
+    const exists = await lstat(target).catch((error) => {
+      if (error.code === 'ENOENT') return null;
+      throw error;
+    });
+    if (exists) {
+      skipped.push(skill.id);
+      continue;
+    }
+    try {
+      await rename(source, target);
+      imported.push(skill.id);
+    } catch (error: any) {
+      if (error.code !== 'ENOENT') throw error;
+    }
+  }
+  return { imported, skipped };
+}
+
+async function readSkills(skillsDir: string) {
   const skills: Array<{ id: string; enabled: boolean; content: string; updatedAt: number; runtimePath: string }> = [];
-  const skillsDir = await prepareWorkspaceSkills(workspaceDir);
   const entries = await readdir(skillsDir, { withFileTypes: true }).catch((error) => {
     if (error.code === 'ENOENT') return [];
     throw error;

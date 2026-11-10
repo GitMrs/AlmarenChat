@@ -34,6 +34,9 @@ interface RightInspectorProps {
   isStreaming: boolean;
   workspaceSkills: WorkspaceSkill[];
   isLoadingSkills: boolean;
+  legacySkillCount: number;
+  isImportingSkills: boolean;
+  handleImportLegacySkills: () => void;
   skillPresets: SkillPreset[];
   activeWorkspace?: StudioWorkspaceItem;
   setShowSkillModal: (v: boolean) => void;
@@ -73,6 +76,9 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
   isStreaming,
   workspaceSkills,
   isLoadingSkills,
+  legacySkillCount,
+  isImportingSkills,
+  handleImportLegacySkills,
   skillPresets,
   activeWorkspace,
   setShowSkillModal,
@@ -169,6 +175,9 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
               isStreaming={isStreaming}
               workspaceSkills={workspaceSkills}
               isLoadingSkills={isLoadingSkills}
+              legacySkillCount={legacySkillCount}
+              isImportingSkills={isImportingSkills}
+              handleImportLegacySkills={handleImportLegacySkills}
               skillPresets={skillPresets}
               activeWorkspace={activeWorkspace}
               setShowSkillModal={setShowSkillModal}

@@ -17,6 +17,9 @@ interface RosterTabProps {
   isStreaming: boolean;
   workspaceSkills: WorkspaceSkill[];
   isLoadingSkills: boolean;
+  legacySkillCount: number;
+  isImportingSkills: boolean;
+  handleImportLegacySkills: () => void;
   skillPresets: SkillPreset[];
   activeWorkspace?: StudioWorkspaceItem;
   setShowSkillModal: (v: boolean) => void;
@@ -37,6 +40,9 @@ export const RosterTab: React.FC<RosterTabProps> = ({
   isStreaming,
   workspaceSkills,
   isLoadingSkills,
+  legacySkillCount,
+  isImportingSkills,
+  handleImportLegacySkills,
   skillPresets,
   activeWorkspace,
   setShowSkillModal,
@@ -146,6 +152,18 @@ export const RosterTab: React.FC<RosterTabProps> = ({
         </div>
 
         <p className="text-[10px] text-slate-500">技能启停与内容变更从下一轮对话生效。</p>
+        {legacySkillCount > 0 && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-2">
+            <p className="text-[11px] text-amber-800">用户目录中发现 {legacySkillCount} 个旧版技能，可迁入当前工作区；同名技能不会覆盖。</p>
+            <button
+              type="button" onClick={handleImportLegacySkills}
+              disabled={isImportingSkills || isLoadingSkills || isStreaming}
+              className="rounded-md border border-amber-300 bg-white px-2 py-1 text-[11px] text-amber-800 disabled:opacity-50"
+            >
+              {isImportingSkills ? '正在导入...' : '导入到当前工作区'}
+            </button>
+          </div>
+        )}
         {isLoadingSkills && workspaceSkills.length === 0 ? (
           <div className="flex items-center justify-center py-6 text-slate-400 text-xs">
             <Loader2 size={15} className="animate-spin text-amber-500 mr-2" />
