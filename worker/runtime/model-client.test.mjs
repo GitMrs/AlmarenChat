@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createWorkerModelClient } from './model-client.mjs';
+import { withTransientModelRetry, isTransientModelError } from '../../lib/agents/runtime/tool-loop.mjs';
 
 const model = {
   apiKey: 'test-key',
@@ -76,12 +77,14 @@ test('worker model client sends DeepSeek-compatible tool requests', async () => 
 
   assert.equal(message.content, '完成');
   assert.equal(streamStarted, 1);
-  assert.deepEqual(current.clientOptions, [{
+  assert.equal(typeof current.clientOptions[0].fetch, 'function');
+  const { fetch, ...clientOptions } = current.clientOptions[0];
+  assert.deepEqual(clientOptions, {
     apiKey: 'test-key',
     baseURL: 'https://model.invalid/v1',
     timeout: 180_000,
     maxRetries: 0,
-  }]);
+  });
   assert.equal(current.requests[0].payload.tool_choice, 'auto');
   assert.deepEqual(current.requests[0].payload.tools, tools);
   assert.equal(current.requests[0].payload.stream, true);
@@ -104,6 +107,21 @@ test('worker model client sends DeepSeek-compatible tool requests', async () => 
   assert.equal(current.completions[0].contentChars, 2);
   assert.equal(current.completions[0].scope, 'task');
   assert.equal('messages' in current.completions[0], false);
+});
+
+test('Worker never retries after delivering a partial model stream', async () => {
+  async function* interrupted() {
+    yield { choices: [{ delta: { content: '已经输出' } }] };
+    throw Object.assign(new Error('connection reset'), { code: 'ECONNRESET' });
+  }
+  let attempts = 0;
+  const chunks = [];
+  const current = fixture({ create: async () => { attempts += 1; return interrupted(); }, retryTransient: withTransientModelRetry });
+  await assert.rejects(current.client.completeMessage(model, [], [], {
+    onContentDelta: chunk => chunks.push(chunk),
+  }), error => error.code === 'MODEL_STREAM_INTERRUPTED' && !isTransientModelError(error));
+  assert.deepEqual(chunks, ['已经输出']);
+  assert.equal(attempts, 1);
 });
 
 test('worker model client prefers provider usage for estimated token telemetry', async () => {

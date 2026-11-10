@@ -191,6 +191,10 @@ export function getDirectAgent(): Agent {
 export interface SmartFetchOptions extends RequestInit {
   prefer?: 'proxy-first' | 'direct-first' | 'direct-only' | 'proxy-only';
   timeoutMs?: number;
+  /** Override the shortened direct-first wait (e.g. model time to first token). */
+  directTimeoutMs?: number;
+  /** false: only transport failures trigger fallback, never HTTP error responses. */
+  fallbackOnHttpError?: boolean;
 }
 
 /**
@@ -200,25 +204,30 @@ export interface SmartFetchOptions extends RequestInit {
  * - prefer 'proxy-first': 优先走代理
  */
 export async function smartFetch(url: string, options: SmartFetchOptions = {}): Promise<Response> {
-  const { prefer = 'direct-first', timeoutMs = 8000, ...fetchInit } = options;
-  const proxyAgent = await getProxyAgent();
+  const { prefer = 'direct-first', timeoutMs = 8000, directTimeoutMs, fallbackOnHttpError = true, ...fetchInit } = options;
+  fetchInit.signal?.throwIfAborted();
+  const proxyAgent = prefer === 'direct-only' ? undefined : await getProxyAgent();
+  fetchInit.signal?.throwIfAborted();
 
   const executeFetch = async (useProxy: boolean, customTimeoutMs?: number): Promise<Response> => {
     const effTimeout = customTimeoutMs || timeoutMs;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), effTimeout);
+    const signal = fetchInit.signal
+      ? AbortSignal.any([fetchInit.signal, controller.signal])
+      : controller.signal;
     try {
       if (useProxy && proxyAgent) {
         return (await undiciFetch(url, {
           ...fetchInit,
           dispatcher: proxyAgent,
-          signal: controller.signal,
+          signal,
         } as any)) as unknown as Response;
       }
       return (await undiciFetch(url, {
         ...fetchInit,
         dispatcher: directAgent,
-        signal: controller.signal,
+        signal,
       } as any)) as unknown as Response;
     } finally {
       clearTimeout(timer);
@@ -238,8 +247,10 @@ export async function smartFetch(url: string, options: SmartFetchOptions = {}): 
     if (proxyAgent) {
       try {
         const res = await executeFetch(true);
-        if (res.ok) return res;
+        if (res.ok || !fallbackOnHttpError) return res;
+        await res.body?.cancel();
       } catch (err: any) {
+        fetchInit.signal?.throwIfAborted();
         console.warn(`[smartFetch] Proxy attempt failed for ${url}:`, err?.message || err);
       }
     }
@@ -254,24 +265,24 @@ export async function smartFetch(url: string, options: SmartFetchOptions = {}): 
     isDomestic = /(?:modelscope\.cn|aliyun(?:cs)?\.com|qq\.com|baidu\.com|bilibili\.com|zhihu\.com|127\.0\.0\.1|localhost)$/i.test(hostname);
   } catch {}
   // 国内域名直连时不设过短超时；国外域名直连超时时间适当收紧（3200ms）以便快速切换代理
-  const directTimeout = proxyAgent && !isDomestic ? Math.min(timeoutMs, 3200) : timeoutMs;
+  const directTimeout = directTimeoutMs ?? (proxyAgent && !isDomestic ? Math.min(timeoutMs, 3200) : timeoutMs);
+  let response: Response;
   try {
-    const res = await executeFetch(false, directTimeout);
-    if (res.ok) return res;
-
-    // 若直连返回异常状态（如 403 / 502 / 429）且有本地代理，则无缝切换代理
-    if (proxyAgent) {
-      console.warn(`[smartFetch] Direct attempt returned status ${res.status} for ${url}, retrying via proxy...`);
-      return await executeFetch(true, timeoutMs);
-    }
-    return res;
+    response = await executeFetch(false, directTimeout);
   } catch (err: any) {
+    fetchInit.signal?.throwIfAborted();
     if (proxyAgent) {
       console.warn(`[smartFetch] Direct attempt failed for ${url} (${err?.message || err}), retrying via proxy...`);
       return await executeFetch(true, timeoutMs);
     }
     throw err;
   }
+  if (!response.ok && fallbackOnHttpError && proxyAgent) {
+    await response.body?.cancel();
+    console.warn(`[smartFetch] Direct attempt returned status ${response.status} for ${url}, retrying via proxy...`);
+    return await executeFetch(true, timeoutMs);
+  }
+  return response;
 }
 
 /**

@@ -18,6 +18,7 @@ export const PI_SESSION_PLACEHOLDER = '__PI_SESSION_FILE__';
 const CONTAINER_CONFIG_DIR = '/pi-config';
 const CONTAINER_SESSION_DIR = '/sessions';
 const CONTAINER_APPROVAL_EXTENSION = '/opt/studio/approval.ts';
+const CONTAINER_MODEL_NETWORK_EXTENSION = '/opt/pi/almaren-network/lib/coding-agents/extensions/model-network.ts';
 
 const HOST_PI_CLI = path.resolve(
   process.cwd(),
@@ -104,7 +105,7 @@ export async function buildPiLaunchSpec(options: PiLaunchOptions): Promise<PiLau
   const baseUrl = String(options.customBaseUrl || DEFAULT_BASE_URL).trim();
   const mode = resolveSandboxMode();
 
-  const withPaths = (sessionPath: string, configDir: string, extensionPath?: string): string[] => {
+  const withPaths = (sessionPath: string, configDir: string, networkExtension: string, extensionPath?: string): string[] => {
     const args = options.agentArgs.map((arg) => {
       if (arg === PI_SESSION_PLACEHOLDER) return sessionPath;
       if (arg.startsWith(PI_CONFIG_SKILL_PREFIX)) {
@@ -112,9 +113,8 @@ export async function buildPiLaunchSpec(options: PiLaunchOptions): Promise<PiLau
       }
       return arg;
     });
-    if (extensionPath) {
-      args.push('--no-extensions', '--extension', extensionPath);
-    }
+    args.push('--no-extensions', '--extension', networkExtension);
+    if (extensionPath) args.push('--extension', extensionPath);
     return args;
   };
 
@@ -140,12 +140,14 @@ export async function buildPiLaunchSpec(options: PiLaunchOptions): Promise<PiLau
       await ensureStudioAgentImage(policy);
       await writeSandboxEnvFile(policy.envFile, {
         STUDIO_MODEL_API_KEY: apiKey,
+        ...modelProxyEnv(),
         ...(options.approvalMode ? { STUDIO_APPROVAL_MODE: options.approvalMode } : {}),
       });
 
       const agentArgs = withPaths(
         `${CONTAINER_SESSION_DIR}/${path.basename(sessionFile)}`,
         CONTAINER_CONFIG_DIR,
+        CONTAINER_MODEL_NETWORK_EXTENSION,
         options.approvalMode ? CONTAINER_APPROVAL_EXTENSION : undefined
       );
 
@@ -171,6 +173,7 @@ export async function buildPiLaunchSpec(options: PiLaunchOptions): Promise<PiLau
     customApiKey: apiKey || undefined,
     customBaseUrl: options.customBaseUrl,
   });
+  Object.assign(env, modelProxyEnv());
   if (options.approvalMode) {
     env.STUDIO_APPROVAL_MODE = options.approvalMode;
   }
@@ -190,9 +193,17 @@ export async function buildPiLaunchSpec(options: PiLaunchOptions): Promise<PiLau
   return {
     kind: 'host',
     command: process.execPath,
-    args: [HOST_PI_CLI, ...withPaths(sessionFile, configDir, extensionPath)],
+    args: [HOST_PI_CLI, ...withPaths(sessionFile, configDir,
+      path.resolve(process.cwd(), 'lib/coding-agents/extensions/model-network.ts'), extensionPath)],
     env,
     cwd: workspaceDir,
     model,
   };
+}
+
+function modelProxyEnv(): Record<string, string> {
+  return Object.fromEntries(
+    ['HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http_proxy', 'ALL_PROXY', 'all_proxy', 'NO_PROXY', 'no_proxy']
+      .filter(key => process.env[key]).map(key => [key, process.env[key]!])
+  );
 }

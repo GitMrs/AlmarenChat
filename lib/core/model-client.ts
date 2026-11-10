@@ -1,12 +1,13 @@
 import OpenAI from 'openai';
-import { smartFetch, type SmartFetchOptions } from '@/lib/web/proxy';
+import type { SmartFetchOptions } from '@/lib/web/proxy';
+import { createModelFetch } from './model-fetch.mjs';
 
 export const DEFAULT_BASE_URL = 'https://api-inference.modelscope.cn/v1';
 export const DEFAULT_MODEL = 'deepseek-ai/DeepSeek-V4.1-Flash-1017';
 const MODEL_REQUEST_TIMEOUT_MS = 10 * 60 * 1000;
 const DEFAULT_MODEL_CLIENT_OPTIONS = {
   maxRetries: 1,
-  prefer: 'direct-only' as const,
+  prefer: 'direct-first' as const,
   timeoutMs: MODEL_REQUEST_TIMEOUT_MS,
 };
 
@@ -26,14 +27,7 @@ export function createModelClient(
     baseURL: baseURL || DEFAULT_BASE_URL,
     apiKey: apiKey || process.env.apiKey || process.env.OPENAI_API_KEY,
     maxRetries: clientOptions.maxRetries,
-    fetch: async (url: any, init: any) => {
-      const urlStr = typeof url === 'string' ? url : 'url' in url ? url.url : String(url);
-      return smartFetch(urlStr, {
-        ...(init || {}),
-        prefer: clientOptions.prefer,
-        timeoutMs: clientOptions.timeoutMs,
-      });
-    },
+    fetch: createModelFetch({ prefer: clientOptions.prefer, timeoutMs: clientOptions.timeoutMs }),
   });
 }
 

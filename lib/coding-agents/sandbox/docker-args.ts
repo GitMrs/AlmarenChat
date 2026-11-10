@@ -1,4 +1,5 @@
 import type { StudioSandboxPolicy } from './policy';
+import path from 'node:path';
 
 /**
  * 将沙箱策略翻译成 `docker run` 参数。
@@ -54,6 +55,9 @@ export function buildDockerRunArgs(
     `${policy.configDir}:/pi-config:rw`,
     '-v',
     `${policy.sessionsDir}:/sessions:rw`,
+    // Fixed transport source files only, read-only; no project root or env mount.
+    ...['lib/core/model-fetch.mjs', 'lib/web/proxy.ts', 'lib/coding-agents/extensions/model-network.ts']
+      .flatMap(file => ['-v', `${path.resolve(process.cwd(), file)}:/opt/pi/almaren-network/${file}:ro`]),
     policy.image,
     ...agentArgs,
   ];

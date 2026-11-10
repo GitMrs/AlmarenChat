@@ -66,7 +66,7 @@ export async function generateWorkspaceImage({
   size,
   workspaceOptions,
   isCancelled,
-  fetchImpl = fetch,
+  fetchImpl = undefined,
   timeoutMs = undefined,
 }) {
   const normalizedPrompt = String(prompt || '').trim();

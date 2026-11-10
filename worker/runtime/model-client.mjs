@@ -1,4 +1,5 @@
 import OpenAI from 'openai';
+import { createModelFetch } from '../../lib/core/model-fetch.mjs';
 import { collectChatCompletionStream, isTransientModelError, withTransientModelRetry } from '../../lib/agents/runtime/tool-loop.mjs';
 import { reserveModelRequest } from './model-budget.mjs';
 
@@ -41,6 +42,7 @@ export function createWorkerModelClient({
       baseURL: model.baseURL,
       timeout: totalTimeoutMs,
       maxRetries: 0,
+      fetch: createModelFetch({ timeoutMs: totalTimeoutMs }),
     });
     let message;
     let retryCount = 0;
@@ -138,6 +140,7 @@ export function createWorkerModelClient({
           });
         },
         {
+          shouldRetry: error => firstChunkAt === null && !requestController.signal.aborted && isTransientModelError(error),
           onRetry: (error) => {
             retryCount += 1;
             options.onRetry?.(error);
@@ -146,6 +149,11 @@ export function createWorkerModelClient({
       ), timeoutPromise]);
     } catch (error) {
       if (error?.code === 'MODEL_TIMEOUT') throw error;
+      if (firstChunkAt !== null && !requestController.signal.aborted) {
+        const interrupted = new Error(error instanceof Error ? error.message : String(error), { cause: error });
+        interrupted.code = 'MODEL_STREAM_INTERRUPTED';
+        throw interrupted;
+      }
       if (!isTransientModelError(error)) throw error;
       const transientError = new Error(error instanceof Error ? error.message : String(error));
       transientError.code = 'MODEL_PROVIDER_TRANSIENT';
