@@ -285,6 +285,13 @@ export async function POST(request: Request) {
           const errMsg = err instanceof Error ? err.message : String(err);
           emit({ type: 'run.failed', data: { error: errMsg } });
         } finally {
+          for (const tool of toolsMap.values()) {
+            if (tool.status !== 'waiting_approval' && tool.status !== 'running') continue;
+            const isDenied = tool.status === 'waiting_approval';
+            tool.status = isDenied ? 'denied' : 'failed';
+            tool.result = isDenied ? '运行已结束，本次审批已取消' : '运行已结束，工具执行未完成';
+            emit({ type: 'tool.failed', data: { toolCallId: tool.id, toolName: tool.name, isDenied, error: tool.result } });
+          }
           try {
             await persistAssistantMessage();
           } catch (error) {

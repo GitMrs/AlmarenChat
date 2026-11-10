@@ -22,13 +22,13 @@ async function detectBuiltinPi(): Promise<{ version: string | null; path: string
     const content = await readFile(pkgPath, 'utf-8');
     const parsed = JSON.parse(content);
     return {
-      version: parsed.version || '0.85.1',
+      version: parsed.version || null,
       path: pkgPath,
     };
   } catch {
     return {
-      version: '0.85.1',
-      path: 'node_modules/@earendil-works/pi-coding-agent',
+      version: null,
+      path: null,
     };
   }
 }
@@ -90,7 +90,7 @@ export async function checkAgentStatus(agentId: CodingAgentId, forceRefresh = fa
     const { version, path: piPath } = await detectBuiltinPi();
     statusInfo = {
       ...meta,
-      status: 'installed',
+      status: piPath ? 'installed' : 'not_installed',
       version,
       path: piPath,
       lastCheckedAt: now,

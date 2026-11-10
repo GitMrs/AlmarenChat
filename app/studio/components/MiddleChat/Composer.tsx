@@ -107,7 +107,7 @@ export const Composer: React.FC<ComposerProps> = ({
       {/* 任务执行中：补充消息投递方式 */}
       {isStreaming && (
         <div className="flex items-center gap-1.5 px-1 mb-2 flex-wrap">
-          <span className="text-[10px] text-slate-400">任务执行中，新消息：</span>
+          <span className="text-[10px] text-slate-400">追加消息处理方式：</span>
           <button
             type="button"
             onClick={() => setDeliveryMode('steer')}

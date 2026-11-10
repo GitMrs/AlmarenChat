@@ -25,6 +25,8 @@ import {
 import { LeftSidebar } from './components/LeftSidebar';
 import { MessageList } from './components/MiddleChat/MessageList';
 import { Composer } from './components/MiddleChat/Composer';
+import { ApprovalBar } from './components/MiddleChat/ApprovalBar';
+import { RunStatus, type StudioRunState } from './components/MiddleChat/RunStatus';
 import { RightInspector } from './components/RightInspector/RightInspector';
 import { AccountModelModal } from './components/modals/AccountModelModal';
 import { WorkspaceRulesModal } from './components/modals/WorkspaceRulesModal';
@@ -48,12 +50,23 @@ export default function StudioPage() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [isClearingMessages, setIsClearingMessages] = useState(false);
   const chatRequestRef = useRef<AbortController | null>(null);
+  const [runState, setRunState] = useState<StudioRunState | null>(null);
+  const [isClearingQueue, setIsClearingQueue] = useState(false);
 
   // Studio Workspaces state
   const [workspaces, setWorkspaces] = useState<StudioWorkspaceItem[]>([]);
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string>('');
   const activeWorkspaceIdRef = useRef(activeWorkspaceId);
   activeWorkspaceIdRef.current = activeWorkspaceId;
+  useEffect(() => {
+    setRunState(null);
+    setIsStreaming(false);
+    setIsClearingQueue(false);
+    return () => {
+      chatRequestRef.current?.abort();
+      chatRequestRef.current = null;
+    };
+  }, [activeWorkspaceId]);
   const [showWorkspaceMenu, setShowWorkspaceMenu] = useState(false);
   const [isLoadingWorkspaces, setIsLoadingWorkspaces] = useState(false);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
@@ -1372,6 +1385,8 @@ export default function StudioPage() {
       return;
     }
     setIsClearingMessages(true);
+    setRunState(null);
+    setIsClearingQueue(false);
     chatRequestRef.current?.abort();
     try {
       const token = getAuthToken();
@@ -1501,6 +1516,8 @@ export default function StudioPage() {
     ]);
 
     setIsStreaming(true);
+    setRunState(null);
+    setIsClearingQueue(false);
 
     try {
       const token = getAuthToken();
@@ -1558,10 +1575,18 @@ export default function StudioPage() {
           if (line.startsWith('data: ')) {
             try {
               const event = JSON.parse(line.slice(6));
-              if (requestController.signal.aborted) continue;
+              if (requestController.signal.aborted || chatRequestRef.current !== requestController || activeWorkspaceIdRef.current !== activeWorkspaceId) continue;
               const currentAssistantId = assistantMessageId;
 
-              if (event.type === 'message.ids') {
+              if (event.type === 'run.started') {
+                setRunState({ runId: event.data.runId, status: 'running', steering: [], followUp: [] });
+              } else if (event.type === 'run.status') {
+                setRunState((prev) => prev?.runId === event.data.runId ? { ...prev, status: event.data.status } : prev);
+              } else if (event.type === 'queue.updated') {
+                setRunState((prev) => prev?.runId === event.data.runId ? { ...prev, steering: event.data.steering, followUp: event.data.followUp, items: event.data.items } : prev);
+              } else if (event.type === 'run.notice') {
+                setRunState((prev) => prev ? { ...prev, notice: event.data.message } : prev);
+              } else if (event.type === 'message.ids') {
                 const previousUserId = userMessageId;
                 const savedUserId = event.data.userMessageId;
                 const savedAssistantId = event.data.assistantMessageId;
@@ -1602,10 +1627,6 @@ export default function StudioPage() {
                       : m
                   )
                 );
-                // Auto expand tool card when waiting approval
-                if (event.data.toolCallId) {
-                  setExpandedToolIds((prev) => new Set(prev).add(event.data.toolCallId));
-                }
               } else if (event.type === 'tool.started') {
                 setMessages((prev) =>
                   prev.map((m) => {
@@ -1754,7 +1775,7 @@ export default function StudioPage() {
                 setMessages((prev) => prev.map((m) => m.id === usageMessageId
                   ? { ...m, tokens: event.data.totalTokens } : m));
               } else if (event.type === 'user.message_injected') {
-                // 服务端已把补充消息投递给运行中的 pi，此处开启新的对话气泡承接后续输出
+                // Pi 已开始处理补充消息，此时才切换聊天分段。
                 const injectedText = event.data?.message || '';
                 const now = Date.now();
                 const nextAssistantId = event.data.assistantMessageId;
@@ -1827,6 +1848,8 @@ export default function StudioPage() {
       if (chatRequestRef.current === requestController) {
         chatRequestRef.current = null;
         setIsStreaming(false);
+        setRunState((prev) => prev?.notice ? { ...prev, status: 'ended', steering: [], followUp: [], items: [] } : null);
+        setIsClearingQueue(false);
         if (!requestController.signal.aborted && activeWorkspaceIdRef.current === activeWorkspaceId) {
           void fetchWorkspaceSkills(activeWorkspaceId);
         }
@@ -1837,6 +1860,7 @@ export default function StudioPage() {
   // 任务执行中补充消息：steer 立即插话 / followUp 结束后追加
   const handleInjectMessage = async (text: string) => {
     if (!activeWorkspaceId) return;
+    const requestController = chatRequestRef.current;
 
     setInput('');
     if (textareaRef.current) {
@@ -1859,8 +1883,11 @@ export default function StudioPage() {
           message: text,
           workspaceId: activeWorkspaceId,
           mode: deliveryMode,
+          runId: runState?.runId,
         }),
       });
+
+      if (activeWorkspaceIdRef.current !== activeWorkspaceId || chatRequestRef.current !== requestController) return;
 
       if (res.status === 401) {
         handleAuthFailure();
@@ -1874,12 +1901,43 @@ export default function StudioPage() {
       }
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
+        if (activeWorkspaceIdRef.current !== activeWorkspaceId || chatRequestRef.current !== requestController) return;
         setInput(text);
         alert(errData.error || '补充消息发送失败');
+      } else {
+        const result = await res.json();
+        if (activeWorkspaceIdRef.current !== activeWorkspaceId || chatRequestRef.current !== requestController) return;
+        if (result.disposition === 'handled') alert('这条消息已由技能或扩展处理，未进入待处理队列');
       }
     } catch (err) {
+      if (activeWorkspaceIdRef.current !== activeWorkspaceId || chatRequestRef.current !== requestController) return;
       setInput(text);
       alert('补充消息发送失败: ' + String(err));
+    }
+  };
+
+  const handleClearQueue = async (itemId?: string) => {
+    if (!activeWorkspaceId || !runState || isClearingQueue) return;
+    const requestController = chatRequestRef.current;
+    setIsClearingQueue(true);
+    try {
+      const token = getAuthToken();
+      if (!token) { handleAuthFailure(); return; }
+      const res = await fetch('/api/studio/chat/inject', {
+        method: 'DELETE', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ workspaceId: activeWorkspaceId, runId: runState.runId, itemId }),
+      });
+      if (activeWorkspaceIdRef.current !== activeWorkspaceId || chatRequestRef.current !== requestController) return;
+      if (res.status === 401) { handleAuthFailure(); return; }
+      if (!res.ok) {
+        const result = await res.json().catch(() => ({}));
+        throw new Error(result.error || (itemId ? '取消待处理消息失败' : '清空待处理消息失败'));
+      }
+      // The authoritative queue snapshot arrives over SSE, including consumption races.
+    } catch (err) {
+      if (activeWorkspaceIdRef.current === activeWorkspaceId && chatRequestRef.current === requestController) alert(String(err));
+    } finally {
+      if (chatRequestRef.current === requestController) setIsClearingQueue(false);
     }
   };
 
@@ -2042,8 +2100,6 @@ export default function StudioPage() {
           onQuickPrompt={(cmd) => setInput(cmd)}
           expandedToolIds={expandedToolIds}
           toggleToolExpand={toggleToolExpand}
-          approvingToolId={approvingToolId}
-          handleDecisionTool={handleDecisionTool}
           copiedToolResult={copiedToolResult}
           handleCopyToolResult={handleCopyToolResult}
           isStreaming={isStreaming}
@@ -2065,6 +2121,10 @@ export default function StudioPage() {
 
         {/* 3. Bottom Composer Box */}
         <div className="p-2 sm:p-4 flex-shrink-0 relative z-20">
+          {runState && (isStreaming || runState.notice) && <RunStatus run={runState} clearing={isClearingQueue} onClear={() => handleClearQueue()} onCancel={handleClearQueue} />}
+          {!isLoadingMessages && (
+            <ApprovalBar messages={messages} approvingToolId={approvingToolId} onDecision={handleDecisionTool} />
+          )}
           <Composer
             totalTokens={totalTokens}
             contextLength={contextLength}

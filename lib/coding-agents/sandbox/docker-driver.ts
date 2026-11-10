@@ -4,6 +4,7 @@ import { promisify } from 'node:util';
 import { chmod, mkdir, rm, writeFile } from 'node:fs/promises';
 import {
   STUDIO_AGENT_IMAGE_CONTEXT,
+  STUDIO_PI_VERSION,
   type StudioSandboxPolicy,
 } from './policy';
 
@@ -43,14 +44,14 @@ export async function getDockerAvailability(force = false): Promise<DockerAvaila
   return result;
 }
 
-/** 检查镜像是否存在；缺失时按需构建（STUDIO_AGENT_AUTO_BUILD=1） */
+/** 检查镜像 Pi 版本；缺失或不匹配时按需构建（STUDIO_AGENT_AUTO_BUILD=1） */
 export async function ensureStudioAgentImage(policy: StudioSandboxPolicy): Promise<void> {
   try {
-    await execFileAsync('docker', ['image', 'inspect', policy.image], {
+    const { stdout } = await execFileAsync('docker', ['image', 'inspect', '--format', '{{ index .Config.Labels "io.almaren.pi.version" }}', policy.image], {
       timeout: 10_000,
       windowsHide: true,
     });
-    return;
+    if (stdout.trim() === STUDIO_PI_VERSION) return;
   } catch {
     // not found, try build below
   }
@@ -58,13 +59,13 @@ export async function ensureStudioAgentImage(policy: StudioSandboxPolicy): Promi
   const autoBuild = String(process.env.STUDIO_AGENT_AUTO_BUILD || '0').trim() === '1';
   if (!autoBuild) {
     throw new Error(
-      `沙箱镜像 ${policy.image} 不存在。请先在服务器上执行：\n` +
-        `docker build -t ${policy.image} ${STUDIO_AGENT_IMAGE_CONTEXT}\n` +
+      `沙箱镜像 ${policy.image} 缺失或 Pi 版本不匹配（需要 ${STUDIO_PI_VERSION}）。请先在服务器上执行：\n` +
+        `docker build --build-arg PI_VERSION=${STUDIO_PI_VERSION} -t ${policy.image} ${STUDIO_AGENT_IMAGE_CONTEXT}\n` +
         `或设置 STUDIO_AGENT_AUTO_BUILD=1 允许首次运行时自动构建。`
     );
   }
 
-  await execFileAsync('docker', ['build', '-t', policy.image, STUDIO_AGENT_IMAGE_CONTEXT], {
+  await execFileAsync('docker', ['build', '--build-arg', `PI_VERSION=${STUDIO_PI_VERSION}`, '-t', policy.image, STUDIO_AGENT_IMAGE_CONTEXT], {
     timeout: 10 * 60 * 1000,
     windowsHide: true,
     cwd: process.cwd(),

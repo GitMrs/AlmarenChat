@@ -1,7 +1,7 @@
 # Studio Coding Agent 沙箱镜像（宿主 + pi 运行时）
 #
 # 构建：
-#   docker build -t almaren/studio-agent:0.1.0 docker/studio-agent
+#   docker build -t almaren/studio-agent:pi-1.5.1 docker/studio-agent
 #
 # 该镜像只包含 pi CLI 与最小运行时，不含项目源码、不含任何密钥。
 # 容器启动时由宿主注入：
@@ -11,7 +11,8 @@
 
 FROM node:22-bookworm-slim
 
-ARG PI_VERSION=0.85.1
+ARG PI_VERSION=1.5.1
+LABEL io.almaren.pi.version=${PI_VERSION}
 
 ENV NODE_ENV=production \
     PI_CODING_AGENT_DIR=/pi-config \

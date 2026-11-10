@@ -51,6 +51,14 @@ interface ToolInfo {
   args: Record<string, any>;
 }
 
+interface QueuedInput {
+  id: string;
+  text: string;
+  message: string;
+  mode: 'steer' | 'followUp';
+  pending: boolean;
+}
+
 interface TurnState {
   options: StudioPiTurnOptions;
   resolve: () => void;
@@ -58,6 +66,16 @@ interface TurnState {
   settled: boolean;
   pendingApprovals: ToolInfo[];
   deniedTools: Set<string>;
+  queue: { steering: string[]; followUp: string[] };
+  queuedInputs: QueuedInput[];
+  queueInput?: string;
+  replayInput?: QueuedInput;
+  rebuildingQueue?: boolean;
+  piSettled?: boolean;
+  queueOperation?: Promise<unknown>;
+  waitingPrompts: Set<string>;
+  phase: string;
+  status?: string;
   timer?: NodeJS.Timeout;
   abortGraceTimer?: NodeJS.Timeout;
   detachAbort?: () => void;
@@ -75,6 +93,7 @@ interface RuntimeEntry {
   model: string;
   systemPrompt?: string;
   settingsDigest: string;
+  requests: Map<string, { resolve: (data: any) => void; reject: (error: Error) => void; timer: NodeJS.Timeout }>;
 }
 
 function requiresApproval(toolName: string, mode: StudioApprovalMode): boolean {
@@ -247,6 +266,10 @@ export class PiStudioRuntime {
         settled: false,
         pendingApprovals: [],
         deniedTools: new Set(),
+        queue: { steering: [], followUp: [] },
+        queuedInputs: [],
+        waitingPrompts: new Set(),
+        phase: 'running',
       };
       entry.turn = turn;
       if (entry.idleTimer) {
@@ -261,6 +284,8 @@ export class PiStudioRuntime {
       turn.timer.unref?.();
 
       const onAbort = () => {
+        // Pi continues queued work after abort unless it is cleared first.
+        this.send(entry, { type: 'clear_queue' });
         this.send(entry, { type: 'abort' });
         turn.abortGraceTimer = setTimeout(() => {
           this.failTurn(entry, new Error('会话已取消'));
@@ -277,6 +302,7 @@ export class PiStudioRuntime {
       }
 
       options.onEvent({ type: 'run.started', data: { runId: options.runId } });
+      this.emitStatus(turn);
       this.send(entry, {
         type: 'set_thinking_level',
         level: thinkingLevelForReasoningEffort(options.reasoningEffort),
@@ -296,23 +322,129 @@ export class PiStudioRuntime {
     workspaceId: string;
     message: string;
     mode: 'steer' | 'followUp';
-  }): Promise<{ accepted: boolean; reason?: string }> {
+    runId?: string;
+  }): Promise<{ accepted: boolean; reason?: string; disposition?: string }> {
     const key = `${params.userId}:${params.workspaceId}`;
     const entry = this.runtimes.get(key);
     const turn = entry?.turn;
-    if (!entry || !turn || turn.settled || turn.options.signal?.aborted) {
+    if (!entry || !turn || turn.settled || turn.options.signal?.aborted || (params.runId && params.runId !== turn.options.runId)) {
       return { accepted: false, reason: '当前工作区没有正在执行的任务' };
     }
 
-    turn.options.onEvent({
-      type: 'user.message_injected',
-      data: { message: params.message, mode: params.mode, userMessageId: randomUUID(), assistantMessageId: randomUUID() },
+    return this.mutateQueue(entry, turn, async () => {
+      turn.queueInput = params.message;
+      try {
+        const data = await this.request(entry, {
+          type: params.mode === 'steer' ? 'steer' : 'follow_up', message: params.message,
+        });
+        return { accepted: true, disposition: data?.disposition || 'queued' };
+      } finally {
+        turn.queueInput = undefined;
+      }
     });
-    this.send(entry, {
-      type: params.mode === 'steer' ? 'steer' : 'follow_up',
-      message: params.message,
+  }
+
+  async clearQueue(params: { userId: string; workspaceId: string; runId: string }): Promise<void> {
+    const entry = this.runtimes.get(`${params.userId}:${params.workspaceId}`);
+    const turn = entry?.turn;
+    if (!entry || !turn || turn.options.runId !== params.runId) throw new Error('当前任务已结束或已切换');
+    await this.mutateQueue(entry, turn, () => this.request(entry, { type: 'clear_queue' }));
+  }
+
+  async cancelQueuedMessage(params: { userId: string; workspaceId: string; runId: string; itemId: string }): Promise<boolean> {
+    const entry = this.runtimes.get(`${params.userId}:${params.workspaceId}`);
+    const turn = entry?.turn;
+    if (!entry || !turn || turn.options.runId !== params.runId) throw new Error('当前任务已结束或已切换');
+    return this.mutateQueue(entry, turn, async () => {
+      if (!turn.queuedInputs.some(item => item.id === params.itemId && item.pending)) return false;
+      turn.rebuildingQueue = true;
+      let remaining: QueuedInput[] = [];
+      try {
+        const cleared = await this.request(entry, { type: 'clear_queue' });
+        const removed: QueuedInput[] = cleared.items;
+        const cancelled = removed.some(item => item.id === params.itemId);
+        remaining = removed.filter(item => item.id !== params.itemId);
+        while (remaining.length) {
+          if (entry.turn !== turn || turn.options.signal?.aborted) throw new Error('当前任务已结束或已切换');
+          const item = remaining[0];
+          turn.replayInput = item;
+          turn.queuedInputs.push(item);
+          const wasSettled = turn.piSettled;
+          turn.piSettled = false;
+          // prompt queues during execution and starts a continuation if Pi became
+          // idle during clear/replay. Replay expanded text, retaining the original ID.
+          try {
+            const result = await this.request(entry, { type: 'prompt', message: item.text, streamingBehavior: item.mode });
+            if (result?.disposition === 'handled') throw new Error('恢复的消息被扩展接管');
+          } catch (error) {
+            turn.piSettled = turn.piSettled || wasSettled;
+            turn.queuedInputs = turn.queuedInputs.filter(queued => queued !== item || queued.pending);
+            throw error;
+          }
+          remaining.shift();
+        }
+        return cancelled;
+      } catch (error) {
+        if (remaining.length && !turn.options.signal?.aborted) {
+          turn.options.onEvent({ type: 'run.notice', data: {
+            message: `取消操作未能恢复以下待处理消息，请核对后重新发送：\n${remaining.map(item => item.message).join('\n')}`,
+          } });
+        }
+        throw error;
+      } finally {
+        turn.replayInput = undefined;
+        turn.rebuildingQueue = false;
+        if (entry.turn === turn) {
+          this.emitQueue(turn);
+          if (turn.piSettled) this.settleTurn(entry, turn);
+        }
+      }
     });
-    return { accepted: true };
+  }
+
+  private emitQueue(turn: TurnState): void {
+    if (turn.rebuildingQueue) return;
+    turn.options.onEvent({ type: 'queue.updated', data: {
+      runId: turn.options.runId, ...turn.queue,
+      items: turn.queuedInputs.filter(item => item.pending).map(({ id, message, mode }) => ({ id, message, mode })),
+    } });
+  }
+
+  private async mutateQueue<T>(entry: RuntimeEntry, turn: TurnState, operation: () => Promise<T>): Promise<T> {
+    const result = (turn.queueOperation || Promise.resolve()).catch(() => {}).then(() => {
+      if (entry.turn !== turn || turn.settled || turn.options.signal?.aborted) throw new Error('当前任务已结束或已切换');
+      return operation();
+    });
+    turn.queueOperation = result;
+    return result;
+  }
+
+  private request(entry: RuntimeEntry, command: Record<string, unknown>): Promise<any> {
+    return new Promise((resolve, reject) => {
+      const id = randomUUID();
+      const timer = setTimeout(() => {
+        const error = new Error('Pi 未确认消息操作，已停止本次运行，请核对聊天记录后重试');
+        this.failTurn(entry, error);
+        void this.stopRuntime(entry.key);
+      }, 10000);
+      entry.requests.set(id, { resolve, reject, timer });
+      this.send(entry, { ...command, id });
+    });
+  }
+
+  private emitStatus(turn: TurnState): void {
+    const status = turn.waitingPrompts.size ? 'waiting_confirmation' : turn.phase;
+    if (status === turn.status) return;
+    turn.status = status;
+    turn.options.onEvent({ type: 'run.status', data: { runId: turn.options.runId, status } });
+  }
+
+  private rejectRequests(entry: RuntimeEntry): void {
+    for (const request of entry.requests.values()) {
+      clearTimeout(request.timer);
+      request.reject(new Error('当前任务已结束或连接已断开'));
+    }
+    entry.requests.clear();
   }
 
   /** 丢弃工作区常驻进程与会话文件，开启全新上下文 */
@@ -332,6 +464,7 @@ export class PiStudioRuntime {
     const entry = this.runtimes.get(key);
     if (!entry) return;
     entry.stopping = true;
+    this.rejectRequests(entry);
     this.runtimes.delete(key);
     if (entry.idleTimer) clearTimeout(entry.idleTimer);
     if (entry.containerName) {
@@ -431,6 +564,7 @@ export class PiStudioRuntime {
       model,
       systemPrompt: options.workspaceSystemPrompt,
       settingsDigest,
+      requests: new Map(),
     };
     this.runtimes.set(key, entry);
 
@@ -447,6 +581,7 @@ export class PiStudioRuntime {
     });
     child.on('error', (err) => this.failTurn(entry, err));
     child.on('close', (code) => {
+      this.rejectRequests(entry);
       if (entry.turn) {
         this.failTurn(entry, new Error(`pi 进程已退出（code=${code ?? 'none'}）`));
       }
@@ -488,7 +623,27 @@ export class PiStudioRuntime {
 
     switch (message.type) {
       case 'response': {
-        if (message.command === 'prompt' && message.success === false) {
+        const removed: QueuedInput[] = [];
+        if (message.command === 'clear_queue' && message.success) {
+          // A removed item is not a delivered user message. Remove from the end:
+          // an identical earlier item may already be starting while clear runs.
+          for (const [key, mode] of [['steering', 'steer'], ['followUp', 'followUp']] as const) {
+            const group: QueuedInput[] = [];
+            for (const text of [...(message.data?.[key] || [])].reverse()) {
+              const index = turn.queuedInputs.findLastIndex((item) => item.mode === mode && item.text === text);
+              if (index >= 0) group.unshift(...turn.queuedInputs.splice(index, 1));
+            }
+            removed.push(...group);
+          }
+        }
+        const pending = entry.requests.get(message.id);
+        if (pending) {
+          entry.requests.delete(message.id);
+          clearTimeout(pending.timer);
+          if (message.success) pending.resolve(message.command === 'clear_queue' ? { ...message.data, items: removed } : message.data);
+          else pending.reject(new Error(message.error || 'Pi 未接受该操作'));
+        }
+        if (message.command === 'prompt' && message.success === false && !pending) {
           this.failTurn(entry, new Error(message.error || 'pi 拒绝了本次请求'));
         } else if (
           (message.command === 'steer' || message.command === 'follow_up') &&
@@ -501,9 +656,63 @@ export class PiStudioRuntime {
         }
         break;
       }
+      case 'queue_update': {
+        const next = { steering: message.steering || [], followUp: message.followUp || [] };
+        for (const [key, mode] of [['steering', 'steer'], ['followUp', 'followUp']] as const) {
+          const previous = turn.queuedInputs.filter(item => item.pending && item.mode === mode);
+          // Pi removes the earliest identical message on consumption. Preserve
+          // the later IDs when a snapshot contains fewer copies of the same text.
+          const counts = new Map<string, number>();
+          for (const text of next[key]) counts.set(text, (counts.get(text) || 0) + 1);
+          const kept = new Set<QueuedInput>();
+          for (const item of [...previous].reverse()) {
+            const count = counts.get(item.text) || 0;
+            item.pending = count > 0;
+            if (item.pending) { counts.set(item.text, count - 1); kept.add(item); }
+          }
+          for (const text of next[key]) {
+            const item = previous.find(item => kept.has(item) && item.text === text);
+            if (item) kept.delete(item);
+            else if (turn.replayInput?.text === text && turn.replayInput.mode === mode && !turn.replayInput.pending) {
+              turn.replayInput.pending = true;
+            } else turn.queuedInputs.push({ id: randomUUID(), text, message: turn.queueInput || text, mode, pending: true });
+          }
+        }
+        turn.queue = next;
+        this.emitQueue(turn);
+        break;
+      }
+      case 'message_start': {
+        if (message.message?.role !== 'user') break;
+        const content = message.message.content;
+        const text = typeof content === 'string' ? content : (content || []).filter((block: any) => block.type === 'text').map((block: any) => block.text).join('');
+        let index = turn.queuedInputs.findIndex((item) => item.text === text && item.mode === 'steer' && !item.pending);
+        if (index < 0) index = turn.queuedInputs.findIndex((item) => item.text === text && !item.pending);
+        if (index < 0) index = turn.queuedInputs.findIndex((item) => item.text === text);
+        if (index >= 0) {
+          const [item] = turn.queuedInputs.splice(index, 1);
+          turn.options.onEvent({ type: 'user.message_injected', data: {
+            message: item.message, mode: item.mode, queueItemId: item.id, userMessageId: randomUUID(), assistantMessageId: randomUUID(),
+          } });
+        }
+        break;
+      }
+      case 'compaction_start':
+        turn.phase = 'compacting';
+        this.emitStatus(turn);
+        break;
+      case 'compaction_end':
+        turn.phase = 'running';
+        this.emitStatus(turn);
+        if (message.errorMessage) turn.options.onEvent({ type: 'run.notice', data: { message: `上下文压缩失败：${message.errorMessage}` } });
+        break;
       case 'message_update': {
         // RPC 模式下 message_update 只带增量事件，不带累计 message 快照
         const deltaEvent = message.assistantMessageEvent || {};
+        if (deltaEvent.type === 'thinking_delta' || deltaEvent.type === 'text_delta') {
+          turn.phase = deltaEvent.type === 'thinking_delta' ? 'thinking' : 'responding';
+          this.emitStatus(turn);
+        }
         if (deltaEvent.type === 'text_delta' && typeof deltaEvent.delta === 'string' && deltaEvent.delta) {
           turn.options.onEvent({ type: 'message.delta', data: { delta: deltaEvent.delta } });
         } else if (
@@ -530,6 +739,8 @@ export class PiStudioRuntime {
         break;
       }
       case 'tool_execution_start': {
+        turn.phase = 'running';
+        this.emitStatus(turn);
         const info: ToolInfo = {
           toolCallId: String(message.toolCallId || message.id || ''),
           toolName: String(message.toolName || 'tool'),
@@ -592,7 +803,12 @@ export class PiStudioRuntime {
         break;
       }
       case 'agent_settled': {
-        this.settleTurn(entry, turn);
+        turn.piSettled = true;
+        if (!turn.rebuildingQueue) this.settleTurn(entry, turn);
+        break;
+      }
+      case 'agent_start': {
+        turn.piSettled = false;
         break;
       }
       default:
@@ -616,6 +832,8 @@ export class PiStudioRuntime {
     };
 
     const timeoutMs = 5 * 60 * 1000;
+    turn.waitingPrompts.add(requestId);
+    this.emitStatus(turn);
     const { approvalId, promise } = approvalStore.createApproval({
       runId: turn.options.runId,
       userId: turn.options.userId,
@@ -645,6 +863,9 @@ export class PiStudioRuntime {
       decision = { action: 'deny', reason: '审批异常', timestamp: Date.now() };
     }
 
+    turn.waitingPrompts.delete(requestId);
+    if (entry.turn !== turn || turn.settled) return;
+    this.emitStatus(turn);
     this.send(entry, {
       type: 'extension_ui_response',
       id: requestId,
@@ -682,6 +903,7 @@ export class PiStudioRuntime {
     if (turn.abortGraceTimer) clearTimeout(turn.abortGraceTimer);
     turn.detachAbort?.();
     entry.turn = null;
+    this.rejectRequests(entry);
     turn.options.onEvent({ type: 'run.completed', data: { runId: turn.options.runId } });
     turn.resolve();
 
@@ -699,6 +921,7 @@ export class PiStudioRuntime {
     if (turn.abortGraceTimer) clearTimeout(turn.abortGraceTimer);
     turn.detachAbort?.();
     entry.turn = null;
+    this.rejectRequests(entry);
     turn.reject(err instanceof Error ? err : new Error(String(err)));
   }
 }
@@ -722,8 +945,17 @@ export async function injectStudioUserMessage(params: {
   workspaceId: string;
   message: string;
   mode: 'steer' | 'followUp';
-}): Promise<{ accepted: boolean; reason?: string }> {
+  runId?: string;
+}): Promise<{ accepted: boolean; reason?: string; disposition?: string }> {
   return piStudioRuntime.submitUserMessage(params);
+}
+
+export async function clearStudioMessageQueue(params: { userId: string; workspaceId: string; runId: string }): Promise<void> {
+  return piStudioRuntime.clearQueue(params);
+}
+
+export async function cancelStudioQueuedMessage(params: { userId: string; workspaceId: string; runId: string; itemId: string }): Promise<boolean> {
+  return piStudioRuntime.cancelQueuedMessage(params);
 }
 
 /** 停止某个工作区的常驻 pi 进程（删除工作区时调用） */

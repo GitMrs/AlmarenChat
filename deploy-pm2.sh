@@ -27,6 +27,8 @@ if ! command -v curl >/dev/null 2>&1; then
   exit 1
 fi
 
+node -e 'const [major, minor] = process.versions.node.split(".").map(Number); if (major < 22 || (major === 22 && minor < 19)) { console.error("Error: Pi requires Node.js >= 22.19.0; current: " + process.versions.node); process.exit(1); }'
+
 exec 9>"$LOCK_FILE"
 if ! flock -n 9; then
   echo "Error: another deployment is already running (lock: $LOCK_FILE)"
@@ -233,6 +235,23 @@ if [ -d .next ]; then
   mv .next "$BACKUP_DIR"
 fi
 mv "$BUILD_DIR" .next
+
+echo "Checking Studio Docker sandbox..."
+PI_VERSION="$(node -p 'require("./package.json").dependencies["@earendil-works/pi-coding-agent"]')"
+STUDIO_AGENT_IMAGE="${STUDIO_AGENT_IMAGE:-almaren/studio-agent:pi-${PI_VERSION}}"
+if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+  IMAGE_PI_VERSION="$(docker image inspect --format '{{ index .Config.Labels "io.almaren.pi.version" }}' "$STUDIO_AGENT_IMAGE" 2>/dev/null || true)"
+  if [ "$IMAGE_PI_VERSION" = "$PI_VERSION" ]; then
+    echo "Docker sandbox image present: $STUDIO_AGENT_IMAGE"
+  else
+    echo "Docker sandbox image missing or Pi version changed; building $STUDIO_AGENT_IMAGE (Pi $PI_VERSION) ..."
+    if ! docker build --build-arg "PI_VERSION=$PI_VERSION" -t "$STUDIO_AGENT_IMAGE" docker/studio-agent; then
+      echo "Warning: failed to build $STUDIO_AGENT_IMAGE; Studio pi sandbox will fail closed in docker mode."
+    fi
+  fi
+else
+  echo "Warning: Docker is not available; Studio falls back to host execution (STUDIO_SANDBOX_MODE=auto)."
+fi
 
 echo "Starting with PM2..."
 export PORT

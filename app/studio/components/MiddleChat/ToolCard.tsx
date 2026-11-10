@@ -17,8 +17,6 @@ interface ToolCardProps {
   tool: ToolInvocation;
   isExpanded: boolean;
   onToggleExpand: (toolId: string) => void;
-  approvingToolId: string | null;
-  onDecision: (approvalId: string, action: 'approve' | 'deny', toolId: string) => void;
   copiedToolResult: boolean;
   onCopyResult: (text: string) => void;
   timestamp?: number;
@@ -28,8 +26,6 @@ export const ToolCard: React.FC<ToolCardProps> = ({
   tool,
   isExpanded,
   onToggleExpand,
-  approvingToolId,
-  onDecision,
   copiedToolResult,
   onCopyResult,
   timestamp,
@@ -125,121 +121,6 @@ export const ToolCard: React.FC<ToolCardProps> = ({
       {/* Inline Expanded Dropdown Panel */}
       {isExpanded && (
         <div className="border-t border-black/[0.06] bg-[#fbfaf7]/60 p-3 space-y-2.5 animate-fadeIn text-xs">
-          {/* Waiting Approval Action Card */}
-          {tool.status === 'waiting_approval' && tool.approvalId && (
-            <div className="p-3 bg-amber-50/70 border border-amber-200/80 rounded-2xl space-y-2.5">
-              <div className="flex items-start gap-2.5">
-                <div className="w-7 h-7 rounded-xl bg-amber-100 border border-amber-300 flex items-center justify-center flex-shrink-0 mt-0.5 text-amber-700">
-                  <ShieldAlert size={16} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between">
-                    <h4 className="text-xs font-bold text-amber-900">高危操作审批申请</h4>
-                    <span className="text-[10px] text-amber-700 font-mono bg-amber-100/60 px-1.5 py-0.5 rounded">
-                      5分钟超时自动拒绝
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-amber-800 mt-0.5 leading-relaxed">
-                    {tool.name === 'write' || tool.name === 'write_file'
-                      ? 'AI 申请向您的项目写入或修改文件。请核实文件路径及修改目标，确认无误后批准执行。'
-                      : tool.name === 'delegate' || tool.name === 'delegate_task'
-                      ? 'AI 申请委派子智能体在您的工作区执行终端命令与任务。请核对指令后决定是否批准。'
-                      : 'AI 申请执行敏感工具操作，请核实后决定是否批准。'}
-                  </p>
-                </div>
-              </div>
-
-              {/* Call detail breakdown */}
-              {tool.args && (
-                <div className="bg-white/90 border border-amber-200/60 rounded-xl p-2.5 space-y-1.5 text-[11px]">
-                  {tool.args.path && (
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-slate-500 font-medium w-16 flex-shrink-0">目标文件:</span>
-                      <span className="font-mono text-slate-800 font-semibold break-all">
-                        {tool.args.path}
-                      </span>
-                    </div>
-                  )}
-                  {tool.args.agent && (
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-slate-500 font-medium w-16 flex-shrink-0">委派智能体:</span>
-                      <span className="font-mono text-slate-800 font-semibold">
-                        {tool.args.agent}
-                      </span>
-                    </div>
-                  )}
-                  {tool.args.goal && (
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-slate-500 font-medium w-16 flex-shrink-0">任务目标:</span>
-                      <span className="text-slate-700 break-all leading-relaxed flex-1 min-w-0">
-                        {tool.args.goal}
-                      </span>
-                    </div>
-                  )}
-                  {tool.args.context && (
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-slate-500 font-medium w-16 flex-shrink-0">补充背景:</span>
-                      <span className="text-slate-600 break-all leading-relaxed flex-1 min-w-0">
-                        {tool.args.context}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* write_file content preview — approving a write means reviewing what gets written */}
-              {typeof tool.args?.content === 'string' && tool.args.content.length > 0 && (
-                <div className="space-y-1">
-                  <div className="flex items-center justify-between text-[10px] font-bold text-slate-500">
-                    <span>拟写入内容（共 {tool.args.content.length} 字符）:</span>
-                    <span className="font-normal text-slate-400">前 1500 字符预览</span>
-                  </div>
-                  <pre className="bg-white/90 border border-amber-200/60 rounded-xl p-2.5 font-mono text-[10px] text-slate-700 whitespace-pre-wrap break-all leading-relaxed max-h-44 overflow-y-auto custom-scrollbar">
-                    {tool.args.content.slice(0, 1500)}
-                    {tool.args.content.length > 1500 ? '\n…（内容已截断，完整内容请谨慎评估后决定）' : ''}
-                  </pre>
-                </div>
-              )}
-
-              {/* Action Buttons */}
-              <div className="flex items-center justify-end gap-2 pt-1">
-                <button
-                  type="button"
-                  disabled={approvingToolId === tool.approvalId}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDecision(tool.approvalId!, 'deny', tool.id);
-                  }}
-                  className="px-3 py-1.5 rounded-xl border border-rose-200 bg-white hover:bg-rose-50 text-rose-600 hover:text-rose-700 text-xs font-medium transition-colors cursor-pointer flex items-center gap-1 disabled:opacity-50"
-                >
-                  <XCircle size={13} />
-                  <span>拒绝执行</span>
-                </button>
-                <button
-                  type="button"
-                  disabled={approvingToolId === tool.approvalId}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDecision(tool.approvalId!, 'approve', tool.id);
-                  }}
-                  className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
-                >
-                  {approvingToolId === tool.approvalId ? (
-                    <>
-                      <Loader2 size={13} className="animate-spin" />
-                      <span>处理中...</span>
-                    </>
-                  ) : (
-                    <>
-                      <CheckCircle size={13} />
-                      <span>批准执行</span>
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-          )}
-
           {/* Denied Banner */}
           {tool.status === 'denied' && (
             <div className="p-2.5 bg-rose-50/80 border border-rose-200/80 rounded-xl flex items-center gap-2 text-rose-800 text-[11px]">

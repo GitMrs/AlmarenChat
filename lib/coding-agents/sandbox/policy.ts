@@ -1,4 +1,7 @@
 import path from 'node:path';
+import packageInfo from '../../../package.json';
+
+export const STUDIO_PI_VERSION = packageInfo.dependencies['@earendil-works/pi-coding-agent'];
 
 export type StudioSandboxMode = 'auto' | 'docker' | 'host';
 
@@ -22,7 +25,7 @@ export function resolveSandboxMode(): StudioSandboxMode {
 }
 
 export function resolveStudioAgentImage(): string {
-  return String(process.env.STUDIO_AGENT_IMAGE || 'almaren/studio-agent:0.1.0').trim();
+  return String(process.env.STUDIO_AGENT_IMAGE || `almaren/studio-agent:pi-${STUDIO_PI_VERSION}`).trim();
 }
 
 /** 镜像构建上下文（相对项目根目录） */

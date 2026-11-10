@@ -24,8 +24,6 @@ interface MessageListProps {
   onQuickPrompt: (prompt: string) => void;
   expandedToolIds: Set<string>;
   toggleToolExpand: (toolId: string) => void;
-  approvingToolId: string | null;
-  handleDecisionTool: (approvalId: string, action: 'approve' | 'deny', toolId: string) => void;
   copiedToolResult: boolean;
   handleCopyToolResult: (result: string) => void;
   isStreaming: boolean;
@@ -147,8 +145,6 @@ interface MessageItemProps {
   isStreaming: boolean;
   expandedToolIds: Set<string>;
   toggleToolExpand: (toolId: string) => void;
-  approvingToolId: string | null;
-  handleDecisionTool: (approvalId: string, action: 'approve' | 'deny', toolId: string) => void;
   copiedToolResult: boolean;
   handleCopyToolResult: (result: string) => void;
   onDeleteMessage?: (messageId: string) => void;
@@ -164,8 +160,6 @@ const MessageItem = React.memo<MessageItemProps>(
     isStreaming,
     expandedToolIds,
     toggleToolExpand,
-    approvingToolId,
-    handleDecisionTool,
     copiedToolResult,
     handleCopyToolResult,
     onDeleteMessage,
@@ -238,8 +232,6 @@ const MessageItem = React.memo<MessageItemProps>(
                 tool={tool}
                 isExpanded={expandedToolIds.has(tool.id)}
                 onToggleExpand={toggleToolExpand}
-                approvingToolId={approvingToolId}
-                onDecision={handleDecisionTool}
                 copiedToolResult={copiedToolResult}
                 onCopyResult={handleCopyToolResult}
                 timestamp={message.timestamp}
@@ -422,7 +414,6 @@ const MessageItem = React.memo<MessageItemProps>(
 
     // Check tools if message has tools
     if (next.message.tools && next.message.tools.length > 0) {
-      if (prev.approvingToolId !== next.approvingToolId) return false;
       if (prev.copiedToolResult !== next.copiedToolResult) return false;
       for (const t of next.message.tools) {
         if (prev.expandedToolIds.has(t.id) !== next.expandedToolIds.has(t.id)) {
@@ -444,8 +435,6 @@ export const MessageList: React.FC<MessageListProps> = ({
   onQuickPrompt,
   expandedToolIds,
   toggleToolExpand,
-  approvingToolId,
-  handleDecisionTool,
   copiedToolResult,
   handleCopyToolResult,
   isStreaming,
@@ -616,8 +605,6 @@ export const MessageList: React.FC<MessageListProps> = ({
             isStreaming={isStreaming}
             expandedToolIds={expandedToolIds}
             toggleToolExpand={toggleToolExpand}
-            approvingToolId={approvingToolId}
-            handleDecisionTool={handleDecisionTool}
             copiedToolResult={copiedToolResult}
             handleCopyToolResult={handleCopyToolResult}
             onDeleteMessage={onDeleteMessage}
