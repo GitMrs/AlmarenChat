@@ -4,6 +4,7 @@ import path from 'node:path';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { resolveStudioWorkspace } from '@/lib/coding-agents/sandbox';
+import { discoverWorkspaceSkills, resolveWorkspaceSkill } from '@/lib/coding-agents/workspace-skills';
 
 export interface WorkspaceSkillItem {
   id: string;
@@ -131,50 +132,13 @@ export async function GET(
     }
 
     const workspaceDir = await resolveStudioWorkspace(process.cwd(), userId, workspaceId);
-    const skillsDir = path.join(workspaceDir, '.pi', 'skills');
-
-    const skills: WorkspaceSkillItem[] = [];
-
-    if (fs.existsSync(skillsDir)) {
-      const entries = await fs.promises.readdir(skillsDir, { withFileTypes: true });
-
-      for (const entry of entries) {
-        if (!entry.isDirectory()) continue;
-        const skillFolder = path.join(skillsDir, entry.name);
-        const activeSkillFile = path.join(skillFolder, 'SKILL.md');
-        const disabledSkillFile = path.join(skillFolder, 'SKILL.md.disabled');
-
-        let isEnabled = false;
-        let targetFile = '';
-
-        if (fs.existsSync(activeSkillFile)) {
-          isEnabled = true;
-          targetFile = activeSkillFile;
-        } else if (fs.existsSync(disabledSkillFile)) {
-          isEnabled = false;
-          targetFile = disabledSkillFile;
-        }
-
-        if (targetFile) {
-          try {
-            const stat = await fs.promises.stat(targetFile);
-            const content = await fs.promises.readFile(targetFile, 'utf-8');
-            const meta = parseSkillMetadata(content, entry.name);
-
-            skills.push({
-              id: entry.name,
-              name: meta.name,
-              description: meta.description,
-              enabled: isEnabled,
-              content,
-              updatedAt: stat.mtimeMs,
-            });
-          } catch {
-            // Ignore unreadable skill
-          }
-        }
-      }
-    }
+    const skills: WorkspaceSkillItem[] = (await discoverWorkspaceSkills(workspaceDir)).map((skill) => ({
+      id: skill.id,
+      ...parseSkillMetadata(skill.content, skill.id.replace(/^config:/, '')),
+      enabled: skill.enabled,
+      content: skill.content,
+      updatedAt: skill.updatedAt,
+    }));
 
     // Sort by name
     skills.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
@@ -207,8 +171,6 @@ export async function POST(
     }
 
     const workspaceDir = await resolveStudioWorkspace(process.cwd(), userId, workspaceId);
-    const skillsDir = path.join(workspaceDir, '.pi', 'skills');
-    await fs.promises.mkdir(skillsDir, { recursive: true });
 
     let skillId = '';
     let skillContent = '';
@@ -242,7 +204,9 @@ ${desc}
 `;
     }
 
-    const targetFolder = path.join(skillsDir, skillId);
+    const location = await resolveWorkspaceSkill(workspaceDir, skillId);
+    if (!location) return NextResponse.json({ error: '非法的技能路径' }, { status: 400 });
+    const targetFolder = location.folder;
     await fs.promises.mkdir(targetFolder, { recursive: true });
     await fs.promises.writeFile(path.join(targetFolder, 'SKILL.md'), skillContent, 'utf-8');
 
@@ -274,12 +238,10 @@ export async function PATCH(
     }
 
     const skillId = String(body.skillId || '').trim();
-    if (!SAFE_SKILL_ID.test(skillId)) {
-      return NextResponse.json({ error: '非法的技能标识' }, { status: 400 });
-    }
-
     const workspaceDir = await resolveStudioWorkspace(process.cwd(), userId, workspaceId);
-    const skillFolder = path.join(workspaceDir, '.pi', 'skills', skillId);
+    const location = await resolveWorkspaceSkill(workspaceDir, skillId);
+    if (!location) return NextResponse.json({ error: '非法的技能路径' }, { status: 400 });
+    const skillFolder = location.folder;
 
     if (!fs.existsSync(skillFolder)) {
       return NextResponse.json({ error: '技能目录不存在' }, { status: 404 });
@@ -318,10 +280,6 @@ export async function DELETE(
     const { searchParams } = new URL(request.url);
     const skillId = String(searchParams.get('skillId') || '').trim();
 
-    if (!SAFE_SKILL_ID.test(skillId)) {
-      return NextResponse.json({ error: '非法的技能标识' }, { status: 400 });
-    }
-
     const existing = await prisma.studioWorkspace.findFirst({
       where: { id: workspaceId, userId },
     });
@@ -330,7 +288,9 @@ export async function DELETE(
     }
 
     const workspaceDir = await resolveStudioWorkspace(process.cwd(), userId, workspaceId);
-    const skillFolder = path.join(workspaceDir, '.pi', 'skills', skillId);
+    const location = await resolveWorkspaceSkill(workspaceDir, skillId);
+    if (!location) return NextResponse.json({ error: '非法的技能路径' }, { status: 400 });
+    const skillFolder = location.folder;
 
     if (fs.existsSync(skillFolder)) {
       await fs.promises.rm(skillFolder, { recursive: true, force: true });

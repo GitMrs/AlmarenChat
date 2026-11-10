@@ -106,7 +106,7 @@ export const RosterTab: React.FC<RosterTabProps> = ({
         <p className="text-[11px] text-slate-600 leading-relaxed border-t border-black/[0.06] pt-2">
           负责写入代码、安装依赖、运行单元测试，自动索引{' '}
           <code className="text-emerald-700 font-mono bg-emerald-50 px-1 py-0.5 rounded border border-emerald-200/60">
-            .pi/skills/
+            Pi 配置目录 / skills
           </code>{' '}
           技能。
         </p>
@@ -145,6 +145,7 @@ export const RosterTab: React.FC<RosterTabProps> = ({
           </div>
         </div>
 
+        <p className="text-[10px] text-slate-500">技能启停与内容变更从下一轮对话生效。</p>
         {isLoadingSkills && workspaceSkills.length === 0 ? (
           <div className="flex items-center justify-center py-6 text-slate-400 text-xs">
             <Loader2 size={15} className="animate-spin text-amber-500 mr-2" />

@@ -214,7 +214,7 @@ ${workspaceRules}
 - 需要修改或读取文件时，主动调用 read_file 或 write_file；
 - 需要写代码、执行命令或安装依赖时，调用 delegate_task 委派给相应的子 Agent（优先推荐使用内置的 pi）；
 - 【重要】当用户要求安装或引入外部 Skill（如 GitHub 仓库中的 Skill）时，在 delegate_task 的目标中必须明确要求：
-  1. 将该 Skill 克隆/放置在工作区的 \`.pi/skills/<skill-name>/\` 目录下（例如：git clone <url> .pi/skills/<skill-name>）；
+  1. 将该 Skill 放置在 Pi 配置目录的 \`skills/<skill-name>/\` 下（Pi 环境使用 \`$PI_CODING_AGENT_DIR/skills/<skill-name>/\`），统一由技能库管理；
   2. 确认其内部包含合规的 \`SKILL.md\`（含 name 与 description 元数据）；
   3. 如此后续系统与 Pi 即可自动感知、自动索引并在匹配任务时按需自动调用该技能；
 - 【安全与人机审批机制】：

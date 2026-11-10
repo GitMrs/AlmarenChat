@@ -9,6 +9,7 @@ import {
 } from './sandbox/docker-driver';
 import { buildStudioSandboxPolicy, resolveSandboxMode } from './sandbox/policy';
 import { DEFAULT_BASE_URL, DEFAULT_MODEL } from '../core/model-client';
+import { PI_CONFIG_SKILL_PREFIX } from './workspace-skills';
 
 /** agentArgs 中代表会话文件的占位符，由启动器按运行环境替换成容器内/宿主路径 */
 export const PI_SESSION_PLACEHOLDER = '__PI_SESSION_FILE__';
@@ -38,6 +39,7 @@ export interface PiLaunchOptions {
   customApiKey?: string;
   customBaseUrl?: string;
   modelName?: string;
+  modelContextWindow?: number;
   /** 传入后启用工具审批扩展，值为 never / dangerous / always */
   approvalMode?: string;
 }
@@ -60,8 +62,8 @@ export type PiLaunchSpec =
       model: string;
     };
 
-function writePiModelsConfig(userId: string, baseUrl: string, apiKey: string, model: string): string {
-  const piConfigDir = path.resolve(process.cwd(), 'data', 'studio', userId, '.pi_agent');
+function writePiModelsConfig(workspaceDir: string, baseUrl: string, model: string, contextWindow?: number): string {
+  const piConfigDir = path.join(path.dirname(workspaceDir), '.pi_agent');
   fs.mkdirSync(piConfigDir, { recursive: true });
   const modelsConfig = {
     providers: {
@@ -76,6 +78,7 @@ function writePiModelsConfig(userId: string, baseUrl: string, apiKey: string, mo
             name: model,
             reasoning: true,
             input: ['text'],
+            ...(contextWindow ? { contextWindow } : {}),
           },
         ],
       },
@@ -101,8 +104,14 @@ export async function buildPiLaunchSpec(options: PiLaunchOptions): Promise<PiLau
   const baseUrl = String(options.customBaseUrl || DEFAULT_BASE_URL).trim();
   const mode = resolveSandboxMode();
 
-  const withPaths = (sessionPath: string, extensionPath?: string): string[] => {
-    const args = options.agentArgs.map((arg) => (arg === PI_SESSION_PLACEHOLDER ? sessionPath : arg));
+  const withPaths = (sessionPath: string, configDir: string, extensionPath?: string): string[] => {
+    const args = options.agentArgs.map((arg) => {
+      if (arg === PI_SESSION_PLACEHOLDER) return sessionPath;
+      if (arg.startsWith(PI_CONFIG_SKILL_PREFIX)) {
+        return path.join(configDir, 'skills', arg.slice(PI_CONFIG_SKILL_PREFIX.length)).replace(/\\/g, '/');
+      }
+      return arg;
+    });
     if (extensionPath) {
       args.push('--no-extensions', '--extension', extensionPath);
     }
@@ -116,7 +125,7 @@ export async function buildPiLaunchSpec(options: PiLaunchOptions): Promise<PiLau
         throw new Error('Docker 沙箱执行 pi 需要模型 API Key，请先在账号设置中配置模型密钥');
       }
 
-      const configDir = writePiModelsConfig(options.userId, baseUrl, apiKey, model);
+      const configDir = writePiModelsConfig(workspaceDir, baseUrl, model, options.modelContextWindow);
       fs.mkdirSync(sessionsDir, { recursive: true });
 
       const policy = buildStudioSandboxPolicy({
@@ -136,6 +145,7 @@ export async function buildPiLaunchSpec(options: PiLaunchOptions): Promise<PiLau
 
       const agentArgs = withPaths(
         `${CONTAINER_SESSION_DIR}/${path.basename(sessionFile)}`,
+        CONTAINER_CONFIG_DIR,
         options.approvalMode ? CONTAINER_APPROVAL_EXTENSION : undefined
       );
 
@@ -164,8 +174,11 @@ export async function buildPiLaunchSpec(options: PiLaunchOptions): Promise<PiLau
   if (options.approvalMode) {
     env.STUDIO_APPROVAL_MODE = options.approvalMode;
   }
+  const configDir = path.join(path.dirname(workspaceDir), '.pi_agent');
+  fs.mkdirSync(configDir, { recursive: true });
+  env.PI_CODING_AGENT_DIR = configDir;
   if (apiKey) {
-    env.PI_CODING_AGENT_DIR = writePiModelsConfig(options.userId, baseUrl, apiKey, model);
+    writePiModelsConfig(workspaceDir, baseUrl, model, options.modelContextWindow);
     env.STUDIO_MODEL_API_KEY = apiKey;
   }
   fs.mkdirSync(sessionsDir, { recursive: true });
@@ -177,7 +190,7 @@ export async function buildPiLaunchSpec(options: PiLaunchOptions): Promise<PiLau
   return {
     kind: 'host',
     command: process.execPath,
-    args: [HOST_PI_CLI, ...withPaths(sessionFile, extensionPath)],
+    args: [HOST_PI_CLI, ...withPaths(sessionFile, configDir, extensionPath)],
     env,
     cwd: workspaceDir,
     model,

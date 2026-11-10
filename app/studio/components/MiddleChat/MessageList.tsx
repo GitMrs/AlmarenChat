@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useLayoutEffect, useRef, useState } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import {
   Loader2,
   LayoutGrid,
@@ -14,6 +15,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { ChatMessage } from '../../types';
 import { ToolCard } from './ToolCard';
+import { ConversationNavigator } from './ConversationNavigator';
 
 interface MessageListProps {
   messages: ChatMessage[];
@@ -34,6 +36,8 @@ interface MessageListProps {
   hasMoreMessages?: boolean;
   isLoadingMoreMessages?: boolean;
   onLoadMoreMessages?: () => void;
+  onNavigateHistory?: () => void;
+  onScrollPositionChange?: (atBottom: boolean) => void;
 }
 
 const formatTime = (ts?: number) => {
@@ -200,7 +204,7 @@ const MessageItem = React.memo<MessageItemProps>(
               )}
             </button>
 
-            {onDeleteMessage && (
+            {onDeleteMessage && !isStreaming && (
               <button
                 type="button"
                 onClick={() => onDeleteMessage(message.id)}
@@ -452,8 +456,34 @@ export const MessageList: React.FC<MessageListProps> = ({
   hasMoreMessages,
   isLoadingMoreMessages,
   onLoadMoreMessages,
+  onNavigateHistory,
+  onScrollPositionChange,
 }) => {
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+  const localScrollRef = useRef<HTMLDivElement>(null);
+  const containerRef = scrollContainerRef || localScrollRef;
+  const rowsRef = useRef<HTMLDivElement>(null);
+  const [scrollMargin, setScrollMargin] = useState(24);
+  useLayoutEffect(() => {
+    const container = containerRef.current;
+    const rows = rowsRef.current;
+    if (container && rows) {
+      setScrollMargin(rows.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop);
+    }
+  }, [containerRef, hasMoreMessages, isLoadingMessages, messages.length]);
+  const virtualizer = useVirtualizer({
+    count: isLoadingMessages ? 0 : messages.length,
+    getScrollElement: () => containerRef.current,
+    getItemKey: (index) => messages[index].id,
+    estimateSize: () => 240,
+    overscan: 4,
+    initialRect: { width: 0, height: 600 },
+    scrollMargin,
+  });
+  const visibleItems = virtualizer.getVirtualItems();
+  const container = containerRef.current;
+  const atBottom = container && container.scrollHeight - (virtualizer.scrollOffset || 0) - container.clientHeight < 96;
+  const visibleIndex = atBottom ? messages.length - 1 : visibleItems.find((item) => item.end > (virtualizer.scrollOffset || 0))?.index || 0;
 
   const handleCopyMessage = async (id: string, text: string) => {
     if (!text) return;
@@ -470,6 +500,8 @@ export const MessageList: React.FC<MessageListProps> = ({
 
   // Auto-trigger load more when user scrolls near the top
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const container = e.currentTarget;
+    onScrollPositionChange?.(container.scrollHeight - container.scrollTop - container.clientHeight < 96);
     if (!hasMoreMessages || isLoadingMoreMessages || !onLoadMoreMessages) return;
     if (e.currentTarget.scrollTop < 60) {
       onLoadMoreMessages();
@@ -486,10 +518,12 @@ export const MessageList: React.FC<MessageListProps> = ({
   }
 
   return (
+    <div className="relative min-h-0 flex-1">
     <div
-      ref={scrollContainerRef}
+      ref={containerRef}
       onScroll={handleScroll}
-      className="flex-1 overflow-y-auto px-4 py-6"
+      style={{ overflowAnchor: 'none' }}
+      className="h-full overflow-y-auto px-4 py-6 sm:pl-12"
     >
       <div className="max-w-3xl mx-auto space-y-6">
         {isLoadingMessages ? (
@@ -564,11 +598,21 @@ export const MessageList: React.FC<MessageListProps> = ({
           </div>
         )}
 
-        {messages.map((message, index) => (
-          <MessageItem
+        <div ref={rowsRef} className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
+        {visibleItems.map((item) => {
+          const message = messages[item.index];
+          return (
+          <div
             key={message.id}
+            data-index={item.index}
+            data-studio-message-id={message.id}
+            ref={virtualizer.measureElement}
+            className="absolute left-0 top-0 w-full pb-6"
+            style={{ transform: `translateY(${item.start - scrollMargin}px)` }}
+          >
+          <MessageItem
             message={message}
-            isLastAssistant={index === lastAssistantIndex}
+            isLastAssistant={item.index === lastAssistantIndex}
             isStreaming={isStreaming}
             expandedToolIds={expandedToolIds}
             toggleToolExpand={toggleToolExpand}
@@ -581,9 +625,23 @@ export const MessageList: React.FC<MessageListProps> = ({
             isCopied={copiedMessageId === message.id}
             onCopyMessage={handleCopyMessage}
           />
-        ))}
+          </div>
+          );
+        })}
+        </div>
         <div ref={messagesEndRef} />
       </div>
+    </div>
+    {!isLoadingMessages && (
+      <ConversationNavigator
+        messages={messages} visibleIndex={visibleIndex}
+        hasMore={hasMoreMessages} isLoadingMore={isLoadingMoreMessages} onLoadMore={onLoadMoreMessages}
+        onJump={(index) => {
+          onNavigateHistory?.();
+          virtualizer.scrollToIndex(index, { align: 'start' });
+        }}
+      />
+    )}
     </div>
   );
 };

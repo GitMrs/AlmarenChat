@@ -46,7 +46,7 @@ export const AccountModelModal: React.FC<AccountModelModalProps> = ({
             <div className="flex items-center justify-between pb-2 border-b border-black/[0.04]">
               <span className="text-slate-500">驱动大模型</span>
               <span className="font-mono text-emerald-700 font-bold bg-emerald-50 border border-emerald-200/80 px-2 py-0.5 rounded">
-                {userProfile?.modelName || '未指定 (系统默认)'}
+                {(userProfile?.customModelEnabled && userProfile?.modelName) || '系统默认'}
               </span>
             </div>
 
@@ -54,9 +54,9 @@ export const AccountModelModal: React.FC<AccountModelModalProps> = ({
               <span className="text-slate-500">接口 Base URL</span>
               <span
                 className="font-mono text-slate-700 truncate max-w-[200px]"
-                title={userProfile?.apiBaseUrl || '系统默认端点'}
+                title={(userProfile?.customModelEnabled && userProfile?.apiBaseUrl) || '系统默认端点'}
               >
-                {userProfile?.apiBaseUrl || '系统官方接口'}
+                {(userProfile?.customModelEnabled && userProfile?.apiBaseUrl) || '系统默认接口'}
               </span>
             </div>
 
@@ -64,7 +64,7 @@ export const AccountModelModal: React.FC<AccountModelModalProps> = ({
               <span className="text-slate-500">API 凭据状态</span>
               <span className="flex items-center gap-1 text-emerald-700 font-medium">
                 <CheckCircle size={12} />
-                <span>{userProfile?.apiKey ? '已配置 (已就绪)' : '未设置'}</span>
+                <span>{userProfile?.customModelEnabled ? (userProfile?.apiKey ? '已配置' : '继承系统凭据') : '继承系统凭据'}</span>
               </span>
             </div>
 

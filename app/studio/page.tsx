@@ -47,10 +47,13 @@ export default function StudioPage() {
   const [input, setInput] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
   const [isClearingMessages, setIsClearingMessages] = useState(false);
+  const chatRequestRef = useRef<AbortController | null>(null);
 
   // Studio Workspaces state
   const [workspaces, setWorkspaces] = useState<StudioWorkspaceItem[]>([]);
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string>('');
+  const activeWorkspaceIdRef = useRef(activeWorkspaceId);
+  activeWorkspaceIdRef.current = activeWorkspaceId;
   const [showWorkspaceMenu, setShowWorkspaceMenu] = useState(false);
   const [isLoadingWorkspaces, setIsLoadingWorkspaces] = useState(false);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
@@ -204,6 +207,7 @@ export default function StudioPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const isHistoryJumpNeededRef = useRef<boolean>(true);
+  const followLatestRef = useRef(true);
   const prependedScrollDataRef = useRef<{ prevScrollHeight: number; prevScrollTop: number } | null>(null);
   const isPrependingRef = useRef<boolean>(false);
   const [hasMoreMessages, setHasMoreMessages] = useState(false);
@@ -453,6 +457,7 @@ export default function StudioPage() {
 
         // Subsequent frame to guarantee layout is pinned to bottom after markdown/tool cards render
         const raf = requestAnimationFrame(() => {
+          if (!followLatestRef.current) return;
           if (scrollContainerRef.current) {
             scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
           }
@@ -460,6 +465,7 @@ export default function StudioPage() {
         });
 
         const timer = setTimeout(() => {
+          if (!followLatestRef.current) return;
           if (scrollContainerRef.current) {
             scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
           }
@@ -472,15 +478,29 @@ export default function StudioPage() {
           clearTimeout(timer);
         };
       }
-    } else {
+    } else if (followLatestRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: isStreaming ? 'auto' : 'smooth' });
     }
   }, [messages, isStreaming]);
+
+  // Virtual row heights change after markdown/tools are measured. Keep the latest
+  // reply in view only while the user has chosen to follow the bottom.
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    const content = container?.firstElementChild;
+    if (!container || !content) return;
+    const observer = new ResizeObserver(() => {
+      if (followLatestRef.current) container.scrollTop = container.scrollHeight;
+    });
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, [needsLogin]);
 
   // Load Messages for a Studio Workspace (Initial batch: latest 30 messages)
   const loadWorkspaceMessages = async (wsId: string) => {
     if (!wsId) return;
     isHistoryJumpNeededRef.current = true;
+    followLatestRef.current = true;
     prependedScrollDataRef.current = null;
     isPrependingRef.current = false;
     setIsLoadingMessages(true);
@@ -507,10 +527,10 @@ export default function StudioPage() {
         setMessages(loaded);
         setHasMoreMessages(data.hasMore ?? false);
 
-        // Compute total tokens used in this workspace (use server-side aggregation when available)
+        // Restore the latest model context snapshot, not a sum of repeated input.
         const sumTokens = typeof data.totalTokens === 'number'
           ? data.totalTokens
-          : loaded.reduce((acc, cur) => acc + (cur.tokens || 0), 0);
+          : [...loaded].reverse().find((m) => m.role === 'assistant' && m.tokens != null)?.tokens || 0;
         setTotalTokens(sumTokens);
         setRemainingTokens(Math.max(0, contextLength - sumTokens));
       }
@@ -529,6 +549,7 @@ export default function StudioPage() {
 
     const oldestMessage = messages[0];
     if (!oldestMessage) return;
+    followLatestRef.current = false;
 
     const container = scrollContainerRef.current;
     if (container) {
@@ -1202,13 +1223,14 @@ export default function StudioPage() {
       });
       if (res.ok) {
         const data = await res.json();
+        if (activeWorkspaceIdRef.current !== targetId) return;
         setWorkspaceSkills(data.skills || []);
         setSkillPresets(data.presets || []);
       }
     } catch {
       // Ignore
     } finally {
-      setIsLoadingSkills(false);
+      if (activeWorkspaceIdRef.current === targetId) setIsLoadingSkills(false);
     }
   };
 
@@ -1321,6 +1343,7 @@ export default function StudioPage() {
       return;
     }
     setIsClearingMessages(true);
+    chatRequestRef.current?.abort();
     try {
       const token = getAuthToken();
       const res = await fetch(`/api/studio/workspaces/${activeWorkspaceId}/messages`, {
@@ -1349,7 +1372,7 @@ export default function StudioPage() {
 
   // Delete single message from workspace
   const handleDeleteMessage = async (messageId: string, silent = false) => {
-    if (!activeWorkspaceId) return;
+    if (!activeWorkspaceId || isStreaming || isClearingMessages) return;
     if (!silent && !confirm('确定要删除该条对话消息吗？')) {
       return;
     }
@@ -1364,13 +1387,7 @@ export default function StudioPage() {
         }
       );
       if (res.ok) {
-        setMessages((prev) => {
-          const updated = prev.filter((m) => m.id !== messageId);
-          const sumTokens = updated.reduce((acc, cur) => acc + (cur.tokens || 0), 0);
-          setTotalTokens(sumTokens);
-          setRemainingTokens(Math.max(0, contextLength - sumTokens));
-          return updated;
-        });
+        await loadWorkspaceMessages(activeWorkspaceId);
       } else {
         const err = await res.json().catch(() => ({}));
         if (!silent) alert(err.error || '删除消息失败');
@@ -1382,30 +1399,22 @@ export default function StudioPage() {
 
   // Retry / Regenerate assistant message
   const handleRetryAssistantMessage = async (assistantMsgId: string) => {
-    if (isStreaming || !activeWorkspaceId) return;
+    if (isStreaming || isClearingMessages || !activeWorkspaceId) return;
     const asstIdx = messages.findIndex((m) => m.id === assistantMsgId);
     if (asstIdx === -1) return;
 
     // Find the user prompt immediately preceding this assistant message
     let userPrompt = '';
-    let precedingUserMsgId = '';
     for (let i = asstIdx - 1; i >= 0; i--) {
       if (messages[i].role === 'user' && messages[i].content) {
         userPrompt = messages[i].content || '';
-        precedingUserMsgId = messages[i].id;
         break;
       }
     }
     if (!userPrompt) return;
 
-    // Silently remove the current assistant message and the preceding user message
-    await handleDeleteMessage(assistantMsgId, true);
-    if (precedingUserMsgId) {
-      await handleDeleteMessage(precedingUserMsgId, true);
-    }
-
-    // Trigger re-send
-    handleSend(userPrompt);
+    if (asstIdx < messages.length - 1 && !confirm('重新生成会移除该回答及之后的对话，保留原问题和已有文件。确定继续吗？')) return;
+    await handleSend(userPrompt, assistantMsgId);
   };
 
   const formatTokens = (n: number) => {
@@ -1417,7 +1426,8 @@ export default function StudioPage() {
   const usagePercent = Math.min(100, Math.round((totalTokens / contextLength) * 100));
 
   // Send Message & Stream Response
-  const handleSend = async (textToSend?: string) => {
+  const handleSend = async (textToSend?: string, retryMessageId?: string) => {
+    if (isClearingMessages || isLoadingMessages) return;
     const text = (typeof textToSend === 'string' ? textToSend : input).trim();
     if (!text) return;
     // 任务执行中：作为补充消息投递给正在运行的 pi 回合
@@ -1425,8 +1435,12 @@ export default function StudioPage() {
       await handleInjectMessage(text);
       return;
     }
+    if (chatRequestRef.current) return;
+    const requestController = new AbortController();
+    chatRequestRef.current = requestController;
 
     isHistoryJumpNeededRef.current = false;
+    followLatestRef.current = true;
     if (!textToSend) {
       setInput('');
     }
@@ -1434,20 +1448,22 @@ export default function StudioPage() {
       textareaRef.current.style.height = 'auto';
     }
 
-    const userMessageId = `msg-user-${Date.now()}`;
+    let userMessageId = `msg-user-${Date.now()}`;
     let assistantMessageId = `msg-asst-${Date.now()}`;
+    const optimisticUserId = userMessageId;
+    const optimisticAssistantId = assistantMessageId;
 
     // Add user message to state
     setMessages((prev) => [
       ...prev,
-      {
-        id: userMessageId,
-        role: 'user',
+      ...(!retryMessageId ? [{
+        id: optimisticUserId,
+        role: 'user' as const,
         content: text,
         timestamp: Date.now(),
-      },
+      }] : []),
       {
-        id: assistantMessageId,
+        id: optimisticAssistantId,
         role: 'assistant',
         content: '',
         tools: [],
@@ -1465,27 +1481,23 @@ export default function StudioPage() {
       }
       const res = await fetch('/api/studio/chat', {
         method: 'POST',
+        signal: requestController.signal,
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           message: text,
+          retryMessageId,
           workspaceId: activeWorkspaceId,
           spaceId: activeWorkspaceId,
           reasoningEffort,
           approvalMode,
-          modelName: studioConfig.coordinatorModel || selectedModel,
-          apiBaseUrl: studioConfig.coordinatorBaseUrl || undefined,
-          apiKey: studioConfig.coordinatorApiKey || undefined,
           agentKeys: {
             anthropicApiKey: studioConfig.anthropicApiKey || undefined,
             openaiApiKey: studioConfig.openaiApiKey || undefined,
             deepseekApiKey: studioConfig.deepseekApiKey || undefined,
           },
-          history: messages
-            .filter((m) => m.role === 'user' || m.role === 'assistant')
-            .map((m) => ({ role: m.role, content: m.content || '' })),
         }),
       });
 
@@ -1517,11 +1529,33 @@ export default function StudioPage() {
           if (line.startsWith('data: ')) {
             try {
               const event = JSON.parse(line.slice(6));
+              if (requestController.signal.aborted) continue;
+              const currentAssistantId = assistantMessageId;
 
-              if (event.type === 'tool.approval_requested') {
+              if (event.type === 'message.ids') {
+                const previousUserId = userMessageId;
+                const savedUserId = event.data.userMessageId;
+                const savedAssistantId = event.data.assistantMessageId;
+                userMessageId = savedUserId;
+                assistantMessageId = savedAssistantId;
+                if (retryMessageId) {
+                  setTotalTokens(0);
+                  setRemainingTokens(contextLength);
+                }
+                setMessages((prev) => {
+                  if (retryMessageId) {
+                    const userIndex = prev.findIndex((m) => m.id === savedUserId);
+                    return [...prev.slice(0, userIndex + 1), {
+                      id: savedAssistantId, role: 'assistant', content: '', tools: [], timestamp: Date.now(),
+                    }];
+                  }
+                  return prev.map((m) => m.id === previousUserId ? { ...m, id: savedUserId }
+                    : m.id === currentAssistantId ? { ...m, id: savedAssistantId } : m);
+                });
+              } else if (event.type === 'tool.approval_requested') {
                 setMessages((prev) =>
                   prev.map((m) =>
-                    m.id === assistantMessageId
+                    m.id === currentAssistantId
                       ? {
                           ...m,
                           tools: [
@@ -1546,7 +1580,7 @@ export default function StudioPage() {
               } else if (event.type === 'tool.started') {
                 setMessages((prev) =>
                   prev.map((m) => {
-                    if (m.id !== assistantMessageId) return m;
+                    if (m.id !== currentAssistantId) return m;
                     const existingIndex = (m.tools || []).findIndex((t) => t.id === event.data.toolCallId);
                     if (existingIndex >= 0) {
                       const updatedTools = [...(m.tools || [])];
@@ -1578,7 +1612,7 @@ export default function StudioPage() {
               } else if (event.type === 'tool.completed') {
                 setMessages((prev) =>
                   prev.map((m) =>
-                    m.id === assistantMessageId
+                    m.id === currentAssistantId
                       ? {
                           ...m,
                           tools: (m.tools || []).map((t) =>
@@ -1610,7 +1644,7 @@ export default function StudioPage() {
               } else if (event.type === 'tool.failed') {
                 setMessages((prev) =>
                   prev.map((m) =>
-                    m.id === assistantMessageId
+                    m.id === currentAssistantId
                       ? {
                           ...m,
                           tools: (m.tools || []).map((t) =>
@@ -1650,7 +1684,7 @@ export default function StudioPage() {
                 const chunk = event.data?.delta ?? event.data?.text ?? '';
                 setMessages((prev) =>
                   prev.map((m) =>
-                    m.id === assistantMessageId
+                    m.id === currentAssistantId
                       ? { ...m, content: (m.content || '') + chunk }
                       : m
                   )
@@ -1660,7 +1694,7 @@ export default function StudioPage() {
                 if (chunk) {
                   setMessages((prev) =>
                     prev.map((m) =>
-                      m.id === assistantMessageId
+                      m.id === currentAssistantId
                         ? { ...m, thinking: (m.thinking || '') + chunk }
                         : m
                     )
@@ -1670,7 +1704,7 @@ export default function StudioPage() {
                 if (event.data?.toolCallId) {
                   setMessages((prev) =>
                     prev.map((m) =>
-                      m.id === assistantMessageId
+                      m.id === currentAssistantId
                         ? {
                             ...m,
                             tools: (m.tools || []).map((t) =>
@@ -1687,15 +1721,18 @@ export default function StudioPage() {
                 setTotalTokens(event.data.totalTokens);
                 setContextLength(event.data.contextLength);
                 setRemainingTokens(event.data.remainingTokens);
+                const usageMessageId = currentAssistantId;
+                setMessages((prev) => prev.map((m) => m.id === usageMessageId
+                  ? { ...m, tokens: event.data.totalTokens } : m));
               } else if (event.type === 'user.message_injected') {
                 // 服务端已把补充消息投递给运行中的 pi，此处开启新的对话气泡承接后续输出
                 const injectedText = event.data?.message || '';
                 const now = Date.now();
-                const nextAssistantId = `msg-asst-${now}`;
+                const nextAssistantId = event.data.assistantMessageId;
                 setMessages((prev) => [
                   ...prev,
                   {
-                    id: `msg-user-${now}`,
+                    id: event.data.userMessageId,
                     role: 'user',
                     content: injectedText,
                     timestamp: now,
@@ -1712,7 +1749,7 @@ export default function StudioPage() {
               } else if (event.type === 'user.inject_failed') {
                 setMessages((prev) =>
                   prev.map((m) =>
-                    m.id === assistantMessageId
+                    m.id === currentAssistantId
                       ? {
                           ...m,
                           content: (m.content || '') + `\n\n> ⚠️ 补充消息未被接受: ${event.data?.error || '未知原因'}`,
@@ -1724,7 +1761,7 @@ export default function StudioPage() {
                 const failMsg = event.data?.error || '运行中断，请稍后重试';
                 setMessages((prev) =>
                   prev.map((m) =>
-                    m.id === assistantMessageId
+                    m.id === currentAssistantId
                       ? { ...m, content: (m.content || '') + `\n\n> ⚠️ 运行失败: ${failMsg}` }
                       : m
                   )
@@ -1737,7 +1774,13 @@ export default function StudioPage() {
         }
       }
     } catch (err: unknown) {
+      if (requestController.signal.aborted) return;
       const errMsg = err instanceof Error ? err.message : String(err);
+      if (retryMessageId) {
+        await loadWorkspaceMessages(activeWorkspaceId);
+        alert(errMsg);
+        return;
+      }
       setMessages((prev) =>
         prev.map((m) => {
           if (m.id !== assistantMessageId) return m;
@@ -1752,7 +1795,13 @@ export default function StudioPage() {
         })
       );
     } finally {
-      setIsStreaming(false);
+      if (chatRequestRef.current === requestController) {
+        chatRequestRef.current = null;
+        setIsStreaming(false);
+        if (!requestController.signal.aborted && activeWorkspaceIdRef.current === activeWorkspaceId) {
+          void fetchWorkspaceSkills(activeWorkspaceId);
+        }
+      }
     }
   };
 
@@ -1976,6 +2025,13 @@ export default function StudioPage() {
           hasMoreMessages={hasMoreMessages}
           isLoadingMoreMessages={isLoadingMoreMessages}
           onLoadMoreMessages={loadMoreWorkspaceMessages}
+          onNavigateHistory={() => {
+            isHistoryJumpNeededRef.current = false;
+            followLatestRef.current = false;
+          }}
+          onScrollPositionChange={(atBottom) => {
+            if (!isHistoryJumpNeededRef.current) followLatestRef.current = atBottom;
+          }}
         />
 
         {/* 3. Bottom Composer Box */}

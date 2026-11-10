@@ -5,7 +5,8 @@ import { randomUUID } from 'node:crypto';
 import { resolveStudioWorkspace } from './sandbox';
 import { buildPiLaunchSpec, PI_SESSION_PLACEHOLDER, type PiLaunchSpec } from './pi-launch';
 import { killStudioContainer, removeSandboxEnvFile, spawnDocker } from './sandbox/docker-driver';
-import { DEFAULT_MODEL } from '../core/model-client';
+import { DEFAULT_BASE_URL, DEFAULT_MODEL } from '../core/model-client';
+import { contextUsage, readWorkspaceSkills, runtimeSettingsDigest } from './runtime-settings';
 import {
   approvalStore,
   type ApprovalDecision,
@@ -39,7 +40,7 @@ export interface StudioPiTurnOptions {
   apiBaseUrl?: string;
   apiKey?: string;
   signal?: AbortSignal;
-  /** 客户端处于全新对话（history 为空）时，丢弃旧的 pi 会话 */
+  /** 从服务端对话记录重建上下文时，丢弃旧的 pi 会话 */
   resetSession?: boolean;
   onEvent: (event: StudioRunEvent) => void;
 }
@@ -73,6 +74,7 @@ interface RuntimeEntry {
   stopping: boolean;
   model: string;
   systemPrompt?: string;
+  settingsDigest: string;
 }
 
 function requiresApproval(toolName: string, mode: StudioApprovalMode): boolean {
@@ -208,13 +210,31 @@ async function seedSessionFile(
 
 export class PiStudioRuntime {
   private runtimes = new Map<string, RuntimeEntry>();
+  private activeTurns = new Set<string>();
 
   async runTurn(options: StudioPiTurnOptions): Promise<void> {
     const key = `${options.userId}:${options.workspaceId}`;
+    if (this.activeTurns.has(key)) {
+      throw new Error('当前工作区上一条消息仍在执行，请稍候再试');
+    }
+    this.activeTurns.add(key);
+    try {
+      await this.runWorkspaceTurn(key, options);
+    } finally {
+      this.activeTurns.delete(key);
+    }
+  }
+
+  private async runWorkspaceTurn(key: string, options: StudioPiTurnOptions): Promise<void> {
+    if (options.signal?.aborted) throw new Error('会话已取消');
     if (options.resetSession) {
       await this.resetSession(key, options);
     }
     const entry = await this.acquireRuntime(key, options);
+    if (options.signal?.aborted) {
+      await this.stopRuntime(key);
+      throw new Error('会话已取消');
+    }
     if (entry.turn) {
       throw new Error('当前工作区上一条消息仍在执行，请稍候再试');
     }
@@ -280,13 +300,13 @@ export class PiStudioRuntime {
     const key = `${params.userId}:${params.workspaceId}`;
     const entry = this.runtimes.get(key);
     const turn = entry?.turn;
-    if (!entry || !turn || turn.settled) {
+    if (!entry || !turn || turn.settled || turn.options.signal?.aborted) {
       return { accepted: false, reason: '当前工作区没有正在执行的任务' };
     }
 
     turn.options.onEvent({
       type: 'user.message_injected',
-      data: { message: params.message, mode: params.mode },
+      data: { message: params.message, mode: params.mode, userMessageId: randomUUID(), assistantMessageId: randomUUID() },
     });
     this.send(entry, {
       type: params.mode === 'steer' ? 'steer' : 'follow_up',
@@ -296,7 +316,7 @@ export class PiStudioRuntime {
   }
 
   /** 丢弃工作区常驻进程与会话文件，开启全新上下文 */
-  private async resetSession(key: string, options: StudioPiTurnOptions): Promise<void> {
+  async resetSession(key: string, options: Pick<StudioPiTurnOptions, 'userId' | 'workspaceId'>): Promise<void> {
     await this.stopRuntime(key);
     const workspaceDir = await resolveStudioWorkspace(process.cwd(), options.userId, options.workspaceId);
     const sessionFile = path.join(
@@ -304,7 +324,7 @@ export class PiStudioRuntime {
       'sessions',
       `${stableSessionId(options.userId, options.workspaceId)}.jsonl`
     );
-    await rm(sessionFile, { force: true }).catch(() => {});
+    await rm(sessionFile, { force: true });
   }
 
   /** 结束某个工作区的常驻进程（删除工作区/服务关闭时调用） */
@@ -317,23 +337,37 @@ export class PiStudioRuntime {
     if (entry.containerName) {
       await killStudioContainer(entry.containerName);
     }
+    if (entry.child.exitCode === null && !entry.child.signalCode) {
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(() => entry.child.kill('SIGKILL'), 3000);
+        timer.unref?.();
+        entry.child.once('close', () => { clearTimeout(timer); resolve(); });
+        entry.child.stdin?.end();
+        entry.child.kill('SIGTERM');
+      });
+    }
     await removeSandboxEnvFile(entry.envFile);
-    entry.child.stdin?.end();
-    entry.child.kill('SIGTERM');
-    setTimeout(() => {
-      if (entry.child.exitCode === null) entry.child.kill('SIGKILL');
-    }, 3000).unref?.();
   }
 
   private async acquireRuntime(key: string, options: StudioPiTurnOptions): Promise<RuntimeEntry> {
     const model = options.modelName || DEFAULT_MODEL;
+    const workspaceDir = await resolveStudioWorkspace(process.cwd(), options.userId, options.workspaceId);
+    const skills = await readWorkspaceSkills(workspaceDir);
+    const settingsDigest = runtimeSettingsDigest({
+      model,
+      systemPrompt: options.workspaceSystemPrompt,
+      apiBaseUrl: options.apiBaseUrl || DEFAULT_BASE_URL,
+      apiKey: options.apiKey || process.env.apiKey || process.env.OPENAI_API_KEY || '',
+      approvalMode: options.approvalMode || 'dangerous',
+      contextLength: options.modelContextWindow || 200000,
+      skills,
+    });
     const existing = this.runtimes.get(key);
     if (
       existing &&
       !existing.stopping &&
       existing.child.exitCode === null &&
-      existing.model === model &&
-      existing.systemPrompt === options.workspaceSystemPrompt
+      existing.settingsDigest === settingsDigest
     ) {
       return existing;
     }
@@ -341,7 +375,6 @@ export class PiStudioRuntime {
       await this.stopRuntime(key);
     }
 
-    const workspaceDir = await resolveStudioWorkspace(process.cwd(), options.userId, options.workspaceId);
     const sessionId = stableSessionId(options.userId, options.workspaceId);
     const sessionFile = path.join(path.dirname(workspaceDir), 'sessions', `${sessionId}.jsonl`);
     await seedSessionFile(sessionFile, workspaceDir, model, options.history || []);
@@ -360,6 +393,8 @@ export class PiStudioRuntime {
       '--no-context-files',
     ];
 
+    for (const skill of skills) agentArgs.push('--skill', skill.path);
+
     if (options.workspaceSystemPrompt) {
       agentArgs.push('--append-system-prompt', options.workspaceSystemPrompt);
     }
@@ -372,6 +407,7 @@ export class PiStudioRuntime {
       customApiKey: options.apiKey,
       customBaseUrl: options.apiBaseUrl,
       modelName: model || undefined,
+      modelContextWindow: options.modelContextWindow || 200000,
       approvalMode: options.approvalMode || 'dangerous',
     });
 
@@ -394,6 +430,7 @@ export class PiStudioRuntime {
       stopping: false,
       model,
       systemPrompt: options.workspaceSystemPrompt,
+      settingsDigest,
     };
     this.runtimes.set(key, entry);
 
@@ -414,7 +451,7 @@ export class PiStudioRuntime {
         this.failTurn(entry, new Error(`pi 进程已退出（code=${code ?? 'none'}）`));
       }
       if (entry.idleTimer) clearTimeout(entry.idleTimer);
-      void removeSandboxEnvFile(entry.envFile);
+      if (!entry.stopping) void removeSandboxEnvFile(entry.envFile);
       entry.stopping = true;
       if (this.runtimes.get(key) === entry) this.runtimes.delete(key);
     });
@@ -482,11 +519,11 @@ export class PiStudioRuntime {
       case 'message_end': {
         const usage = message.message?.usage;
         if (message.message?.role === 'assistant' && usage) {
-          const totalTokens = Number(usage.totalTokens ?? (usage.input + usage.output));
-          if (Number.isFinite(totalTokens)) {
+          const data = contextUsage(usage, turn.options.modelContextWindow || 200000);
+          if (data) {
             turn.options.onEvent({
               type: 'usage.updated',
-              data: { totalTokens, contextWindow: turn.options.modelContextWindow },
+              data,
             });
           }
         }
@@ -692,4 +729,8 @@ export async function injectStudioUserMessage(params: {
 /** 停止某个工作区的常驻 pi 进程（删除工作区时调用） */
 export async function stopStudioPiRuntime(userId: string, workspaceId: string): Promise<void> {
   await piStudioRuntime.stopRuntime(`${userId}:${workspaceId}`);
+}
+
+export async function resetStudioPiSession(userId: string, workspaceId: string): Promise<void> {
+  await piStudioRuntime.resetSession(`${userId}:${workspaceId}`, { userId, workspaceId });
 }

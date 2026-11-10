@@ -31,7 +31,7 @@ export const SkillPreviewModal: React.FC<SkillPreviewModalProps> = ({ skill, onC
         <div className="space-y-2">
           <div className="flex items-center justify-between text-xs text-slate-500">
             <span className="font-mono text-[11px] text-slate-500">
-              路径: .pi/skills/{skill.id}/SKILL.md
+              路径: Pi 配置目录 / skills/{skill.id}/SKILL.md
             </span>
             <span
               className={cn(

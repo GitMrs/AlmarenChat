@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
+import { editStudioConversation } from '@/lib/coding-agents/conversation-operations';
+import { resetStudioPiSession } from '@/lib/coding-agents/pi-runtime';
 
 export async function GET(
   request: Request,
@@ -23,12 +25,13 @@ export async function GET(
     const before = searchParams.get('before');
     const all = searchParams.get('all') === 'true';
 
-    // 1. Total tokens across the whole workspace (accurate for token gauge)
-    const tokenAgg = await prisma.studioMessage.aggregate({
-      where: { workspaceId, userId },
-      _sum: { tokens: true },
+    // Latest model context snapshot, rather than accumulated usage across calls.
+    const latestUsage = await prisma.studioMessage.findFirst({
+      where: { workspaceId, userId, role: 'assistant', tokens: { not: null } },
+      orderBy: { createdAt: 'desc' },
+      select: { tokens: true },
     });
-    const totalTokens = tokenAgg._sum.tokens || 0;
+    const totalTokens = latestUsage?.tokens || 0;
 
     const totalCount = await prisma.studioMessage.count({
       where: { workspaceId, userId },
@@ -37,7 +40,7 @@ export async function GET(
     if (all) {
       const messages = await prisma.studioMessage.findMany({
         where: { workspaceId, userId },
-        orderBy: { createdAt: 'asc' },
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
       });
       return NextResponse.json({
         messages,
@@ -121,21 +124,24 @@ export async function DELETE(
     const { searchParams } = new URL(request.url);
     const messageId = searchParams.get('messageId');
 
-    if (messageId) {
+    return await editStudioConversation(userId, workspaceId, !messageId, async () => {
+      if (messageId) {
+        const message = await prisma.studioMessage.findFirst({ where: { id: messageId, workspaceId, userId } });
+        if (!message) return NextResponse.json({ error: '消息不存在，请刷新后重试' }, { status: 404 });
+      }
+      // The active request (including its writes) has finished before resetting pi.
+      await resetStudioPiSession(userId, workspaceId);
       await prisma.studioMessage.deleteMany({
-        where: { id: messageId, workspaceId, userId },
+        where: { workspaceId, userId, ...(messageId ? { id: messageId } : {}) },
       });
-      return NextResponse.json({ success: true, workspaceId, messageId });
-    }
-
-    await prisma.studioMessage.deleteMany({
-      where: { workspaceId, userId },
+      if (messageId) {
+        await prisma.studioMessage.updateMany({ where: { workspaceId, userId }, data: { tokens: null } });
+      }
+      return NextResponse.json({ success: true, workspaceId, ...(messageId ? { messageId } : {}) });
     });
-
-    return NextResponse.json({ success: true, workspaceId });
   } catch (err: unknown) {
     const errMsg = err instanceof Error ? err.message : String(err);
-    const status = errMsg === 'Unauthorized' ? 401 : 500;
+    const status = errMsg === 'Unauthorized' ? 401 : (err as { status?: number }).status || 500;
     return NextResponse.json({ error: errMsg }, { status });
   }
 }

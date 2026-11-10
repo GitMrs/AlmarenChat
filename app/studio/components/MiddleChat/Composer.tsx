@@ -83,7 +83,7 @@ export const Composer: React.FC<ComposerProps> = ({
           </span>
           {totalTokens > 0 && (
             <span className="text-[10px] text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded font-sans hidden sm:inline border border-emerald-200">
-              模型实际返回
+              最近一次上下文估算
             </span>
           )}
         </div>

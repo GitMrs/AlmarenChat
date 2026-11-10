@@ -1,16 +1,21 @@
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
-import { runStudioPiTurn } from '@/lib/coding-agents/pi-runtime';
+import { runStudioPiTurn, resetStudioPiSession } from '@/lib/coding-agents/pi-runtime';
+import { beginStudioConversationRun } from '@/lib/coding-agents/conversation-operations';
+import { randomUUID } from 'node:crypto';
 import { approvalStore } from '@/lib/coding-agents/approval-store';
+import { resolveUserModelConfig } from '@/app/api/_lib/agent-model';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
+  let conversationRun: ReturnType<typeof beginStudioConversationRun> | undefined;
+  let detachAbort: (() => void) | undefined;
   try {
     const userId = requireAuth(request);
     const {
       message,
-      history,
+      retryMessageId,
       workspaceId,
       spaceId,
       reasoningEffort,
@@ -21,11 +26,15 @@ export async function POST(request: Request) {
       agentKeys,
     } = await request.json();
 
-    if (!message || !message.trim()) {
+    if (typeof message !== 'string' || !message.trim()) {
       return new Response(JSON.stringify({ error: '消息内容不能为空' }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' },
       });
+    }
+
+    if (!['never', 'dangerous', 'always'].includes(approvalMode)) {
+      return Response.json({ error: '无效的审批模式' }, { status: 400 });
     }
 
     // Ensure active workspace exists for this user
@@ -49,17 +58,56 @@ export async function POST(request: Request) {
       }
     }
 
-    // Persist user message to StudioMessage table
-    if (activeWorkspaceId) {
-      await prisma.studioMessage.create({
-        data: {
-          workspaceId: activeWorkspaceId,
-          userId,
-          role: 'user',
-          content: message.trim(),
-        },
-      }).catch((e) => console.error('[Studio] Failed to persist user message:', e));
+    const currentWorkspace = await prisma.studioWorkspace.findFirst({
+      where: { id: activeWorkspaceId, userId },
+      select: { systemPrompt: true },
+    });
+    if (!currentWorkspace) {
+      return Response.json({ error: '工作区不存在或无权访问' }, { status: 404 });
     }
+
+    conversationRun = beginStudioConversationRun(userId, activeWorkspaceId);
+    const run = conversationRun;
+    const abortRun = () => run.controller.abort();
+    request.signal?.addEventListener('abort', abortRun);
+    detachAbort = () => request.signal?.removeEventListener('abort', abortRun);
+    if (request.signal?.aborted) abortRun();
+
+    // Database records are authoritative; a paginated client history cannot restore a session.
+    let records = await prisma.studioMessage.findMany({
+      where: { workspaceId: activeWorkspaceId, userId },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      select: { id: true, role: true, content: true, createdAt: true },
+    });
+    const lastMessageTime = records.at(-1)?.createdAt.getTime() || 0;
+    let userMessageId: string = randomUUID();
+    let prompt = message.trim();
+    if (retryMessageId) {
+      const targetIndex = records.findIndex((item) => item.id === retryMessageId && item.role === 'assistant');
+      let userIndex = targetIndex - 1;
+      while (userIndex >= 0 && records[userIndex].role !== 'user') userIndex--;
+      if (targetIndex < 0 || userIndex < 0 || !records[userIndex].content) {
+        throw Object.assign(new Error('原回答或对应问题不存在，请刷新后重试'), { status: 404 });
+      }
+      const originalQuestion = records[userIndex];
+      prompt = originalQuestion.content!;
+      userMessageId = originalQuestion.id;
+      await resetStudioPiSession(userId, activeWorkspaceId);
+      await prisma.studioMessage.deleteMany({
+        where: { workspaceId: activeWorkspaceId, userId, id: { in: records.slice(userIndex + 1).map((item) => item.id) } },
+      });
+      await prisma.studioMessage.updateMany({ where: { workspaceId: activeWorkspaceId, userId }, data: { tokens: null } });
+      records = records.slice(0, userIndex);
+    }
+    let messageTime = Math.max(Date.now(), lastMessageTime + 1);
+    if (!retryMessageId) {
+      await prisma.studioMessage.create({
+        data: { id: userMessageId, workspaceId: activeWorkspaceId, userId, role: 'user', content: prompt, createdAt: new Date(messageTime++) },
+      });
+    }
+    const history = records
+      .filter((item) => item.role === 'user' || item.role === 'assistant')
+      .map((item) => ({ role: item.role as 'user' | 'assistant', content: item.content || '' }));
 
     // Retrieve user model settings from database
     const userSettings = await prisma.user.findUnique({
@@ -73,23 +121,20 @@ export async function POST(request: Request) {
       },
     });
 
-    // Query workspace systemPrompt (space instructions)
-    const currentWorkspace = activeWorkspaceId
-      ? await prisma.studioWorkspace.findUnique({
-          where: { id: activeWorkspaceId },
-          select: { systemPrompt: true },
-        })
-      : null;
-
-    // Automatically prioritize user account's configured model, base URL, and API key
-    const activeApiKey = userSettings?.apiKey || customApiKey || null;
-    const activeBaseUrl = userSettings?.apiBaseUrl || customBaseUrl || null;
-    const activeModel = userSettings?.modelName || modelName || null;
+    const modelConfig = resolveUserModelConfig(userSettings, {
+      modelName, apiBaseUrl: customBaseUrl, apiKey: customApiKey,
+    });
 
     const encoder = new TextEncoder();
 
     const stream = new ReadableStream({
       async start(controller) {
+        const emit = (event: { type: string; data?: any }) => {
+          try { controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`)); } catch { abortRun(); }
+        };
+        let assistantMessageId: string = randomUUID();
+        let assistantCreatedAt = new Date(messageTime++);
+        emit({ type: 'message.ids', data: { userMessageId, assistantMessageId } });
         let accumulatedAssistantContent = '';
         const toolsMap = new Map<string, any>();
         let finalTokens: number | null = null;
@@ -99,11 +144,11 @@ export async function POST(request: Request) {
           toolsArray: any[],
           tokens: number | null
         ): Promise<void> => {
-          if (!activeWorkspaceId) return Promise.resolve();
-          if (!content && toolsArray.length === 0) return Promise.resolve();
           return prisma.studioMessage
             .create({
               data: {
+                id: assistantMessageId,
+                createdAt: assistantCreatedAt,
                 workspaceId: activeWorkspaceId,
                 userId,
                 role: 'assistant',
@@ -112,19 +157,37 @@ export async function POST(request: Request) {
                 tokens,
               },
             })
-            .then(() => undefined)
-            .catch((persistErr) => {
-              console.error('[Studio] Failed to persist assistant message:', persistErr);
-            });
+            .then(() => undefined);
         };
 
+        let pendingPersistence = Promise.resolve();
+        let persistenceError: unknown;
+
         const persistAssistantMessage = async () => {
+          await pendingPersistence;
+          if (persistenceError) throw persistenceError;
           await saveAssistantSegment(accumulatedAssistantContent, Array.from(toolsMap.values()), finalTokens);
         };
 
         // 用户中途插话时，把上一段回复先落库并清空聚合器，使界面气泡与数据库记录一一对应
-        const flushBeforeInjection = () => {
-          void saveAssistantSegment(accumulatedAssistantContent, Array.from(toolsMap.values()), finalTokens);
+        const flushBeforeInjection = (data: { message: string; userMessageId: string; assistantMessageId: string }) => {
+          // Capture IDs and timestamps before changing to the next segment.
+          const segment = {
+            id: assistantMessageId, createdAt: assistantCreatedAt,
+            workspaceId: activeWorkspaceId, userId, role: 'assistant', content: accumulatedAssistantContent,
+            tools: toolsMap.size ? Array.from(toolsMap.values()) : null, tokens: finalTokens,
+          };
+          const injectedUser = {
+            id: data.userMessageId, workspaceId: activeWorkspaceId, userId, role: 'user',
+            content: data.message, createdAt: new Date(messageTime++),
+          };
+          pendingPersistence = pendingPersistence.then(async () => {
+            if (persistenceError) return;
+            await prisma.studioMessage.create({ data: segment });
+            await prisma.studioMessage.create({ data: injectedUser });
+          }).catch((error) => { persistenceError = error; abortRun(); });
+          assistantMessageId = data.assistantMessageId;
+          assistantCreatedAt = new Date(messageTime++);
           accumulatedAssistantContent = '';
           toolsMap.clear();
           finalTokens = null;
@@ -134,7 +197,7 @@ export async function POST(request: Request) {
         const onAbort = () => {
           approvalStore.cancelAllByRun(runId, '客户端连接已断开');
         };
-        request.signal?.addEventListener('abort', onAbort);
+        run.controller.signal.addEventListener('abort', onAbort);
 
         let isStreamActive = true;
         const heartbeatTimer = setInterval(() => {
@@ -153,19 +216,15 @@ export async function POST(request: Request) {
             approvalMode,
             workspaceId: activeWorkspaceId,
             workspaceSystemPrompt: currentWorkspace?.systemPrompt || undefined,
-            message: message.trim(),
-            history: Array.isArray(history)
-              ? history
-                  .filter((item: any) => (item?.role === 'user' || item?.role === 'assistant') && typeof item?.content === 'string')
-                  .map((item: any) => ({ role: item.role, content: item.content }))
-              : [],
+            message: prompt,
+            history,
             reasoningEffort: reasoningEffort || 'high',
-            modelName: activeModel || undefined,
-            modelContextWindow: userSettings?.modelContextWindow || undefined,
-            apiBaseUrl: activeBaseUrl || undefined,
-            apiKey: activeApiKey || undefined,
-            resetSession: !Array.isArray(history) || history.length === 0,
-            signal: request.signal,
+            modelName: modelConfig.modelName || undefined,
+            modelContextWindow: userSettings?.modelContextWindow || 200000,
+            apiBaseUrl: modelConfig.apiBaseUrl || undefined,
+            apiKey: modelConfig.apiKey || undefined,
+            resetSession: history.length === 0,
+            signal: run.controller.signal,
             onEvent: (event) => {
               // Aggregate message deltas
               if (event.type === 'message.delta') {
@@ -211,32 +270,35 @@ export async function POST(request: Request) {
                 item.result = event.data.error;
                 if (event.data.sessionId) item.sessionId = event.data.sessionId;
                 toolsMap.set(event.data.toolCallId, item);
-              } else if (event.type === 'usage.updated' && event.data?.totalTokens) {
+              } else if (event.type === 'usage.updated' && Number.isFinite(event.data?.totalTokens)) {
                 finalTokens = event.data.totalTokens;
               } else if (event.type === 'user.message_injected') {
                 // 中途插话：上一段回复另存为一条消息，后续内容归入新气泡
-                flushBeforeInjection();
+                flushBeforeInjection(event.data);
               }
 
-              controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+              emit(event);
             },
           });
 
-          // Save assistant message to database
-          await persistAssistantMessage();
-          controller.close();
         } catch (err: unknown) {
           const errMsg = err instanceof Error ? err.message : String(err);
-          await persistAssistantMessage();
-          controller.enqueue(
-            encoder.encode(`data: ${JSON.stringify({ type: 'run.failed', data: { error: errMsg } })}\n\n`)
-          );
-          controller.close();
+          emit({ type: 'run.failed', data: { error: errMsg } });
         } finally {
-          isStreamActive = false;
-          clearInterval(heartbeatTimer);
-          request.signal?.removeEventListener('abort', onAbort);
-          approvalStore.cancelAllByRun(runId);
+          try {
+            await persistAssistantMessage();
+          } catch (error) {
+            console.error('[Studio] Failed to persist assistant message:', error);
+            emit({ type: 'run.failed', data: { error: '回复保存失败，请刷新后确认记录' } });
+          } finally {
+            isStreamActive = false;
+            clearInterval(heartbeatTimer);
+            run.controller.signal.removeEventListener('abort', onAbort);
+            approvalStore.cancelAllByRun(runId);
+            detachAbort?.();
+            run.finish();
+            try { controller.close(); } catch { /* Client already disconnected. */ }
+          }
         }
       },
     });
@@ -249,8 +311,10 @@ export async function POST(request: Request) {
       },
     });
   } catch (err: unknown) {
+    detachAbort?.();
+    conversationRun?.finish();
     const errMsg = err instanceof Error ? err.message : String(err);
-    const status = errMsg === 'Unauthorized' ? 401 : 500;
+    const status = errMsg === 'Unauthorized' ? 401 : (err as { status?: number }).status || 500;
     return new Response(JSON.stringify({ error: errMsg }), {
       status,
       headers: { 'Content-Type': 'application/json' },

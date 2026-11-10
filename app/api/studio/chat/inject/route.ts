@@ -45,11 +45,8 @@ export async function POST(request: Request) {
       );
     }
 
-    await prisma.studioMessage
-      .create({
-        data: { workspaceId, userId, role: 'user', content: text },
-      })
-      .catch((e) => console.error('[Studio] Failed to persist injected message:', e));
+    // The owning chat request saves the injected message in order with assistant
+    // segments, so clearing waits for all writes rather than racing this endpoint.
 
     return Response.json({ accepted: true, mode: deliveryMode });
   } catch (err: unknown) {
