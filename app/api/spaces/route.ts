@@ -3,6 +3,7 @@ import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { SPACE_COORDINATOR_ID, ensureSpaceRoot, resolveManyAgents } from '@/app/api/_lib/spaces';
 import { getSpaceTemplate, spaceTemplateInstructions, spaceTemplateSnapshot } from '@/lib/space/space-templates.mjs';
+import { WECHAT_DEFAULT_AGENT_IDS, WECHAT_WORKSPACE_INSTRUCTIONS } from '@/lib/workspace/wechat/wechat-workspace.mjs';
 
 export async function GET(request: Request) {
   try {
@@ -36,18 +37,25 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const userId = requireAuth(request);
-    const { name, description, instructions, runtimeType, executionEngine, executionMode, agentIds, templateId } = await request.json();
+    const { name, description, instructions, runtimeType, executionEngine, executionMode, agentIds, templateId, workspaceType } = await request.json();
+    if (workspaceType !== undefined && !['GENERAL', 'WECHAT'].includes(workspaceType)) {
+      return NextResponse.json({ error: '不支持的工作室类型' }, { status: 400 });
+    }
+    if (workspaceType === 'WECHAT' && templateId) {
+      return NextResponse.json({ error: '公众号工作室不需要选择功能模板' }, { status: 400 });
+    }
+    const wechatWorkspace = workspaceType === 'WECHAT' || templateId === 'wechat-article';
     const selectedTemplate = templateId ? getSpaceTemplate(templateId) : null;
     if (templateId && !selectedTemplate) {
       return NextResponse.json({ error: '空间模板不存在或已失效' }, { status: 400 });
     }
-    const title = typeof name === 'string' ? name.trim() : selectedTemplate?.defaultName || '';
+    const title = typeof name === 'string' ? name.trim() : selectedTemplate?.defaultName || (wechatWorkspace ? '公众号工作室' : '');
     if (!title) {
       return NextResponse.json({ error: '空间名称不能为空' }, { status: 400 });
     }
     const spaceInstructions = typeof instructions === 'string'
       ? instructions.trim()
-      : spaceTemplateInstructions(selectedTemplate);
+      : wechatWorkspace && !selectedTemplate ? WECHAT_WORKSPACE_INSTRUCTIONS : spaceTemplateInstructions(selectedTemplate);
     if (spaceInstructions.length > 12_000) {
       return NextResponse.json({ error: '空间规则不能超过 12000 字' }, { status: 400 });
     }
@@ -64,7 +72,7 @@ export async function POST(request: Request) {
 
     const requestedAgentIds = Array.isArray(agentIds)
       ? agentIds
-      : selectedTemplate?.recommendedAgentIds || [];
+      : selectedTemplate?.recommendedAgentIds || (wechatWorkspace ? WECHAT_DEFAULT_AGENT_IDS : []);
     const resolvedAgents = await resolveManyAgents(requestedAgentIds, userId);
     if (resolvedAgents.length > 6) {
       return NextResponse.json({ error: '空间最多选择 6 位成员' }, { status: 400 });
@@ -78,6 +86,7 @@ export async function POST(request: Request) {
         name: title,
         description: typeof description === 'string' ? description.trim() || null : null,
         instructions: spaceInstructions || null,
+        workspaceType: wechatWorkspace ? 'WECHAT' : 'GENERAL',
         runtimeType: 'NATIVE',
         executionEngine: normalizedExecutionEngine,
         executionMode: normalizedExecutionMode,

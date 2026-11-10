@@ -372,6 +372,7 @@ export interface Space {
   description?: string | null;
   instructions?: string | null;
   runtimeType: 'NATIVE' | 'PI_CODING';
+  workspaceType?: 'GENERAL' | 'WECHAT';
   executionEngine: 'native' | 'pi';
   executionMode: 'AUTO' | 'REVIEW_DISPATCH';
   hostAgentId?: string | null;
@@ -418,7 +419,7 @@ export interface SpaceConnector {
   enabled: boolean;
   configured: boolean;
   status: 'CONFIGURED' | 'READY' | 'ERROR' | 'DISABLED' | string;
-  publicConfig: { appId?: string; mid?: string; uname?: string; face?: string; level?: string };
+  publicConfig: { appId?: string; mid?: string; uname?: string; face?: string; level?: string; interfacePermissions?: Partial<Record<'draft' | 'publish', { status: 'available' | 'unavailable'; checkedAt: string }>> };
   lastCheckedAt?: string | null;
   lastError?: string | null;
   createdAt: string;

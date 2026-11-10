@@ -10,6 +10,51 @@ import { createConnectorActionRuntime } from './connector-action-runtime.mjs';
 
 const secret = 'test-only-secret-that-is-longer-than-32-characters';
 
+test('token cache writes to the connector id and refuses results for a replaced AppID', async () => {
+  for (const replaceAppId of [false, true]) {
+    const db = database();
+    try {
+      insertBase(db, {});
+      db.prepare(`UPDATE "SpaceConnectorExecution" SET "operation" = 'WECHAT_VALIDATE_CONNECTION'`).run();
+      const runtime = createConnectorActionRuntime({
+        db, projectRoot: '/tmp', connectorSecret: secret,
+        connectorFactory: ({ tokenCache }) => ({ validateConnection: async () => {
+          if (replaceAppId) db.prepare(`UPDATE "SpaceConnector" SET "publicConfig" = ?, "status" = 'CONFIGURED'`).run(JSON.stringify({ appId: 'wx-new-app' }));
+          await tokenCache.set({ token: 'test-access-token', expiresAt: Date.now() + 7200000 });
+          return { validated: true };
+        } }),
+      });
+      await runtime.processConnectorExecution(runtime.claimNextConnectorExecution());
+      const connector = db.prepare('SELECT * FROM "SpaceConnector"').get();
+      if (replaceAppId) { assert.equal(connector.accessTokenCiphertext, null); assert.equal(connector.status, 'CONFIGURED'); }
+      else { assert.ok(connector.accessTokenCiphertext); assert.ok(!connector.accessTokenCiphertext.includes('test-access-token')); }
+    } finally { db.close(); }
+  }
+});
+
+test('only permission errors record unavailable publication and stale credentials cannot update new config', async () => {
+  for (const scenario of ['permission', 'quota', 'changed']) {
+    const db = database();
+    try {
+      insertBase(db, { mediaId: 'draft-1' });
+      db.prepare(`UPDATE "SpaceConnectorExecution" SET "operation" = 'WECHAT_PUBLISH'`).run();
+      const runtime = createConnectorActionRuntime({
+        db, projectRoot: '/tmp', connectorSecret: secret,
+        connectorFactory: () => ({ publish: async () => {
+          if (scenario === 'changed') db.prepare(`UPDATE "SpaceConnector" SET "publicConfig" = ?, "credentialCiphertext" = ?, "status" = 'CONFIGURED'`).run(JSON.stringify({ appId: 'new-app' }), 'new-encrypted-secret');
+          throw Object.assign(new Error('mock provider failure'), { providerCode: scenario === 'quota' ? 45009 : 48001 });
+        } }),
+      });
+      await runtime.processConnectorExecution(runtime.claimNextConnectorExecution());
+      const connector = db.prepare('SELECT * FROM "SpaceConnector"').get();
+      const config = JSON.parse(connector.publicConfig);
+      if (scenario === 'permission') assert.equal(config.interfacePermissions.publish.status, 'unavailable');
+      else assert.equal(config.interfacePermissions, undefined);
+      if (scenario === 'changed') { assert.equal(config.appId, 'new-app'); assert.equal(connector.status, 'CONFIGURED'); }
+    } finally { db.close(); }
+  }
+});
+
 function database() {
   const db = new Database(':memory:');
   db.exec(`
@@ -64,6 +109,7 @@ test('worker creates a draft from the approved immutable snapshot and requests p
     assert.equal(execution.id, 'execution-1');
     await runtime.processConnectorExecution(execution);
     assert.deepEqual(calls, [['upload', true], ['draft', '测试文章']]);
+    assert.equal(JSON.parse(db.prepare('SELECT "publicConfig" FROM "SpaceConnector"').get().publicConfig).interfacePermissions.draft.status, 'available');
     assert.match(memories[0][1][0].summary, /已创建微信草稿/);
     assert.equal(db.prepare('SELECT "status", "externalId" FROM "SpaceConnectorExecution" WHERE "id" = ?').get('execution-1').status, 'COMPLETED');
     const publish = db.prepare(`SELECT "kind", "status", "riskLevel" FROM "SpaceActionRequest" WHERE "kind" = 'WECHAT_PUBLISH'`).get();
@@ -88,6 +134,7 @@ test('worker creates a draft from the approved immutable snapshot and requests p
     });
     await publishRuntime.processConnectorExecution(publishRuntime.claimNextConnectorExecution());
     assert.equal(db.prepare(`SELECT "status" FROM "SpaceConnectorExecution" WHERE "id" = 'execution-2'`).get().status, 'WAITING_PROVIDER');
+    assert.equal(JSON.parse(db.prepare('SELECT "publicConfig" FROM "SpaceConnector"').get().publicConfig).interfacePermissions.publish.status, 'available');
     assert.equal(db.prepare(`SELECT "status" FROM "SpaceActionRequest" WHERE "id" = ?`).get(publishAction.id).status, 'APPROVED');
     currentTime = '2026-09-09T02:01:00.000Z';
     await publishRuntime.processConnectorExecution(publishRuntime.claimNextConnectorExecution());
@@ -122,10 +169,29 @@ test('worker validates connector credentials without performing a publishing wri
       status: 'READY', lastCheckedAt: '2026-09-09T01:00:00.000Z', lastError: null,
     });
     assert.equal(db.prepare(`SELECT "status" FROM "SpaceActionRequest" WHERE "id" = 'action-1'`).get().status, 'COMPLETED');
-    assert.equal(db.prepare(`SELECT "content" FROM "SpaceMessage" WHERE "sourceKey" = 'connector-action:action-1:WECHAT_VALIDATE_CONNECTION'`).get().content, '微信公众号连接验证通过。');
+    assert.match(db.prepare(`SELECT "content" FROM "SpaceMessage" WHERE "sourceKey" = 'connector-action:action-1:WECHAT_VALIDATE_CONNECTION'`).get().content, /凭据验证通过.*权限仍以实际/);
+    assert.equal(JSON.parse(db.prepare(`SELECT "publicConfig" FROM "SpaceConnector"`).get().publicConfig).interfacePermissions, undefined);
   } finally {
     db.close();
   }
+});
+
+test('approved cover changed without changing size fails before any external upload', async () => {
+  const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'almaren-frozen-cover-'));
+  const db = database();
+  try {
+    const directory = path.join(projectRoot, 'data', 'spaces', 'user-1', 'space-1', 'workspace');
+    await mkdir(directory, { recursive: true });
+    const original = Buffer.from('original');
+    await writeFile(path.join(directory, 'cover.png'), Buffer.from('modified'));
+    insertBase(db, { article: { title: '冻结内容', html: '<p>正文</p>', coverFileId: 'cover-1', assets: [{ fileId: 'cover-1', fileName: 'cover.png', relativePath: 'workspace/cover.png', mimeType: 'image/png', size: original.length, sha256: createHash('sha256').update(original).digest('hex') }] } });
+    let writes = 0;
+    const runtime = createConnectorActionRuntime({ db, projectRoot, connectorSecret: secret, connectorFactory: () => ({ uploadImage: async () => { writes++; }, createDraft: async () => { writes++; } }) });
+    await runtime.processConnectorExecution(runtime.claimNextConnectorExecution());
+    assert.equal(writes, 0);
+    assert.match(db.prepare('SELECT "error" FROM "SpaceConnectorExecution"').get().error, /审批后发生变化/);
+    assert.equal(db.prepare('SELECT COUNT(*) AS count FROM "SpaceActionRequest" WHERE "kind" = ?').get('WECHAT_PUBLISH').count, 0);
+  } finally { db.close(); await rm(projectRoot, { recursive: true, force: true }); }
 });
 
 test('worker marks interrupted external actions uncertain instead of replaying them', () => {

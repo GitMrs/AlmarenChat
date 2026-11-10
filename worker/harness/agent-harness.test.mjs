@@ -659,6 +659,22 @@ test('read-only advisor can inspect the workspace but cannot mutate it', async (
   assert.equal(result, '建议先确认验收标准。');
 });
 
+test('native advisor receives the current WeChat article context without gaining write access', async () => {
+  let observed = '';
+  await runAdvisorHarness({
+    run, task, agent, context: { ...context, wechatContext: '账号定位：新手读者\n本篇需求：只修改开头' },
+    previousResults: [], fakeMode: false, isCancelled: () => false, taskTimeoutMs: 30_000,
+    workspaceWriteAllowed: false, baselinePaths: new Set(), workspaceOptions: {},
+    completeMessage: async (_model, messages, tools) => {
+      observed = messages[1].content;
+      assert.ok(!tools.some((tool) => tool.function.name === 'write_file'));
+      return { content: '保留其他段落，调整开头。' };
+    },
+  });
+  assert.match(observed, /账号定位：新手读者/);
+  assert.match(observed, /本篇需求：只修改开头/);
+});
+
 test('worker only exposes authorized Bilibili tools when the task mentions Bilibili', async () => {
   const bilibiliTools = {
     tools: [{

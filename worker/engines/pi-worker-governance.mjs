@@ -25,6 +25,7 @@ import {
 } from '../runtime/image-generation-runtime.mjs';
 import { reserveModelRequest } from '../runtime/model-budget.mjs';
 import { loadSkillPackage, readSkillPackageFile } from '../../lib/agents/runtime/skill-package-loader.mjs';
+import { prepareWechatTaskSkill } from '../../lib/workspace/wechat/wechat-task-skill.mjs';
 import { runSandboxedSkillProcess } from '../runtime/sandbox-runner.mjs';
 import { searchWeb } from '../../lib/agents/runtime/runtime-tools.mjs';
 import { fetchWebPage } from '../../lib/web/web-fetch.mjs';
@@ -580,8 +581,8 @@ export function createPiWorkerGovernance({
     const runId = safeId(request.run?.id, 'Run ID');
     const taskId = safeId(request.task?.id, 'Task ID');
     const attempt = Math.max(1, Number(request.task?.attempt) || 1);
-    const selectedSkill = taskSkill(request.task);
-    const packageInfo = await loadSkillPackage({
+    const selectedSkill = await prepareWechatTaskSkill({ projectRoot: request.workspaceOptions?.projectRoot, space: request.context?.space, task: request.task, skill: taskSkill(request.task) });
+    const packageInfo = selectedSkill.wechatMethods ? null : await loadSkillPackage({
       projectRoot: request.workspaceOptions?.projectRoot,
       packagePath: selectedSkill.packagePath,
     });

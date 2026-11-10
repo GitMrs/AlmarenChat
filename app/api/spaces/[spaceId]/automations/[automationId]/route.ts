@@ -12,7 +12,7 @@ import {
 async function ownedAutomation(spaceId: string, automationId: string, userId: string) {
   return prisma.spaceAutomation.findFirst({
     where: { id: automationId, spaceId, deletedAt: null, space: { userId } },
-    include: { space: { select: { templateId: true } } },
+    include: { space: { select: { templateId: true, workspaceType: true } } },
   });
 }
 
@@ -64,7 +64,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ sp
       data.shareTheme = body.shareTheme;
     }
     if (body?.completionAction !== undefined || body?.completionConfig !== undefined) {
-      const completion = normalizeAutomationCompletion(body, automation.space.templateId, automation);
+      const completion = normalizeAutomationCompletion(body, automation.space, automation);
       if (completion.completionAction === 'WEBHOOK_NOTIFY' && completion.completionConfig?.target === 'CUSTOM_WEBHOOK') {
         const webhook = await prisma.spaceWebhook.findFirst({ where: { id: completion.completionConfig.webhookId, spaceId, enabled: true }, select: { id: true } });
         if (!webhook) return NextResponse.json({ error: '请选择当前空间中已启用的通知 Webhook' }, { status: 400 });

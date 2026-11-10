@@ -3,7 +3,7 @@
 import { startSerialPolling } from '@/lib/space/serial-polling.mjs';
 import { compactActivityEvents } from '@/lib/space/activity-events.mjs';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, usePathname, useRouter } from 'next/navigation';
 import { Activity, ArrowLeft, BookOpen, Flame, CalendarClock, Check, CheckCircle2, ChevronRight, Code2, Copy, Cpu, Database, Download, ExternalLink, FilePenLine, FileText, Gamepad2, Globe2, History, Image as ImageIcon, ListTodo, Loader2, MessagesSquare, Newspaper, PackagePlus, Paperclip, Play, Plus, RotateCcw, Save, Send, Settings2, ShieldCheck, SkipForward, Sliders, SlidersHorizontal, Square, Trash2, TrendingUp, Tv, UploadCloud, UsersRound, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -26,6 +26,8 @@ import KnowledgeManager from '@/components/agent/KnowledgeManager';
 import SpaceGameCenter from '@/components/spaces/game/SpaceGameCenter';
 import BilibiliPanel from '@/components/spaces/BilibiliPanel';
 import SpaceCryptoCenter from '@/components/spaces/SpaceCryptoCenter';
+import WechatArticleCenter from '@/components/spaces/WechatArticleCenter';
+import { isWechatWorkspace, spaceWorkspaceHref } from '@/lib/workspace/wechat/wechat-workspace.mjs';
 import SpaceDiscussionStatus from '@/components/spaces/SpaceDiscussionStatus';
 import SpaceRelayStatus from '@/components/spaces/game/SpaceRelayStatus';
 import SpaceOperationsCenter, { type SpaceOperationsTab } from '@/components/spaces/SpaceOperationsCenter';
@@ -544,8 +546,16 @@ function activeMentionToken(value: string, caret: number) {
 export default function SpaceDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const pathname = usePathname();
+  const dedicatedWechatRoute = pathname.startsWith('/wechat/');
   const spaceId = params.spaceId as string;
   const [space, setSpace] = useState<any | null>(null);
+  const wechatWorkspace = isWechatWorkspace(space);
+  useEffect(() => {
+    if (!space || (!dedicatedWechatRoute && !wechatWorkspace)) return;
+    const destination = spaceWorkspaceHref(space);
+    if (pathname !== destination) router.replace(`${destination}${window.location.search}`);
+  }, [space?.id, space?.workspaceType, space?.templateId, pathname, router, dedicatedWechatRoute, wechatWorkspace]);
   const [messages, setMessages] = useState<SpaceMessage[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [files, setFiles] = useState<SpaceFile[]>([]);
@@ -613,7 +623,10 @@ export default function SpaceDetailPage() {
   const [relays, setRelays] = useState<SpaceRelay[]>([]);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [mode, setMode] = useState<'chat' | 'task'>('chat');
-  const [workspaceView, setWorkspaceView] = useState<'chat' | 'files' | 'operations' | 'games' | 'crypto' | 'bilibili'>('chat');
+  const [workspaceView, setWorkspaceView] = useState<'chat' | 'files' | 'operations' | 'games' | 'crypto' | 'bilibili' | 'wechat_articles'>('chat');
+  useEffect(() => {
+    if (space && (space.runtimeType === 'PI_CODING' || !wechatWorkspace) && workspaceView === 'wechat_articles') setWorkspaceView('chat');
+  }, [space?.runtimeType, wechatWorkspace, workspaceView]);
   const [gameCenterInitialGame, setGameCenterInitialGame] = useState<'gomoku' | 'undercover' | 'trpg' | 'live' | 'turtlesoup' | null>(null);
   const [gameCenterInitialGomokuMode, setGameCenterInitialGomokuMode] = useState<'pve' | 'eve'>('pve');
   const [gameCenterInitialBlackId, setGameCenterInitialBlackId] = useState<string | undefined>(undefined);
@@ -979,7 +992,7 @@ export default function SpaceDetailPage() {
         : fileAssetTab === 'OUTPUT'
           ? selectedWorkId !== 'all' && selectedWorkId !== 'legacy' ? `works/${selectedWorkId}/` : 'works/'
           : '';
-  const workNoun = WORK_NOUNS[space?.templateId || ''] || '成果';
+  const workNoun = wechatWorkspace ? '文章' : WORK_NOUNS[space?.templateId || ''] || '成果';
   const workSelectionLocked = isStreaming || isRunActive || hasPendingTaskProposal || switchingWork;
 
   const copyAssetPath = async () => {
@@ -1037,7 +1050,7 @@ export default function SpaceDetailPage() {
     }
   };
 
-  const switchActiveWork = async (workId: string) => {
+  const switchActiveWork = async (workId: string, reportFailure = false) => {
     if (workSelectionLocked || workId === activeWorkId) {
       setWorkMenuOpen(false);
       return;
@@ -1054,6 +1067,7 @@ export default function SpaceDetailPage() {
       setRenamingWork(false);
     } catch (err: any) {
       setError(err.message || '切换当前成果失败');
+      if (reportFailure) throw err;
     } finally {
       setSwitchingWork(false);
     }
@@ -2285,7 +2299,7 @@ export default function SpaceDetailPage() {
         shareTheme: automationShareTheme,
         completionConfig: automationCompletionAction === 'WEBHOOK_NOTIFY'
           ? { target: automationWebhookTarget, ...(automationWebhookTarget === 'CUSTOM_WEBHOOK' ? { webhookId: automationWebhookId } : {}) }
-          : space?.templateId === 'wechat-article' && automationCompletionAction === 'WECHAT_CREATE_DRAFT'
+          : wechatWorkspace && automationCompletionAction === 'WECHAT_CREATE_DRAFT'
             ? { themeId: automationWechatTheme }
             : null,
         enabled: isEditing ? undefined : automationEnableOnCreate,
@@ -3456,7 +3470,7 @@ export default function SpaceDetailPage() {
                 </p>
               </section>
 
-              {space?.templateId === 'wechat-article' && (
+              {wechatWorkspace && (
                 <section className="border-b border-black/[0.06] px-6 py-5">
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-2 text-xs font-black text-slate-500">
@@ -3569,14 +3583,15 @@ export default function SpaceDetailPage() {
             </header>
 
             {!isPiSpace && (
-              <nav className="flex h-14 shrink-0 items-stretch gap-1 border-b border-black/[0.06] bg-white px-3 sm:px-5" aria-label="空间工作视图">
+              <nav className={`flex h-14 shrink-0 items-stretch gap-1 border-b border-black/[0.06] bg-white px-3 sm:px-5${wechatWorkspace ? ' overflow-x-auto' : ''}`} aria-label={wechatWorkspace ? '公众号工作视图' : '空间工作视图'}>
                 {[
                   { id: 'chat' as const, label: '对话', icon: MessagesSquare },
+                  ...(wechatWorkspace ? [{ id: 'wechat_articles' as const, label: '当前文章', icon: Newspaper }] : []),
                   ...(space.templateId === 'crypto-contract-trading' ? [{ id: 'crypto' as const, label: '作战中心', icon: TrendingUp }] : []),
                   ...(space.templateId === 'gaming-room' ? [{ id: 'games' as const, label: '游戏中心', icon: Gamepad2 }] : []),
                   ...(space.templateId === 'bilibili-creator' ? [{ id: 'bilibili' as const, label: 'B 站', icon: Tv }] : []),
-                  { id: 'files' as const, label: '成果', icon: FileText, count: files.length },
-                  { id: 'operations' as const, label: '运营', icon: Activity, count: actionRequests.filter((action) => action.status === 'PENDING').length },
+                  { id: 'files' as const, label: wechatWorkspace ? '素材与文件' : '成果', icon: FileText, count: files.length },
+                  { id: 'operations' as const, label: wechatWorkspace ? '发布与运营' : '运营', icon: Activity, count: actionRequests.filter((action) => action.status === 'PENDING').length },
                 ].map((item) => {
                   const Icon = item.icon;
                   return (
@@ -3585,7 +3600,8 @@ export default function SpaceDetailPage() {
                       type="button"
                       onClick={() => {
                         if (item.id === 'operations') {
-                          openOperations();
+                          if (wechatWorkspace) void openWechatPublications();
+                          else void openOperations();
                         } else if (item.id === 'games') {
                           setSidePanel(null);
                           setGameCenterInitialGame(null);
@@ -3599,7 +3615,7 @@ export default function SpaceDetailPage() {
                         }
                       }}
                       aria-pressed={workspaceView === item.id}
-                      className={`inline-flex h-full items-center gap-2 border-b-2 px-3 text-xs font-black transition ${workspaceView === item.id ? 'border-slate-950 text-slate-950' : 'border-transparent text-slate-400 hover:border-slate-200 hover:text-slate-800'}`}
+                      className={`inline-flex h-full items-center gap-2 border-b-2 px-3 text-xs font-black transition ${wechatWorkspace ? 'shrink-0 ' : ''}${workspaceView === item.id ? 'border-slate-950 text-slate-950' : 'border-transparent text-slate-400 hover:border-slate-200 hover:text-slate-800'}`}
                     >
                       <Icon size={15} />
                       {item.label}
@@ -3607,6 +3623,7 @@ export default function SpaceDetailPage() {
                     </button>
                   );
                 })}
+                {wechatWorkspace && <button type="button" onClick={() => setSidePanel('connector')} className="shrink-0 px-3 text-xs font-black text-slate-500">账号连接</button>}
                 <button
                   type="button"
                   onClick={() => setSidePanel('runs')}
@@ -3620,7 +3637,31 @@ export default function SpaceDetailPage() {
               </nav>
             )}
 
-            {!isPiSpace && workspaceView === 'files' ? (
+            {!isPiSpace && wechatWorkspace && workspaceView === 'wechat_articles' ? (
+              <WechatArticleCenter
+                key={currentWork?.id || 'new'}
+                spaceId={spaceId}
+                work={currentWork}
+                files={files}
+                locked={workSelectionLocked}
+                onDiscuss={() => setWorkspaceView('chat')}
+                onOpenFile={(file) => { setFileEditorInitialMode('preview'); setEditingFile(file); }}
+                onStrategy={async () => {
+                  const result = await spacesApi.openWechatStrategy(spaceId);
+                  setFiles((items) => [result.file, ...items.filter((item) => item.id !== result.file.id)]);
+                  setFileEditorInitialMode('source');
+                  setEditingFile(result.file);
+                }}
+                onSaveObjective={async (work, objective) => {
+                  const result = await spacesApi.updateWork(spaceId, work.id, { objective, expectedUpdatedAt: work.updatedAt });
+                  setWorks((items) => items.map((item) => item.id === work.id ? result.work : item));
+                }}
+                onSavePublishing={async (work, settings) => {
+                  const result = await spacesApi.updateWork(spaceId, work.id, { wechatPublishing: settings, expectedUpdatedAt: work.updatedAt });
+                  setWorks((items) => items.map((item) => item.id === work.id ? result.work : item));
+                }}
+              />
+            ) : !isPiSpace && workspaceView === 'files' ? (
               <div className="min-h-0 flex-1 overflow-y-auto bg-[#fbfaf7]">
                 <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 lg:px-10 lg:py-8">
                   <div className="flex flex-wrap items-end justify-between gap-4 border-b border-black/[0.07] pb-5">
@@ -3628,10 +3669,10 @@ export default function SpaceDetailPage() {
                       <h2 className="text-xl font-black text-slate-950">资料与成果</h2>
                       <div className="mt-1 text-xs font-semibold text-slate-400">{visibleFiles.length} 个文件</div>
                     </div>
-                    <div className="flex min-w-0 items-center gap-2">
-                      {fileAssetTab === 'OUTPUT' && <select value={selectedWorkId} onChange={(event) => setSelectedWorkId(event.target.value)} aria-label="筛选成果" className="h-10 min-w-0 flex-1 rounded-lg border border-black/[0.08] bg-white px-3 text-xs font-bold text-slate-700 outline-none sm:w-80">
+                    <div className={wechatWorkspace ? 'flex max-w-full min-w-0 flex-wrap items-center gap-2' : 'flex min-w-0 items-center gap-2'}>
+                      {fileAssetTab === 'OUTPUT' && <select value={selectedWorkId} onChange={(event) => setSelectedWorkId(event.target.value)} aria-label="筛选成果" title={wechatWorkspace ? workById.get(selectedWorkId)?.title : undefined} className={`h-10 min-w-0 flex-1 rounded-lg border border-black/[0.08] bg-white px-3 text-xs font-bold text-slate-700 outline-none sm:w-80${wechatWorkspace ? ' max-w-full truncate' : ''}`}>
                           <option value="all">全部成果</option>
-                          {works.map((work, index) => <option key={work.id} value={work.id}>{WORK_NOUNS[work.kind] || '成果'} {works.length - index} · {work.title}</option>)}
+                          {works.map((work, index) => <option key={work.id} value={work.id} title={wechatWorkspace ? work.title : undefined}>{WORK_NOUNS[work.kind] || '成果'} {works.length - index} · {wechatWorkspace ? compactWorkTitle(work.title, 20) : work.title}</option>)}
                           {files.some((file) => !file.workId) && <option value="legacy">公共 / 历史</option>}
                         </select>}
                       {currentWork && fileAssetTab === 'OUTPUT' && <>
@@ -3756,7 +3797,7 @@ export default function SpaceDetailPage() {
                 bilibiliAnalysisCount={bilibiliAnalysisCount}
                 bilibiliGrowthLoading={bilibiliGrowthLoading}
                 channel={
-                  space?.templateId === 'wechat-article'
+                  wechatWorkspace
                     ? 'wechat'
                     : space?.templateId === 'bilibili-creator'
                       ? 'bilibili'
@@ -5251,7 +5292,7 @@ export default function SpaceDetailPage() {
                               </div>
                             </div>
                           </div>
-                          {space?.templateId === 'wechat-article' && (
+                          {wechatWorkspace && (
                             <div>
                               <div className="text-xs font-black text-slate-400">微信发布漏斗</div>
                               <div className="mt-3 grid grid-cols-2 gap-y-4 border-y border-black/[0.06] py-4 text-center">
@@ -5745,7 +5786,7 @@ export default function SpaceDetailPage() {
                           </div>
                         </section>
                       )}
-                      {sidePanel === 'connector' && space?.templateId === 'wechat-article' && <section>
+                      {sidePanel === 'connector' && wechatWorkspace && <section>
                         <div className="flex items-start justify-between gap-3">
                           <div>
                             <div className="flex items-center gap-2 text-sm font-black text-slate-700">
@@ -5796,6 +5837,13 @@ export default function SpaceDetailPage() {
                           {wechatConnector?.lastError && (
                             <div className="rounded-md bg-rose-50 px-3 py-2 text-[11px] font-semibold leading-5 text-rose-600">{wechatConnector.lastError}</div>
                           )}
+                          <div className="space-y-1 text-[11px] font-semibold leading-5 text-slate-500">
+                            {(['draft', 'publish'] as const).map((operation) => {
+                              const permission = wechatConnector?.publicConfig?.interfacePermissions?.[operation];
+                              return <div key={operation}>{operation === 'draft' ? '创建草稿' : '正式发布'}：{permission?.status === 'available' ? '最近获准操作已通过' : permission?.status === 'unavailable' ? '微信返回无接口权限' : '权限待确认，以实际获准操作结果为准'}</div>;
+                            })}
+                            <p>无需连接也可在正文预览中复制排版。接口失败时，可前往 <a href="https://mp.weixin.qq.com/" target="_blank" rel="noopener noreferrer" className="underline">微信公众平台</a> 核对权限或手动处理。</p>
+                          </div>
                           <div className="flex flex-wrap items-center justify-between gap-3">
                             <span className="text-[11px] font-bold text-slate-400">
                               {!wechatConnector
@@ -5803,11 +5851,11 @@ export default function SpaceDetailPage() {
                                 : !wechatConnector.enabled
                                   ? '已配置 · 已停用'
                                   : wechatConnector.status === 'READY'
-                                    ? '连接可用'
+                                    ? '凭据验证通过'
                                     : wechatConnector.status === 'CHECKING'
                                       ? '正在验证连接'
                                       : wechatConnector.status === 'ERROR'
-                                        ? '连接验证失败'
+                                        ? '最近一次连接操作失败'
                                         : '已配置 · 待验证'}
                             </span>
                             <div className="flex items-center gap-2">
@@ -6037,7 +6085,7 @@ export default function SpaceDetailPage() {
                               >
                                 <option value="NONE">仅完成成果</option>
                                 <option value="WEBHOOK_NOTIFY">通知 Webhook</option>
-                                {space?.templateId === 'wechat-article' && <option value="WECHAT_CREATE_DRAFT">准备微信草稿</option>}
+                                {wechatWorkspace && <option value="WECHAT_CREATE_DRAFT">准备微信草稿</option>}
                               </select>
                               {automationCompletionAction === 'WECHAT_CREATE_DRAFT' && (
                                 <select
@@ -6366,8 +6414,9 @@ export default function SpaceDetailPage() {
         spaceId={spaceId}
         file={editingFile}
         initialMode={fileEditorInitialMode}
-        publishTarget={space?.templateId === 'wechat-article' ? 'wechat' : undefined}
+        publishTarget={wechatWorkspace ? 'wechat' : undefined}
         wechatConnectorReady={Boolean(wechatConnector?.enabled && wechatConnector.status === 'READY')}
+        wechatPublishingSettings={editingFile?.workId ? workById.get(editingFile.workId)?.metadata?.wechatPublishing as Record<string, any> | undefined : undefined}
         wechatCoverFiles={files.filter((file) => file.status === 'READY' && String(file.mimeType || '').startsWith('image/'))}
         onRequestWechatDraft={editingFile ? (coverFileId, themeId) => requestWechatDraft(editingFile, coverFileId, themeId) : undefined}
         onClose={() => setEditingFile(null)}

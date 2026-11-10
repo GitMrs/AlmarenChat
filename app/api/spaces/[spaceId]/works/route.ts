@@ -3,6 +3,7 @@ import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { getSpaceForUser } from '@/app/api/_lib/spaces';
 import { initialWorkStage } from '@/lib/space/space-templates.mjs';
+import { isWechatWorkspace } from '@/lib/workspace/wechat/wechat-workspace.mjs';
 
 export async function GET(request: Request, { params }: { params: Promise<{ spaceId: string }> }) {
   try {
@@ -40,7 +41,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
     const templateSnapshot = space.templateSnapshot && typeof space.templateSnapshot === 'object'
       ? space.templateSnapshot as Record<string, unknown>
       : null;
-    const kind = space.templateId || String(body?.kind || 'general').trim().slice(0, 80) || 'general';
+    const kind = isWechatWorkspace(space) ? 'wechat-article' : space.templateId || String(body?.kind || 'general').trim().slice(0, 80) || 'general';
     const work = await prisma.$transaction(async (tx) => {
       const created = await tx.spaceWork.create({
         data: {

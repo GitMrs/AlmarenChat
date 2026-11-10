@@ -212,6 +212,7 @@ model Space {
   name               String
   description        String?
   instructions       String?
+  workspaceType      String   @default("GENERAL")
   runtimeType        String   @default("NATIVE")
   executionEngine    String   @default("native")
   executionMode      String   @default("REVIEW_DISPATCH")

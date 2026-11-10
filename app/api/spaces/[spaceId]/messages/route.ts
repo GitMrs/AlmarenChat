@@ -40,6 +40,7 @@ import { currentTimeContext } from '@/lib/agents/memory/current-time-context.mjs
 import { RESPONSE_GROUNDING_GUIDANCE } from '@/lib/chat/conversation-grounding.mjs';
 import { recordSpaceAgentExperiences } from '@/app/api/_lib/agent-personal-memory';
 import { prepareSpaceMessageRuntime } from '@/lib/space/space-message-runtime';
+import { loadWechatContext } from '@/lib/workspace/wechat/wechat-context.mjs';
 import { loadAgentWorldContext } from '@/lib/world/context';
 import { buildConversationContinuityGuidance } from '@/lib/chat/conversation-continuity.mjs';
 import { logModelRequest } from '@/lib/chat/model-request-log.mjs';
@@ -984,6 +985,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
 
     spaceMessageRuntime = await prepareSpaceMessageRuntime({
       templateId: space.templateId,
+      workspaceType: space.workspaceType,
       agentId: targetAgent.id,
       spaceId,
       textMessage,
@@ -996,6 +998,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
       continuityGuidance,
       spaceKnowledgeContext,
       spaceMessageRuntime.promptContext,
+      !useIsolatedContext ? loadWechatContext({ projectRoot: process.cwd(), userId, space, work: selectedWork }) : '',
       targetAgent.systemPrompt || targetAgent.description || `你是 ${targetAgent.name}。`,
       RESPONSE_GROUNDING_GUIDANCE,
       agentMemory,

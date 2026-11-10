@@ -1,4 +1,5 @@
 import { decodeChatBody } from '../chat/chat-stream.mjs';
+import type { SpaceFile } from '@/types';
 import type { EvaluatedEvent } from '../workspace/crypto/event-temporal';
 import type { AgentModelFields, AgentModelSettingsResponse, AgentMemoryItem, AgentExperience, ChatContextStats } from '@/types';
 import type { AgentDailyStudyRecord } from '@/lib/agent-study/types';
@@ -572,7 +573,7 @@ export const conversations = {
 // Spaces
 export const spaces = {
   list: () => request<{ spaces: any[] }>('/spaces'),
-  create: (data: { name: string; description?: string; instructions?: string; executionEngine?: 'native' | 'pi'; executionMode?: 'AUTO' | 'REVIEW_DISPATCH'; agentIds?: string[]; templateId?: string | null }) =>
+  create: (data: { name: string; description?: string; instructions?: string; workspaceType?: 'GENERAL' | 'WECHAT'; executionEngine?: 'native' | 'pi'; executionMode?: 'AUTO' | 'REVIEW_DISPATCH'; agentIds?: string[]; templateId?: string | null }) =>
     request<{ space: any }>('/spaces', {
       method: 'POST',
       body: JSON.stringify(data),
@@ -741,6 +742,7 @@ export const spaces = {
     }),
   runs: (id: string) => request<{ runs: AgentRun[] }>(`/spaces/${id}/runs`),
   works: (id: string) => request<{ works: SpaceWork[] }>(`/spaces/${id}/works`),
+  openWechatStrategy: (id: string) => request<{ file: SpaceFile }>(`/spaces/${id}/wechat/strategy`, { method: 'POST' }),
   createWork: (spaceId: string, data: { title: string; objective?: string; kind?: string }) =>
     request<{ work: SpaceWork }>(`/spaces/${spaceId}/works`, {
       method: 'POST',
@@ -751,7 +753,7 @@ export const spaces = {
       method: 'PATCH',
       body: JSON.stringify({ title }),
     }),
-  updateWork: (spaceId: string, workId: string, data: { title?: string; objective?: string | null; stage?: string | null; status?: 'ACTIVE' | 'COMPLETED' | 'ARCHIVED' }) =>
+  updateWork: (spaceId: string, workId: string, data: { title?: string; objective?: string | null; stage?: string | null; status?: 'ACTIVE' | 'COMPLETED' | 'ARCHIVED'; expectedUpdatedAt?: string; wechatPublishing?: Record<string, unknown> }) =>
     request<{ work: SpaceWork }>(`/spaces/${spaceId}/works/${workId}`, {
       method: 'PATCH',
       body: JSON.stringify(data),

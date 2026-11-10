@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { isWechatWorkspace } from '../../lib/workspace/wechat/wechat-workspace.mjs';
 import { automationAuthorization, nextScheduledAutomationRunAt } from '../../lib/space/space-automation-policy.mjs';
 import { executeSpaceScriptSync } from '../../lib/space/space-script-runner.mjs';
 import {
@@ -64,7 +65,7 @@ export function triggerNextDueAutomation(db, timestamp = new Date().toISOString(
   const { projectRoot = process.cwd() } = options;
   return db.transaction(() => {
     const automation = db.prepare(
-      `SELECT automation.*, space."userId", space."templateId", space."templateSnapshot",
+      `SELECT automation.*, space."userId", space."templateId", space."templateSnapshot", space."workspaceType",
               space."executionEngine", space."runtimeType", space."activeWorkId"
        FROM "SpaceAutomation" automation
        JOIN "Space" space ON space."id" = automation."spaceId"
@@ -163,7 +164,7 @@ export function triggerNextDueAutomation(db, timestamp = new Date().toISOString(
           `INSERT INTO "SpaceWork"
            ("id", "spaceId", "title", "kind", "status", "stage", "objective", "completedAt", "createdAt", "updatedAt")
            VALUES (?, ?, ?, ?, 'COMPLETED', 'delivery', ?, ?, ?, ?)`
-        ).run(workId, automation.spaceId, title, automation.templateId || 'general', contentOutput, timestamp, timestamp, timestamp);
+        ).run(workId, automation.spaceId, title, isWechatWorkspace(automation) ? 'wechat-article' : automation.templateId || 'general', contentOutput, timestamp, timestamp, timestamp);
 
         db.prepare(
           `INSERT INTO "SpaceAutomationExecution"
@@ -226,7 +227,7 @@ export function triggerNextDueAutomation(db, timestamp = new Date().toISOString(
       work = {
         id: randomUUID(),
         title: workTitle(automation, timestamp),
-        kind: automation.templateId || 'general',
+        kind: isWechatWorkspace(automation) ? 'wechat-article' : automation.templateId || 'general',
       };
       db.prepare(
         `INSERT INTO "SpaceWork"

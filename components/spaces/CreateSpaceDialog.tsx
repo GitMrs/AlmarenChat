@@ -7,6 +7,7 @@ import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, BookOpen, Check, ChevronRigh
 import Avatar from '@/components/shared/Avatar';
 import { getSpaceTemplate, SPACE_TEMPLATES, spaceTemplateInstructions } from '@/lib/space/space-templates.mjs';
 import type { Agent } from '@/types';
+import { WECHAT_WORKSPACE_INSTRUCTIONS } from '@/lib/workspace/wechat/wechat-workspace.mjs';
 
 export type CreateSpaceInput = {
   name: string;
@@ -14,6 +15,7 @@ export type CreateSpaceInput = {
   instructions: string;
   agentIds: string[];
   templateId: string | null;
+  workspaceType?: 'WECHAT';
 };
 
 const PROFESSIONAL_TEAM_IDS = ['professional-product', 'professional-ux', 'professional-frontend'];
@@ -164,7 +166,7 @@ export default function CreateSpaceDialog({
     if (!item) return;
     setName(item.defaultName);
     setDescription(item.description);
-    setInstructions(spaceTemplateInstructions(item));
+    setInstructions(item.id === 'wechat-article' ? WECHAT_WORKSPACE_INSTRUCTIONS : spaceTemplateInstructions(item));
     setSelectedIds(item.recommendedAgentIds.filter((id) => agentById.has(id)).slice(0, 6));
   };
 
@@ -194,7 +196,8 @@ export default function CreateSpaceDialog({
       description: description.trim(),
       instructions: instructions.trim(),
       agentIds: selectedIds,
-      templateId,
+      templateId: templateId === 'wechat-article' ? null : templateId,
+      ...(templateId === 'wechat-article' ? { workspaceType: 'WECHAT' as const } : {}),
     });
   };
 

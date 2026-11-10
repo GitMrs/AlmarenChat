@@ -11,6 +11,7 @@ import CreateSpaceDialog, { type CreateSpaceInput } from '@/components/spaces/Cr
 import { spaces as spacesApi, agents as agentsApi } from '@/lib/client/api';
 import { getBuiltInAgents } from '@/lib/agents/data/agents-data';
 import type { Agent } from '@/types';
+import { spaceWorkspaceHref } from '@/lib/workspace/wechat/wechat-workspace.mjs';
 
 function formatTime(value: string) {
   const date = new Date(value);
@@ -82,7 +83,7 @@ export default function SpacesPage() {
     setCreateError('');
     try {
       const result = await spacesApi.create(input);
-      router.push(`/spaces/${result.space.id}`);
+      router.push(spaceWorkspaceHref(result.space));
     } catch (err: any) {
       setCreateError(err.message || '创建空间失败');
     } finally {
@@ -181,7 +182,7 @@ export default function SpacesPage() {
                       >
                         <button
                           type="button"
-                          onClick={() => router.push(`/spaces/${space.id}`)}
+                          onClick={() => router.push(spaceWorkspaceHref(space))}
                           className="flex w-full items-center gap-4 p-5 text-left transition hover:bg-[#fbfaf7]"
                         >
                           <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-3xl bg-slate-950 text-white">

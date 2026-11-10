@@ -60,7 +60,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
     const scriptPath = normalizeAutomationScriptPath(body?.scriptPath, executionMode);
     const networkPolicy = ['forbidden', 'allowed', 'required'].includes(body?.networkPolicy) ? body.networkPolicy : 'forbidden';
     const shareTheme = ['inherit', 'clean', 'editorial-handwritten'].includes(body?.shareTheme) ? body.shareTheme : 'inherit';
-    const completion = normalizeAutomationCompletion(body, space.templateId);
+    const completion = normalizeAutomationCompletion(body, space);
     if (completion.completionAction === 'WEBHOOK_NOTIFY' && completion.completionConfig?.target === 'CUSTOM_WEBHOOK') {
       const webhookId = completion.completionConfig.webhookId;
       const webhook = await prisma.spaceWebhook.findFirst({ where: { id: webhookId, spaceId, enabled: true }, select: { id: true } });

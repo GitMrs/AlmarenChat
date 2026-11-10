@@ -8,6 +8,10 @@ import Database from 'better-sqlite3';
 const BASELINE_MIGRATION = '20260921180000_add_space_automation_execution_mode';
 const MANUAL_MIGRATION_REPAIRS = [
   {
+    migration: '20261109090000_add_wechat_workspace_type',
+    columns: [{ table: 'Space', names: ['workspaceType'] }],
+  },
+  {
     migration: '20261031120000_add_conversation_context_state',
     tables: [{ name: 'ConversationContextState', columns: ['conversationId', 'summary', 'throughMessageId', 'throughCreatedAt', 'sourceCount', 'version', 'lastRequest', 'updatedAt'] }],
   },
@@ -846,6 +850,8 @@ try {
     }
     if (!hasColumn('Space', 'executionMode')) db.exec(`ALTER TABLE "Space" ADD COLUMN "executionMode" TEXT NOT NULL DEFAULT 'REVIEW_DISPATCH'`);
     if (!hasColumn('Space', 'templateId')) db.exec('ALTER TABLE "Space" ADD COLUMN "templateId" TEXT');
+    if (!hasColumn('Space', 'workspaceType')) db.exec(`ALTER TABLE "Space" ADD COLUMN "workspaceType" TEXT NOT NULL DEFAULT 'GENERAL'`);
+    db.exec(`UPDATE "Space" SET "workspaceType" = 'WECHAT' WHERE "templateId" = 'wechat-article' AND "workspaceType" = 'GENERAL'`);
     if (!hasColumn('Space', 'templateVersion')) db.exec('ALTER TABLE "Space" ADD COLUMN "templateVersion" INTEGER');
     if (!hasColumn('Space', 'templateSnapshot')) db.exec('ALTER TABLE "Space" ADD COLUMN "templateSnapshot" JSONB');
     if (!hasColumn('Space', 'discussionSettings')) db.exec('ALTER TABLE "Space" ADD COLUMN "discussionSettings" JSONB');

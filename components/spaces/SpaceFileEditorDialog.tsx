@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Code2, Copy, ExternalLink, Eye, Globe2, Image as ImageIcon, Loader2, Maximize2, Minimize2, Package, Save, Send, X } from 'lucide-react';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import MarkdownPublishingPreview from '@/components/spaces/MarkdownPublishingPreview';
+import WechatPublishingPreview from '@/components/spaces/WechatPublishingPreview';
 import StaticHtmlPreview from '@/components/spaces/StaticHtmlPreview';
 import { spaces as spacesApi } from '@/lib/client/api';
 import { isWechatPublishableMarkdownFile, splitWechatArticleMarkdown } from '@/lib/workspace/wechat/wechat-publishing.mjs';
@@ -12,38 +13,6 @@ import type { SpaceFile } from '@/types';
 
 const WECHAT_THEME_STORAGE_KEY = 'almaren:wechat-publishing-theme';
 
-function turnTablesIntoCards(root: HTMLElement, theme: ReturnType<typeof getWechatPublishingTheme>) {
-  for (const table of Array.from(root.querySelectorAll('table'))) {
-    const headers = Array.from(table.querySelectorAll('thead th')).map((cell) => cell.textContent?.trim() || '');
-    const rows = Array.from(table.querySelectorAll('tbody tr'));
-    if (headers.length === 0 || rows.length === 0) continue;
-
-    const list = document.createElement('section');
-    list.setAttribute('style', 'margin:20px 0;');
-    for (const row of rows) {
-      const values = Array.from(row.querySelectorAll('td')).map((cell) => cell.textContent?.trim() || '');
-      const card = document.createElement('section');
-      card.setAttribute('style', `margin:0 0 12px;padding:14px 16px;border:1px solid ${theme.border};background-color:${theme.cardBackground};`);
-      values.forEach((value, index) => {
-        if (!value) return;
-        const line = document.createElement('p');
-        line.setAttribute('style', `margin:${index === 0 ? '0 0 8px' : '4px 0'};color:#374151;font-size:${index === 0 ? '16px' : '14px'};line-height:1.7;`);
-        if (index === 0) {
-          const strong = document.createElement('strong');
-          strong.textContent = value;
-          line.appendChild(strong);
-        } else {
-          const label = document.createElement('strong');
-          label.textContent = `${headers[index] || `项目 ${index + 1}`}：`;
-          line.append(label, document.createTextNode(value));
-        }
-        card.appendChild(line);
-      });
-      list.appendChild(card);
-    }
-    table.replaceWith(list);
-  }
-}
 
 function legacyCopyHtml(html: string) {
   const target = document.createElement('div');
@@ -82,6 +51,7 @@ export default function SpaceFileEditorDialog({
   publishTarget,
   wechatConnectorReady = false,
   wechatCoverFiles = [],
+  wechatPublishingSettings,
   onRequestWechatDraft,
   onClose,
   onSaved,
@@ -92,6 +62,7 @@ export default function SpaceFileEditorDialog({
   publishTarget?: 'wechat';
   wechatConnectorReady?: boolean;
   wechatCoverFiles?: SpaceFile[];
+  wechatPublishingSettings?: Record<string, any>;
   onRequestWechatDraft?: (coverFileId: string, themeId: string) => Promise<void>;
   onClose: () => void;
   onSaved: (file: SpaceFile) => void;
@@ -144,9 +115,14 @@ export default function SpaceFileEditorDialog({
   }, []);
 
   useEffect(() => {
-    const available = wechatCoverFiles.filter((candidate) => !file?.workId || !candidate.workId || candidate.workId === file.workId);
+    const available = wechatCoverFiles.filter((candidate) => !candidate.workId || candidate.workId === file?.workId);
     setWechatCoverFileId((current) => available.some((candidate) => candidate.id === current) ? current : available[0]?.id || '');
   }, [file, wechatCoverFiles]);
+
+  useEffect(() => {
+    if (wechatPublishingSettings?.coverFileId) setWechatCoverFileId(wechatPublishingSettings.coverFileId);
+    if (WECHAT_PUBLISHING_THEMES.some((theme) => theme.id === wechatPublishingSettings?.themeId)) setWechatThemeId(wechatPublishingSettings!.themeId);
+  }, [file?.id, wechatPublishingSettings?.coverFileId, wechatPublishingSettings?.themeId]);
 
   useEffect(() => {
     if (!file) return;
@@ -381,7 +357,10 @@ export default function SpaceFileEditorDialog({
       return;
     }
     const clone = markdownPreviewRef.current.cloneNode(true) as HTMLDivElement;
-    turnTablesIntoCards(clone, wechatTheme);
+    if (clone.dataset.wechatPreviewError || clone.querySelector('img:not([src])')) {
+      setCopyError(clone.dataset.wechatPreviewError || '图片尚未加载完成，请稍后再复制');
+      return;
+    }
     const html = `<section style="margin:0 auto;max-width:680px;color:#374151;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">${clone.innerHTML}</section>`;
     const plainText = clone.textContent || '';
     try {
@@ -505,7 +484,7 @@ export default function SpaceFileEditorDialog({
                     <div className="mt-2 text-xl font-black leading-8 text-slate-900">{article.title || '尚未设置一级标题'}</div>
                   </div>
                 )}
-                <MarkdownPublishingPreview ref={markdownPreviewRef} content={article.body} themeId={wechatTheme.id} />
+                {wechatPublishing ? <WechatPublishingPreview ref={markdownPreviewRef} content={article.body} themeId={wechatTheme.id} spaceId={spaceId} files={wechatCoverFiles.filter((candidate) => !candidate.workId || candidate.workId === file.workId)} /> : <MarkdownPublishingPreview ref={markdownPreviewRef} content={article.body} themeId={wechatTheme.id} />}
               </div>
             ) : (
               <textarea
@@ -627,7 +606,7 @@ export default function SpaceFileEditorDialog({
                     aria-label="微信草稿封面"
                     className="h-8 min-w-0 max-w-64 flex-1 rounded-md border border-black/[0.08] bg-white px-2 text-xs font-bold text-slate-600 outline-none"
                   >
-                    {wechatCoverFiles.filter((candidate) => !file.workId || !candidate.workId || candidate.workId === file.workId).map((candidate) => (
+                    {wechatCoverFiles.filter((candidate) => !candidate.workId || candidate.workId === file.workId).map((candidate) => (
                       <option key={candidate.id} value={candidate.id}>{candidate.fileName}</option>
                     ))}
                   </select>

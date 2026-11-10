@@ -4,6 +4,7 @@ import { requireAuth } from '@/app/api/_lib/auth';
 import { ensureSpaceRoot, getSpaceForUser } from '@/app/api/_lib/spaces';
 import { randomUUID } from 'node:crypto';
 import { buildWechatDraftSnapshot } from '@/lib/workspace/wechat/wechat-draft-snapshot';
+import { isWechatWorkspace } from '@/lib/workspace/wechat/wechat-workspace.mjs';
 
 export async function GET(request: Request, { params }: { params: Promise<{ spaceId: string }> }) {
   try {
@@ -38,7 +39,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
     if (!requestId) return NextResponse.json({ error: '动作请求标识无效' }, { status: 400 });
     const space = await getSpaceForUser(spaceId, userId);
     if (!space) return NextResponse.json({ error: 'Space not found' }, { status: 404 });
-    if (space.templateId !== 'wechat-article') return NextResponse.json({ error: '当前空间不是公众号创作室' }, { status: 409 });
+    if (!isWechatWorkspace(space)) return NextResponse.json({ error: '当前空间不是公众号创作室' }, { status: 409 });
     const connector = await prisma.spaceConnector.findUnique({ where: { spaceId_provider: { spaceId, provider: 'WECHAT_OFFICIAL_ACCOUNT' } } });
     if (!connector?.enabled) return NextResponse.json({ error: '请先启用微信公众号连接器' }, { status: 409 });
     if (connector.status !== 'READY') return NextResponse.json({ error: '请先验证微信公众号连接是否可用' }, { status: 409 });
@@ -51,13 +52,16 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
     ]);
     if (!articleFile || !/\.(?:md|markdown)$/i.test(articleFile.fileName)) return NextResponse.json({ error: '请选择已完成的 Markdown 文章' }, { status: 400 });
     if (!coverFile || !String(coverFile.mimeType || '').startsWith('image/')) return NextResponse.json({ error: '请选择一张空间图片作为封面' }, { status: 400 });
-    if (articleFile.workId && coverFile.workId && articleFile.workId !== coverFile.workId) return NextResponse.json({ error: '封面必须属于当前文章成果' }, { status: 400 });
+    if (coverFile.workId && articleFile.workId !== coverFile.workId) return NextResponse.json({ error: '封面必须属于当前文章成果' }, { status: 400 });
+    const work = articleFile.workId ? await prisma.spaceWork.findFirst({ where: { id: articleFile.workId, spaceId } }) : null;
+    const metadata = work?.metadata as Record<string, any> | null;
     const draftPayload = await buildWechatDraftSnapshot({
       root: await ensureSpaceRoot(userId, spaceId),
       articleFile,
       coverFile,
       availableFiles: allFiles,
       themeId: typeof body.themeId === 'string' ? body.themeId : undefined,
+      publishingSettings: metadata?.wechatPublishing,
     });
     const timestamp = new Date();
     const action = await prisma.spaceActionRequest.upsert({
@@ -74,6 +78,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
     });
     return NextResponse.json({ action }, { status: action.status === 'PENDING' ? 201 : 200 });
   } catch (error: any) {
+    if (error.code === 'INVALID_INPUT') return NextResponse.json({ error: error.message }, { status: 400 });
     if (error.message === 'Unauthorized') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     if (error.code === 'ENOENT') return NextResponse.json({ error: '空间文件不存在' }, { status: 404 });
     if (error instanceof TypeError && /encoded data/i.test(error.message)) return NextResponse.json({ error: '文章不是有效的 UTF-8 文本' }, { status: 415 });

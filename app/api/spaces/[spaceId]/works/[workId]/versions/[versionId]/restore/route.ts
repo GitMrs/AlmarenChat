@@ -3,6 +3,8 @@ import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { getSpaceForUser } from '@/app/api/_lib/spaces';
 import { restoreWorkVersion } from '@/lib/space/work-versions.mjs';
+import { isWechatWorkspace } from '@/lib/workspace/wechat/wechat-workspace.mjs';
+import { isPiSpaceTurnActive } from '@/lib/pi-runtime/space-session.mjs';
 
 export async function POST(request: Request, { params }: { params: Promise<{ spaceId: string; workId: string; versionId: string }> }) {
   try {
@@ -10,6 +12,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
     const { spaceId, workId, versionId } = await params;
     const space = await getSpaceForUser(spaceId, userId);
     if (!space) return NextResponse.json({ error: 'Space not found' }, { status: 404 });
+    if (isWechatWorkspace(space)) {
+      const activeRun = await prisma.agentRun.findFirst({ where: { spaceId, status: { in: ['QUEUED', 'PLANNING', 'RUNNING', 'SUMMARIZING', 'CANCEL_REQUESTED'] } }, select: { id: true } });
+      if (activeRun || isPiSpaceTurnActive(spaceId)) return NextResponse.json({ error: '空间任务正在执行，暂时不能恢复文章版本' }, { status: 409 });
+    }
     const work = await prisma.spaceWork.findFirst({ where: { id: workId, spaceId } });
     const version = await prisma.spaceWorkVersion.findFirst({ where: { id: versionId, workId } });
     if (!work || !version) return NextResponse.json({ error: '成果或版本不存在' }, { status: 404 });

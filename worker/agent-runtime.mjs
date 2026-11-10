@@ -1,6 +1,7 @@
 import { reviewAcceptedTaskExperiences } from './runtime/agent-growth-review.mjs';
 import 'dotenv/config';
 import { randomUUID } from 'node:crypto';
+import { loadWechatContext } from '../lib/workspace/wechat/wechat-context.mjs';
 import { resolveAgentModelConfig } from '../lib/agents/model/agent-model-config.mjs';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -454,9 +455,11 @@ function loadRunContext(run) {
   } catch {
     // Older databases are upgraded lazily; environment configuration remains available.
   }
+  const wechatContext = loadWechatContext({ projectRoot, userId: run.userId, space, work: run.workId ? db.prepare('SELECT * FROM "SpaceWork" WHERE "id" = ? AND "spaceId" = ?').get(run.workId, run.spaceId) : null });
   return {
     space,
     bilibiliTools,
+    wechatContext,
     agents,
     model: defaultModel,
     imageModel: (() => {
@@ -481,6 +484,7 @@ function loadRunContext(run) {
     authorization,
     automated: coordinatorState?.automated === true,
     projectMemory: [
+      wechatContext,
       spaceMemoryContext(memory),
       spaceLearningContext(readSpaceLearningSync({ projectRoot, userId: run.userId, spaceId: run.spaceId })),
     ].filter(Boolean).join('\n\n'),

@@ -73,8 +73,21 @@ export function createConnectorActionRuntime({
     const payload = json(execution.payload, {});
     const connectorRecord = {
       ...execution,
+      id: execution.connectorId,
       publicConfig: json(execution.publicConfig, {}),
     };
+    let activeInterface = null;
+    function updateConnector(status, timestamp, lastError = null, permission = null) {
+      const current = db.prepare(`SELECT "publicConfig", "credentialCiphertext" FROM "SpaceConnector" WHERE "id" = ?`).get(execution.connectorId);
+      if (!current || current.credentialCiphertext !== execution.credentialCiphertext) return;
+      const config = json(current.publicConfig, {});
+      if (config.appId !== connectorRecord.publicConfig.appId) return;
+      if (permission && activeInterface) {
+        config.interfacePermissions = { ...config.interfacePermissions, [activeInterface]: { status: permission, checkedAt: timestamp } };
+      }
+      db.prepare(`UPDATE "SpaceConnector" SET "status" = ?, "publicConfig" = ?, "lastCheckedAt" = ?, "lastError" = ?, "updatedAt" = ? WHERE "id" = ? AND "credentialCiphertext" = ? AND "publicConfig" = ?`)
+        .run(status, JSON.stringify(config), timestamp, lastError, timestamp, execution.connectorId, current.credentialCiphertext, current.publicConfig);
+    }
     try {
       if (execution.provider !== 'WECHAT_OFFICIAL_ACCOUNT') throw new Error(`不支持的连接器：${execution.provider}`);
       const credentials = readWechatConnectorCredentials(connectorRecord, connectorSecret);
@@ -82,8 +95,8 @@ export function createConnectorActionRuntime({
         connector: connectorRecord,
         secret: connectorSecret,
         update: async (id, data) => db.prepare(
-          `UPDATE "SpaceConnector" SET "accessTokenCiphertext" = ?, "accessTokenExpiresAt" = ?, "updatedAt" = ? WHERE "id" = ?`
-        ).run(data.accessTokenCiphertext, data.accessTokenExpiresAt?.toISOString?.() || null, now(), id),
+          `UPDATE "SpaceConnector" SET "accessTokenCiphertext" = ?, "accessTokenExpiresAt" = ?, "updatedAt" = ? WHERE "id" = ? AND "credentialCiphertext" = ? AND json_extract("publicConfig", '$.appId') = ?`
+        ).run(data.accessTokenCiphertext, data.accessTokenExpiresAt?.toISOString?.() || null, now(), id, execution.credentialCiphertext, connectorRecord.publicConfig.appId),
       });
       const client = connectorFactory({ ...credentials, tokenCache });
       let result;
@@ -102,10 +115,12 @@ export function createConnectorActionRuntime({
           html = html.split(`data-almaren-space-file=\"${asset.fileId}\"`).join(`src=\"${upload.url}\"`);
         }
         if (html.includes('data-almaren-space-file=')) throw new Error('正文图片未全部上传到微信');
-        result = await client.createDraft([{ title: article.title, content: html, thumbMediaId: coverUpload.mediaId }]);
+        activeInterface = 'draft';
+        result = await client.createDraft([{ ...article, content: html, thumbMediaId: coverUpload.mediaId }]);
       } else if (execution.operation === 'WECHAT_PUBLISH') {
         if (!payload.mediaId) throw new Error('微信发布请求缺少草稿 ID');
         if (!execution.externalId) {
+          activeInterface = 'publish';
           result = await client.publish(payload.mediaId);
           const timestamp = now();
           const nextPollAt = new Date(new Date(timestamp).getTime() + wechatPublicationPollDelayMs(0)).toISOString();
@@ -114,7 +129,7 @@ export function createConnectorActionRuntime({
               `UPDATE "SpaceConnectorExecution" SET "status" = 'WAITING_PROVIDER', "responseSummary" = ?, "externalId" = ?, "nextPollAt" = ?, "pollCount" = 0, "updatedAt" = ? WHERE "id" = ?`
             ).run(JSON.stringify({ publishId: result.publishId, submitted: true }), result.publishId, nextPollAt, timestamp, execution.id);
             db.prepare(`UPDATE "SpaceActionRequest" SET "result" = ?, "updatedAt" = ? WHERE "id" = ?`).run(JSON.stringify({ publishId: result.publishId, status: 'PROCESSING' }), timestamp, execution.actionRequestId);
-            db.prepare(`UPDATE "SpaceConnector" SET "status" = 'READY', "lastCheckedAt" = ?, "lastError" = NULL, "updatedAt" = ? WHERE "id" = ?`).run(timestamp, timestamp, execution.connectorId);
+            updateConnector('READY', timestamp, null, 'available');
             message(db, { spaceId: execution.spaceId, content: `“${payload.title || '公众号文章'}”已提交微信，正在等待平台处理。`, actionId: execution.actionRequestId, kind: 'WECHAT_PUBLISH_SUBMITTED', timestamp });
           })();
           return result;
@@ -152,11 +167,9 @@ export function createConnectorActionRuntime({
         db.prepare(
           `UPDATE "SpaceActionRequest" SET "status" = 'COMPLETED', "result" = ?, "completedAt" = ?, "updatedAt" = ? WHERE "id" = ?`
         ).run(JSON.stringify(result), timestamp, timestamp, execution.actionRequestId);
-        db.prepare(
-          `UPDATE "SpaceConnector" SET "status" = 'READY', "lastCheckedAt" = ?, "lastError" = NULL, "updatedAt" = ? WHERE "id" = ?`
-        ).run(timestamp, timestamp, execution.connectorId);
+        updateConnector('READY', timestamp, null, activeInterface ? 'available' : null);
         if (execution.operation === 'WECHAT_VALIDATE_CONNECTION') {
-          message(db, { spaceId: execution.spaceId, content: '微信公众号连接验证通过。', actionId: execution.actionRequestId, kind: execution.operation, timestamp });
+          message(db, { spaceId: execution.spaceId, content: '微信公众号凭据验证通过；草稿和发布权限仍以实际授权操作结果为准。', actionId: execution.actionRequestId, kind: execution.operation, timestamp });
         } else if (execution.operation === 'WECHAT_CREATE_DRAFT') {
           const actionId = randomUUID();
           db.prepare(
@@ -198,7 +211,7 @@ export function createConnectorActionRuntime({
       db.transaction(() => {
         db.prepare(`UPDATE "SpaceConnectorExecution" SET "status" = 'FAILED', "error" = ?, "completedAt" = ?, "updatedAt" = ? WHERE "id" = ?`).run(reason, timestamp, timestamp, execution.id);
         db.prepare(`UPDATE "SpaceActionRequest" SET "status" = 'FAILED', "error" = ?, "completedAt" = ?, "updatedAt" = ? WHERE "id" = ?`).run(reason, timestamp, timestamp, execution.actionRequestId);
-        db.prepare(`UPDATE "SpaceConnector" SET "status" = 'ERROR', "lastCheckedAt" = ?, "lastError" = ?, "updatedAt" = ? WHERE "id" = ?`).run(timestamp, reason, timestamp, execution.connectorId);
+        updateConnector('ERROR', timestamp, reason, Number(error?.providerCode) === 48001 ? 'unavailable' : null);
         message(db, { spaceId: execution.spaceId, content: `外部动作执行失败：${reason}`, actionId: execution.actionRequestId, kind: execution.operation, timestamp });
         if (execution.operation !== 'WECHAT_VALIDATE_CONNECTION') {
           persistSpaceMemory(execution.spaceId, [{

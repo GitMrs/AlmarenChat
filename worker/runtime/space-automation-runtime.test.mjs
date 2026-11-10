@@ -10,7 +10,7 @@ function database() {
   const db = new Database(':memory:');
   db.exec(`
     CREATE TABLE "Space" (
-      "id" TEXT PRIMARY KEY, "userId" TEXT, "templateId" TEXT, "templateSnapshot" TEXT,
+      "id" TEXT PRIMARY KEY, "userId" TEXT, "templateId" TEXT, "templateSnapshot" TEXT, "workspaceType" TEXT DEFAULT 'GENERAL',
       "executionEngine" TEXT, "runtimeType" TEXT, "activeWorkId" TEXT, "updatedAt" TEXT
     );
     CREATE TABLE "SpaceMember" ("id" TEXT PRIMARY KEY, "spaceId" TEXT);
@@ -49,7 +49,7 @@ function database() {
     );
     CREATE TABLE "SpaceRelay" ("id" TEXT PRIMARY KEY, "spaceId" TEXT, "status" TEXT);
   `);
-  db.prepare('INSERT INTO "Space" VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(
+  db.prepare('INSERT INTO "Space" ("id", "userId", "templateId", "templateSnapshot", "executionEngine", "runtimeType", "activeWorkId", "updatedAt") VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(
     'space-1', 'user-1', 'wechat-article', JSON.stringify({ deliverables: ['article.md'] }),
     'pi', 'NATIVE', null, 'before'
   );
@@ -75,6 +75,17 @@ function insertAutomation(db, overrides = {}) {
     ...overrides,
   });
 }
+
+test('a dedicated WeChat workspace creates article work without a template', () => {
+  const db = database();
+  try {
+    db.exec(`UPDATE "Space" SET "workspaceType" = 'WECHAT', "templateId" = NULL, "templateSnapshot" = NULL`);
+    insertAutomation(db);
+    const triggered = triggerNextDueAutomation(db, '2026-09-08T00:00:01.000Z');
+    assert.equal(triggered.status, 'TRIGGERED');
+    assert.equal(db.prepare('SELECT kind FROM SpaceWork').get().kind, 'wechat-article');
+  } finally { db.close(); }
+});
 
 test('a due automation atomically creates one governed V3 run and advances its schedule', () => {
   const db = database();

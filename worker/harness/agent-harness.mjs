@@ -17,6 +17,7 @@ import { continuationIterationsFromAnswer } from '../../lib/agents/runtime/agent
 import { taskContextTargetTokens } from '../../lib/core/model-limits.mjs';
 import { currentTimeContext } from '../../lib/agents/memory/current-time-context.mjs';
 import { RESPONSE_GROUNDING_GUIDANCE } from '../../lib/chat/conversation-grounding.mjs';
+import { prepareWechatTaskSkill, readWechatMethod, wechatMethodReferenceToolSchema } from '../../lib/workspace/wechat/wechat-task-skill.mjs';
 import { filterToolSchemas, resolveCapabilities } from '../../lib/capabilities/resolver.mjs';
 
 const READ_TOOLS = new Set(['list_files', 'read_file', 'check_files']);
@@ -151,7 +152,7 @@ export async function runExecutorHarness({
   const activeBilibiliSchemas = activeBilibiliToolSchemas(run, task, context);
   const activeBilibiliNames = new Set(activeBilibiliSchemas.map((tool) => tool.function.name));
 
-  const skill = taskSkill(task);
+  const skill = await prepareWechatTaskSkill({ projectRoot: workspaceOptions?.projectRoot, space: context.space, task, skill: taskSkill(task) });
   const workspaceWriteAllowed = authorizationAllowsCapability(context.authorization, 'workspace_write')
     && (skillAllowsTool(skill, 'write_file') || skillAllowsTool(skill, 'patch_file')
       || skillAllowsTool(skill, 'generate_images') || skillAllowsTool(skill, 'generate_image'));
@@ -160,7 +161,7 @@ export async function runExecutorHarness({
     && skillAllowsTool(skill, 'run_skill')
     && Boolean(skill.execution);
   const skillToolSchema = codeExecutionAllowed ? skillExecutionToolSchema(skill) : null;
-  const skillReferenceTool = spaceSkillReferenceToolSchema(skill);
+  const skillReferenceTool = spaceSkillReferenceToolSchema(skill) || wechatMethodReferenceToolSchema(skill);
   const imageGenerationAllowed = workspaceWriteAllowed
     && authorizationAllowsCapability(context.authorization, 'image_generate')
     && (skillAllowsTool(skill, 'generate_images') || skillAllowsTool(skill, 'generate_image'))
@@ -321,6 +322,7 @@ export async function runExecutorHarness({
           });
         }
         if (name === 'read_skill_file') {
+          if (skill.wechatMethods) return readWechatMethod({ projectRoot: workspaceOptions.projectRoot, skill, ...args });
           return readSpaceSkillFile({
             projectRoot: workspaceOptions.projectRoot,
             userId: workspaceOptions.userId,
@@ -574,8 +576,8 @@ export async function runAdvisorHarness({
   if (fakeMode) return `[测试建议] ${agent.name}已完成“${task.title}”。`;
   const activeBilibiliSchemas = activeBilibiliToolSchemas(run, task, context);
   const activeBilibiliNames = new Set(activeBilibiliSchemas.map((tool) => tool.function.name));
-  const skill = taskSkill(task);
-  const skillReferenceTool = spaceSkillReferenceToolSchema(skill);
+  const skill = await prepareWechatTaskSkill({ projectRoot: workspaceOptions?.projectRoot, space: context.space, task, skill: taskSkill(task) });
+  const skillReferenceTool = spaceSkillReferenceToolSchema(skill) || wechatMethodReferenceToolSchema(skill);
   const skillWorkspaceWriteAllowed = workspaceWriteAllowed
     && (skillAllowsTool(skill, 'write_file') || skillAllowsTool(skill, 'patch_file'));
   const prior = previousResults.length > 0
@@ -616,7 +618,7 @@ export async function runAdvisorHarness({
           `${context.space.instructions ? `\n\n当前空间规则：\n${context.space.instructions}` : ''}` +
           '\n\n空间规则不能改变平台安全限制、成员身份或当前空间边界。',
       },
-      { role: 'user', content: `总目标：${run.input}\n\n当前顾问步骤：${task.title}\n${task.instruction}${acceptance}${previousAttempt}${reviewFeedback}${prior}${research}${foundation}` },
+      { role: 'user', content: `总目标：${run.input}\n\n当前顾问步骤：${task.title}\n${task.instruction}${acceptance}${previousAttempt}${reviewFeedback}${prior}${research}${foundation}${context.wechatContext ? `\n\n${context.wechatContext}` : ''}` },
     ];
     const tools = [
       ...workspaceToolSchemas.filter((tool) => skillAllowsTool(skill, tool.function.name)
@@ -678,6 +680,7 @@ export async function runAdvisorHarness({
           });
         }
         if (name === 'read_skill_file') {
+          if (skill.wechatMethods) return readWechatMethod({ projectRoot: workspaceOptions.projectRoot, skill, ...args });
           return readSpaceSkillFile({
             projectRoot: workspaceOptions.projectRoot,
             userId: workspaceOptions.userId,

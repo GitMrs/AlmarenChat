@@ -107,14 +107,17 @@ async function prepareFinalizationFollowUp(
       where: { spaceId, provider: 'WECHAT_OFFICIAL_ACCOUNT', enabled: true, status: 'READY' },
     });
     if (!connector) throw new Error('微信公众号连接器未启用或尚未验证');
-    const files = await prisma.spaceFile.findMany({ where: { spaceId, workId: action.workId, status: 'READY' } });
-    const { articleFile, coverFile, workFiles } = selectAutomatedWechatDraftFiles(files, action.workId);
+    const files = await prisma.spaceFile.findMany({ where: { spaceId, status: 'READY', OR: [{ workId: action.workId }, { workId: null }] } });
+    const work = await prisma.spaceWork.findFirst({ where: { id: action.workId, spaceId } });
+    const settings = (work?.metadata as Record<string, any> | null)?.wechatPublishing;
+    const { articleFile, coverFile } = selectAutomatedWechatDraftFiles(files, action.workId, settings);
     const draftPayload = await buildWechatDraftSnapshot({
       root: await ensureSpaceRoot(userId, spaceId),
       articleFile,
       coverFile,
-      availableFiles: workFiles,
-      themeId: typeof payload.completionConfig?.themeId === 'string' ? payload.completionConfig.themeId : undefined,
+      availableFiles: files,
+      themeId: settings?.themeId || (typeof payload.completionConfig?.themeId === 'string' ? payload.completionConfig.themeId : undefined),
+      publishingSettings: settings,
     });
     return { draftPayload };
   } catch (error: any) {

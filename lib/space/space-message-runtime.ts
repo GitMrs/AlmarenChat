@@ -7,9 +7,11 @@ import {
   type PreparedCryptoMessageRuntime,
 } from '../workspace/crypto/space-message-runtime';
 import { loadAgentWorldContext } from '../world/context';
+import { isWechatWorkspace } from '../workspace/wechat/wechat-workspace.mjs';
 
 export interface SpaceMessageRuntimeInput extends CryptoMessageRuntimeInput {
   templateId?: string | null;
+  workspaceType?: string | null;
   agentId?: string;
 }
 
@@ -50,7 +52,8 @@ const TEMPLATE_RUNTIME_REGISTRY: Record<string, RuntimeRegistration> = {
 export async function prepareSpaceMessageRuntime(
   input: SpaceMessageRuntimeInput
 ): Promise<PreparedSpaceMessageRuntime> {
-  const registration = input.templateId ? TEMPLATE_RUNTIME_REGISTRY[input.templateId] : undefined;
+  const runtimeKey = isWechatWorkspace(input) ? 'wechat-article' : input.templateId;
+  const registration = runtimeKey ? TEMPLATE_RUNTIME_REGISTRY[runtimeKey] : undefined;
   const templateRuntime = registration ? await registration.factory(input) : EMPTY_RUNTIME;
   if (registration?.handlesGeneralCryptoQueries) return templateRuntime;
 

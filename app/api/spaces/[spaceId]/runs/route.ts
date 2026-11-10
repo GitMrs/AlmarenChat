@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { isWechatWorkspace } from '@/lib/workspace/wechat/wechat-workspace.mjs';
 import { Prisma } from '@/src/generated/prisma/client';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
@@ -295,7 +296,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
             data: {
               spaceId,
               title: workTitle,
-              kind: space.templateId || 'general',
+              kind: isWechatWorkspace(space) ? 'wechat-article' : space.templateId || 'general',
               status: 'ACTIVE',
               stage: workStage,
               objective: String(currentProposal?.goal || runInput).trim().slice(0, 4000),

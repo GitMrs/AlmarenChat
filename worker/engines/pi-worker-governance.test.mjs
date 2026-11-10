@@ -200,6 +200,18 @@ test('Pi Worker governance exposes only Skill and authorization approved workspa
   assert.equal(names.includes('submit_task_result'), true);
 });
 
+test('Pi WeChat writing loads the selected method without the global search root', async () => {
+  const build = createPiWorkerGovernance({ db: {}, reserveRequest: () => ({}) });
+  const options = await build(request({
+    workspaceOptions: { ...request().workspaceOptions, projectRoot: process.cwd() },
+    context: { ...request().context, space: { workspaceType: 'WECHAT' }, authorization: { capabilities: ['workspace_read', 'workspace_write'] } },
+    task: { ...request().task, title: '完成公众号短文', skillId: 'gzh-creator-suite' },
+  }));
+  assert.match(options.systemPrompt, /gzh-short-post\/SKILL.md/);
+  assert.doesNotMatch(options.systemPrompt, /创作者的全域内容搜索与运营分析总控|单段严禁超 90 字/);
+  assert.equal(options.tools.some((tool) => tool.name === 'run_skill'), false);
+});
+
 test('Pi Worker exposes real Skill package scripts only after code execution authorization', async () => {
   const build = createPiWorkerGovernance({ db: {}, reserveRequest: () => ({}) });
   const baseTask = {
