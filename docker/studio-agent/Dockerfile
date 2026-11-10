@@ -19,7 +19,11 @@ ENV NODE_ENV=production \
     HOME=/tmp \
     NPM_CONFIG_UPDATE_NOTIFIER=false
 
-RUN apt-get update \
+RUN sed -i \
+    -e 's#deb.debian.org#mirrors.aliyun.com#g' \
+    -e 's#security.debian.org#mirrors.aliyun.com#g' \
+    /etc/apt/sources.list.d/debian.sources \
+  && apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates git ripgrep python3 make g++ \
   && rm -rf /var/lib/apt/lists/*
 
