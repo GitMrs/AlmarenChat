@@ -30,7 +30,8 @@ RUN sed -i \
 WORKDIR /opt/pi
 
 RUN npm init -y >/dev/null 2>&1 \
-  && npm install --omit=dev --no-audit --no-fund "@earendil-works/pi-coding-agent@${PI_VERSION}" \
+  && npm install --registry=https://registry.npmmirror.com \
+    --omit=dev --no-audit --no-fund "@earendil-works/pi-coding-agent@${PI_VERSION}" \
   && npm cache clean --force
 
 RUN mkdir -p /workspace /pi-config /opt/studio \
