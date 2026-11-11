@@ -33,6 +33,8 @@ export interface NetworkDiagnosticsResult {
 
 let cachedProxyInfo: ProxyInfo | null = null;
 let cachedProxyAgent: ProxyAgent | null = null;
+let modelProxyAgent: ProxyAgent | undefined;
+let modelProxyUrl: string | undefined;
 let lastDetectTime = 0;
 const PROXY_DETECT_TTL_MS = 60 * 1000; // 缓存探测结果 1 分钟
 
@@ -148,9 +150,24 @@ export async function getDetectedProxyInfo(forceRefresh = false): Promise<ProxyI
 /**
  * 获取可用于 undici 请求的本地 ProxyAgent 实例
  */
-export async function getProxyAgent(forceRefresh = false): Promise<ProxyAgent | undefined> {
+export async function getProxyAgent(forceRefresh = false, modelTransport = false): Promise<ProxyAgent | undefined> {
   const info = await getDetectedProxyInfo(forceRefresh);
   if (!info.available || !info.proxyUrl) return undefined;
+
+  if (modelTransport) {
+    if (!modelProxyAgent || modelProxyUrl !== info.proxyUrl || forceRefresh) {
+      const previous = modelProxyAgent;
+      try {
+        modelProxyAgent = new ProxyAgent({ uri: info.proxyUrl, connectTimeout: 5000, headersTimeout: 0, bodyTimeout: 0 });
+      } catch {
+        console.warn('[proxy] Invalid model proxy configuration; using direct connection');
+        return undefined;
+      }
+      modelProxyUrl = info.proxyUrl;
+      void previous?.close().catch(() => {});
+    }
+    return modelProxyAgent;
+  }
 
   if (!cachedProxyAgent || forceRefresh) {
     try {
@@ -183,6 +200,7 @@ export async function ensureGlobalProxyDispatcher(): Promise<void> {
 }
 
 const directAgent = new Agent();
+const modelDirectAgent = new Agent({ connectTimeout: 5000, headersTimeout: 0, bodyTimeout: 0 });
 
 export function getDirectAgent(): Agent {
   return directAgent;
@@ -195,6 +213,8 @@ export interface SmartFetchOptions extends RequestInit {
   directTimeoutMs?: number;
   /** false: only transport failures trigger fallback, never HTTP error responses. */
   fallbackOnHttpError?: boolean;
+  modelTransport?: boolean;
+  onAttempt?: (event: { route: 'direct' | 'proxy'; stage: string; status?: number; error?: unknown }) => void;
 }
 
 /**
@@ -204,12 +224,16 @@ export interface SmartFetchOptions extends RequestInit {
  * - prefer 'proxy-first': 优先走代理
  */
 export async function smartFetch(url: string, options: SmartFetchOptions = {}): Promise<Response> {
-  const { prefer = 'direct-first', timeoutMs = 8000, directTimeoutMs, fallbackOnHttpError = true, ...fetchInit } = options;
+  const { prefer = 'direct-first', timeoutMs = 8000, directTimeoutMs, fallbackOnHttpError = true, modelTransport = false, onAttempt, ...fetchInit } = options;
   fetchInit.signal?.throwIfAborted();
-  const proxyAgent = prefer === 'direct-only' ? undefined : await getProxyAgent();
+  const proxyAgent = prefer === 'direct-only' ? undefined : await getProxyAgent(false, modelTransport);
   fetchInit.signal?.throwIfAborted();
 
   const executeFetch = async (useProxy: boolean, customTimeoutMs?: number): Promise<Response> => {
+    const route = useProxy && proxyAgent ? 'proxy' : 'direct';
+    const report = (event: { stage: string; status?: number; error?: unknown }) => {
+      try { onAttempt?.({ route, ...event }); } catch { /* diagnostics cannot fail a request */ }
+    };
     const effTimeout = customTimeoutMs || timeoutMs;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), effTimeout);
@@ -217,18 +241,17 @@ export async function smartFetch(url: string, options: SmartFetchOptions = {}): 
       ? AbortSignal.any([fetchInit.signal, controller.signal])
       : controller.signal;
     try {
-      if (useProxy && proxyAgent) {
-        return (await undiciFetch(url, {
-          ...fetchInit,
-          dispatcher: proxyAgent,
-          signal,
-        } as any)) as unknown as Response;
-      }
-      return (await undiciFetch(url, {
+      report({ stage: 'attempt-start' });
+      const response = (await undiciFetch(url, {
         ...fetchInit,
-        dispatcher: directAgent,
+        dispatcher: route === 'proxy' ? proxyAgent : modelTransport ? modelDirectAgent : directAgent,
         signal,
       } as any)) as unknown as Response;
+      report({ stage: 'response-headers', status: response.status });
+      return response;
+    } catch (error) {
+      report({ stage: 'attempt-error', error });
+      throw error;
     } finally {
       clearTimeout(timer);
     }
@@ -251,7 +274,7 @@ export async function smartFetch(url: string, options: SmartFetchOptions = {}): 
         await res.body?.cancel();
       } catch (err: any) {
         fetchInit.signal?.throwIfAborted();
-        console.warn(`[smartFetch] Proxy attempt failed for ${url}:`, err?.message || err);
+        if (!modelTransport) console.warn(`[smartFetch] Proxy attempt failed for ${url}:`, err?.message || err);
       }
     }
     // 降级直连
@@ -272,7 +295,7 @@ export async function smartFetch(url: string, options: SmartFetchOptions = {}): 
   } catch (err: any) {
     fetchInit.signal?.throwIfAborted();
     if (proxyAgent) {
-      console.warn(`[smartFetch] Direct attempt failed for ${url} (${err?.message || err}), retrying via proxy...`);
+      if (!modelTransport) console.warn(`[smartFetch] Direct attempt failed for ${url} (${err?.message || err}), retrying via proxy...`);
       return await executeFetch(true, timeoutMs);
     }
     throw err;

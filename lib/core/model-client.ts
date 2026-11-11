@@ -27,6 +27,7 @@ export function createModelClient(
     baseURL: baseURL || DEFAULT_BASE_URL,
     apiKey: apiKey || process.env.apiKey || process.env.OPENAI_API_KEY,
     maxRetries: clientOptions.maxRetries,
+    timeout: clientOptions.timeoutMs,
     fetch: createModelFetch({ prefer: clientOptions.prefer, timeoutMs: clientOptions.timeoutMs }),
   });
 }
