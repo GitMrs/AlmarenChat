@@ -228,7 +228,10 @@ if ! yarn prisma migrate deploy; then
   exit 1
 fi
 echo "Applying compatibility data upgrades..."
-yarn db:upgrade-agent-runtime
+if ! yarn db:upgrade-agent-runtime; then
+  MIGRATION_FAILED=1
+  exit 1
+fi
 
 echo "Switching to the verified build..."
 if [ -d .next ]; then

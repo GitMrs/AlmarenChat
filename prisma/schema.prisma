@@ -57,7 +57,72 @@ model User {
   qqUserIdentities             QqUserIdentity[]
   agentQQBindings              AgentQQBinding[]
   studioWorkspaces             StudioWorkspace[]
+  personalConnectors           PersonalConnector[]
+  connectorBindings            ConnectorBinding[]
   trendingFavorites            TrendingFavorite[]
+}
+
+model PersonalConnector {
+  id                String   @id @default(uuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  toolId            String
+  name              String
+  url               String
+  catalogId         String?
+  headersCiphertext String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  bindings          ConnectorBinding[]
+  subscriptions     ConnectorSubscription[]
+
+  @@unique([userId, toolId])
+  @@unique([userId, catalogId])
+}
+
+model ConnectorBinding {
+  id          String   @id @default(uuid())
+  connectorId String
+  connector   PersonalConnector @relation(fields: [connectorId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scope       String
+  scopeId     String
+  createdAt   DateTime @default(now())
+
+  @@unique([userId, scope, scopeId, connectorId])
+}
+
+model ConnectorSubscription {
+  id          String @id @default(uuid())
+  connectorId String
+  connector   PersonalConnector @relation(fields: [connectorId], references: [id], onDelete: Cascade)
+  userId      String
+  scope       String
+  scopeId     String
+  eventKey    String
+  identity    String @default("bot")
+  params      String @default("{}")
+  enabled     Boolean @default(true)
+  status      String @default("pending")
+  lastError   String?
+  leaseOwner  String?
+  leaseUntil  BigInt @default(0)
+  createdAt   DateTime @default(now())
+  events      ConnectorInboxEvent[]
+
+  @@unique([connectorId, scope, scopeId, eventKey], map: "ConnectorSubscription_target_key")
+}
+
+model ConnectorInboxEvent {
+  id                Int @id @default(autoincrement())
+  subscriptionId    String
+  subscription      ConnectorSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  sourceKey         String
+  payloadCiphertext String
+  createdAt         DateTime @default(now())
+
+  @@unique([subscriptionId, sourceKey], map: "ConnectorInboxEvent_source_key")
 }
 
 model Agent {

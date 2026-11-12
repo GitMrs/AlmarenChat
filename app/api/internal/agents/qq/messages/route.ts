@@ -1,3 +1,4 @@
+import { createScopedConnectorBroker } from '@/app/api/_lib/personal-connectors';
 import { prepareConversationContext, recordConversationUsage } from '@/lib/memory/conversation-context';
 import { createMemoryTools } from '@/lib/memory/memory-tools';
 import { logModelTimeContext } from '@/lib/chat/model-time-log.mjs';
@@ -307,6 +308,7 @@ export async function POST(request: Request) {
       return content;
     };
 
+    const connectorBroker = await createScopedConnectorBroker(userId, 'agent', agentId);
     if (body.stream === true) {
       const encoder = new TextEncoder();
       const responseStream = new ReadableStream({
@@ -324,7 +326,8 @@ export async function POST(request: Request) {
               contextBudget: preparedContext.manifest.hardInputBudget,
               onContextUsage: usage => recordConversationUsage(userId, conversationId, preparedContext.manifest, usage),
               extraTools: [...(growth?.tools || []), ...memoryTools.tools, capabilityHelp.tool],
-              callTool: (name, args) => name === 'capability_help' ? capabilityHelp.execute(args) : name === 'memory_search' || name === 'memory_read' ? memoryTools.execute(name, args) : growth?.execute(name, args),
+              getExtraTools: () => [...(growth?.tools || []), ...memoryTools.tools, capabilityHelp.tool, ...connectorBroker.modelTools()],
+              callTool: (name, args) => name.startsWith('mcp_') ? connectorBroker.call(name, args) : name === 'capability_help' ? capabilityHelp.execute(args) : name === 'memory_search' || name === 'memory_read' ? memoryTools.execute(name, args) : growth?.execute(name, args),
               signal: request.signal,
               onText: (delta: string) => emit({ type: 'delta', content: delta }),
             });
@@ -355,7 +358,8 @@ export async function POST(request: Request) {
       contextBudget: preparedContext.manifest.hardInputBudget,
       onContextUsage: usage => recordConversationUsage(userId, conversationId, preparedContext.manifest, usage),
       extraTools: [...(growth?.tools || []), ...memoryTools.tools, capabilityHelp.tool],
-      callTool: (name, args) => name === 'capability_help' ? capabilityHelp.execute(args) : name === 'memory_search' || name === 'memory_read' ? memoryTools.execute(name, args) : growth?.execute(name, args),
+      getExtraTools: () => [...(growth?.tools || []), ...memoryTools.tools, capabilityHelp.tool, ...connectorBroker.modelTools()],
+      callTool: (name, args) => name.startsWith('mcp_') ? connectorBroker.call(name, args) : name === 'capability_help' ? capabilityHelp.execute(args) : name === 'memory_search' || name === 'memory_read' ? memoryTools.execute(name, args) : growth?.execute(name, args),
       signal: request.signal,
     });
     const content = await finalizeResponse(modelContent);

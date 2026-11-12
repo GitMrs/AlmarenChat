@@ -30,7 +30,8 @@ import { runSandboxedSkillProcess } from '../runtime/sandbox-runner.mjs';
 import { searchWeb } from '../../lib/agents/runtime/runtime-tools.mjs';
 import { fetchWebPage } from '../../lib/web/web-fetch.mjs';
 import { RESPONSE_GROUNDING_GUIDANCE } from '../../lib/chat/conversation-grounding.mjs';
-import { createHttpMcpClient, mcpToolName } from '../../lib/agents/runtime/mcp-client.mjs';
+import { mcpToolName } from '../../lib/agents/runtime/mcp-client.mjs';
+import { createConnectorClient } from '../../lib/connectors/client.mjs';
 import { resolveCapabilities } from '../../lib/capabilities/resolver.mjs';
 import { getCapability } from '../../lib/capabilities/registry.mjs';
 import { createCapabilityHelpTool } from '../../lib/capabilities/help.mjs';
@@ -231,9 +232,9 @@ async function createPiCapabilityTools(request, skill, state) {
   const mcpServers = Array.isArray(request.context?.mcpServers) ? request.context.mcpServers : [];
   if (mcpServers.length > 0 && authorizationAllowsCapability(request.context?.authorization, 'web_research')) {
     const availableServers = [];
-    for (const server of mcpServers.filter((server) => server.enabled !== false).slice(0, 4)) {
+    for (const server of mcpServers.filter((server) => server.enabled !== false).slice(0, 8)) {
       try {
-        const client = createHttpMcpClient({ url: server.url, headers: server.headers || {} });
+        const client = createConnectorClient(server);
         const remoteTools = await client.listTools();
         for (const remoteTool of remoteTools) {
           const remoteName = String(remoteTool?.name || '').trim();
@@ -252,7 +253,8 @@ async function createPiCapabilityTools(request, skill, state) {
               return toolResult({ error: '本轮尚未加载此 MCP 服务' }, true);
             }
             try {
-              const result = await client.callTool(remoteName, args || {});
+              const current = request.context?.authorizeMcpServer ? await request.context.authorizeMcpServer(server.id) : server;
+              const result = await createConnectorClient(current).callTool(remoteName, args || {});
               request.emit?.(request.run.id, 'MCP_TOOL_COMPLETED', `已调用 MCP 工具：${remoteName}`, {
                 taskId: request.task.id, agentId: request.agent?.id || null, serverId: String(server.id || 'server'),
                 tool: remoteName, engine: 'pi',
@@ -278,6 +280,7 @@ async function createPiCapabilityTools(request, skill, state) {
       },
     }, async (_toolCallId, args) => {
       if (!availableServers.includes(args.serverId)) return toolResult({ error: '当前任务未授权此 MCP 服务' }, true);
+      if (request.context?.authorizeMcpServer) await request.context.authorizeMcpServer(args.serverId);
       state.activeMcpServers.add(args.serverId);
       return toolResult({ ok: true, message: '服务工具已加入本轮，尚未执行远程操作。' });
     }));

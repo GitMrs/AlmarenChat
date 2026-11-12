@@ -1,3 +1,4 @@
+import { createScopedConnectorBroker } from '@/app/api/_lib/personal-connectors';
 import { prepareConversationContext, recordConversationUsage } from '@/lib/memory/conversation-context';
 import { createMemoryTools } from '@/lib/memory/memory-tools';
 import { logModelTimeContext } from '@/lib/chat/model-time-log.mjs';
@@ -286,6 +287,7 @@ export async function POST(request: Request) {
     }
     let fullContent = '';
     let fullReasoning = '';
+    const connectorBroker = memoryAgentId ? await createScopedConnectorBroker(userId, 'agent', memoryAgentId) : null;
     const encoder = new TextEncoder();
     const abortController = new AbortController();
     const readable = new ReadableStream({
@@ -299,7 +301,7 @@ export async function POST(request: Request) {
           ? createMemoryTools({ userId, kind: 'agent', agentId: memoryAgentId, conversationId: resolvedConversationId }, (preparedContext?.history || normalizedHistory).map(item => item.id)) : null;
         const capabilityHelp = createCapabilityHelpTool({ entry: usesAgentMemory ? 'agent' : 'assistant', query: textMessage,
           loadableCapabilities: web.loadableCapabilities,
-          getAvailableToolNames: () => [...web.tools, ...(growth?.tools || []), ...(memoryTools?.tools || [])].map(tool => tool.function.name) });
+          getAvailableToolNames: () => [...web.tools, ...(growth?.tools || []), ...(memoryTools?.tools || []), ...(connectorBroker?.modelTools() || [])].map(tool => tool.function.name) });
         try {
           const parser = companionReply ? createCompanionReplyParser() : null;
           const emitText = (text: string) => {
@@ -314,7 +316,8 @@ export async function POST(request: Request) {
             contextBudget: preparedContext?.manifest.hardInputBudget,
             onContextUsage: preparedContext ? usage => recordConversationUsage(userId, resolvedConversationId, preparedContext.manifest, usage) : undefined,
             extraTools: [...(growth?.tools || []), ...(memoryTools?.tools || []), capabilityHelp.tool],
-            callTool: (name, args) => name === 'capability_help'
+            getExtraTools: () => [...(growth?.tools || []), ...(memoryTools?.tools || []), capabilityHelp.tool, ...(connectorBroker?.modelTools() || [])],
+            callTool: (name, args) => name.startsWith('mcp_') ? connectorBroker?.call(name, args) : name === 'capability_help'
               ? capabilityHelp.execute(args)
               : name === 'memory_search' || name === 'memory_read' ? memoryTools?.execute(name, args) : growth?.execute(name, args),
             signal: abortController.signal,

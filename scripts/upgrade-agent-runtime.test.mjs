@@ -4,7 +4,7 @@ import Database from 'better-sqlite3';
 import { readFileSync } from 'node:fs';
 import { inspectKnownMigrationRepair, inspectPrismaBaseline } from './upgrade-agent-runtime.mjs';
 
-for (const migration of ['20261106100000_add_experience_memory_types', '20261106110000_add_agent_memory_rule_scope', '20261109090000_add_wechat_workspace_type']) {
+for (const migration of ['20261106100000_add_experience_memory_types', '20261106110000_add_agent_memory_rule_scope', '20261109090000_add_wechat_workspace_type', '20261112100000_add_personal_connectors', '20261112180000_add_feishu_subscriptions']) {
   test(`deployment recognizes memory fields already added by the custom upgrade: ${migration}`, () => {
     const db = new Database(':memory:');
     try {

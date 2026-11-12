@@ -28,6 +28,46 @@ const context = {
   touchedPaths: new Set(),
 };
 
+test('native advisor loads bound MCP on demand and requires task network authorization', async () => {
+  const originalFetch = globalThis.fetch;
+  let requests = 0;
+  let remoteCalls = 0;
+  globalThis.fetch = async (_url, init) => {
+    const payload = JSON.parse(init.body);
+    if (payload.method === 'tools/call') remoteCalls++;
+    return { ok: true, json: async () => ({ result: payload.method === 'tools/list' ? { tools: [{ name: 'lookup', inputSchema: { type: 'object' } }] } : { content: [{ type: 'text', text: 'found' }] } }) };
+  };
+  const options = {
+    run, task, agent, previousResults: [], workspaceOptions: {}, taskTimeoutMs: 10_000,
+    emit() {}, isCancelled: () => false,
+    context: { ...context, mcpServers: [{ id: 'docs', url: 'https://example.test/mcp' }], authorization: { capabilities: ['workspace_read', 'web_research'], networkPolicy: 'allowed' } },
+    completeMessage: async (_model, _messages, tools) => {
+      requests++;
+      const names = tools.map(tool => tool.function.name);
+      if (requests === 1) {
+        assert.ok(names.includes('mcp_load'));
+        assert.equal(names.includes('mcp_docs_lookup'), false);
+        assert.equal(remoteCalls, 0);
+        return { role: 'assistant', content: null, tool_calls: [{ id: 'load', function: { name: 'mcp_load', arguments: JSON.stringify({ serverId: 'docs' }) } }] };
+      }
+      if (requests === 2) {
+        assert.ok(names.includes('mcp_docs_lookup'));
+        return { role: 'assistant', content: null, tool_calls: [{ id: 'lookup', function: { name: 'mcp_docs_lookup', arguments: '{}' } }] };
+      }
+      return { role: 'assistant', content: '已经查到资料。' };
+    },
+  };
+  try {
+    assert.match(await runAdvisorHarness(options), /已经查到/);
+    assert.equal(remoteCalls, 1);
+    await runAdvisorHarness({ ...options, context: { ...options.context, authorization: { capabilities: ['workspace_read'], networkPolicy: 'denied' } }, completeMessage: async (_model, _messages, tools) => {
+      assert.equal(tools.some(tool => tool.function.name.startsWith('mcp_')), false);
+      return { role: 'assistant', content: '当前未授权外部工具。' };
+    } });
+    assert.equal(remoteCalls, 1);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
 test('executor model budget includes headroom beyond the tool loop', () => {
   assert.ok(EXECUTOR_MODEL_REQUEST_LIMIT >= EXECUTOR_TOOL_ITERATIONS + 2);
   assert.ok(ADVISOR_MODEL_REQUEST_LIMIT >= ADVISOR_TOOL_ITERATIONS + 2);

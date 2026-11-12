@@ -7,6 +7,7 @@ import { useParams, usePathname, useRouter } from 'next/navigation';
 import { Activity, ArrowLeft, BookOpen, Flame, CalendarClock, Check, CheckCircle2, ChevronRight, Code2, Copy, Cpu, Database, Download, ExternalLink, FilePenLine, FileText, Gamepad2, Globe2, History, Image as ImageIcon, ListTodo, Loader2, MessagesSquare, Newspaper, PackagePlus, Paperclip, Play, Plus, RotateCcw, Save, Send, Settings2, ShieldCheck, SkipForward, Sliders, SlidersHorizontal, Square, Trash2, TrendingUp, Tv, UploadCloud, UsersRound, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import ConnectorScopeSettings from '@/components/connectors/ConnectorScopeSettings';
 import AppShell from '@/components/layout/AppShell';
 import Avatar from '@/components/shared/Avatar';
 import CapabilityOverview from '@/components/shared/CapabilityOverview';
@@ -5543,12 +5544,13 @@ export default function SpaceDetailPage() {
                         {savingInstructions ? <Loader2 className="animate-spin" size={15} /> : <Save size={15} />}
                         保存设置
                       </button>
+                      <ConnectorScopeSettings scope="space" scopeId={spaceId} />
                       <section className="border-t border-black/[0.06] pt-5">
                         <div className="flex items-start justify-between gap-3">
                           <div>
                             <div className="flex items-center gap-2 text-sm font-black text-slate-700">
                               <Globe2 size={16} />
-                              MCP 工具服务
+                              空间独立 MCP 服务
                             </div>
                             <p className="mt-1 text-xs font-semibold leading-5 text-slate-400">
                               为本空间的 Pi 任务提供远程工具。仅支持 HTTPS 地址，调用仍受联网授权和沙箱策略约束。

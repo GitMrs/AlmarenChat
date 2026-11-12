@@ -1530,3 +1530,22 @@ export const tts = {
     return `${API_BASE}/tts?${params.toString()}`;
   },
 };
+
+export interface PersonalConnector {
+  id: string; toolId: string; name: string; url: string;
+  catalogId?: string | null; hasHeaders: boolean; createdAt: string; updatedAt: string;
+}
+export type ConnectorScope = 'assistant' | 'agent' | 'space';
+export type ConnectorInput = { toolId: string; name: string; url: string; headers?: Record<string, string>; catalogId?: string };
+export const connectors = {
+  feishuRuntime: () => request<any>('/connectors/feishu/runtime'),
+  feishuStatus: (id: string) => request<any>('/connectors/' + encodeURIComponent(id) + '/feishu'),
+  feishuAction: (id: string, data: Record<string, any>) => request<any>('/connectors/' + encodeURIComponent(id) + '/feishu', { method: 'POST', body: JSON.stringify(data) }),
+  feishuFiles: (id: string, scope: string, scopeId: string, file?: string) => request<any>('/connectors/' + encodeURIComponent(id) + '/feishu?' + new URLSearchParams({ action: 'files', scope, scopeId, ...(file ? { file } : {}) })),
+  list: () => request<{ connectors: PersonalConnector[] }>('/connectors'),
+  save: (data: ConnectorInput, id?: string) => request<{ connector: PersonalConnector }>(id ? '/connectors/' + encodeURIComponent(id) : '/connectors', { method: id ? 'PATCH' : 'POST', body: JSON.stringify(data) }),
+  delete: (id: string) => request<{ ok: boolean }>('/connectors/' + encodeURIComponent(id), { method: 'DELETE' }),
+  test: (id: string) => request<McpProbeResult>('/connectors/' + encodeURIComponent(id) + '/test', { method: 'POST' }),
+  bindings: (scope: ConnectorScope, scopeId?: string) => request<{ connectorIds: string[] }>('/connectors/bindings?' + new URLSearchParams({ scope, ...(scopeId ? { scopeId } : {}) })),
+  bind: (scope: ConnectorScope, scopeId: string | undefined, connectorId: string, enabled: boolean) => request<{ ok: boolean }>('/connectors/bindings', { method: 'PATCH', body: JSON.stringify({ scope, scopeId, connectorId, enabled }) }),
+};

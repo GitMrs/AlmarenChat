@@ -1,3 +1,5 @@
+import { createScopedConnectorBroker } from '@/app/api/_lib/personal-connectors';
+import { createPiConnectorQueryTools } from '@/lib/connectors/pi-query-tools.mjs';
 import { NextResponse } from 'next/server';
 import { randomUUID } from 'node:crypto';
 import { Prisma } from '@/src/generated/prisma/client';
@@ -437,6 +439,8 @@ async function handlePiMessage(options: {
       const bilibili = allowWebSearch ? createSpaceBilibiliTools(userId, spaceId, space) : null;
       const activeBilibiliTools = filterToolSchemas(bilibili?.tools || [], capabilityResolution);
       try {
+        const connectorBroker = allowWebSearch ? await createScopedConnectorBroker(userId, 'space', spaceId) : null;
+        const connectorQueries = connectorBroker ? createPiConnectorQueryTools(connectorBroker) : null;
         let result;
         let coordinationRequest: Record<string, unknown> | null = null;
         try {
@@ -469,12 +473,12 @@ async function handlePiMessage(options: {
               coordinationRequest = request;
               return true;
             },
-            queryTools: [...web.allTools, ...activeBilibiliTools],
+            queryTools: [...web.allTools, ...activeBilibiliTools, ...(connectorQueries?.tools || [])],
             loadableCapabilities: web.loadableCapabilities,
-            activeQueryToolNames: () => [...web.tools, ...activeBilibiliTools].map(tool => tool.function.name),
+            activeQueryToolNames: () => [...web.tools, ...activeBilibiliTools, ...(connectorQueries?.tools || [])].map(tool => tool.function.name),
             queryGuidance: [web.guidance, bilibili?.guidance].filter(Boolean).join('\n\n'),
             queryTool: (name: string, args: any, signal: AbortSignal) =>
-              activeBilibiliTools.some((tool) => tool.function.name === name) && bilibili?.owns(name)
+              name.startsWith('mcp_') && connectorQueries ? connectorQueries.execute(name, args) : activeBilibiliTools.some((tool) => tool.function.name === name) && bilibili?.owns(name)
                 ? bilibili.execute(name, args, signal)
                 : web.execute(name, args, signal),
             onMutation: (relativePath: string) => changedPaths.add(relativePath),
@@ -936,6 +940,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
     const growth = targetAgent.id !== SPACE_COORDINATOR.id
       ? createAgentGrowthTools({ userId, agentId: targetAgent.id, spaceId })
       : null;
+    const connectorBroker = !useIsolatedContext ? await createScopedConnectorBroker(userId, 'space', spaceId) : null;
     const availableTools = [
       ...filterToolSchemas([
       ...(selectedWork ? workspaceToolSchemas.filter((tool: any) => READ_ONLY_WORKSPACE_TOOLS.has(tool.function.name)) : []),
@@ -1112,7 +1117,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
             messages: openaiMessages,
             tools: availableTools,
             requestCompletion: async (conversation: any[], tools: any[]) => {
-              tools = [...new Map([...tools, ...(allowWebSearch ? web.tools : [])].map(tool => [tool.function.name, tool])).values()];
+              tools = [...new Map([...tools, ...(allowWebSearch ? web.tools : []), ...(connectorBroker?.modelTools() || [])].map(tool => [tool.function.name, tool])).values()];
               const hasTools = Array.isArray(tools) && tools.length > 0;
               const requestBody: any = {
                 model,
@@ -1130,6 +1135,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
               });
             },
             executeTool: async (name: string, args: Record<string, unknown>) => {
+              if (name.startsWith('mcp_')) { if (!connectorBroker) throw new Error('当前场景未开启连接器'); return connectorBroker.call(name, args); }
               if (name === 'capability_help') return capabilityHelp.execute(args);
               if (growth?.owns(name)) return growth.execute(name, args);
               if (activeBilibiliTools.some((tool) => tool.function.name === name) && bilibili?.owns(name)) return bilibili.execute(name, args, abortController.signal);

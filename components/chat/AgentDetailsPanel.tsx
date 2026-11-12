@@ -12,6 +12,7 @@ import SpaceMemberModelDialog from '@/components/spaces/SpaceMemberModelDialog';
 import AgentDailyStudyCard from '@/components/chat/AgentDailyStudyCard';
 import AgentMemoryEditor from '@/components/chat/AgentMemoryEditor';
 import AgentExperienceEditor from '@/components/chat/AgentExperienceEditor';
+import ConnectorScopeSettings from '@/components/connectors/ConnectorScopeSettings';
 import AgentQQSettings from '@/components/chat/AgentQQSettings';
 import { agentMemories as agentMemoryApi, agents as agentsApi } from '@/lib/client/api';
 import { cn } from '@/lib/client/utils';
@@ -111,6 +112,7 @@ function AgentDetailBody({ displayAgent }: { displayAgent: DisplayAgent }) {
         </div>
       </div>
       <CapabilityOverview entry="agent" />
+      <ConnectorScopeSettings scope="agent" scopeId={displayAgent.id} />
     </>
   );
 }

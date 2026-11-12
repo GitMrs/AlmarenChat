@@ -324,6 +324,7 @@ test('Pi Worker fetches public URLs after loading authorized research tools', as
 test('Pi Worker discovers and invokes an authorized remote MCP tool', async () => {
   const originalFetch = globalThis.fetch;
   const calls = [];
+  let connectorAllowed = true;
   globalThis.fetch = async (_url, init) => {
     const body = JSON.parse(init.body);
     calls.push(body.method);
@@ -343,6 +344,10 @@ test('Pi Worker discovers and invokes an authorized remote MCP tool', async () =
         model: { apiKey: 'key', baseURL: 'https://example.com/v1', name: 'model' }, space: {},
         authorization: { capabilities: ['workspace_read', 'web_research'], networkPolicy: 'allowed' },
         mcpServers: [{ id: 'research', url: 'https://mcp.example.test/rpc' }],
+        authorizeMcpServer: async () => {
+          if (!connectorAllowed) throw new Error('连接器已关闭');
+          return { id: 'research', url: 'https://mcp.example.test/rpc' };
+        },
       },
     }));
     const tool = options.tools.find((item) => item.name === 'mcp_research_lookup');
@@ -358,6 +363,9 @@ test('Pi Worker discovers and invokes an authorized remote MCP tool', async () =
     assert.equal(result.isError, false);
     assert.deepEqual(calls, ['tools/list', 'tools/call']);
     assert.equal(events.some((event) => event[1] === 'MCP_TOOL_COMPLETED'), true);
+    connectorAllowed = false;
+    assert.equal((await tool.execute('revoked-call', { q: 'agent' })).isError, true);
+    assert.deepEqual(calls, ['tools/list', 'tools/call']);
   } finally {
     globalThis.fetch = originalFetch;
   }

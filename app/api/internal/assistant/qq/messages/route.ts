@@ -1,3 +1,4 @@
+import { createScopedConnectorBroker } from '@/app/api/_lib/personal-connectors';
 import { prepareConversationContext, recordConversationUsage } from '@/lib/memory/conversation-context';
 import { ASSISTANT_RECENT_MESSAGE_LIMIT } from '@/lib/memory/conversation-context-policy.mjs';
 import { createMemoryTools } from '@/lib/memory/memory-tools';
@@ -312,6 +313,7 @@ export async function POST(request: Request) {
       };
     };
 
+    const connectorBroker = await createScopedConnectorBroker(userId, 'assistant');
     if (body.stream === true) {
       const encoder = new TextEncoder();
       const responseStream = new ReadableStream({
@@ -322,7 +324,7 @@ export async function POST(request: Request) {
 
           try {
             reportStatus = (label: string) => emit({ type: 'status', label });
-            const modelContent = await runAutoWebChat({ client, model, messages: modelMessages, web, contextBudget: preparedContext.manifest.hardInputBudget, onContextUsage: usage => recordConversationUsage(userId, binding.conversationId, preparedContext.manifest, usage), extraTools: [...memoryTools.tools, capabilityHelp.tool], callTool: (name: string, args: any) => name === 'capability_help' ? capabilityHelp.execute(args) : memoryTools.execute(name, args), signal: request.signal, onText: (delta: string) => emit({ type: 'delta', content: delta }) });
+            const modelContent = await runAutoWebChat({ client, model, messages: modelMessages, web, contextBudget: preparedContext.manifest.hardInputBudget, onContextUsage: usage => recordConversationUsage(userId, binding.conversationId, preparedContext.manifest, usage), extraTools: [...memoryTools.tools, capabilityHelp.tool], getExtraTools: () => [...memoryTools.tools, capabilityHelp.tool, ...connectorBroker.modelTools()], callTool: (name: string, args: any) => name.startsWith('mcp_') ? connectorBroker.call(name, args) : name === 'capability_help' ? capabilityHelp.execute(args) : memoryTools.execute(name, args), signal: request.signal, onText: (delta: string) => emit({ type: 'delta', content: delta }) });
 
             const finalized = await finalizeResponse(modelContent);
             emit({ type: 'done', content: finalized.streamContent, conversationId: binding.conversationId });
@@ -343,7 +345,7 @@ export async function POST(request: Request) {
       });
     }
 
-    const modelContent = await runAutoWebChat({ client, model, messages: modelMessages, web, contextBudget: preparedContext.manifest.hardInputBudget, onContextUsage: usage => recordConversationUsage(userId, binding.conversationId, preparedContext.manifest, usage), extraTools: [...memoryTools.tools, capabilityHelp.tool], callTool: (name: string, args: any) => name === 'capability_help' ? capabilityHelp.execute(args) : memoryTools.execute(name, args), signal: request.signal });
+    const modelContent = await runAutoWebChat({ client, model, messages: modelMessages, web, contextBudget: preparedContext.manifest.hardInputBudget, onContextUsage: usage => recordConversationUsage(userId, binding.conversationId, preparedContext.manifest, usage), extraTools: [...memoryTools.tools, capabilityHelp.tool], getExtraTools: () => [...memoryTools.tools, capabilityHelp.tool, ...connectorBroker.modelTools()], callTool: (name: string, args: any) => name.startsWith('mcp_') ? connectorBroker.call(name, args) : name === 'capability_help' ? capabilityHelp.execute(args) : memoryTools.execute(name, args), signal: request.signal });
     if (!modelContent?.trim()) throw new Error('模型没有返回可展示的正文');
     const finalized = await finalizeResponse(modelContent);
     return NextResponse.json({ content: finalized.content, conversationId: binding.conversationId });

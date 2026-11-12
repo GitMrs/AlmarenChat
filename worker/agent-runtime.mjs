@@ -1,3 +1,4 @@
+import { resolveSpaceConnectorServersSync } from '../lib/connectors/space-servers.mjs';
 import { reviewAcceptedTaskExperiences } from './runtime/agent-growth-review.mjs';
 import 'dotenv/config';
 import { randomUUID } from 'node:crypto';
@@ -66,7 +67,7 @@ import {
 } from './runtime/automation-delivery-store.mjs';
 import { createConnectorActionRuntime } from './runtime/connector-action-runtime.mjs';
 import { parseMcpServers } from '../lib/agents/runtime/mcp-config.mjs';
-import { decryptConnectorCredential } from '../lib/connectors/credentials.mjs';
+import { createFeishuEventManager } from '../lib/connectors/feishu-events.mjs';
 import { createBilibiliAgentTools } from '../lib/bilibili/agent-tools.mjs';
 import { loadAgentMemoryContextSync, recordAcceptedAgentExperiences } from './runtime/agent-memory-store.mjs';
 import {
@@ -438,23 +439,8 @@ function loadRunContext(run) {
   const coordinatorState = readCoordinatorState(db, run.id);
   const authorization = coordinatorState?.authorization || null;
 
-  let persistedMcpServers = [];
-  try {
-    const rows = db.prepare('SELECT "id", "name", "url", "headersCiphertext" FROM "SpaceMcpServer" WHERE "spaceId" = ? AND "enabled" = 1 ORDER BY "createdAt" ASC').all(run.spaceId);
-    persistedMcpServers = rows.flatMap((row) => {
-      try {
-        const headers = row.headersCiphertext
-          ? decryptConnectorCredential(row.headersCiphertext, { spaceId: run.spaceId, provider: `MCP_${row.name}` })
-          : {};
-        return [{ id: row.name, url: row.url, headers }];
-      } catch (error) {
-        addEvent(run.id, 'MCP_CONFIG_INVALID', `MCP 配置无法解密：${row.name}`, { serverId: row.id, error: String(error?.message || error).slice(0, 300) });
-        return [];
-      }
-    });
-  } catch {
-    // Older databases are upgraded lazily; environment configuration remains available.
-  }
+  const resolveMcpServers = () => [...resolveSpaceConnectorServersSync(db, run.userId, run.spaceId), ...parseMcpServers(process.env.ALMAREN_MCP_SERVERS).filter(server => server.enabled !== false)].slice(0, 8);
+  const persistedMcpServers = resolveMcpServers();
   const wechatContext = loadWechatContext({ projectRoot, userId: run.userId, space, work: run.workId ? db.prepare('SELECT * FROM "SpaceWork" WHERE "id" = ? AND "spaceId" = ?').get(run.workId, run.spaceId) : null });
   return {
     space,
@@ -476,7 +462,12 @@ function loadRunContext(run) {
         : null;
     })(),
     tavilyApiKey: user.tavilyApiKey?.trim() || null,
-    mcpServers: [...persistedMcpServers, ...parseMcpServers(process.env.ALMAREN_MCP_SERVERS)].slice(0, 4),
+    mcpServers: persistedMcpServers,
+    authorizeMcpServer: async (serverId) => {
+      const current = resolveMcpServers().find(server => server.id === serverId);
+      if (!current) throw new Error('此空间连接器已关闭或删除');
+      return current;
+    },
     researchAudit: null,
     researchResultAudits: [],
     researchSources: [],
@@ -1800,6 +1791,8 @@ async function main() {
     pollMs: pollIntervalMs,
     isStopping: () => stopping,
   });
+  const feishuEvents = createFeishuEventManager(db);
+  scheduler.register('feishu-events', () => feishuEvents.tick());
   scheduler.register('space-automations', () => triggerNextDueAutomation(db, now()));
   scheduler.start();
   await runWorkerLoop({
@@ -1830,6 +1823,7 @@ async function main() {
     delay: () => delay(pollIntervalMs),
   });
   scheduler.stop();
+  await feishuEvents.shutdown();
   db.close();
 }
 

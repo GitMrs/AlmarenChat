@@ -4,7 +4,6 @@ import { normalizeWeatherLocation, platformWeather } from '@/lib/misc/weather.mj
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { MODEL_CONTEXT_WINDOW_OPTIONS } from '@/lib/core/model-limits.mjs';
-import { parseMcpServers } from '@/lib/agents/runtime/mcp-config.mjs';
 
 export async function GET(request: Request) {
   try {
@@ -30,7 +29,6 @@ export async function GET(request: Request) {
         imageApiKey: true,
         tavilyApiKey: true,
         defaultWeatherLocation: true,
-        assistantMcpServers: true,
         defaultStyle: true,
         contextMessageLimit: true,
         createdAt: true,
@@ -55,7 +53,7 @@ export async function PATCH(request: Request) {
     const userId = requireAuth(request);
     const body = await request.json();
 
-    const allowedFields = ['name', 'avatar', 'apiBaseUrl', 'apiKey', 'modelName', 'modelContextWindow', 'customModelEnabled', 'imageModelEnabled', 'imageModelName', 'imageModelSize', 'imageModelProtocol', 'imageApiBaseUrl', 'imageApiKey', 'tavilyApiKey', 'defaultWeatherLocation', 'assistantMcpServers', 'defaultStyle', 'contextMessageLimit'] as const;
+    const allowedFields = ['name', 'avatar', 'apiBaseUrl', 'apiKey', 'modelName', 'modelContextWindow', 'customModelEnabled', 'imageModelEnabled', 'imageModelName', 'imageModelSize', 'imageModelProtocol', 'imageApiBaseUrl', 'imageApiKey', 'tavilyApiKey', 'defaultWeatherLocation', 'defaultStyle', 'contextMessageLimit'] as const;
     const data: Record<string, any> = {};
     for (const field of allowedFields) {
       if (body[field] !== undefined) {
@@ -83,14 +81,8 @@ export async function PATCH(request: Request) {
       const limit = Number(data.contextMessageLimit);
       data.contextMessageLimit = Math.max(1, Math.min(80, Number.isFinite(limit) ? Math.floor(limit) : 40));
     }
-    if (data.assistantMcpServers !== undefined) {
-      const servers = parseMcpServers(data.assistantMcpServers);
-      data.assistantMcpServers = servers.map(({ id, url, headers, enabled }) => ({
-        id,
-        url,
-        ...(headers && Object.keys(headers).length > 0 ? { headers } : {}),
-        enabled: enabled !== false,
-      }));
+    if (body.assistantMcpServers !== undefined) {
+      return NextResponse.json({ error: '请在我的连接器中管理连接，并在各入口设置中开启' }, { status: 400 });
     }
     if (data.modelContextWindow !== undefined
       && data.modelContextWindow !== null
@@ -125,7 +117,6 @@ export async function PATCH(request: Request) {
         imageApiKey: true,
         tavilyApiKey: true,
         defaultWeatherLocation: true,
-        assistantMcpServers: true,
         defaultStyle: true,
         contextMessageLimit: true,
         createdAt: true,

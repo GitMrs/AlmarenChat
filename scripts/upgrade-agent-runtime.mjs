@@ -4,6 +4,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync } from '
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Database from 'better-sqlite3';
+import { migratePersonalConnectors } from '../lib/connectors/migrate-personal.mjs';
 
 const BASELINE_MIGRATION = '20260921180000_add_space_automation_execution_mode';
 const MANUAL_MIGRATION_REPAIRS = [
@@ -1489,6 +1490,10 @@ try {
   })();
 
   upgradeAgentMemories(db);
+  db.exec(readFileSync(new URL('../prisma/migrations/20261112100000_add_personal_connectors/migration.sql', import.meta.url), 'utf8'));
+  const migratedConnectors = migratePersonalConnectors(db);
+  db.exec(readFileSync(new URL('../prisma/migrations/20261112180000_add_feishu_subscriptions/migration.sql', import.meta.url), 'utf8'));
+  console.log(`Migrated ${migratedConnectors} personal MCP connectors; existing assistant bindings preserved.`);
   const migratedWechatStrategies = migrateWechatSharedStrategies();
 
   console.log(`Space and Agent Runtime database upgrade completed. Migrated ${migratedWechatStrategies} WeChat shared strategies.`);

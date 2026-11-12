@@ -21,8 +21,8 @@ import { buildAssistantHistory } from '@/lib/personal-assistant/history-context.
 import { buildRecentStateContinuityGuidance } from '@/lib/chat/conversation-continuity.mjs';
 import { applyRecentStateMessage, syncRecentStates } from '@/lib/chat/recent-state-store';
 import { dispatchContextCandidates, planContextSources } from '@/lib/memory/context-dispatcher.mjs';
-import { parseMcpServers } from '@/lib/agents/runtime/mcp-config.mjs';
 import { createAssistantToolBroker } from '@/lib/personal-assistant/tool-broker.mjs';
+import { createScopedConnectorBroker } from '@/app/api/_lib/personal-connectors';
 import { buildRetrievalNotice } from '@/lib/personal-assistant/retrieval-notice.mjs';
 
 export const runtime = 'nodejs';
@@ -127,7 +127,6 @@ export async function POST(request: Request) {
           modelContextWindow: true,
           tavilyApiKey: true,
         defaultWeatherLocation: true,
-          assistantMcpServers: true,
           dailyChatLimit: true,
           contextMessageLimit: true,
         },
@@ -279,7 +278,7 @@ export async function POST(request: Request) {
       console.warn('[recent-state] apply failed:', error?.message);
     });
 
-    const broker = createAssistantToolBroker({ servers: localMode ? [] : parseMcpServers(userSettings.assistantMcpServers).filter((server) => server.enabled !== false) });
+    const broker = localMode ? createAssistantToolBroker() : await createScopedConnectorBroker(userId, 'assistant');
     const memoryTools = conversationMode === 'MAIN' && !localMode ? createMemoryTools({ userId, kind: 'assistant', conversationId }, preparedContext.history.map(item => item.id)) : null;
 
     if (memoryContext.history.length === 0) {

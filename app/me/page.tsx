@@ -34,7 +34,7 @@ import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import Avatar from '@/components/shared/Avatar';
 import PersonalAssistantSettings from '@/components/assistant/PersonalAssistantSettings';
 import BotBindingsManager from '@/components/settings/BotBindingsManager';
-import McpServerManager from '@/components/mcp/McpServerManager';
+import ConnectorCenter from '@/components/connectors/ConnectorCenter';
 import ExternalCapabilitiesPanel from '@/components/settings/ExternalCapabilitiesPanel';
 import { agents as agentsApi, auth, conversations as conversationsApi, favorites as favoritesApi, spaceShares as spaceSharesApi, spaces as spacesApi } from '@/lib/client/api';
 import type { Agent, SpaceFileShare } from '@/types';
@@ -53,7 +53,8 @@ function MeContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const requestedTab = searchParams.get('tab');
-  const activeTab = requestedTab === 'settings' || requestedTab === 'shares' || requestedTab === 'assistant' || requestedTab === 'mcp' || requestedTab === 'bots' || requestedTab === 'capabilities' ? requestedTab : 'assets';
+  const normalizedTab = requestedTab === 'mcp' ? 'connectors' : requestedTab;
+  const activeTab = normalizedTab === 'settings' || normalizedTab === 'shares' || normalizedTab === 'assistant' || normalizedTab === 'connectors' || normalizedTab === 'bots' || normalizedTab === 'capabilities' ? normalizedTab : 'assets';
   const [myAgents, setMyAgents] = useState<Agent[]>([]);
   const [favoriteAgents, setFavoriteAgents] = useState<any[]>([]);
   const [recentConversations, setRecentConversations] = useState<any[]>([]);
@@ -204,7 +205,7 @@ function MeContent() {
     }
   };
 
-  const switchTab = (tab: 'assets' | 'shares' | 'settings' | 'assistant' | 'mcp' | 'bots' | 'capabilities') => {
+  const switchTab = (tab: 'assets' | 'shares' | 'settings' | 'assistant' | 'connectors' | 'bots' | 'capabilities') => {
     router.push(tab === 'assets' ? '/me' : `/me?tab=${tab}`);
   };
 
@@ -232,10 +233,10 @@ function MeContent() {
           <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
             <div className="max-w-2xl">
               <h1 className="text-4xl font-black leading-tight text-slate-950 sm:text-5xl">
-                管理你的 Agent、内容共享和账号。
+                管理你的 Agent、连接器、内容共享和账号。
               </h1>
               <p className="mt-4 text-base leading-7 text-slate-500">
-                在这里维护你创建的 Agent、公开网页和账号配置。
+                在这里维护你创建的 Agent、连接器、公开网页和账号配置。
               </p>
             </div>
 
@@ -272,7 +273,7 @@ function MeContent() {
             { id: 'assistant', label: '助理设置', icon: MessageCircleHeart },
             { id: 'bots', label: 'Bot 管理', icon: Bot },
             { id: 'capabilities', label: '外挂能力', icon: Sparkles },
-            { id: 'mcp', label: 'MCP 工具', icon: Blocks },
+            { id: 'connectors', label: '我的连接器', icon: Blocks },
             { id: 'settings', label: '账号设置', icon: SlidersHorizontal },
           ].map((tab) => {
             const Icon = tab.icon;
@@ -280,7 +281,7 @@ function MeContent() {
             return (
               <button
                 key={tab.id}
-                onClick={() => switchTab(tab.id as 'assets' | 'shares' | 'settings' | 'assistant' | 'mcp' | 'bots' | 'capabilities')}
+                onClick={() => switchTab(tab.id as 'assets' | 'shares' | 'settings' | 'assistant' | 'connectors' | 'bots' | 'capabilities')}
                 className={cn(
                   'inline-flex cursor-pointer items-center gap-2 rounded-full px-4 py-2 text-sm font-black transition',
                   active ? 'bg-slate-950 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-950'
@@ -401,7 +402,7 @@ function MeContent() {
 
         {!needsLogin && activeTab === 'bots' && <BotBindingsManager />}
 
-        {!needsLogin && activeTab === 'mcp' && <McpServerManager />}
+        {!needsLogin && activeTab === 'connectors' && <ConnectorCenter />}
 
         {!needsLogin && activeTab === 'capabilities' && <ExternalCapabilitiesPanel />}
 
