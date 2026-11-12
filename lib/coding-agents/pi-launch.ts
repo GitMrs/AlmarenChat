@@ -203,7 +203,7 @@ export async function buildPiLaunchSpec(options: PiLaunchOptions): Promise<PiLau
 
 function modelProxyEnv(): Record<string, string> {
   return Object.fromEntries(
-    ['HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http_proxy', 'ALL_PROXY', 'all_proxy', 'NO_PROXY', 'no_proxy']
+    ['HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http_proxy', 'ALL_PROXY', 'all_proxy', 'NO_PROXY', 'no_proxy', 'MODEL_NETWORK_DEBUG']
       .filter(key => process.env[key]).map(key => [key, process.env[key]!])
   );
 }
