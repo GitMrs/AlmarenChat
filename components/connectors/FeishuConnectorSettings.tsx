@@ -79,16 +79,29 @@ export default function FeishuConnectorSettings({ editing, onSaved, onClose }: {
     catch (reason: any) { if (token === generation.current) setTargetError(reason.message || '读取入口失败'); }
     finally { if (token === generation.current) setTargetLoading(false); }
   };
+  const verifyConnection = async (id = connection?.id) => {
+    if (!id) return;
+    const token = generation.current;
+    setVerified(false);
+    const result = await connectors.test(id);
+    if (token !== generation.current) return;
+    if (!result.ok) throw Error('连接验证失败，请检查应用权限并重试');
+    const latest = await refresh(id);
+    if (token !== generation.current) return;
+    if (!latest?.status?.botAvailable && !latest?.status?.userAvailable) throw Error('飞书身份未就绪，请重新授权后验证');
+    setVerified(true);
+    setNotice('连接验证通过。可用操作取决于飞书已授予的权限');
+  };
   const checkRuntime = async (id = connection?.id) => {
     const token = generation.current;
-    setChecking(true); setRuntimeError(''); setVerified(false);
+    setChecking(true); setRuntimeError(''); setError(''); setNotice(''); setVerified(false);
     try {
       const result = await connectors.feishuRuntime();
       if (token !== generation.current) return;
       setRuntimeStatus(result);
       if (id && result.ready) {
-        try { await refresh(id); }
-        catch (reason: any) { if (token === generation.current) setError(reason.message || '读取飞书身份失败，请刷新状态重试'); }
+        try { await refresh(id); if (token === generation.current) await verifyConnection(id); }
+        catch (reason: any) { if (token === generation.current) setError(reason.message || '自动验证连接失败，请重试'); }
       }
       else setDetails(null);
     } catch (reason: any) {
@@ -120,8 +133,8 @@ export default function FeishuConnectorSettings({ editing, onSaved, onClose }: {
   const identityReady = Boolean(details?.status?.botAvailable || details?.status?.userAvailable);
   const credentialDirty = Boolean(connection && (replace || name !== connection.name));
   const authExpired = Boolean(auth && auth.expiresAt <= now);
-  const status = checking ? '正在检测' : credentialDirty ? '应用信息待保存' : !runtimeStatus ? '待检测' : !runtimeStatus.ready ? '服务未就绪' : !connection ? '待连接应用' : !details ? '待检测身份' : !details.status?.userAvailable ? (details.status?.refreshExpiresAt ? '需重新授权' : '待用户授权') : !verified ? '待验证连接' : !enabled.length ? '待选择入口' : '已就绪';
-  const completed = [runtimeStatus?.ready, Boolean(connection), verified && details?.status?.userAvailable, enabled.length > 0];
+  const status = checking ? '正在检测与验证' : credentialDirty ? '应用信息待保存' : !runtimeStatus ? '待检测' : !runtimeStatus.ready ? '服务未就绪' : !connection ? '待连接应用' : !details ? '待检测身份' : !identityReady ? (details.status?.refreshExpiresAt ? '需重新授权' : '待授权') : !verified ? '待验证连接' : !enabled.length ? '待选择入口' : '已就绪';
+  const completed = [runtimeStatus?.ready, Boolean(connection), verified && identityReady, enabled.length > 0];
   const startAuth = () => {
     if (operating.current || !authDomains.length) return;
     // Open during the click event so browsers can permit the authorization window.
@@ -197,7 +210,7 @@ export default function FeishuConnectorSettings({ editing, onSaved, onClose }: {
         </section>
         <section className="space-y-4 rounded-2xl border border-slate-200/80 bg-white p-5">
           <h3 className="text-sm font-bold text-slate-950">3. 授权并验证连接</h3>
-          <p className="text-xs leading-6 text-slate-500">应用凭据用于应用身份；授权飞书账号后，才能以你的身份执行相关操作。打开此页仅读取本地状态，点击登录授权或验证连接时才会联网检查。</p>
+          <p className="text-xs leading-6 text-slate-500">应用凭据用于应用身份；授权飞书账号后，才能以你的身份执行相关操作。打开已保存的连接时会自动联网验证身份与工具状态；登录授权仍由你手动发起。</p>
           <div className="grid grid-cols-2 gap-3">{[['应用身份', details?.status?.botAvailable ? '可用' : '未确认'], ['用户身份', details?.status?.userAvailable ? '已授权' : details?.status?.refreshExpiresAt ? '需重新授权' : '未授权']].map(([label, value]) => <div key={label} className="rounded-xl bg-slate-50 p-3"><p className="text-[11px] text-slate-400">{label}</p><p className="mt-1 text-xs font-semibold text-slate-700">{value}</p></div>)}</div>
           {credentialDirty && <p className="text-xs text-amber-700">请先保存应用信息，再进行授权或验证。</p>}
           <fieldset className="space-y-3" disabled={blocked || !connection || !runtimeStatus?.ready || credentialDirty}>
@@ -211,7 +224,7 @@ export default function FeishuConnectorSettings({ editing, onSaved, onClose }: {
           <div className="flex flex-wrap gap-2"><button type="button" disabled={blocked || !connection || !runtimeStatus?.ready || credentialDirty || !authDomains.length} className={primaryClass} onClick={startAuth}>{details?.status?.userAvailable ? '重新授权' : '登录授权'}</button><button type="button" disabled={blocked || !connection || !runtimeStatus?.ready || credentialDirty} className={buttonClass} onClick={() => void perform(async () => { setVerified(false); await refresh(); }, '正在刷新授权状态…')}>刷新状态</button></div>
           <details className="rounded-xl bg-slate-50 p-3 text-xs text-slate-500"><summary className="cursor-pointer font-medium">连接或授权时提示数据安全策略限制？</summary><div className="mt-2 space-y-2 leading-6"><p>若出现 “The requested scope is blocked by data security policy” 或 “Access denied due to platform policy”，请记录完整报错（包含失败步骤）、发生时间和 App ID，联系飞书租户管理员或应用管理员，核对应用是否允许使用、所需权限、应用可用范围及租户数据安全策略。仅凭报错无法确定被限制的具体权限。</p><p>请只选择工作所需功能。策略仍不允许时，需由管理员确认是否可以授权；反复刷新或点击「我已授权」无法解除策略限制。</p></div></details>
           {auth && <div className="space-y-3 rounded-xl border border-blue-100 bg-blue-50/50 p-4"><p className="text-xs text-slate-600">{authExpired ? '授权链接已过期，请重新登录授权。' : '请在飞书页面确认授权，然后回来完成连接。'}</p>{auth.code && !authExpired && <p className="text-xs text-slate-500">授权码：<code className="font-mono font-bold text-slate-900">{auth.code}</code></p>}{!authExpired && <><a href={auth.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs font-semibold text-blue-700">打开飞书授权页面 <ExternalLink size={12} /></a><div><button type="button" disabled={blocked} className={primaryClass} onClick={() => void perform(async () => { await connectors.feishuAction(connection!.id, { action: 'complete' }); setAuth(null); setVerified(false); await refresh(); setNotice('用户授权已完成，请验证连接'); }, '正在确认授权…')}>我已授权</button></div></>}</div>}
-          <div className="space-y-2 border-t border-slate-100 pt-4"><button type="button" disabled={blocked || !connection || !runtimeStatus?.ready || credentialDirty} className={buttonClass} onClick={() => void perform(async () => { setVerified(false); const result = await connectors.test(connection!.id); if (!result.ok) throw Error('连接验证失败，请检查应用权限并重试'); const latest = await refresh(); if (!latest?.status?.botAvailable && !latest?.status?.userAvailable) throw Error('飞书身份未就绪，请重新授权后验证'); setVerified(true); setNotice('连接验证通过。可用操作取决于飞书已授予的权限'); }, '正在验证连接…')}>{verified ? <Check size={13} /> : null}{verified ? '重新验证连接' : '验证连接'}</button><p className={`text-[11px] leading-5 ${verified ? 'text-emerald-700' : 'text-slate-400'}`}>{verified ? '连接验证通过，可选择使用入口。' : '验证会检查身份与工具加载状态；具体业务权限以实际调用为准。'}</p></div>
+          <div className="space-y-2 border-t border-slate-100 pt-4"><button type="button" disabled={blocked || !connection || !runtimeStatus?.ready || credentialDirty} className={buttonClass} onClick={() => void perform(async () => { await verifyConnection(); }, '正在验证连接…')}>{verified ? <Check size={13} /> : null}{verified ? '重新验证连接' : '验证连接'}</button><p className={`text-[11px] leading-5 ${verified ? 'text-emerald-700' : 'text-slate-400'}`}>{verified ? '连接验证通过，可选择使用入口。' : '验证会检查身份与工具加载状态；具体业务权限以实际调用为准。'}</p></div>
           {details?.status?.userAvailable && <button type="button" disabled={blocked} className="text-xs text-slate-400 underline" onClick={() => void perform(async () => { await connectors.feishuAction(connection!.id, { action: 'logout' }); setAuth(null); setDetails(null); setVerified(false); await refresh(); setNotice('已退出用户登录，用户身份事件订阅已停止'); }, '正在退出登录…')}>退出用户登录</button>}
         </section>
         <section className="space-y-4 rounded-2xl border border-slate-200/80 bg-white p-5">
