@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Check, ChevronRight, ExternalLink, Loader2, X } from 'lucide-react';
 import ConnectorDrawer from './ConnectorDrawer';
+import ConnectorTargetSelector from './ConnectorTargetSelector';
 import FeishuMark from './FeishuMark';
 import FeishuAdvanced from './FeishuAdvanced';
 import { connectors, type ConnectorTarget, type FeishuRuntime, type PersonalConnector } from '@/lib/client/api';
@@ -11,7 +12,6 @@ import { FEISHU_AUTH_DOMAINS } from '@/lib/connectors/feishu-auth-domains.mjs';
 const inputClass = 'w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:opacity-50';
 const buttonClass = 'inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-xs font-semibold text-slate-700 transition hover:border-blue-300 hover:text-blue-700 focus-visible:outline-2 focus-visible:outline-blue-500 disabled:cursor-not-allowed disabled:opacity-40';
 const primaryClass = `${buttonClass} !border-blue-600 !bg-blue-600 !text-white hover:!bg-blue-700`;
-const scopeLabel = (scope: string) => scope === 'assistant' ? '小伴' : scope === 'agent' ? 'Agent' : '空间';
 
 function showAuthorizationLoading(popup: Window) {
   try {
@@ -50,7 +50,6 @@ export default function FeishuConnectorSettings({ editing, onSaved, onClose }: {
   const [targets, setTargets] = useState<ConnectorTarget[]>([]);
   const [targetError, setTargetError] = useState('');
   const [targetLoading, setTargetLoading] = useState(true);
-  const [search, setSearch] = useState('');
   const [page, setPage] = useState<'setup' | 'advanced'>('setup');
   const [runtimeStatus, setRuntimeStatus] = useState<FeishuRuntime | null>(null);
   const [checking, setChecking] = useState(false);
@@ -227,12 +226,11 @@ export default function FeishuConnectorSettings({ editing, onSaved, onClose }: {
           <div className="space-y-2 border-t border-slate-100 pt-4"><button type="button" disabled={blocked || !connection || !runtimeStatus?.ready || credentialDirty} className={buttonClass} onClick={() => void perform(async () => { await verifyConnection(); }, '正在验证连接…')}>{verified ? <Check size={13} /> : null}{verified ? '重新验证连接' : '验证连接'}</button><p className={`text-[11px] leading-5 ${verified ? 'text-emerald-700' : 'text-slate-400'}`}>{verified ? '连接验证通过，可选择使用入口。' : '验证会检查身份与工具加载状态；具体业务权限以实际调用为准。'}</p></div>
           {details?.status?.userAvailable && <button type="button" disabled={blocked} className="text-xs text-slate-400 underline" onClick={() => void perform(async () => { await connectors.feishuAction(connection!.id, { action: 'logout' }); setAuth(null); setDetails(null); setVerified(false); await refresh(); setNotice('已退出用户登录，用户身份事件订阅已停止'); }, '正在退出登录…')}>退出用户登录</button>}
         </section>
-        <section className="space-y-4 rounded-2xl border border-slate-200/80 bg-white p-5">
-          <div className="flex items-center justify-between"><h3 className="text-sm font-bold text-slate-950">4. 选择使用入口</h3><span className="text-[11px] text-slate-400">已开启 {enabled.length} 个</span></div><p className="text-xs leading-6 text-slate-500">仅为你选择的入口开启。应用身份可独立使用；需要用户身份的操作仍需完成账号授权。</p>
-          {!verified && <p className="text-xs text-amber-700">请先验证连接再开启新入口。已开启的入口可随时关闭。</p>}
-          {targetError && <p role="alert" className="text-xs text-rose-600">{targetError}<button type="button" disabled={blocked || targetLoading} onClick={() => void loadTargets()} className="ml-2 underline">重试读取入口</button></p>}
-          {targetLoading ? <p className="text-xs text-slate-400">正在读取可用入口…</p> : !targetError && <><input type="search" aria-label="搜索使用入口" placeholder="搜索小伴、Agent 或空间" value={search} disabled={busy} onChange={event => setSearch(event.target.value)} className={inputClass} /><div className="max-h-64 space-y-1 overflow-y-auto">{targets.filter(target => `${target.name} ${scopeLabel(target.scope)}`.toLowerCase().includes(search.trim().toLowerCase())).map(target => { const checked = Boolean(connection && target.connectorIds.includes(connection.id)); return <label key={`${target.scope}:${target.scopeId}`} className="flex cursor-pointer items-center gap-3 rounded-xl px-3 py-3 hover:bg-slate-50"><input type="checkbox" aria-label={`为${scopeLabel(target.scope)}「${target.name}」开启飞书`} checked={checked} disabled={blocked || !connection || (!checked && (!verified || !identityReady || credentialDirty))} onChange={() => toggle(target)} className="h-4 w-4 accent-blue-600" /><span className="min-w-0 flex-1 truncate text-xs font-medium text-slate-700">{target.name}</span><span className="text-[10px] text-slate-400">{scopeLabel(target.scope)}</span></label>; })}{!targets.some(target => `${target.name} ${scopeLabel(target.scope)}`.toLowerCase().includes(search.trim().toLowerCase())) && <p className="p-3 text-xs text-slate-400">没有匹配的入口</p>}</div></>}
-        </section>
+        <ConnectorTargetSelector title="4. 选择使用入口" description="仅为你选择的入口开启。应用身份可独立使用；需要用户身份的操作仍需完成账号授权。"
+          connectorName="飞书" connectorId={connection?.id} targets={targets} busy={blocked}
+          canEnable={verified && identityReady && !credentialDirty} loading={targetLoading} error={targetError}
+          hint={!verified ? '请先验证连接再开启新入口。已开启的入口可随时关闭。' : undefined}
+          onRetry={() => void loadTargets()} onToggle={toggle} />
       </div> : <section className="space-y-4 rounded-2xl border border-slate-200/80 bg-white p-5"><h3 className="text-sm font-bold text-slate-950">文件、事件与操作确认</h3><p className="text-xs leading-6 text-slate-500">管理各入口的文件与订阅，并审阅需要确认的操作。</p><button type="button" disabled={blocked || !connection || !runtimeStatus?.ready} className={buttonClass} onClick={() => void perform(async () => { await refresh(); await loadTargets(); }, '正在刷新管理状态…')}>刷新管理状态</button>{connection && runtimeStatus?.ready && details ? <FeishuAdvanced editing={connection} details={details} targets={targets} busy={blocked} perform={perform} refresh={() => refresh()} setNotice={setNotice} /> : <p className="text-xs text-slate-400">服务就绪并完成应用连接后，可在这里管理。</p>}</section>}
     </div>
     <footer className="shrink-0 space-y-3 border-t border-slate-200/80 bg-white px-5 py-4 sm:px-7">
