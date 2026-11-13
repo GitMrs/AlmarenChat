@@ -2,8 +2,10 @@ import { spawnSync } from 'node:child_process';
 import { mkdirSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { FEISHU_CLI_VERSION, feishuBinary } from '../lib/connectors/feishu-cli.mjs';
+import { macosSandboxProbeArgs } from '../lib/connectors/feishu-macos.mjs';
 
-if (!['linux', 'win32'].includes(process.platform)) throw new Error('平台飞书 CLI 当前支持 Linux 和 Windows');
+if (!['linux', 'darwin', 'win32'].includes(process.platform)) throw new Error('平台飞书 CLI 当前支持 Linux、macOS 和 Windows');
+if (process.platform === 'darwin' && spawnSync('/usr/bin/sandbox-exec', macosSandboxProbeArgs(), { stdio: 'inherit', shell: false, timeout: 5000 }).status !== 0) throw new Error('macOS 系统沙箱不可用，不能安全开启飞书 CLI；请检查服务运行环境');
 if (process.platform === 'linux') {
   if (spawnSync('/usr/bin/bwrap', ['--version'], { stdio: 'inherit', shell: false }).status !== 0) throw new Error('请先安装 bubblewrap（Debian/Ubuntu: apt-get install bubblewrap），并允许服务使用非特权用户命名空间');
   if (spawnSync('/usr/bin/bwrap', ['--unshare-user', '--unshare-pid', '--ro-bind', '/', '/', '--', '/usr/bin/true'], { stdio: 'inherit', shell: false }).status !== 0) throw new Error('服务器不允许 bubblewrap 用户命名空间，不能安全开启飞书 CLI；请管理员配置运行环境');

@@ -66,7 +66,7 @@ export async function POST(request: Request, context: Context) {
       return NextResponse.json(callFeishuEvents(scoped, input.event || {}));
     }
     if (['start', 'complete', 'logout', 'status'].includes(input.action)) {
-      const result = await feishuAuth(server, input.action);
+      const result = await feishuAuth(server, input.action, { domains: input.domains });
       if (input.action === 'logout') await prisma.$executeRawUnsafe('UPDATE "ConnectorSubscription" SET "enabled" = 0, "status" = ? WHERE "connectorId" = ? AND "userId" = ? AND "identity" = ?', 'stopping', id, userId, 'user');
       return NextResponse.json(result);
     }

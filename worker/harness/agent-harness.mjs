@@ -1,4 +1,5 @@
 import { createAssistantToolBroker } from '../../lib/personal-assistant/tool-broker.mjs';
+import { callTaskConnectorTool } from '../../lib/connectors/task-permissions.mjs';
 import { createModelProgressCallbacks, trackToolExecution } from '../runtime/activity-progress.mjs';
 import { contextManager } from './context-manager.mjs';
 import { runToolLoop } from '../../lib/agents/runtime/tool-loop.mjs';
@@ -312,7 +313,7 @@ export async function runExecutorHarness({
         ).finally(progress.flush);
       },
       executeTool: trackToolExecution({ emit, runId: run.id, taskId: task.id, agentId: agent.id, agentName: agent.name }, (name, args) => {
-        if (name.startsWith('mcp_')) return connectorBroker.call(name, args);
+        if (name.startsWith('mcp_')) return callTaskConnectorTool(context, connectorBroker, name, args);
         if (activeBilibiliNames.has(name) && context.bilibiliTools?.owns(name)) {
           return context.bilibiliTools.execute(name, args, abortController.signal).then((result) => {
             emit(run.id, 'TOOL_COMPLETED', `${agent.name}已读取 B 站数据`, {
@@ -672,7 +673,7 @@ export async function runAdvisorHarness({
         ).finally(progress.flush);
       },
       executeTool: trackToolExecution({ emit, runId: run.id, taskId: task.id, agentId: agent.id, agentName: agent.name }, (name, args) => {
-        if (name.startsWith('mcp_')) return connectorBroker.call(name, args);
+        if (name.startsWith('mcp_')) return callTaskConnectorTool(context, connectorBroker, name, args);
         if (activeBilibiliNames.has(name) && context.bilibiliTools?.owns(name)) {
           return context.bilibiliTools.execute(name, args, abortController.signal).then((result) => {
             emit?.(run.id, 'TOOL_COMPLETED', `${agent.name}已读取 B 站数据`, {

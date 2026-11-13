@@ -1536,9 +1536,16 @@ export interface PersonalConnector {
   catalogId?: string | null; hasHeaders: boolean; createdAt: string; updatedAt: string;
 }
 export type ConnectorScope = 'assistant' | 'agent' | 'space';
+export interface ConnectorTarget { scope: ConnectorScope; scopeId: string; name: string; connectorIds: string[] }
+export interface FeishuRuntime {
+  ready: boolean; platform: string; expectedVersion: string;
+  cli: { status: string; message: string; version: string | null };
+  sandbox: { status: string; message: string };
+}
 export type ConnectorInput = { toolId: string; name: string; url: string; headers?: Record<string, string>; catalogId?: string };
 export const connectors = {
-  feishuRuntime: () => request<any>('/connectors/feishu/runtime'),
+  feishuRuntime: () => request<FeishuRuntime>('/connectors/feishu/runtime'),
+  targets: () => request<{ targets: ConnectorTarget[] }>('/connectors/targets'),
   feishuStatus: (id: string) => request<any>('/connectors/' + encodeURIComponent(id) + '/feishu'),
   feishuAction: (id: string, data: Record<string, any>) => request<any>('/connectors/' + encodeURIComponent(id) + '/feishu', { method: 'POST', body: JSON.stringify(data) }),
   feishuFiles: (id: string, scope: string, scopeId: string, file?: string) => request<any>('/connectors/' + encodeURIComponent(id) + '/feishu?' + new URLSearchParams({ action: 'files', scope, scopeId, ...(file ? { file } : {}) })),

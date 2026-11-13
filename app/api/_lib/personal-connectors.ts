@@ -5,19 +5,26 @@ import { connectorScope, resolvePersonalConnectorServers, connectorServer } from
 import { createAssistantToolBroker } from '@/lib/personal-assistant/tool-broker.mjs';
 import { decryptConnectorCredential } from '@/lib/connectors/credentials.mjs';
 
+async function canUseAgentConnectors(userId: string, agentId: string) {
+  return (await getBuiltInAgents()).some(agent => agent.id === agentId) || Boolean(findCompanionAgent(agentId))
+    || Boolean(await prisma.agent.findFirst({ where: { id: agentId, OR: [{ creatorId: userId }, { isPublic: true }] }, select: { id: true } }));
+}
+
 export async function assertConnectorScope(userId: string, scope: string, scopeId?: string) {
   const target = connectorScope(userId, scope, scopeId);
   if (scope === 'space') {
     if (!await prisma.space.findFirst({ where: { id: target.scopeId, userId }, select: { id: true } })) throw new Error('无权管理此空间的连接器');
   } else if (scope === 'agent') {
-    const builtIn = (await getBuiltInAgents()).some(agent => agent.id === target.scopeId) || findCompanionAgent(target.scopeId);
-    if (!builtIn && !await prisma.agent.findFirst({ where: { id: target.scopeId, OR: [{ creatorId: userId }, { isPublic: true }] }, select: { id: true } })) throw new Error('无权使用此 Agent');
+    if (!await canUseAgentConnectors(userId, target.scopeId)) throw new Error('无权使用此 Agent');
   }
   return target;
 }
 
 export async function resolveScopeServers(userId: string, scope: string, scopeId?: string) {
-  const target = await assertConnectorScope(userId, scope, scopeId);
+  const target = scope === 'agent' ? connectorScope(userId, scope, scopeId) : await assertConnectorScope(userId, scope, scopeId);
+  // Conversations retain a persona snapshot after the source Agent disappears.
+  // Keep those chats usable, while denying all connector access for that Agent.
+  if (scope === 'agent' && !await canUseAgentConnectors(userId, target.scopeId)) return [];
   const personal = await resolvePersonalConnectorServers(prisma, userId, scope, target.scopeId);
   if (scope !== 'space') return personal;
   const rows = await prisma.$queryRawUnsafe<any[]>('SELECT * FROM "SpaceMcpServer" WHERE "spaceId" = ? AND "enabled" = 1 ORDER BY "createdAt"', target.scopeId);

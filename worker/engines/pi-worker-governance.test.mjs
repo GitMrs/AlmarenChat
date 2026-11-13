@@ -387,3 +387,43 @@ test('Pi worker forwards reasoning and correlated tool lifecycle events', async 
   assert.equal(events[3][3].path, 'article.md');
   assert.equal(events[3][3].failed, true);
 });
+
+test('Pi MCP discovery and calls require current network consent and share the web budget', async () => {
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (_url, init) => {
+    const body = JSON.parse(init.body);
+    calls.push(body.method);
+    return { ok: true, json: async () => ({ result: body.method === 'tools/list'
+      ? { tools: [{ name: 'lookup', inputSchema: { type: 'object' } }] } : { ok: true } }) };
+  };
+  try {
+    const build = createPiWorkerGovernance({ db: {}, reserveRequest: () => ({}) });
+    const makeContext = decision => ({
+      model: { apiKey: 'key', baseURL: 'https://example.com/v1', name: 'model' }, space: {},
+      authorization: { capabilities: ['workspace_read', 'web_research'], networkPolicy: 'runtime', networkDecision: decision },
+      mcpServers: [{ id: 'docs', url: 'https://example.test/mcp' }],
+    });
+    for (const decision of ['pending', 'denied']) {
+      const options = await build(request({ context: makeContext(decision) }));
+      assert.equal(options.tools.some(tool => tool.name.startsWith('mcp_')), false);
+    }
+    assert.deepEqual(calls, []);
+    const context = makeContext('allowed');
+    const options = await build(request({ context }));
+    const loader = options.tools.find(tool => tool.name === 'mcp_load');
+    const tool = options.tools.find(tool => tool.name === 'mcp_docs_lookup');
+    await loader.execute('load', { serverId: 'docs' });
+    for (const decision of ['pending', 'denied']) {
+      context.authorization.networkDecision = decision;
+      assert.equal((await loader.execute('blocked-load', { serverId: 'docs' })).isError, true);
+      assert.equal((await tool.execute('blocked-call', {})).isError, true);
+    }
+    assert.deepEqual(calls, ['tools/list']);
+    context.authorization.networkDecision = 'allowed';
+    context.runtimePermissions.consume('web_research', 'web_search');
+    assert.equal((await tool.execute('allowed-call', {})).isError, false);
+    assert.equal((await tool.execute('over-budget', {})).isError, true);
+    assert.deepEqual(calls, ['tools/list', 'tools/call']);
+  } finally { globalThis.fetch = originalFetch; }
+});

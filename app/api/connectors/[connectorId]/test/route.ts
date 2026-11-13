@@ -9,7 +9,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ con
     const config = await testPersonalConnector(requireAuth(request), (await params).connectorId);
     const started = Date.now();
     if (config.url === FEISHU_URL) {
-      const status = await feishuAuth(config, 'status');
+      const status = await feishuAuth(config, 'verify');
       if (!status.botAvailable && !status.userAvailable) throw new Error('飞书身份未就绪');
     }
     const tools = await createConnectorClient(config).listTools();

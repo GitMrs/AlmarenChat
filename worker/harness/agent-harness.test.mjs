@@ -7,6 +7,7 @@ import { ADVISOR_MAX_ATTEMPTS, ADVISOR_TOOL_ITERATIONS, EXECUTOR_MAX_ATTEMPTS, E
 import { ADVISOR_MODEL_REQUEST_LIMIT, EXECUTOR_MODEL_REQUEST_LIMIT } from '../../lib/agents/runtime/task-execution-plan.mjs';
 import { executeWorkspaceTool } from '../../lib/agents/runtime/runtime-tools.mjs';
 import { RESPONSE_GROUNDING_GUIDANCE } from '../../lib/chat/conversation-grounding.mjs';
+import { createRuntimePermissionBroker } from '../../lib/agents/runtime/runtime-permission-broker.mjs';
 
 const run = { id: 'run-1', input: '完成页面', runtimeVersion: 3 };
 const task = {
@@ -72,6 +73,44 @@ test('executor model budget includes headroom beyond the tool loop', () => {
   assert.ok(EXECUTOR_MODEL_REQUEST_LIMIT >= EXECUTOR_TOOL_ITERATIONS + 2);
   assert.ok(ADVISOR_MODEL_REQUEST_LIMIT >= ADVISOR_TOOL_ITERATIONS + 2);
 });
+
+for (const [mode, harness] of [['advisor', runAdvisorHarness], ['executor', runExecutorHarness]]) {
+  for (const decision of ['pending', 'denied', 'allowed']) {
+    test(`native ${mode} enforces ${decision} network consent and the shared MCP budget`, async () => {
+      const originalFetch = globalThis.fetch;
+      const calls = [];
+      const authorization = { capabilities: ['workspace_read', 'web_research'], networkPolicy: 'runtime', networkDecision: decision };
+      const permissions = createRuntimePermissionBroker({ authorization });
+      if (decision === 'allowed') permissions.consume('web_research', 'web_search');
+      let round = 0;
+      globalThis.fetch = async (_url, init) => {
+        const body = JSON.parse(init.body);
+        calls.push(body.method);
+        return { ok: true, json: async () => ({ result: body.method === 'tools/list'
+          ? { tools: [{ name: 'lookup', inputSchema: { type: 'object' } }] } : { ok: true } }) };
+      };
+      try {
+        await harness({
+          run, task, agent, previousResults: [], workspaceOptions: {}, baselinePaths: new Set(), taskTimeoutMs: 10_000,
+          emit() {}, isCancelled: () => false,
+          context: { ...context, authorization, runtimePermissions: permissions, mcpServers: [{ id: 'docs', url: 'https://example.test/mcp' }] },
+          validateSubmission: async () => ({ ok: true, manifest: { validation: { valid: true } } }),
+          completeMessage: async (_model, messages) => {
+            round++;
+            if (round === 1) return { role: 'assistant', tool_calls: [{ id: 'load', function: { name: 'mcp_load', arguments: '{"serverId":"docs"}' } }] };
+            if (decision === 'allowed' && round <= 3) return { role: 'assistant', tool_calls: [{ id: `lookup-${round}`, function: { name: 'mcp_docs_lookup', arguments: JSON.stringify({ query: String(round) }) } }] };
+            const lastResult = JSON.parse(messages.filter(message => message.role === 'tool').at(-1).content);
+            assert.equal(lastResult.code, decision === 'allowed' ? 'OPERATION_LIMIT' : decision === 'denied' ? 'NETWORK_DENIED' : 'NETWORK_APPROVAL_REQUIRED');
+            return mode === 'advisor' ? { role: 'assistant', content: '已经处理权限限制。' }
+              : { role: 'assistant', tool_calls: [{ id: 'submit', function: { name: 'submit_task_result', arguments: '{"summary":"已处理权限限制","remainingIssues":[]}' } }] };
+          },
+        });
+        assert.deepEqual(calls, decision === 'allowed' ? ['tools/list', 'tools/call'] : []);
+        assert.equal(permissions.usage.used, decision === 'allowed' ? 2 : 0);
+      } finally { globalThis.fetch = originalFetch; }
+    });
+  }
+}
 
 test('executor and advisor allow three attempts for empty model responses', () => {
   assert.equal(EXECUTOR_MAX_ATTEMPTS, 3);
