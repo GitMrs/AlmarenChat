@@ -1544,6 +1544,7 @@ export interface FeishuRuntime {
 }
 export type ConnectorInput = { toolId: string; name: string; url: string; headers?: Record<string, string>; catalogId?: string };
 export const connectors = {
+  mailStatus: (id: string) => request<{ provider: string; email: string }>('/connectors/' + encodeURIComponent(id) + '/mail'),
   feishuRuntime: () => request<FeishuRuntime>('/connectors/feishu/runtime'),
   targets: () => request<{ targets: ConnectorTarget[] }>('/connectors/targets'),
   feishuStatus: (id: string) => request<any>('/connectors/' + encodeURIComponent(id) + '/feishu'),

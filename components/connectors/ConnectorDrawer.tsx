@@ -3,7 +3,7 @@
 import { useEffect, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 
-export default function ConnectorDrawer({ children, onClose, busy = false }: { children: ReactNode; onClose: () => void; busy?: boolean }) {
+export default function ConnectorDrawer({ children, onClose, busy = false, titleId = 'feishu-drawer-title' }: { children: ReactNode; onClose: () => void; busy?: boolean; titleId?: string }) {
   const panel = useRef<HTMLDivElement>(null);
   const close = useRef(onClose);
   const blocked = useRef(busy);
@@ -38,6 +38,6 @@ export default function ConnectorDrawer({ children, onClose, busy = false }: { c
   }, []);
   if (typeof document === 'undefined') return null;
   return createPortal(<div className="fixed inset-0 z-[1000] flex justify-end bg-slate-950/35 backdrop-blur-sm" onMouseDown={event => { if (event.target === event.currentTarget && !busy) onClose(); }}>
-    <div ref={panel} role="dialog" aria-modal="true" aria-labelledby="feishu-drawer-title" tabIndex={-1} className="flex h-dvh w-full max-w-2xl flex-col bg-[#f8fafc] shadow-2xl outline-none">{children}</div>
+    <div ref={panel} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} className="flex h-dvh w-full max-w-2xl flex-col bg-[#f8fafc] shadow-2xl outline-none">{children}</div>
   </div>, document.body);
 }
