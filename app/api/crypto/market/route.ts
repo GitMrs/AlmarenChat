@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import {
   getCryptoMarketData,
+  getCryptoQuoteData,
   analyzeCryptoTrap,
   formatCryptoContextForPrompt,
   extractCryptoSymbolFromText,
@@ -11,6 +12,13 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const query = searchParams.get('symbol') || searchParams.get('q') || 'BTC';
     const symbol = extractCryptoSymbolFromText(query) || query.trim() || 'BTC';
+
+    if (searchParams.get('mode') === 'quote') {
+      const quote = await getCryptoQuoteData(symbol);
+      return quote
+        ? NextResponse.json({ success: true, data: quote })
+        : NextResponse.json({ success: false, error: `无法获取 ${symbol} 的实盘报价` }, { status: 503 });
+    }
 
     const snapshot = await getCryptoMarketData(symbol);
     if (!snapshot) {

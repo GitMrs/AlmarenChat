@@ -127,7 +127,9 @@ export default function SpaceCryptoCenter({
 }: SpaceCryptoCenterProps) {
   const [symbol, setSymbol] = useState<string>('BTC');
   const [marketData, setMarketData] = useState<any>(null);
+  const [marketQuote, setMarketQuote] = useState<{ symbol: string; price: number } | null>(null);
   const [marketLoading, setMarketLoading] = useState<boolean>(false);
+  const [marketError, setMarketError] = useState<string | null>(null);
   const marketRequestId = useRef(0);
   const [qqConnected, setQqConnected] = useState<boolean | null>(null);
 
@@ -547,31 +549,51 @@ export default function SpaceCryptoCenter({
   const fetchMarket = async (targetSym: string) => {
     const requestId = ++marketRequestId.current;
     setMarketLoading(true);
-    try {
-      const res = await fetch(`/api/crypto/market?symbol=${encodeURIComponent(targetSym)}`);
-      if (res.ok) {
+    setMarketError(null);
+    const url = `/api/crypto/market?symbol=${encodeURIComponent(targetSym)}`;
+    // 报价先展示，完整分析独立加载，避免慢指标阻塞首次价格展示。
+    const results = await Promise.allSettled([
+      (async () => {
+        const res = await fetch(`${url}&mode=quote`, { cache: 'no-store' });
+        if (!res.ok) throw new Error('获取报价失败');
+        const json = await res.json();
+        const price = Number(json.data?.price);
+        if (!Number.isFinite(price) || price <= 0) throw new Error('报价无效');
+        if (requestId !== marketRequestId.current) return;
+        setMarketQuote({ symbol: targetSym, price });
+        setPricePool((prev) => ({ ...prev, [targetSym]: price }));
+      })(),
+      (async () => {
+        const res = await fetch(url, { cache: 'no-store' });
+        if (!res.ok) throw new Error('获取分析指标失败');
         const json = await res.json();
         const payload = json.data ? { ...json.data, trapAnalysis: json.analysis } : json;
         if (requestId !== marketRequestId.current) return;
         setMarketData(payload);
-        const p = Number(payload.price ?? 0);
-        if (p > 0) {
-          setPricePool((prev) => ({ ...prev, [targetSym]: p }));
-        }
-      }
-    } catch (e) {
-      console.warn('[SpaceCryptoCenter] fetch market failed', e);
-    } finally {
-      setMarketLoading(false);
+        const price = Number(payload.price ?? 0);
+        if (price > 0) setPricePool((prev) => ({ ...prev, [targetSym]: price }));
+      })(),
+    ]);
+    if (requestId !== marketRequestId.current) return;
+    if (results[0].status === 'rejected' && results[1].status === 'fulfilled') {
+      setMarketQuote(null); // 报价接口失败时使用本轮完整行情，避免保留上一轮价格。
     }
+    if (results[1].status === 'rejected') {
+      setMarketError(results[0].status === 'fulfilled'
+        ? '报价已更新，分析指标获取失败，请重试'
+        : '行情获取失败，请重试');
+    }
+    setMarketLoading(false);
   };
+
+  const watchedSymbolsKey = JSON.stringify(Array.from(new Set([
+    ...ambushPlans.map((p) => p.symbol),
+    ...activePositions.map((p) => p.symbol),
+  ])).filter((item) => item !== symbol).sort());
 
   // 轮询队列中所有币种的最新现价（并发并行拉取，显著提升刷新敏捷度）
   const pollAllActiveSymbols = async () => {
-    const allSymbols = Array.from(new Set([
-      ...ambushPlans.map((p) => p.symbol),
-      ...activePositions.map((p) => p.symbol),
-    ])).filter((item) => item !== symbol);
+    const allSymbols: string[] = JSON.parse(watchedSymbolsKey);
     await Promise.all(
       allSymbols.map(async (s) => {
         try {
@@ -593,7 +615,7 @@ export default function SpaceCryptoCenter({
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
     const refreshAfterCompletion = async () => {
-      await Promise.all([fetchMarket(symbol), pollAllActiveSymbols()]);
+      await fetchMarket(symbol);
       if (!cancelled) {
         timeoutId = setTimeout(() => {
           void refreshAfterCompletion();
@@ -601,12 +623,30 @@ export default function SpaceCryptoCenter({
       }
     };
 
+    setMarketData(null);
+    setMarketQuote(null);
     void refreshAfterCompletion();
+    return () => {
+      cancelled = true;
+      marketRequestId.current++;
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, [symbol]);
+
+  useEffect(() => {
+    if (watchedSymbolsKey === '[]') return;
+    let cancelled = false;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    const refresh = async () => {
+      await pollAllActiveSymbols();
+      if (!cancelled) timeoutId = setTimeout(() => { void refresh(); }, 6000);
+    };
+    void refresh();
     return () => {
       cancelled = true;
       if (timeoutId) clearTimeout(timeoutId);
     };
-  }, [symbol, ambushPlans, activePositions]);
+  }, [watchedSymbolsKey]);
 
   // 检查 QQ 绑定状态
   useEffect(() => {
@@ -617,7 +657,9 @@ export default function SpaceCryptoCenter({
       .catch(() => setQqConnected(false));
   }, []);
 
-  const curPrice = Number(marketData?.price ?? marketData?.data?.price ?? 0);
+  const curPrice = Number(marketQuote?.symbol === symbol
+    ? marketQuote.price
+    : marketData?.price ?? marketData?.data?.price ?? 0);
 
   // 统计战绩数据
   const reviewStats = useMemo(() => {
@@ -816,35 +858,45 @@ export default function SpaceCryptoCenter({
               ))}
             </div>
 
-            {marketData && (
-              <div className="flex items-center gap-3 text-[11px] font-black">
-                <span className="text-slate-400">{symbol} 撮合价:</span>
-                <span className="text-sm text-slate-950 font-black">${(curPrice || 0).toLocaleString()}</span>
-                <span className={(marketData.priceDelta1hPercent ?? 0) >= 0 ? 'text-emerald-600' : 'text-rose-600'}>
-                  1H: {(marketData.priceDelta1hPercent ?? 0) >= 0 ? '+' : ''}
-                  {(typeof marketData.priceDelta1hPercent === 'number' ? marketData.priceDelta1hPercent : 0).toFixed(2)}%
-                </span>
-                <span className={(marketData.priceDelta4hPercent ?? 0) >= 0 ? 'text-emerald-600' : 'text-rose-600'}>
-                  4H: {(marketData.priceDelta4hPercent ?? 0) >= 0 ? '+' : ''}
-                  {(typeof marketData.priceDelta4hPercent === 'number' ? marketData.priceDelta4hPercent : 0).toFixed(2)}%
-                </span>
-                <span className="text-slate-500 hidden sm:inline">
-                  费率: {((typeof marketData.fundingRate === 'number' ? marketData.fundingRate : 0) * 100).toFixed(4)}%
-                </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    void fetchMarket(symbol);
-                    void pollAllActiveSymbols();
-                  }}
-                  disabled={marketLoading}
-                  className="text-slate-400 hover:text-slate-700 cursor-pointer"
-                  title="刷新行情"
-                >
-                  <RefreshCw size={12} className={marketLoading ? 'animate-spin' : ''} />
-                </button>
-              </div>
-            )}
+            <div className="flex flex-wrap items-center gap-3 text-[11px] font-black" aria-live="polite">
+              {curPrice > 0 && (
+                <>
+                  <span className="text-slate-400">{symbol} 撮合价:</span>
+                  <span className="text-sm text-slate-950 font-black">${curPrice.toLocaleString()}</span>
+                </>
+              )}
+              {marketData && (
+                <>
+                  <span className={(marketData.priceDelta1hPercent ?? 0) >= 0 ? 'text-emerald-600' : 'text-rose-600'}>
+                    1H: {(marketData.priceDelta1hPercent ?? 0) >= 0 ? '+' : ''}
+                    {(typeof marketData.priceDelta1hPercent === 'number' ? marketData.priceDelta1hPercent : 0).toFixed(2)}%
+                  </span>
+                  <span className={(marketData.priceDelta4hPercent ?? 0) >= 0 ? 'text-emerald-600' : 'text-rose-600'}>
+                    4H: {(marketData.priceDelta4hPercent ?? 0) >= 0 ? '+' : ''}
+                    {(typeof marketData.priceDelta4hPercent === 'number' ? marketData.priceDelta4hPercent : 0).toFixed(2)}%
+                  </span>
+                  <span className="text-slate-500 hidden sm:inline">
+                    费率: {((typeof marketData.fundingRate === 'number' ? marketData.fundingRate : 0) * 100).toFixed(4)}%
+                  </span>
+                </>
+              )}
+              {marketLoading && !marketData && (
+                <span className="text-slate-400">{curPrice > 0 ? '正在加载分析指标…' : '正在获取行情…'}</span>
+              )}
+              {marketError && <span className="text-amber-700" role="status">{marketError}</span>}
+              <button
+                type="button"
+                onClick={() => {
+                  void fetchMarket(symbol);
+                  void pollAllActiveSymbols();
+                }}
+                disabled={marketLoading}
+                className="text-slate-400 hover:text-slate-700 cursor-pointer"
+                title="刷新行情"
+              >
+                <RefreshCw size={12} className={marketLoading ? 'animate-spin' : ''} />
+              </button>
+            </div>
           </div>
         </div>
 

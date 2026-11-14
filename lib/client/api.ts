@@ -619,12 +619,12 @@ export const spaces = {
     request<{ success: boolean }>(`/spaces/${spaceId}/members/${memberId}`, {
       method: 'DELETE',
     }),
-  messages: (id: string, options?: { before?: string; limit?: number }) => {
+  messages: (id: string, options?: { before?: string; limit?: number; signal?: AbortSignal }) => {
     const params = new URLSearchParams();
     if (options?.before) params.set('before', options.before);
     if (options?.limit) params.set('limit', String(options.limit));
     const query = params.toString();
-    return request<{ messages: any[]; hasMore?: boolean }>(`/spaces/${id}/messages${query ? `?${query}` : ''}`);
+    return request<{ messages: any[]; hasMore?: boolean }>(`/spaces/${id}/messages${query ? `?${query}` : ''}`, { signal: options?.signal });
   },
   cancelPi: (id: string) =>
     request<{ cancelled: boolean }>(`/spaces/${id}/pi/cancel`, { method: 'POST' }),
@@ -1103,6 +1103,22 @@ export const spaces = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+};
+
+export const spaceFollowUps = {
+  list: (spaceId: string, signal?: AbortSignal) => request<{
+    tasks: import('@/types').SpaceFollowUp[]; enabled: boolean; schedulerEnabled: boolean;
+    qqEnabled: boolean; qqChannel: { ready: boolean; reason: string };
+  }>(`/spaces/${spaceId}/follow-ups`, { signal, cache: 'no-store' }),
+  setEnabled: (spaceId: string, enabled: boolean) => request<{ success: boolean; enabled: boolean }>(`/spaces/${spaceId}/follow-ups`, {
+    method: 'PATCH', body: JSON.stringify({ enabled }),
+  }),
+  setQQEnabled: (spaceId: string, qqEnabled: boolean) => request<{ success: boolean; qqEnabled: boolean }>(`/spaces/${spaceId}/follow-ups`, {
+    method: 'PATCH', body: JSON.stringify({ qqEnabled }),
+  }),
+  cancel: (spaceId: string, id: string) => request<{ success: boolean }>(`/spaces/${spaceId}/follow-ups`, {
+    method: 'PATCH', body: JSON.stringify({ id }),
+  }),
 };
 
 export const cryptoSentinel = {

@@ -15,6 +15,7 @@ import LoginRequired from '@/components/auth/LoginRequired';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import ComposerShell from '@/components/chat/ComposerShell';
 import SpaceMessageItem from '@/components/spaces/SpaceMessageItem';
+import SpaceFollowUpPanel from '@/components/spaces/SpaceFollowUpPanel';
 import TaskProposalDialog, { type TaskProposalRevision } from '@/components/spaces/TaskProposalDialog';
 import TaskDispatchDialog, { type TaskDispatchRevision } from '@/components/spaces/TaskDispatchDialog';
 import TaskReviewDialog from '@/components/spaces/TaskReviewDialog';
@@ -667,6 +668,8 @@ export default function SpaceDetailPage() {
   const [mentionRange, setMentionRange] = useState<{ start: number; end: number } | null>(null);
   const [activeMentionIndex, setActiveMentionIndex] = useState(0);
   const [isStreaming, setIsStreaming] = useState(false);
+  const streamingRef = useRef(isStreaming);
+  streamingRef.current = isStreaming;
   const { play: playTTS, stop: stopTTS, isPlaying: isTTSPlaying, isLoading: isTTSLoading, currentId: currentTTSId } = useTTS();
   const [streamingContent, setStreamingContent] = useState('');
   const [streamingSpeakerId, setStreamingSpeakerId] = useState<string | null>(null);
@@ -3636,6 +3639,22 @@ export default function SpaceDetailPage() {
                   <History size={17} />
                 </button>
               </nav>
+            )}
+
+            {!isPiSpace && space.templateId === 'crypto-contract-trading' && (
+              <SpaceFollowUpPanel
+                key={spaceId}
+                spaceId={spaceId}
+                showControl={workspaceView === 'crypto'}
+                refreshKey={`${messages.length}:${isStreaming}`}
+                onResults={async (signal) => {
+                  if (signal.aborted || streamingRef.current) return false;
+                  const result = await spacesApi.messages(spaceId, { limit: 60, signal });
+                  if (signal.aborted || streamingRef.current) return false;
+                  setMessages(result.messages);
+                  return true;
+                }}
+              />
             )}
 
             {!isPiSpace && wechatWorkspace && workspaceView === 'wechat_articles' ? (

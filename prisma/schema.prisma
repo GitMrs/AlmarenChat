@@ -287,6 +287,8 @@ model Space {
   templateVersion    Int?
   templateSnapshot   Json?
   discussionSettings Json?
+  cryptoAutonomyEnabled Boolean @default(false)
+  cryptoFollowUpQQEnabled Boolean @default(false)
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
@@ -297,6 +299,7 @@ model Space {
   runs               AgentRun[]
   works              SpaceWork[]
   automations        SpaceAutomation[]
+  followUps          SpaceFollowUp[]
   actionRequests     SpaceActionRequest[]
   connectors         SpaceConnector[]
   mcpServers         SpaceMcpServer[]
@@ -426,6 +429,38 @@ model SpaceWorkVersion {
 
   @@unique([workId, version])
   @@index([workId, createdAt])
+}
+
+model SpaceFollowUp {
+  id             String    @id @default(uuid())
+  spaceId        String
+  space          Space     @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  agentId        String
+  title          String
+  prompt         String
+  context        String
+  origin         String    @default("USER_REQUEST")
+  parentId       String?   @unique
+  chainDepth     Int       @default(0)
+  chainEndsAt    DateTime?
+  reason         String?
+  qqReminderId   String?   @unique
+  qqReminder     AssistantReminder? @relation(fields: [qqReminderId], references: [id], onDelete: SetNull)
+  sourceKey      String    @unique
+  runAt          DateTime
+  nextAttemptAt  DateTime
+  networkAllowed Boolean   @default(false)
+  status         String    @default("PENDING")
+  attempts       Int       @default(0)
+  leaseUntil     DateTime?
+  claimToken     String?
+  error          String?
+  completedAt    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([status, nextAttemptAt])
+  @@index([spaceId, status, runAt])
 }
 
 model SpaceAutomation {
@@ -826,6 +861,7 @@ model AssistantReminder {
   qqDeliveryError    String?
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
+  spaceFollowUp      SpaceFollowUp?
 
   @@unique([userId, idempotencyKey])
   @@index([userId, status, dueTime])

@@ -20,6 +20,8 @@ import {
 import { resolveWorkerDatabasePath } from './runtime/worker-config.mjs';
 import { openWorkerDatabase } from './runtime/worker-database.mjs';
 import { createScheduler } from '../lib/core/scheduler.mjs';
+import { cancelUnavailableFollowUpQQNotifications, canDeliverFollowUpQQNotification, claimDueQQReminder, formatQQReminderMessage, selectDueQQReminders, stopExhaustedMarketQQNotifications } from './runtime/follow-up-qq-notifications.mjs';
+import { MARKET_QQ_MAX_DELIVERY_ATTEMPTS, isMarketQQNotification } from '../lib/space/follow-up-notification-policy.mjs';
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const secret = process.env.QQ_ASSISTANT_SECRET || '';
@@ -573,39 +575,32 @@ async function deliverDueReminders() {
   reminderLoopRunning = true;
   try {
     const now = sqliteDate();
-    const reminders = db.prepare(`
-      SELECT r.*, b."qqOpenId"
-      FROM "AssistantReminder" r
-      JOIN "AssistantQQBinding" b ON b."userId" = r."userId"
-      WHERE r."status" = 'PENDING'
-        AND r."dueTime" IS NOT NULL
-        AND r."dueTime" <= ?
-        AND r."qqDeliveredAt" IS NULL
-        AND (r."qqNextAttemptAt" IS NULL OR r."qqNextAttemptAt" <= ?)
-        AND b."enabled" = 1
-        AND b."qqOpenId" IS NOT NULL
-      ORDER BY r."dueTime" ASC
-      LIMIT 20
-    `).all(now, now);
+    cancelUnavailableFollowUpQQNotifications(db, now);
+    stopExhaustedMarketQQNotifications(db, now);
+    const readyUserIds = [...clients.values()]
+      .filter(entry => entry.kind === 'PERSONAL' && entry.ready && Date.now() - entry.lastProactiveAt >= pollMs)
+      .map(entry => entry.userId);
+    const reminders = selectDueQQReminders(db, readyUserIds, now);
 
     for (const reminder of reminders) {
       const entry = clients.get(`personal:${reminder.userId}`);
-      if (!entry?.ready) continue;
+      if (!entry?.ready || entry.appId !== reminder.qqAppId) continue;
       if (Date.now() - entry.lastProactiveAt < pollMs) continue;
-      const leaseUntil = sqliteDate(new Date(Date.now() + 5 * 60_000));
-      const claimed = db.prepare(`
-        UPDATE "AssistantReminder"
-        SET "qqNextAttemptAt" = ?, "updatedAt" = ?
-        WHERE "id" = ? AND "status" = 'PENDING' AND "dueTime" <= ? AND "qqDeliveredAt" IS NULL
-          AND ("qqNextAttemptAt" IS NULL OR "qqNextAttemptAt" <= ?)
-      `).run(leaseUntil, now, reminder.id, now, now);
-      if (claimed.changes !== 1) continue;
+      if (!claimDueQQReminder(db, reminder, now)) continue;
+      if (!canDeliverFollowUpQQNotification(db, reminder)) {
+        db.prepare(`
+          UPDATE "AssistantReminder" SET "status" = 'CANCELLED', "qqNextAttemptAt" = NULL,
+            "qqDeliveryError" = '空间复查通知已关闭、取消或超过30分钟有效期', "updatedAt" = ?
+          WHERE "id" = ? AND "qqDeliveredAt" IS NULL
+        `).run(now, reminder.id);
+        continue;
+      }
       entry.lastProactiveAt = Date.now();
 
       try {
         const sent = await entry.bot.sendWakeup(
           { scope: 'c2c', targetId: reminder.qqOpenId },
-          `提醒你：${reminder.content}\n\n引用本条提醒并回复“完成了”、“延后10分钟”或“取消提醒”可以直接处理。`
+          formatQQReminderMessage(reminder)
         );
         db.prepare(`
           UPDATE "AssistantReminder"
@@ -615,12 +610,15 @@ async function deliverDueReminders() {
         `).run(now, sent?.ext_info?.ref_idx || sent?.id || null, now, reminder.id);
       } catch (error) {
         const attempts = (reminder.qqDeliveryAttempts || 0) + 1;
-        const nextAttemptAt = sqliteDate(new Date(Date.now() + qqReminderRetryDelayMs(attempts - 1)));
+        const exhausted = isMarketQQNotification(reminder) && attempts >= MARKET_QQ_MAX_DELIVERY_ATTEMPTS;
+        const nextAttemptAt = exhausted ? null : sqliteDate(new Date(Date.now() + qqReminderRetryDelayMs(attempts - 1)));
+        const deliveryError = exhausted ? `${shortError(error)}；已达到3次投递上限，停止发送` : shortError(error);
         db.prepare(`
           UPDATE "AssistantReminder"
-          SET "qqDeliveryAttempts" = ?, "qqNextAttemptAt" = ?, "qqDeliveryError" = ?, "updatedAt" = ?
-          WHERE "id" = ? AND "qqDeliveredAt" IS NULL
-        `).run(attempts, nextAttemptAt, shortError(error), now, reminder.id);
+          SET "qqDeliveryAttempts" = ?, "qqNextAttemptAt" = ?, "qqDeliveryError" = ?, "updatedAt" = ?, "status" = ?
+          WHERE "id" = ? AND "qqDeliveredAt" IS NULL AND "status" = 'PENDING'
+            AND (? = 0 OR "qqDeliveryAttempts" = ?)
+        `).run(attempts, nextAttemptAt, deliveryError, now, exhausted ? 'FAILED' : 'PENDING', reminder.id, isMarketQQNotification(reminder) ? 1 : 0, attempts);
       }
     }
   } finally {

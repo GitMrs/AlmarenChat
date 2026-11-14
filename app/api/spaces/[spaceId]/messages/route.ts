@@ -42,6 +42,8 @@ import { currentTimeContext } from '@/lib/agents/memory/current-time-context.mjs
 import { RESPONSE_GROUNDING_GUIDANCE } from '@/lib/chat/conversation-grounding.mjs';
 import { recordSpaceAgentExperiences } from '@/app/api/_lib/agent-personal-memory';
 import { prepareSpaceMessageRuntime } from '@/lib/space/space-message-runtime';
+import { createSpaceFollowUpTools } from '@/lib/space/follow-up-tools';
+import { SPACE_FOLLOW_UP_GUIDANCE } from '@/lib/space/follow-up-policy.mjs';
 import { loadWechatContext } from '@/lib/workspace/wechat/wechat-context.mjs';
 import { loadAgentWorldContext } from '@/lib/world/context';
 import { buildConversationContinuityGuidance } from '@/lib/chat/conversation-continuity.mjs';
@@ -941,6 +943,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
       ? createAgentGrowthTools({ userId, agentId: targetAgent.id, spaceId })
       : null;
     const connectorBroker = !useIsolatedContext ? await createScopedConnectorBroker(userId, 'space', spaceId) : null;
+    const followUp = !useIsolatedContext && !isMultiReply && space.templateId === 'crypto-contract-trading' && space.cryptoAutonomyEnabled
+      ? createSpaceFollowUpTools({ userId, spaceId, agentId: targetAgent.id,
+          sourceMessageId: persistedUserMessage?.id || randomUUID(), history: rawHistory, networkAllowed: allowWebSearch, userMessage: textMessage })
+      : null;
     const availableTools = [
       ...filterToolSchemas([
       ...(selectedWork ? workspaceToolSchemas.filter((tool: any) => READ_ONLY_WORKSPACE_TOOLS.has(tool.function.name)) : []),
@@ -952,6 +958,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
       ], capabilityResolution),
       ...(allowWebSearch ? web.tools : []),
       ...activeBilibiliTools,
+      ...(followUp?.tools || []),
     ];
     const capabilityHelp = createCapabilityHelpTool({ entry: 'space', phase: spacePhase, query: textMessage,
       loadableCapabilities: allowWebSearch ? web.loadableCapabilities : [],
@@ -1020,6 +1027,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
       teamLearning,
       runEvidence,
       chatGuidance,
+      followUp ? `${SPACE_FOLLOW_UP_GUIDANCE}\n${followUp.guidance}` : '',
+      space.templateId === 'crypto-contract-trading' && !space.cryptoAutonomyEnabled
+        ? '当前空间的自主复查开关已关闭。可以建议复查时间，但不能承诺主动执行或推送；用户需要自主跟进时，提示先在作战中心开启“自主复查与汇报”。'
+        : '',
       currentPendingProposal
         ? [
             '当前已有一份待用户确认的任务方案：',
@@ -1135,6 +1146,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
               });
             },
             executeTool: async (name: string, args: Record<string, unknown>) => {
+              if (followUp?.owns(name)) return followUp.execute(name, args);
               if (name.startsWith('mcp_')) { if (!connectorBroker) throw new Error('当前场景未开启连接器'); return connectorBroker.call(name, args); }
               if (name === 'capability_help') return capabilityHelp.execute(args);
               if (growth?.owns(name)) return growth.execute(name, args);

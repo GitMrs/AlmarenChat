@@ -246,7 +246,7 @@ export interface AssistantReminder {
   id: string;
   content: string;
   dueTime: string | null;
-  status: 'PENDING' | 'COMPLETED' | 'DISMISSED';
+  status: 'PENDING' | 'COMPLETED' | 'DISMISSED' | 'CANCELLED' | 'FAILED';
   sourceMessageId?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -548,6 +548,19 @@ export interface SpaceAutomation {
   createdAt: string;
   updatedAt: string;
   executions?: SpaceAutomationExecution[];
+}
+
+export interface SpaceFollowUp {
+  id: string;
+  agentId: string;
+  title: string;
+  runAt: string;
+  status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
+  error?: string | null;
+  updatedAt: string;
+  origin?: 'USER_REQUEST' | 'AI_FOLLOW_UP';
+  reason?: string | null;
+  qqNotification?: { status: 'PENDING' | 'SENT' | 'RETRYING' | 'FAILED' | 'CANCELLED'; error?: string | null } | null;
 }
 
 export interface SpaceActionRequest {

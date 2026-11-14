@@ -269,15 +269,15 @@ async function fetchMarketDataDirect(ccy: string, instId: string, rawSymbol: str
 
   try {
     const now = Date.now();
-    const realtime = await getRealtimeData(instId, now);
-    if (!realtime || realtime.value.price <= 0) return null;
-    const [derivatives, candles15m, candles1h, candles4h, microstructure] = await Promise.all([
+    const [realtime, derivatives, candles15m, candles1h, candles4h, microstructure] = await Promise.all([
+      getRealtimeData(instId, now),
       getDerivativesData(ccy, instId, now),
       getCandles(instId, '15m', 15 * 60_000, now),
       getCandles(instId, '1H', 60 * 60_000, now),
       getCandles(instId, '4H', 4 * 60 * 60_000, now),
       getMicrostructureData(instId, now),
     ]);
+    if (!realtime || realtime.value.price <= 0) return null;
     const delta = (candles: CryptoCandle[]) => candles[0]?.open > 0
       ? ((realtime.value.price - candles[0].open) / candles[0].open) * 100
       : 0;
