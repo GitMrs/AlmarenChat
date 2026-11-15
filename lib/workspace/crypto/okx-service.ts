@@ -32,7 +32,9 @@ export interface CryptoOIWindow {
   from: string;
   to: string;
   period: '1H';
-  scope: 'OKX_CURRENCY_CONTRACTS';
+  scope: 'OKX_INSTRUMENT_CONTRACTS';
+  instId: string;
+  metric: 'CONTRACTS';
   ccy: string;
 }
 
@@ -468,7 +470,7 @@ async function getDerivativesData(ccy: string, instId: string, now: number) {
   if (cached && now - cached.fetchedAt < DERIVATIVES_CACHE_TTL_MS) return cached;
   const [frRes, rubikOiRes, lsRes] = await Promise.allSettled([
     smartFetch(`https://www.okx.com/api/v5/public/funding-rate?instId=${instId}`, { timeoutMs: 5000 }),
-    smartFetch(`https://www.okx.com/api/v5/rubik/stat/contracts/open-interest-volume?ccy=${ccy}&period=1H`, { timeoutMs: 5000 }),
+    smartFetch(`https://www.okx.com/api/v5/rubik/stat/contracts/open-interest-history?instId=${instId}&period=1H&limit=24`, { timeoutMs: 5000 }),
     smartFetch(`https://www.okx.com/api/v5/rubik/stat/contracts/long-short-account-ratio?ccy=${ccy}&period=1H`, { timeoutMs: 5000 }),
   ]);
   let fundingRate = 0;
@@ -490,6 +492,7 @@ async function getDerivativesData(ccy: string, instId: string, now: number) {
   if (rubikOiRes.status === 'fulfilled' && rubikOiRes.value.ok) {
     const payload = await rubikOiRes.value.json().catch(() => ({}));
     const list = payload.code === '0' && Array.isArray(payload.data) ? payload.data : [];
+    // 历史接口 row[1] 是该合约持仓张数；不用随币价变化的美元名义金额。
     // 比较交易所实际相隔一小时的两个采样点；抓取时间不能替代统计时点。
     const points = list.filter(Array.isArray).map((row: any[]) => ({ at: Number(row[0]), oi: Number(row[1]) }))
       .filter((point: { at: number; oi: number }) => Number.isFinite(point.at) && point.at > 0 && point.at <= now
@@ -502,7 +505,7 @@ async function getDerivativesData(ccy: string, instId: string, now: number) {
       if (Number.isFinite(delta)) {
         oiDelta1hPercent = delta;
         oiDelta1hWindow = { from: new Date(previous.at).toISOString(), to: new Date(current.at).toISOString(),
-          period: '1H', scope: 'OKX_CURRENCY_CONTRACTS', ccy };
+          period: '1H', scope: 'OKX_INSTRUMENT_CONTRACTS', instId, metric: 'CONTRACTS', ccy };
         oiDeltaAvailable = true;
       }
     }
