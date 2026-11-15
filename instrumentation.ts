@@ -3,6 +3,14 @@ export async function register() {
     const isDev = process.env.NODE_ENV === 'development';
     const enableSchedulers = process.env.ENABLE_SCHEDULERS === 'true';
 
+    // 这是已保存复查的执行入口，必须早于开发环境的爬虫开关判断。
+    // 无待办时只检查数据库，不查询行情或调用模型。
+    try {
+      const { startSpaceFollowUpScheduler } = await import('./lib/space/follow-up-service');
+      startSpaceFollowUpScheduler();
+    } catch (err: any) {
+      console.warn('[instrumentation] Failed to start space follow-up scheduler:', err?.message || err);
+    }
     // 本地开发环境默认关闭后台高频定时扫描与爬虫，避免不必要的外网轮询与报错刷屏
     if (isDev && !enableSchedulers) {
       console.log('[instrumentation] 本地开发环境已关闭后台定时扫描与爬虫（如需开启可配置 ENABLE_SCHEDULERS=true）');

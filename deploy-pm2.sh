@@ -166,6 +166,9 @@ if ! yarn db:verify-native; then
   yarn db:verify-native
 fi
 
+echo "Verifying saved follow-up scheduler startup..."
+node --test lib/space/follow-up-startup.test.mjs
+
 echo "Generating Prisma client..."
 yarn prisma generate
 
