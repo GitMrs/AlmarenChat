@@ -32,7 +32,7 @@ export function createSpaceFollowUpTools({ userId, spaceId, agentId, sourceMessa
   return {
     tools,
     guidance: maySchedule
-      ? '本轮用户明确表达了后续跟进意图，可以使用 schedule_space_follow_up 安排首次复查。'
+      ? '本轮用户明确表达了后续跟进意图。先用 list_space_follow_ups 核对同主题的待复查/执行中任务；已有则告知实际时间，不重复安排。没有对应任务且观察目标可从对话合理确定时，选择未来时点并调用 schedule_space_follow_up 保存首次复查，不要停留在建议时间。仅保存成功才能说已安排；目标确实不明时先澄清。'
       : '本轮是用户临时提问，未授予后续跟进权限。请只回答当前问题；本轮不提供安排复查的工具，不要承诺自动再看。',
     owns(name: string) { return tools.some(item => item.function.name === name); },
     async execute(name: string, args: Record<string, unknown>) {
@@ -50,7 +50,10 @@ export function createSpaceFollowUpTools({ userId, spaceId, agentId, sourceMessa
             where: { spaceId }, orderBy: { createdAt: 'desc' }, take: 20,
             select: { id: true, title: true, agentId: true, runAt: true, status: true, error: true },
           });
-          return { ok: true, tasks };
+          return { ok: true, tasks, schedulingAllowed: maySchedule,
+            nextStep: maySchedule
+              ? '核对是否已有同主题的待复查或执行中任务；有则报告实际安排，没有且对话能确定观察目标时，调用 schedule_space_follow_up 保存首次复查。仅查询列表不代表已安排。'
+              : '本轮仅查询任务状态；没有任务时如实说明，不自行创建。' };
         }
         if (name === 'cancel_space_follow_up') {
           const result = await prisma.spaceFollowUp.updateMany({
