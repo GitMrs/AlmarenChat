@@ -149,11 +149,12 @@ export interface TrapAnalysisResult {
 }
 
 /**
- * 行情按用途分层缓存：实时层短缓存，结构层跟随 K 线边界，衍生指标使用分钟级缓存。
+ * 行情按用途分层缓存：实时层短缓存，K 线盘中短缓存并在边界复核，衍生指标使用分钟级缓存。
  * 同一轮并发请求继续合并，避免多个 Agent 重复访问 OKX。
  */
 const REALTIME_CACHE_TTL_MS = 2500;
 const DERIVATIVES_CACHE_TTL_MS = 60_000;
+const CANDLE_CACHE_TTL_MS = 10_000;
 const CANDLE_BOUNDARY_GRACE_MS = 5_000;
 const MICROSTRUCTURE_CACHE_TTL_MS = 5_000;
 type CacheEntry<T> = { fetchedAt: number; value: T };
@@ -514,14 +515,20 @@ async function getCandles(instId: string, bar: string, periodMs: number, now: nu
   const periodStartMs = Math.floor(now / periodMs) * periodMs;
   const key = `${instId}:${bar}`;
   const cached = candleCache.get(key);
-  if (cached && cached.periodStartMs === periodStartMs && now < periodStartMs + CANDLE_BOUNDARY_GRACE_MS + periodMs) {
+  // 未收盘 OHLCV 也需要刷新；周期已切换时不复用上一周期的列表。
+  // 若边界刚过就取过数据，宽限期后再取一次，核验交易所最终收盘标记。
+  const boundaryReadyAt = periodStartMs + CANDLE_BOUNDARY_GRACE_MS;
+  const needsBoundaryConfirmation = cached && cached.fetchedAt < boundaryReadyAt && now >= boundaryReadyAt;
+  if (cached && cached.periodStartMs === periodStartMs
+    && now - cached.fetchedAt < CANDLE_CACHE_TTL_MS && !needsBoundaryConfirmation) {
     return cached.value;
   }
   const response = await smartFetch(`https://www.okx.com/api/v5/market/candles?instId=${instId}&bar=${bar}&limit=10`, { timeoutMs: 5000 }).catch(() => null);
   if (!response?.ok) return cached?.value || [];
   const json = await response.json().catch(() => ({}));
-  const rawList = Array.isArray(json.data) ? json.data : [];
-  const candles = rawList.map((item: any[]) => {
+  if (json.code !== '0' || !Array.isArray(json.data) || json.data.length === 0) return cached?.value || [];
+  const rawList = json.data;
+  const candles = rawList.filter(Array.isArray).map((item: any[]) => {
     const startTimeMs = parseInt(item[0], 10);
     return {
       time: new Date(startTimeMs).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
@@ -533,7 +540,11 @@ async function getCandles(instId: string, bar: string, periodMs: number, now: nu
       close: parseFloat(item[4]),
       vol: parseFloat(item[5] || '0'),
     };
-  });
+  }).filter((candle: CryptoCandle) => Number.isFinite(candle.startTimeMs) && candle.startTimeMs > 0
+    && [candle.open, candle.high, candle.low, candle.close].every(value => Number.isFinite(value) && value > 0)
+    && Number.isFinite(candle.vol) && candle.vol >= 0);
+  // 上游空数据或异常数据不能清空可用历史，也不能将旧数据的时间刷新为现在。
+  if (candles.length === 0) return cached?.value || [];
   candleCache.set(key, { fetchedAt: Date.now(), value: candles, periodStartMs, periodMs });
   return candles;
 }

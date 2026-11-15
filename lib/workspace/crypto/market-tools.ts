@@ -1,4 +1,5 @@
 import { getCryptoMarketData, getCryptoQuoteData, normalizeSymbol } from './okx-service';
+import { CRYPTO_CANDLE_CONFIRMATION_GUIDANCE } from './okx-analysis.mjs';
 
 export const cryptoMarketTools = ['crypto_quote', 'crypto_market_snapshot'] as const;
 
@@ -27,6 +28,7 @@ export async function queryCryptoMarket(tool: string, args: { symbol: string }) 
     oiDelta1hPercent: quality.oiDelta1h ? snapshot.oiDelta1hPercent : null,
     longShortRatio: quality.longShortRatio ? snapshot.longShortRatio ?? null : null,
     candles15m: snapshot.candles15m, candles1h: snapshot.candles1h, candles4h: snapshot.candles4h,
+    candleConfirmationGuidance: CRYPTO_CANDLE_CONFIRMATION_GUIDANCE,
     priceDelta15mPercent: quality.candles15m ? snapshot.priceDelta15mPercent : null,
     priceDelta1hPercent: quality.candles1h ? snapshot.priceDelta1hPercent : null,
     priceDelta4hPercent: quality.candles4h ? snapshot.priceDelta4hPercent : null,
