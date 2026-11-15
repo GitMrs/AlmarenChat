@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { CalendarClock, ChevronDown, Loader2, RefreshCw, Settings2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import SearchableSelect from '@/components/shared/SearchableSelect';
 import { spaceFollowUps } from '@/lib/client/api';
 import { startSerialPolling } from '@/lib/space/serial-polling.mjs';
 import type { Agent, SpaceFollowUp } from '@/types';
@@ -18,6 +19,7 @@ const displayTime = (time: string) => new Date(time).toLocaleString('zh-CN', {
 function FollowUpSettings({ spaceId, initialValue, maxAllowed, onSaved }: {
   spaceId: string; initialValue: number; maxAllowed: number; onSaved: () => void;
 }) {
+  const limitId = useId();
   const [limit, setLimit] = useState(initialValue);
   const [savedLimit, setSavedLimit] = useState(initialValue);
   const [saving, setSaving] = useState(false);
@@ -32,12 +34,25 @@ function FollowUpSettings({ spaceId, initialValue, maxAllowed, onSaved }: {
     finally { setSaving(false); }
   };
   return <div className="mx-auto mt-4 max-w-5xl rounded-lg border border-slate-100 bg-slate-50 p-4">
-    <div className="flex flex-wrap items-center gap-3">
-      <label htmlFor="follow-up-limit" className="text-xs font-semibold text-slate-700">每轮自动续查上限</label>
-      <select id="follow-up-limit" value={limit} disabled={saving} onChange={event => { setLimit(Number(event.target.value)); setSaved(false); }} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700">
-        {Array.from({ length: maxAllowed + 1 }, (_, count) => <option key={count} value={count}>{count} 次</option>)}
-      </select>
-      <button type="button" disabled={saving || limit === savedLimit} onClick={() => void save()} className="flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40">
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+      <label htmlFor={limitId} className="w-full text-xs font-semibold text-slate-700 sm:w-auto">每轮自动续查上限</label>
+      <SearchableSelect
+        id={limitId}
+        value={String(limit)}
+        options={Array.from({ length: maxAllowed + 1 }, (_, count) => ({
+          value: String(count), label: count === 0 ? '0 次 · 仅首次' : `${count} 次`,
+          description: count === 0 ? '只执行首次约定跟进' : undefined,
+          badge: count === 3 ? '默认' : undefined,
+        }))}
+        disabled={saving}
+        compact
+        showSearch={false}
+        className="w-40 max-w-full"
+        triggerClassName="rounded-lg"
+        dropdownClassName="min-w-0 rounded-xl"
+        onChange={value => { setLimit(Number(value)); setSaved(false); setError(''); }}
+      />
+      <button type="button" disabled={saving || limit === savedLimit} onClick={() => void save()} className="flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-slate-900 px-3 text-xs font-semibold text-white transition hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-40">
         {saving && <Loader2 size={12} className="animate-spin" />}{saving ? '保存中…' : '保存设置'}
       </button>
       {saved && <span role="status" className="text-xs text-emerald-700">已保存</span>}
