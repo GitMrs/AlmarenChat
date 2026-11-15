@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import { sendPlatformQQ } from '../lib/platform-notifications/qq.mjs';
 import { deliverPlatformNotifications } from './runtime/platform-notifications.mjs';
 import { randomUUID } from 'node:crypto';
 import { createServer } from 'node:http';
@@ -15,14 +16,12 @@ import { hashQQWebhookToken, QQ_WEBHOOK_PATH } from '../lib/qq-assistant/webhook
 import {
   classifyQQCommand,
   qqImageAttachments,
-  qqReminderRetryDelayMs,
   sqliteDate,
 } from '../lib/qq-assistant/policy.mjs';
 import { resolveWorkerDatabasePath } from './runtime/worker-config.mjs';
 import { openWorkerDatabase } from './runtime/worker-database.mjs';
 import { createScheduler } from '../lib/core/scheduler.mjs';
-import { cancelUnavailableFollowUpQQNotifications, canDeliverFollowUpQQNotification, claimDueQQReminder, formatQQReminderMessage, selectDueQQReminders, stopExhaustedMarketQQNotifications } from './runtime/follow-up-qq-notifications.mjs';
-import { MARKET_QQ_MAX_DELIVERY_ATTEMPTS, isMarketQQNotification } from '../lib/space/follow-up-notification-policy.mjs';
+import { cancelUnavailableFollowUpQQNotifications, stopExhaustedMarketQQNotifications } from './runtime/follow-up-qq-notifications.mjs';
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const secret = process.env.QQ_ASSISTANT_SECRET || '';
@@ -579,50 +578,7 @@ async function deliverDueReminders() {
     cancelUnavailableFollowUpQQNotifications(db, now);
     stopExhaustedMarketQQNotifications(db, now);
     await deliverPlatformNotifications(db);
-    const readyUserIds = [...clients.values()]
-      .filter(entry => entry.kind === 'PERSONAL' && entry.ready && Date.now() - entry.lastProactiveAt >= pollMs)
-      .map(entry => entry.userId);
-    const reminders = selectDueQQReminders(db, readyUserIds, now);
 
-    for (const reminder of reminders) {
-      const entry = clients.get(`personal:${reminder.userId}`);
-      if (!entry?.ready || entry.appId !== reminder.qqAppId) continue;
-      if (Date.now() - entry.lastProactiveAt < pollMs) continue;
-      if (!claimDueQQReminder(db, reminder, now)) continue;
-      if (!canDeliverFollowUpQQNotification(db, reminder)) {
-        db.prepare(`
-          UPDATE "AssistantReminder" SET "status" = 'CANCELLED', "qqNextAttemptAt" = NULL,
-            "qqDeliveryError" = '空间复查通知已关闭、取消或超过30分钟有效期', "updatedAt" = ?
-          WHERE "id" = ? AND "qqDeliveredAt" IS NULL
-        `).run(now, reminder.id);
-        continue;
-      }
-      entry.lastProactiveAt = Date.now();
-
-      try {
-        const sent = await entry.bot.sendWakeup(
-          { scope: 'c2c', targetId: reminder.qqOpenId },
-          formatQQReminderMessage(reminder)
-        );
-        db.prepare(`
-          UPDATE "AssistantReminder"
-          SET "qqDeliveredAt" = ?, "qqMessageId" = ?, "qqDeliveryError" = NULL,
-              "qqNextAttemptAt" = NULL, "updatedAt" = ?
-          WHERE "id" = ? AND "qqDeliveredAt" IS NULL
-        `).run(now, sent?.ext_info?.ref_idx || sent?.id || null, now, reminder.id);
-      } catch (error) {
-        const attempts = (reminder.qqDeliveryAttempts || 0) + 1;
-        const exhausted = isMarketQQNotification(reminder) && attempts >= MARKET_QQ_MAX_DELIVERY_ATTEMPTS;
-        const nextAttemptAt = exhausted ? null : sqliteDate(new Date(Date.now() + qqReminderRetryDelayMs(attempts - 1)));
-        const deliveryError = exhausted ? `${shortError(error)}；已达到3次投递上限，停止发送` : shortError(error);
-        db.prepare(`
-          UPDATE "AssistantReminder"
-          SET "qqDeliveryAttempts" = ?, "qqNextAttemptAt" = ?, "qqDeliveryError" = ?, "updatedAt" = ?, "status" = ?
-          WHERE "id" = ? AND "qqDeliveredAt" IS NULL AND "status" = 'PENDING'
-            AND (? = 0 OR "qqDeliveryAttempts" = ?)
-        `).run(attempts, nextAttemptAt, deliveryError, now, exhausted ? 'FAILED' : 'PENDING', reminder.id, isMarketQQNotification(reminder) ? 1 : 0, attempts);
-      }
-    }
   } finally {
     reminderLoopRunning = false;
   }
@@ -665,12 +621,9 @@ function cleanupWebhookEvents(now = Date.now()) {
 }
 
 async function handleAgentWebhookRequest(response, binding, body) {
-  const identity = agentIdentity(binding.userId, binding.botAccountId);
-  const entry = clients.get(`agent:${binding.id}`);
-  if (!entry?.ready || !identity?.qqOpenId) {
-    writeJson(response, 409, {
-      error: identity?.qqOpenId ? 'QQ Bot 当前未连接' : '请先在 QQ 中私聊这个 Agent 的机器人完成接收方绑定',
-    });
+  const platform = db.prepare('SELECT * FROM "PlatformNotification" WHERE "userId" = ? AND "enabled" = 1').get(binding.userId);
+  if (!platform) {
+    writeJson(response, 409, { error: '请在账号设置中配置并启用平台通知' });
     return;
   }
 
@@ -699,13 +652,10 @@ async function handleAgentWebhookRequest(response, binding, body) {
       ? body.run.status.trim().slice(0, 40) : 'COMPLETED';
   const message = `【${binding.agentName || 'Agent'}】${title}\n状态：${status}\n\n${content}`;
   try {
-    const sent = await entry.bot.sendWakeup(
-      { scope: 'c2c', targetId: identity.qqOpenId },
-      message
-    );
+    const sent = await sendPlatformQQ(platform, message);
     updateAgentBinding(binding.id, { webhookLastUsedAt: sqliteDate() });
     if (eventKey) recentWebhookEvents.set(eventKey, Date.now() + 10 * 60_000);
-    writeJson(response, 200, { sent: true, messageId: sent?.ext_info?.ref_idx || sent?.id || null });
+    writeJson(response, 200, { sent: true, messageId: sent?.messageId || sent?.ext_info?.ref_idx || sent?.id || null });
   } catch (error) {
     updateAgentAccount(binding.botAccountId, { lastError: shortError(error) });
     writeJson(response, 502, { error: shortError(error) });
@@ -777,9 +727,9 @@ async function handleWebhookRequest(request, response) {
     return;
   }
 
-  const entry = clients.get(`personal:${binding.userId}`);
-  if (!entry?.ready || !binding.qqOpenId) {
-    writeJson(response, 409, { error: binding.qqOpenId ? 'QQ Bot 当前未连接' : '请先在 QQ 中私聊机器人完成接收方绑定' });
+  const platform = db.prepare('SELECT * FROM "PlatformNotification" WHERE "userId" = ? AND "enabled" = 1').get(binding.userId);
+  if (!platform) {
+    writeJson(response, 409, { error: '请在账号设置中配置并启用平台通知' });
     return;
   }
 
@@ -793,14 +743,11 @@ async function handleWebhookRequest(request, response) {
       ? body.run.status.trim().slice(0, 40) : 'COMPLETED';
   const message = `【空间通知】${title}\n状态：${status}\n\n${content}`;
   try {
-    const sent = await entry.bot.sendWakeup(
-      { scope: 'c2c', targetId: binding.qqOpenId },
-      message
-    );
+    const sent = await sendPlatformQQ(platform, message);
     const now = sqliteDate();
     updateBinding(binding.userId, { webhookLastUsedAt: now });
     if (eventKey) recentWebhookEvents.set(eventKey, Date.now() + 10 * 60_000);
-    writeJson(response, 200, { sent: true, messageId: sent?.ext_info?.ref_idx || sent?.id || null });
+    writeJson(response, 200, { sent: true, messageId: sent?.messageId || sent?.ext_info?.ref_idx || sent?.id || null });
   } catch (error) {
     updateBinding(binding.userId, { lastError: shortError(error) });
     writeJson(response, 502, { error: shortError(error) });
@@ -832,7 +779,7 @@ function shutdown() {
 }
 
 if (secret.length < 32) {
-  console.warn('[qq-assistant] QQ_ASSISTANT_SECRET 未配置，QQ Bot Worker 保持待命。');
+  console.warn('[qq-assistant] QQ_ASSISTANT_SECRET 未配置，QQ 聊天连接保持待命；平台通知投递继续运行。');
 } else {
   reconcileBindings();
   void deliverDueReminders();

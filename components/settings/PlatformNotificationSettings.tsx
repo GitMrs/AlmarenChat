@@ -31,7 +31,7 @@ export default function PlatformNotificationSettings() {
       <div><h2 className="text-lg font-black text-slate-950">平台通知</h2>
         <p className="text-sm text-slate-500">配置 QQ 机器人和接收方式。</p></div>
     </div>
-    <p className="text-xs leading-6 text-slate-500">接收空间跟进的重要变化，各空间需单独开启 QQ 通知。</p>
+    <p className="text-xs leading-6 text-slate-500">统一接收待办提醒、空间跟进、鹰眼行情告警和自动化通知。各功能的通知开关仍需单独开启。</p>
     <fieldset disabled={busy} className="space-y-4 disabled:opacity-60">
       <label className="block text-sm">机器人服务地址<input className={inputClass} type="url" placeholder="https://qq.example.com" value={config.baseUrl} onChange={event => change({ baseUrl: event.target.value })} /></label>
       <label className="block text-sm">鉴权密钥（X-Auth-Key）<input className={inputClass} type="password" autoComplete="new-password" placeholder={saved ? '留空保留已保存的密钥' : '输入机器人接口密钥'} value={token} onChange={event => { setToken(event.target.value); setDirty(true); setNotice(''); }} /></label>
@@ -46,7 +46,7 @@ export default function PlatformNotificationSettings() {
         {saved && <button type="button" className="px-4 py-2 text-sm text-rose-600" onClick={() => void run(async () => { await platformNotifications.remove(); setConfig(empty); setToken(''); setSaved(false); setDirty(false); setNotice('已移除平台通知配置'); })}>移除配置</button>}
       </div>
     </fieldset>
-    <p className="text-xs leading-6 text-slate-400">修改配置会取消该通道尚未发送的旧通知。测试发送使用已保存的配置。</p>
+    <p className="text-xs leading-6 text-slate-400">修改配置会取消尚未发送的旧事件通知，普通待办保留。测试发送使用已保存的配置。</p>
     {error && <p role="alert" className="text-sm text-rose-600">{error}</p>}
     {notice && <p role="status" className="text-sm text-emerald-700">{notice}</p>}
   </section>;

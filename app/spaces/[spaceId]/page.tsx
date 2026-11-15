@@ -6153,7 +6153,7 @@ export default function SpaceDetailPage() {
                                   aria-label="Webhook 通知目标"
                                   className="h-9 w-full rounded-md border border-black/[0.08] bg-white px-2.5 text-[11px] font-bold text-slate-700 outline-none"
                                 >
-                                  <option value="PERSONAL_QQ">个人中心 QQ</option>
+                                  <option value="PERSONAL_QQ">平台通知（QQ）</option>
                                   <option value="CUSTOM_WEBHOOK">自定义 HTTPS Webhook</option>
                                 </select>
                                 {automationWebhookTarget === 'CUSTOM_WEBHOOK' ? (

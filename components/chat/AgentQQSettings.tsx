@@ -340,7 +340,7 @@ export default function AgentQQSettings({ open, agentId, agentName, onClose }: P
                     <div>
                       <h3 className="text-sm font-black text-slate-900">Webhook 主动通知</h3>
                       <p className="mt-1 text-xs font-medium leading-5 text-slate-500">
-                        供外部任务或后续自动化投递主动消息。当前个人助理提醒仍走个人 QQ 通道；QQ 私聊回复不需要 Webhook。
+                        供外部任务或后续自动化投递主动消息。主动通知统一使用账号设置中的平台通知；QQ 私聊回复不需要 Webhook。
                       </p>
                     </div>
                     {!binding.webhookConfigured && (

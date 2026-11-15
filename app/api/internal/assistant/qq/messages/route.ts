@@ -281,7 +281,7 @@ export async function POST(request: Request) {
               },
             },
             update: {},
-            create: {
+            create: { notificationChannel: 'PLATFORM_QQ',
               userId,
               content: item.content,
               dueTime: item.dueTime,

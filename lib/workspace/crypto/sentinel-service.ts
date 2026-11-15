@@ -560,14 +560,13 @@ export async function checkSentinelForSpace(
       console.warn('[CryptoSentinel] write SpaceMessage via Prisma failed:', e?.message);
     }
 
-    // 若用户配置了 QQ，推送 AssistantReminder 触发手机 QQ 私聊 (使用 Prisma)
+    // 平台通知通道统一投递行情告警。
     if (state.userId) {
       try {
-        const qqBinding = await prisma.assistantQQBinding.findFirst({
+        const qqBinding = await prisma.platformNotification.findFirst({
           where: {
             userId: state.userId,
             enabled: true,
-            qqOpenId: { not: null },
           },
         });
         if (qqBinding) {
@@ -582,6 +581,7 @@ export async function checkSentinelForSpace(
               create: {
                 id: `rem-sentinel-${Date.now()}-${randomUUID().slice(0, 6)}`,
                 userId: state.userId,
+                notificationChannel: 'PLATFORM_QQ',
                 content,
                 dueTime: new Date(),
                 status: 'PENDING',
@@ -598,6 +598,7 @@ export async function checkSentinelForSpace(
               create: {
                 id: `rem-sentinel-${Date.now()}-${randomUUID().slice(0, 6)}`,
                 userId: state.userId,
+                notificationChannel: 'PLATFORM_QQ',
                 content,
                 dueTime: new Date(),
                 status: 'PENDING',

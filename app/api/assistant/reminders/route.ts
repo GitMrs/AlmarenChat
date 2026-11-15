@@ -74,10 +74,10 @@ export async function POST(request: Request) {
         ? prisma.assistantReminder.upsert({
           where: { userId_idempotencyKey: { userId, idempotencyKey: item.idempotencyKey } },
           update: {},
-          create: { userId, content: item.content, dueTime: item.dueTime, sourceMessageId: item.sourceMessageId, idempotencyKey: item.idempotencyKey, status: 'PENDING' },
+          create: { notificationChannel: 'PLATFORM_QQ', userId, content: item.content, dueTime: item.dueTime, sourceMessageId: item.sourceMessageId, idempotencyKey: item.idempotencyKey, status: 'PENDING' },
         })
         : prisma.assistantReminder.create({
-          data: { userId, content: item.content, dueTime: item.dueTime, sourceMessageId: item.sourceMessageId, status: 'PENDING' },
+          data: { notificationChannel: 'PLATFORM_QQ', userId, content: item.content, dueTime: item.dueTime, sourceMessageId: item.sourceMessageId, status: 'PENDING' },
         })
     )));
     const serialized = reminders.map((reminder) => ({

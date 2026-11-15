@@ -64,6 +64,9 @@ function notificationDatabase() {
       "shareTheme" TEXT DEFAULT 'clean',
       "sharedAt" TEXT, "createdAt" TEXT, "updatedAt" TEXT
     );
+    CREATE TABLE "PlatformNotification" (
+      "userId" TEXT PRIMARY KEY, "baseUrl" TEXT, "tokenCiphertext" TEXT, "targetType" TEXT, "targetId" TEXT, "enabled" INTEGER
+    );
     CREATE TABLE "AssistantQQBinding" (
       "userId" TEXT PRIMARY KEY, "webhookTokenCiphertext" TEXT,
       "enabled" INTEGER, "qqOpenId" TEXT
@@ -159,7 +162,7 @@ test('model-backed automation sends its primary text artifact instead of the com
   }
 });
 
-test('personal QQ delivery uses notification.txt and shares the full Markdown artifact', async () => {
+test('platform QQ delivery uses notification.txt and shares the full Markdown artifact', async () => {
   const db = notificationDatabase();
   const projectRoot = await mkdtemp(path.join(os.tmpdir(), 'almaren-qq-share-'));
   const reportPath = 'workspace/works/work-qq/daily-report.md';
@@ -170,8 +173,12 @@ test('personal QQ delivery uses notification.txt and shares the full Markdown ar
   const originalAppUrl = process.env.APP_URL;
   let body = null;
   globalThis.fetch = async (_url, options) => {
-    body = JSON.parse(options.body);
-    return { ok: true };
+    const url = new URL(_url);
+    assert.equal(url.pathname, '/send_group_msg');
+    assert.equal(url.searchParams.get('group_id'), '12345678');
+    assert.equal(options.headers['X-Auth-Key'], 'platform-key');
+    body = { content: { text: url.searchParams.get('message') } };
+    return Response.json({ status: 'ok', retcode: 0 });
   };
   process.env.QQ_ASSISTANT_SECRET = 'test-secret-that-is-at-least-32-characters';
   process.env.APP_URL = 'https://chat.example.com';
@@ -182,8 +189,8 @@ test('personal QQ delivery uses notification.txt and shares the full Markdown ar
     db.prepare('UPDATE "SpaceAutomation" SET "completionConfig" = ? WHERE "id" = ?').run(
       JSON.stringify({ target: 'PERSONAL_QQ' }), 'automation-1'
     );
-    db.prepare('INSERT INTO "AssistantQQBinding" VALUES (?, ?, 1, ?)').run(
-      'user-1', encryptQQCredential('webhook-token', process.env.QQ_ASSISTANT_SECRET), 'openid-1'
+    db.prepare('INSERT INTO "PlatformNotification" VALUES (?, ?, ?, ?, ?, 1)').run(
+      'user-1', 'https://qq.example.com', encryptQQCredential('platform-key', process.env.QQ_ASSISTANT_SECRET), 'GROUP', '12345678'
     );
     db.prepare('INSERT INTO "SpaceAutomationExecution" ("id", "automationId", "runId", "workId", "scheduledFor", "result") VALUES (?, ?, ?, ?, ?, ?)').run(
       'execution-qq', 'automation-1', 'run-qq', 'work-qq', '2026-09-22T01:00:00.000Z', '完成'

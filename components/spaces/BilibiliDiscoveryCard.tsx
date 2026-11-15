@@ -294,7 +294,7 @@ export default function BilibiliDiscoveryCard({ spaceId }: { spaceId: string }) 
             className="mt-1 h-9 w-full rounded-lg border border-black/[0.08] bg-white px-2 text-xs font-bold text-slate-700 outline-none focus:border-slate-400 disabled:opacity-50"
           >
             <option value="NONE">不分享（只记在空间）</option>
-            <option value="PERSONAL_QQ">个人 QQ（需已绑定）</option>
+            <option value="PERSONAL_QQ">平台通知（QQ）</option>
             <option value="CUSTOM_WEBHOOK">自定义 Webhook</option>
           </select>
         </label>
@@ -333,7 +333,7 @@ export default function BilibiliDiscoveryCard({ spaceId }: { spaceId: string }) 
           <div className="rounded-lg bg-[#fbfaf7] px-3 py-2 text-[11px] font-semibold leading-5 text-slate-400">
             {shareTarget === 'NONE'
               ? '发现结果只写进空间和 bilibili-finds.md，不会推送到外部。'
-              : '会推送到个人 QQ；需要先在空间里绑定 QQ 助手。'}
+              : '通过账号设置中的平台通知机器人推送。'}
           </div>
         )}
       </div>

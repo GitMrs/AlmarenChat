@@ -6,7 +6,7 @@ import { normalizePlatformConfig, encryptPlatformToken, sendPlatformQQ } from '@
 export const runtime = 'nodejs';
 const serialize = (config: any) => config ? { baseUrl: config.baseUrl, targetType: config.targetType, targetId: config.targetId, enabled: config.enabled, tokenConfigured: true } : null;
 const failure = (error: any) => NextResponse.json({ error: error.message === 'Unauthorized' ? 'Unauthorized' : error.message }, { status: error.message === 'Unauthorized' ? 401 : 400 });
-const cancelPending = (tx: any, userId: string) => tx.assistantReminder.updateMany({ where: { userId, notificationChannel: 'PLATFORM_QQ', status: 'PENDING', qqDeliveredAt: null }, data: { status: 'CANCELLED', qqNextAttemptAt: null, qqDeliveryError: '平台通知配置已变更，请重新安排通知' } });
+const cancelPending = (tx: any, userId: string) => tx.assistantReminder.updateMany({ where: { userId, status: 'PENDING', qqDeliveredAt: null, OR: [{ idempotencyKey: { startsWith: 'crypto-follow-up:' } }, { idempotencyKey: { startsWith: 'crypto-sentinel:' } }, { idempotencyKey: { startsWith: 'space-automation:' } }] }, data: { status: 'CANCELLED', qqNextAttemptAt: null, qqDeliveryError: '平台通知配置已变更，请重新安排通知' } });
 
 export async function GET(request: Request) {
   try { return NextResponse.json({ config: serialize(await prisma.platformNotification.findUnique({ where: { userId: requireAuth(request) } })) }); }

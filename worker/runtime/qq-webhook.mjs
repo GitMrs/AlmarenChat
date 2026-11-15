@@ -1,8 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { readFileSync, realpathSync } from 'node:fs';
 import path from 'node:path';
-import { decryptQQCredential } from '../../lib/qq-assistant/credentials.mjs';
-import { buildQQWebhookUrl } from '../../lib/qq-assistant/webhook.mjs';
+import { sendPlatformQQ } from '../../lib/platform-notifications/qq.mjs';
 import { isUnsafeWebhookHostname } from '../../lib/space/space-automation-policy.mjs';
 import { renderWebhookTemplate } from '../../lib/connectors/webhook-template.mjs';
 import { findDeliveryArtifact, normalizeDeliveryManifest } from '../../lib/connectors/delivery-manifest.mjs';
@@ -192,13 +191,8 @@ export async function notifyWebhookCompletion(db, { executionId = null, runId = 
 
   if (target !== 'PERSONAL_QQ') return { skipped: true, reason: 'Webhook 通知目标无效' };
 
-  const binding = db.prepare(
-    `SELECT "webhookTokenCiphertext", "enabled", "qqOpenId"
-     FROM "AssistantQQBinding" WHERE "userId" = ? LIMIT 1`
-  ).get(context.userId);
-  if (!binding?.enabled || !binding.qqOpenId || !binding.webhookTokenCiphertext) {
-    return { skipped: true, reason: 'QQ Webhook 未配置或 QQ 接收方未绑定' };
-  }
+  const platform = db.prepare('SELECT * FROM "PlatformNotification" WHERE "userId" = ? AND "enabled" = 1').get(context.userId);
+  if (!platform) throw new Error('请在账号设置中配置并启用平台通知');
 
   const notification = notificationTextArtifact(db, context, projectRoot);
   let shareTheme = context.shareTheme === 'clean' || context.shareTheme === 'editorial-handwritten'
@@ -222,23 +216,7 @@ export async function notifyWebhookCompletion(db, { executionId = null, runId = 
   const shareUrl = ensureArtifactShare(db, artifact, shareTheme);
   const qqContent = qqNotificationText(notification?.text || content, shareUrl);
 
-  const baseUrl = process.env.QQ_ASSISTANT_WEBHOOK_INTERNAL_URL
-    || `http://127.0.0.1:${process.env.QQ_ASSISTANT_WEBHOOK_PORT || 8787}`;
-
-  const token = decryptQQCredential(binding.webhookTokenCiphertext);
-  const response = await fetch(buildQQWebhookUrl(token, baseUrl), {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      ...payload,
-      content: { ...payload.content, text: qqContent, markdown: qqContent, shareUrl },
-    }),
-    signal: AbortSignal.timeout(20_000),
-  });
-  if (!response.ok) {
-    const payload = await response.json().catch(() => ({}));
-    throw new Error(payload.error || `QQ Webhook 返回 HTTP ${response.status}`);
-  }
+  await sendPlatformQQ(platform, qqContent);
   return { sent: true, target };
 }
 

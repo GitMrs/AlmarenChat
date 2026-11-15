@@ -5,10 +5,7 @@ import { FOLLOW_UP_QQ_CATEGORIES, FOLLOW_UP_QQ_COOLDOWN_MS, FOLLOW_UP_QQ_MAX_AGE
 export async function getFollowUpQQAvailability(userId: string, db: any = prisma) {
   const platform = await db.platformNotification.findUnique({ where: { userId } });
   if (platform) return { ready: platform.enabled, channel: 'PLATFORM_QQ', reason: platform.enabled ? '使用独立平台通知机器人' : '平台通知已停用，请在个人中心启用' };
-  const binding = await db.assistantQQBinding.findUnique({ where: { userId }, select: { enabled: true, qqOpenId: true, status: true } });
-  if (!binding?.enabled) return { ready: false, reason: '现有个人 QQ 通知通道未启用' };
-  if (!binding.qqOpenId) return { ready: false, reason: '请先私聊现有 QQ 机器人，完成接收人绑定' };
-  return { ready: true, reason: binding.status === 'READY' ? '复用现有 QQ 通知通道' : 'QQ 通道当前未连接，通知将排队等待重连' };
+  return { ready: false, channel: 'PLATFORM_QQ', reason: '请在账号设置中配置并启用平台通知' };
 }
 
 export const followUpNotificationTool = {
@@ -71,7 +68,7 @@ export async function queueFollowUpQQNotification(tx: any, task: any, input: any
   ].join('\n');
   const reminder = await tx.assistantReminder.upsert({
     where: { userId_idempotencyKey: { userId: space.userId, idempotencyKey: `${eventPrefix}${task.id}` } },
-    update: {}, create: { notificationChannel: availability.channel || 'PERSONAL_QQ', userId: space.userId, content, dueTime: now, createdAt: now, idempotencyKey: `${eventPrefix}${task.id}` },
+    update: {}, create: { notificationChannel: 'PLATFORM_QQ', userId: space.userId, content, dueTime: now, createdAt: now, idempotencyKey: `${eventPrefix}${task.id}` },
   });
   await tx.spaceFollowUp.update({ where: { id: task.id }, data: { qqReminderId: reminder.id } });
   return { note: `${availability.channel === 'PLATFORM_QQ' ? '平台通知' : isCrypto ? '鹰眼通知' : '跟进通知'}：已加入通知队列，投递状态可在跟进记录查看。`, reminderId: reminder.id };
