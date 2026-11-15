@@ -1,27 +1,27 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { CalendarClock, ChevronDown, Loader2, X } from 'lucide-react';
+import { CalendarClock, ChevronDown, Loader2 } from 'lucide-react';
 import { spaceFollowUps } from '@/lib/client/api';
 import { startSerialPolling } from '@/lib/space/serial-polling.mjs';
 import type { SpaceFollowUp } from '@/types';
 
-const labels = { PENDING: '待复查', RUNNING: '正在复查', COMPLETED: '已汇报', FAILED: '未完成', CANCELLED: '已取消' };
-const qqLabels = { PENDING: 'QQ 待发送', SENT: 'QQ 已发送', RETRYING: 'QQ 重试中', FAILED: 'QQ 已停止重试', CANCELLED: 'QQ 已取消' };
-
-export default function SpaceFollowUpPanel({ spaceId, showControl, refreshKey, onResults }: {
+export default function SpaceFollowUpPanel({ spaceId, showControl, refreshKey, onResults, onOpenHistory, hidden = false }: {
   spaceId: string;
   showControl: boolean;
   refreshKey: string;
   onResults: (signal: AbortSignal) => Promise<boolean>;
+  onOpenHistory: () => void;
+  hidden?: boolean;
 }) {
   const [tasks, setTasks] = useState<SpaceFollowUp[]>([]);
   const [enabled, setEnabled] = useState(false);
+  const [contractMode, setContractMode] = useState(false);
   const [qqEnabled, setQQEnabled] = useState(false);
+  const [maxContinuations, setMaxContinuations] = useState(3);
   const [qqChannel, setQQChannel] = useState({ ready: false, reason: '' });
   const [available, setAvailable] = useState(true);
   const [loaded, setLoaded] = useState(false);
-  const [expanded, setExpanded] = useState(false);
   const [settingsExpanded, setSettingsExpanded] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -37,11 +37,12 @@ export default function SpaceFollowUpPanel({ spaceId, showControl, refreshKey, o
     setTasks([]);
     setLoaded(false);
     setEnabled(false);
+    setContractMode(false);
     setQQEnabled(false);
+    setMaxContinuations(3);
     setQQChannel({ ready: false, reason: '' });
     setBusy(null);
     setError(null);
-    setExpanded(false);
     setSettingsExpanded(false);
     generation.current++;
     mutationVersion.current++;
@@ -57,7 +58,9 @@ export default function SpaceFollowUpPanel({ spaceId, showControl, refreshKey, o
         if (version !== mutationVersion.current || mutationInFlight.current) return;
         setTasks(result.tasks);
         setEnabled(result.enabled);
+        setContractMode(result.contractMode === true);
         setQQEnabled(result.qqEnabled);
+        setMaxContinuations(result.settings?.maxContinuations ?? 3);
         setQQChannel(result.qqChannel);
         setAvailable(result.schedulerEnabled);
         setLoaded(true);
@@ -67,7 +70,7 @@ export default function SpaceFollowUpPanel({ spaceId, showControl, refreshKey, o
         if (changed && !await onResultsRef.current(signal)) return;
         if (!signal.aborted) seen.current = new Map(result.tasks.map(task => [task.id, `${task.status}:${task.updatedAt}`]));
       } catch (error: any) {
-        if (!signal.aborted && version === mutationVersion.current && !mutationInFlight.current) setError(error.message || '读取复查任务失败');
+        if (!signal.aborted && version === mutationVersion.current && !mutationInFlight.current) setError(error.message || '读取跟进任务失败');
       }
     };
     return startSerialPolling(refresh, { delay: 5000, immediate: true });
@@ -84,7 +87,9 @@ export default function SpaceFollowUpPanel({ spaceId, showControl, refreshKey, o
       if (current !== generation.current) return;
       setTasks(result.tasks);
       setEnabled(result.enabled);
+      setContractMode(result.contractMode === true);
       setQQEnabled(result.qqEnabled);
+      setMaxContinuations(result.settings?.maxContinuations ?? 3);
       setQQChannel(result.qqChannel);
       setAvailable(result.schedulerEnabled);
       setError(null);
@@ -105,15 +110,15 @@ export default function SpaceFollowUpPanel({ spaceId, showControl, refreshKey, o
   const nextTime = next ? new Date(next.runAt).toLocaleString('zh-CN', {
     month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false,
   }) : '';
-  if (!showControl && (!enabled || active.length === 0)) return null;
+  if (hidden || (!showControl && (!enabled || active.length === 0))) return null;
   return (
-    <section aria-label="自主复查" className="shrink-0 border-b border-black/[0.06] bg-white px-4 py-2 sm:px-6">
+    <section aria-label="自主跟进" className="shrink-0 border-b border-black/[0.06] bg-white px-4 py-2 sm:px-6">
       <div className="flex min-h-7 flex-wrap items-center gap-x-4 gap-y-2">
         <div className="flex shrink-0 items-center gap-2">
           <CalendarClock size={14} className="text-slate-400" />
-          <span className="text-xs font-semibold text-slate-700">自主复查</span>
+          <span className="text-xs font-semibold text-slate-700">自主跟进</span>
           {showControl && (
-            <button type="button" role="switch" aria-checked={enabled} aria-label="自主复查与汇报"
+            <button type="button" role="switch" aria-checked={enabled} aria-label="自主跟进与汇报"
               disabled={!loaded || busy !== null || (!available && !enabled)}
               onClick={() => void mutate('toggle', () => spaceFollowUps.setEnabled(spaceId, !enabled))}
               className={`relative h-5 w-9 rounded-full transition disabled:opacity-50 ${enabled ? 'bg-emerald-600' : 'bg-slate-200'}`}>
@@ -126,8 +131,8 @@ export default function SpaceFollowUpPanel({ spaceId, showControl, refreshKey, o
         </div>
         {showControl && <div className="flex shrink-0 items-center gap-2">
           <span className="text-xs text-slate-600">QQ 通知</span>
-          <button type="button" role="switch" aria-checked={qqEnabled} aria-label="鹰眼重要变化QQ通知"
-            title={!enabled ? '请先开启自主复查' : !qqChannel.ready ? 'QQ 通道未就绪，展开设置查看原因' : '鹰眼仅通知重要变化'}
+          <button type="button" role="switch" aria-checked={qqEnabled} aria-label={contractMode ? '鹰眼重要变化QQ通知' : '重要变化QQ通知'}
+            title={!enabled ? '请先开启自主跟进' : !qqChannel.ready ? 'QQ 通道未就绪，展开设置查看原因' : contractMode ? '鹰眼仅通知重要变化' : '仅通知重要变化'}
             disabled={!loaded || busy !== null || (!qqEnabled && (!enabled || !available || !qqChannel.ready))}
             onClick={() => void mutate('qq-toggle', () => spaceFollowUps.setQQEnabled(spaceId, !qqEnabled))}
             className={`relative h-5 w-9 rounded-full transition disabled:opacity-50 ${qqEnabled ? 'bg-emerald-600' : 'bg-slate-200'}`}>
@@ -135,46 +140,33 @@ export default function SpaceFollowUpPanel({ spaceId, showControl, refreshKey, o
           </button>
           <span className="hidden text-[11px] text-slate-400 sm:inline">{!loaded ? '读取中…' : qqEnabled ? '已开启' : '已关闭'}</span>
         </div>}
-        {active.length > 0 && <button type="button" onClick={() => setExpanded(value => !value)} aria-expanded={expanded}
-          title={nextTime ? `下次复查 ${nextTime} · ${next.title}` : '查看复查任务'}
+        {active.length > 0 && <button type="button" onClick={onOpenHistory}
+          title={nextTime ? `下次跟进 ${nextTime} · ${next.title}` : '查看复查任务'}
           className="flex items-center gap-1.5 text-[11px] text-emerald-700 hover:text-emerald-800">
           {running && <Loader2 size={12} className="animate-spin" />}
-          <span>{running ? `正在复查 · ${active.length} 项待办` : `待复查 ${active.length} 项`}</span>
+          <span>{running ? `正在跟进 · ${active.length} 项待办` : `待跟进 ${active.length} 项`}</span>
           {nextTime && <span className="hidden sm:inline">· 下次 {nextTime}</span>}
         </button>}
         <div className="ml-auto flex shrink-0 items-center gap-3">
-          {tasks.length > 0 && <button type="button" onClick={() => setExpanded(value => !value)} aria-expanded={expanded}
+          <button type="button" onClick={onOpenHistory}
             className="flex items-center gap-1 py-1 text-[11px] text-slate-500 hover:text-slate-800">
-            复查记录 <ChevronDown size={12} className={expanded ? 'rotate-180' : ''} />
-          </button>}
+            跟进记录
+          </button>
           {showControl && <button type="button" onClick={() => setSettingsExpanded(value => !value)} aria-expanded={settingsExpanded}
-            aria-label="自主复查设置" className="flex items-center gap-1 py-1 text-[11px] text-slate-500 hover:text-slate-800">
+            aria-label="自主跟进设置" className="flex items-center gap-1 py-1 text-[11px] text-slate-500 hover:text-slate-800">
             设置 <ChevronDown size={12} className={settingsExpanded ? 'rotate-180' : ''} />
           </button>}
         </div>
       </div>
       {showControl && settingsExpanded && <div className="mt-2 space-y-2 rounded-lg bg-slate-50 px-3 py-2.5 text-[11px] leading-relaxed text-slate-500">
-        <p>临时提问即时回答；开启后可在聊天中约定复查时间。AI 可自行续查，最多续查 3 次、持续 24 小时。关闭会取消未完成复查。</p>
-        <p><span className="font-semibold text-slate-600">鹰眼 · 重要变化 QQ 通知：</span>仅推送关键变化，普通复查在空间内汇报。</p>
+        <p>临时提问即时回答；开启后可在聊天中约定复查时间。新一轮最多续查 {maxContinuations} 次、持续 24 小时，不含首次。次数可在跟进记录中设置。关闭会取消未完成复查。</p>
+        <p><span className="font-semibold text-slate-600">{contractMode ? '鹰眼 · ' : ''}重要变化 QQ 通知：</span>仅推送重要变化，普通跟进在空间内汇报。完整报告可在跟进记录及关联成果中查看。</p>
         {!qqChannel.ready && <p className="text-amber-700">
           {qqChannel.reason || (!loaded ? '正在读取 QQ 通知状态…' : 'QQ 通道未就绪，请先在个人设置中配置 QQ 通知。')}
         </p>}
       </div>}
-      {!available && <p className="mt-2 text-xs text-amber-700">服务器已暂停自主复查。</p>}
+      {!available && <p className="mt-2 text-xs text-amber-700">服务器已暂停自主跟进。</p>}
       {error && <p className="mt-2 text-xs text-rose-600" role="status">{error}</p>}
-      {expanded && <div className="mt-3 max-h-48 space-y-2 overflow-y-auto">
-        {tasks.map(task => <div key={task.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-slate-50 px-3 py-2 text-xs">
-          {task.status === 'RUNNING' && <Loader2 size={13} className="animate-spin text-emerald-600" />}
-          <span className="min-w-0 flex-1 truncate font-semibold text-slate-700">{task.title}</span>
-          {task.origin === 'AI_FOLLOW_UP' && <span className="shrink-0 text-emerald-700" title={task.reason || 'AI 根据上次复查判断安排'}>AI 续查</span>}
-          <time className="shrink-0 text-slate-500">{new Date(task.runAt).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })}</time>
-          <span className="shrink-0 text-slate-500">{labels[task.status]}</span>
-          {task.qqNotification && <span className="shrink-0 text-emerald-700" title={task.qqNotification.error || '鹰眼通过现有 QQ 通道投递'}>{qqLabels[task.qqNotification.status]}</span>}
-          {['PENDING', 'RUNNING'].includes(task.status) && <button type="button" title="取消这次复查" disabled={busy !== null}
-            onClick={() => void mutate(task.id, () => spaceFollowUps.cancel(spaceId, task.id))}
-            className="rounded p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"><X size={13} /></button>}
-        </div>)}
-      </div>}
     </section>
   );
 }

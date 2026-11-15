@@ -26,6 +26,7 @@ export async function queryCryptoMarket(tool: string, args: { symbol: string }) 
     fundingRate: quality.fundingRate ? snapshot.fundingRate : null,
     nextFundingRate: quality.fundingRate ? snapshot.nextFundingRate ?? null : null,
     oiDelta1hPercent: quality.oiDelta1h ? snapshot.oiDelta1hPercent : null,
+    oiDelta1hWindow: quality.oiDelta1h ? snapshot.oiDelta1hWindow ?? null : null,
     longShortRatio: quality.longShortRatio ? snapshot.longShortRatio ?? null : null,
     candles15m: snapshot.candles15m, candles1h: snapshot.candles1h, candles4h: snapshot.candles4h,
     candleConfirmationGuidance: CRYPTO_CANDLE_CONFIRMATION_GUIDANCE,

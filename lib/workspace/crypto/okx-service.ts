@@ -28,6 +28,14 @@ export interface CryptoCandle {
   vol: number;
 }
 
+export interface CryptoOIWindow {
+  from: string;
+  to: string;
+  period: '1H';
+  scope: 'OKX_CURRENCY_CONTRACTS';
+  ccy: string;
+}
+
 export interface CryptoMarketSnapshot {
   symbol: string;
   instId: string;
@@ -40,6 +48,7 @@ export interface CryptoMarketSnapshot {
   nextFundingRate?: number;
   oiUsd: number;
   oiDelta1hPercent: number;
+  oiDelta1hWindow?: CryptoOIWindow | null;
   longShortRatio?: number;
   candles15m: CryptoCandle[];
   candles1h: CryptoCandle[];
@@ -172,6 +181,7 @@ const derivativesCache = new Map<string, CacheEntry<{
   fundingRate: number;
   nextFundingRate?: number;
   oiDelta1hPercent: number;
+  oiDelta1hWindow: CryptoOIWindow | null;
   longShortRatio?: number;
   dataQuality: Pick<CryptoDataQuality, 'fundingRate' | 'oiDelta1h' | 'longShortRatio'>;
 }>>();
@@ -475,14 +485,24 @@ async function getDerivativesData(ccy: string, instId: string, now: number) {
     }
   }
   let oiDelta1hPercent = 0;
+  let oiDelta1hWindow: CryptoOIWindow | null = null;
   let oiDeltaAvailable = false;
   if (rubikOiRes.status === 'fulfilled' && rubikOiRes.value.ok) {
-    const list = (await rubikOiRes.value.json().catch(() => ({}))).data;
-    if (Array.isArray(list) && list.length >= 2) {
-      const current = parseFloat(list[0][1] || '0');
-      const previous = parseFloat(list[1][1] || '0');
-      if (Number.isFinite(current) && Number.isFinite(previous) && previous > 0) {
-        oiDelta1hPercent = ((current - previous) / previous) * 100;
+    const payload = await rubikOiRes.value.json().catch(() => ({}));
+    const list = payload.code === '0' && Array.isArray(payload.data) ? payload.data : [];
+    // 比较交易所实际相隔一小时的两个采样点；抓取时间不能替代统计时点。
+    const points = list.filter(Array.isArray).map((row: any[]) => ({ at: Number(row[0]), oi: Number(row[1]) }))
+      .filter((point: { at: number; oi: number }) => Number.isFinite(point.at) && point.at > 0 && point.at <= now
+        && Number.isFinite(point.oi) && point.oi > 0)
+      .sort((a: { at: number }, b: { at: number }) => b.at - a.at);
+    const current = points[0];
+    const previous = current && points.find((point: { at: number }) => point.at === current.at - 3_600_000);
+    if (current && previous) {
+      const delta = ((current.oi - previous.oi) / previous.oi) * 100;
+      if (Number.isFinite(delta)) {
+        oiDelta1hPercent = delta;
+        oiDelta1hWindow = { from: new Date(previous.at).toISOString(), to: new Date(current.at).toISOString(),
+          period: '1H', scope: 'OKX_CURRENCY_CONTRACTS', ccy };
         oiDeltaAvailable = true;
       }
     }
@@ -499,7 +519,7 @@ async function getDerivativesData(ccy: string, instId: string, now: number) {
   const entry = {
     fetchedAt: Date.now(),
     value: {
-      fundingRate, nextFundingRate, oiDelta1hPercent, longShortRatio,
+      fundingRate, nextFundingRate, oiDelta1hPercent, oiDelta1hWindow, longShortRatio,
       dataQuality: {
         fundingRate: fundingRateAvailable,
         oiDelta1h: oiDeltaAvailable,

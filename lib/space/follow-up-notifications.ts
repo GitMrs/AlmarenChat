@@ -23,15 +23,29 @@ export const followUpNotificationTool = {
   },
 };
 
+export function followUpNotificationToolForDomain(isCrypto: boolean) {
+  if (isCrypto) return followUpNotificationTool;
+  return { ...followUpNotificationTool, function: { ...followUpNotificationTool.function,
+    name: 'request_follow_up_qq_notification', description: '本次跟进发现重要变化、目标完成或需要用户决定时，提出一条QQ通知；普通进度不通知。系统保存报告后才入队。',
+    parameters: { ...followUpNotificationTool.function.parameters, properties: {
+      ...followUpNotificationTool.function.parameters.properties,
+      eventKey: { type: 'string', maxLength: 160, description: '稳定事件标识，同一成果或目标的同一变化使用同一标识，不包含本轮时间或措辞变化。' },
+      summary: { type: 'string', maxLength: 1000, description: '简明说明目标、重要变化、实际核验依据和资料时间，不把提议写成已执行操作。' },
+    } },
+  } };
+}
+
 // 在保存分析结果的同一事务中排队；实际投递由现有 QQ Worker 完成。
 export async function queueFollowUpQQNotification(tx: any, task: any, input: any, analystName: string, now: Date) {
   const space = await tx.space.findUnique({ where: { id: task.spaceId } });
-  if (!space?.cryptoAutonomyEnabled || !space.cryptoFollowUpQQEnabled || space.templateId !== 'crypto-contract-trading') {
-    return { note: '鹰眼通知：当前空间 QQ 通知已关闭，本次结果仅保留在空间。' };
+  const isCrypto = task.domain ? task.domain === 'CRYPTO' : space?.templateId === 'crypto-contract-trading';
+  const label = isCrypto ? '鹰眼通知' : '跟进通知';
+  if (!space?.followUpEnabled || !space.followUpQQEnabled || space.runtimeType === 'PI_CODING') {
+    return { note: `${label}：当前空间 QQ 通知已关闭，本次结果仅保留在空间。` };
   }
   const notice = normalizeFollowUpNotification(input);
   const availability = await getFollowUpQQAvailability(space.userId, tx);
-  if (!availability.ready) return { note: `鹰眼通知未排队：${availability.reason}。` };
+  if (!availability.ready) return { note: `${label}未排队：${availability.reason}。` };
   const fingerprint = createHash('sha256').update(`${notice.category}:${notice.eventKey}`).digest('hex').slice(0, 24);
   const prefix = `${FOLLOW_UP_QQ_PREFIX}${task.spaceId}:`;
   const eventPrefix = `${prefix}${fingerprint}:`;
@@ -39,24 +53,24 @@ export async function queueFollowUpQQNotification(tx: any, task: any, input: any
     userId: space.userId, status: { not: 'CANCELLED' },
     idempotencyKey: { startsWith: eventPrefix }, createdAt: { gte: new Date(now.getTime() - FOLLOW_UP_QQ_MAX_AGE_MS) },
   } });
-  if (duplicate) return { note: '鹰眼通知：同一事件近期已通知或已排队，本次不重复发送。' };
+  if (duplicate) return { note: `${label}：同一事件近期已通知或已排队，本次不重复发送。` };
   const recent = await tx.assistantReminder.findFirst({ where: {
     userId: space.userId, status: { not: 'CANCELLED' },
     idempotencyKey: { startsWith: prefix }, createdAt: { gte: new Date(now.getTime() - FOLLOW_UP_QQ_COOLDOWN_MS) },
   } });
-  if (recent) return { note: '鹰眼通知：当前空间处于5分钟通知冷却期，本次结果请在空间查看。' };
+  if (recent) return { note: `${label}：当前空间处于5分钟通知冷却期，本次结果请在空间查看。` };
   const checkedAt = now.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false });
   const link = followUpSpaceLink(space.id);
   const content = [
-    '🦅【鹰眼·自主复查重要速报】', notice.title,
+    isCrypto ? '🦅【鹰眼·自主复查重要速报】' : '【自主跟进·重要变化速报】', notice.title,
     `空间：${space.name}`, `分析成员：${analystName || task.agentId}`,
-    `复查时间：${checkedAt}（北京时间）`, '', notice.summary,
-    `提醒原因：${notice.reason}`, '', link ? `查看完整复查：${link}` : '请回到对应合约空间查看完整复查。',
+    `${isCrypto ? '复查' : '核验'}时间：${checkedAt}（北京时间）`, '', notice.summary,
+    `提醒原因：${notice.reason}`, '', link ? `查看完整报告：${link}` : '请回到对应空间查看完整报告。',
   ].join('\n');
   const reminder = await tx.assistantReminder.upsert({
     where: { userId_idempotencyKey: { userId: space.userId, idempotencyKey: `${eventPrefix}${task.id}` } },
     update: {}, create: { userId: space.userId, content, dueTime: now, createdAt: now, idempotencyKey: `${eventPrefix}${task.id}` },
   });
   await tx.spaceFollowUp.update({ where: { id: task.id }, data: { qqReminderId: reminder.id } });
-  return { note: '鹰眼通知：已加入现有 QQ 通知队列，投递状态可在复查记录查看。', reminderId: reminder.id };
+  return { note: `${isCrypto ? '鹰眼通知' : '跟进通知'}：已加入现有 QQ 通知队列，投递状态可在跟进记录查看。`, reminderId: reminder.id };
 }

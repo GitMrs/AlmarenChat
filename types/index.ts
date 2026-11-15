@@ -551,6 +551,11 @@ export interface SpaceAutomation {
 }
 
 export interface SpaceFollowUp {
+  domain?: 'GENERAL' | 'CRYPTO';
+  workId?: string | null;
+  workTitle?: string | null;
+  chainDepth?: number;
+  maxChainDepth?: number;
   id: string;
   agentId: string;
   title: string;

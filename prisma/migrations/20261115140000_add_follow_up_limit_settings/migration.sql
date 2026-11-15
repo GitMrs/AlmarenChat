@@ -1,0 +1,2 @@
+ALTER TABLE "Space" ADD COLUMN "cryptoFollowUpMaxContinuations" INTEGER NOT NULL DEFAULT 3;
+ALTER TABLE "SpaceFollowUp" ADD COLUMN "maxChainDepth" INTEGER NOT NULL DEFAULT 3;

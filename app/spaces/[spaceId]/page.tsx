@@ -16,6 +16,7 @@ import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import ComposerShell from '@/components/chat/ComposerShell';
 import SpaceMessageItem from '@/components/spaces/SpaceMessageItem';
 import SpaceFollowUpPanel from '@/components/spaces/SpaceFollowUpPanel';
+import SpaceFollowUpHistory from '@/components/spaces/SpaceFollowUpHistory';
 import TaskProposalDialog, { type TaskProposalRevision } from '@/components/spaces/TaskProposalDialog';
 import TaskDispatchDialog, { type TaskDispatchRevision } from '@/components/spaces/TaskDispatchDialog';
 import TaskReviewDialog from '@/components/spaces/TaskReviewDialog';
@@ -589,6 +590,7 @@ export default function SpaceDetailPage() {
   const [mcpHeaders, setMcpHeaders] = useState('');
   const [mcpBusy, setMcpBusy] = useState(false);
   const [selectedWorkId, setSelectedWorkId] = useState('all');
+  const [workFollowUpsOpen, setWorkFollowUpsOpen] = useState(false);
   const [fileAssetTab, setFileAssetTab] = useState<'all' | 'FOUNDATION' | 'INPUT' | 'OUTPUT' | 'SHARED'>('all');
   const [copiedAssetPath, setCopiedAssetPath] = useState('');
   const [activeWorkId, setActiveWorkId] = useState('new');
@@ -625,7 +627,7 @@ export default function SpaceDetailPage() {
   const [relays, setRelays] = useState<SpaceRelay[]>([]);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [mode, setMode] = useState<'chat' | 'task'>('chat');
-  const [workspaceView, setWorkspaceView] = useState<'chat' | 'files' | 'operations' | 'games' | 'crypto' | 'bilibili' | 'wechat_articles'>('chat');
+  const [workspaceView, setWorkspaceView] = useState<'chat' | 'files' | 'operations' | 'games' | 'crypto' | 'follow_ups' | 'bilibili' | 'wechat_articles'>('chat');
   useEffect(() => {
     if (space && (space.runtimeType === 'PI_CODING' || !wechatWorkspace) && workspaceView === 'wechat_articles') setWorkspaceView('chat');
   }, [space?.runtimeType, wechatWorkspace, workspaceView]);
@@ -987,6 +989,7 @@ export default function SpaceDetailPage() {
     [messages]
   );
   const currentWork = activeWorkId === 'new' ? null : workById.get(activeWorkId) || null;
+  const followUpWork = selectedWorkId === 'all' ? currentWork : workById.get(selectedWorkId);
   const currentAssetPath = fileAssetTab === 'FOUNDATION'
     ? 'foundation/'
     : fileAssetTab === 'INPUT'
@@ -3587,7 +3590,7 @@ export default function SpaceDetailPage() {
             </header>
 
             {!isPiSpace && (
-              <nav className={`flex h-14 shrink-0 items-stretch gap-1 border-b border-black/[0.06] bg-white px-3 sm:px-5${wechatWorkspace ? ' overflow-x-auto' : ''}`} aria-label={wechatWorkspace ? '公众号工作视图' : '空间工作视图'}>
+              <nav className="flex h-14 shrink-0 items-stretch gap-1 overflow-x-auto border-b border-black/[0.06] bg-white px-3 sm:px-5" aria-label={wechatWorkspace ? '公众号工作视图' : '空间工作视图'}>
                 {[
                   { id: 'chat' as const, label: '对话', icon: MessagesSquare },
                   ...(wechatWorkspace ? [{ id: 'wechat_articles' as const, label: '当前文章', icon: Newspaper }] : []),
@@ -3595,6 +3598,7 @@ export default function SpaceDetailPage() {
                   ...(space.templateId === 'gaming-room' ? [{ id: 'games' as const, label: '游戏中心', icon: Gamepad2 }] : []),
                   ...(space.templateId === 'bilibili-creator' ? [{ id: 'bilibili' as const, label: 'B 站', icon: Tv }] : []),
                   { id: 'files' as const, label: wechatWorkspace ? '素材与文件' : '成果', icon: FileText, count: files.length },
+                  { id: 'follow_ups' as const, label: '跟进', icon: CalendarClock },
                   { id: 'operations' as const, label: wechatWorkspace ? '发布与运营' : '运营', icon: Activity, count: actionRequests.filter((action) => action.status === 'PENDING').length },
                 ].map((item) => {
                   const Icon = item.icon;
@@ -3619,7 +3623,7 @@ export default function SpaceDetailPage() {
                         }
                       }}
                       aria-pressed={workspaceView === item.id}
-                      className={`inline-flex h-full items-center gap-2 border-b-2 px-3 text-xs font-black transition ${wechatWorkspace ? 'shrink-0 ' : ''}${workspaceView === item.id ? 'border-slate-950 text-slate-950' : 'border-transparent text-slate-400 hover:border-slate-200 hover:text-slate-800'}`}
+                      className={`inline-flex h-full shrink-0 items-center gap-2 border-b-2 px-3 text-xs font-black transition ${workspaceView === item.id ? 'border-slate-950 text-slate-950' : 'border-transparent text-slate-400 hover:border-slate-200 hover:text-slate-800'}`}
                     >
                       <Icon size={15} />
                       {item.label}
@@ -3641,11 +3645,13 @@ export default function SpaceDetailPage() {
               </nav>
             )}
 
-            {!isPiSpace && space.templateId === 'crypto-contract-trading' && (
+            {!isPiSpace && (
               <SpaceFollowUpPanel
                 key={spaceId}
                 spaceId={spaceId}
-                showControl={workspaceView === 'crypto'}
+                showControl={['chat', 'files', 'follow_ups', 'crypto'].includes(workspaceView)}
+                hidden={!['chat', 'files', 'follow_ups', 'crypto'].includes(workspaceView)}
+                onOpenHistory={() => { setSidePanel(null); setWorkspaceView('follow_ups'); }}
                 refreshKey={`${messages.length}:${isStreaming}`}
                 onResults={async (signal) => {
                   if (signal.aborted || streamingRef.current) return false;
@@ -3695,6 +3701,7 @@ export default function SpaceDetailPage() {
                           {works.map((work, index) => <option key={work.id} value={work.id} title={wechatWorkspace ? work.title : undefined}>{WORK_NOUNS[work.kind] || '成果'} {works.length - index} · {wechatWorkspace ? compactWorkTitle(work.title, 20) : work.title}</option>)}
                           {files.some((file) => !file.workId) && <option value="legacy">公共 / 历史</option>}
                         </select>}
+                      {followUpWork && fileAssetTab === 'OUTPUT' && <button type="button" onClick={() => setWorkFollowUpsOpen(value => !value)} aria-expanded={workFollowUpsOpen} className="inline-flex h-10 shrink-0 items-center gap-2 rounded-lg border border-black/[0.08] px-3 text-xs font-black text-slate-700 hover:bg-slate-50"><CalendarClock size={15} />跟进记录</button>}
                       {currentWork && fileAssetTab === 'OUTPUT' && <>
                         <button type="button" onClick={openWorkVersions} disabled={versionsLoading} className="inline-flex h-10 shrink-0 items-center gap-2 rounded-lg border border-black/[0.08] bg-white px-3 text-xs font-black text-slate-700 hover:bg-slate-50 disabled:opacity-50" title="查看成果版本">
                           {versionsLoading ? <Loader2 className="animate-spin" size={15} /> : <History size={15} />}
@@ -3717,6 +3724,16 @@ export default function SpaceDetailPage() {
                       </button>
                     </div>
                   </div>
+                  {workFollowUpsOpen && followUpWork && fileAssetTab === 'OUTPUT' && <div className="mt-4 flex h-[32rem] min-h-0 flex-col overflow-hidden rounded-lg border border-black/[0.08]">
+                    <SpaceFollowUpHistory key={followUpWork.id} spaceId={spaceId} agents={mentionAgents} workId={followUpWork.id} workTitle={followUpWork.title}
+                      onDiscussWork={() => {
+                        if (workSelectionLocked) { setError('当前成果正在执行任务，请结束后再切换跟进目标'); return; }
+                        void switchActiveWork(followUpWork.id, true).then(() => {
+                          setInput(value => value || `请继续跟进当前成果「${followUpWork.title}」，核验目标和下一次时间：`);
+                          setWorkspaceView('chat');
+                        }).catch(() => {});
+                      }} />
+                  </div>}
                   {versionsOpen && currentWork && fileAssetTab === 'OUTPUT' && (
                     <div className="mt-4 rounded-lg border border-black/[0.08] bg-white p-4">
                       <div className="flex items-center justify-between gap-3">
@@ -3882,6 +3899,8 @@ export default function SpaceDetailPage() {
                   void sendMessage(text);
                 }}
               />
+            ) : !isPiSpace && workspaceView === 'follow_ups' ? (
+              <SpaceFollowUpHistory key={spaceId} spaceId={spaceId} agents={mentionAgents} />
             ) : !isPiSpace && space?.templateId === 'bilibili-creator' && workspaceView === 'bilibili' ? (
               <BilibiliPanel
                 spaceId={spaceId}
@@ -6576,7 +6595,7 @@ export default function SpaceDetailPage() {
       <ConfirmDialog
         open={clearSpaceOpen}
         title="清空当前空间？"
-        description="聊天记录、历史任务、空间记忆、成长经验、上传资料和工作区文件都会永久删除。空间本身、成员、Space Skills 和执行模式设置会保留。"
+        description="聊天记录、历史任务、跟进任务与报告、空间记忆、成长经验、上传资料和工作区文件都会永久删除，尚未发送的跟进通知会取消。空间本身、成员、Space Skills 和执行模式设置会保留。"
         icon={<Trash2 size={20} />}
         cancelText="先保留"
         confirmText="确认清空"

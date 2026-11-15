@@ -58,7 +58,7 @@ export function cancelUnavailableFollowUpQQNotifications(db, now = new Date()) {
       AND NOT EXISTS (
         SELECT 1 FROM "SpaceFollowUp" f JOIN "Space" s ON s."id" = f."spaceId"
         WHERE f."qqReminderId" = r."id" AND s."userId" = r."userId" AND f."status" = 'COMPLETED'
-          AND s."templateId" = 'crypto-contract-trading' AND s."runtimeType" <> 'PI_CODING'
+          AND s."runtimeType" <> 'PI_CODING'
           AND s."cryptoAutonomyEnabled" = 1 AND s."cryptoFollowUpQQEnabled" = 1
           AND julianday(f."completedAt") >= julianday(?) AND ? = 1
       )
@@ -78,7 +78,7 @@ export function canDeliverFollowUpQQNotification(db, reminder, now = new Date())
       AND r."status" = 'PENDING' AND r."qqDeliveredAt" IS NULL
       AND b."enabled" = 1 AND b."qqOpenId" = ? AND b."appId" = ?
   `).get(reminder.id, reminder.userId, reminder.qqOpenId || null, reminder.qqAppId || null);
-  return !!row && row.status === 'COMPLETED' && row.templateId === 'crypto-contract-trading'
+  return !!row && row.status === 'COMPLETED'
     && row.runtimeType !== 'PI_CODING' && !!row.cryptoAutonomyEnabled && !!row.cryptoFollowUpQQEnabled
     && new Date(row.completedAt).getTime() >= new Date(now).getTime() - FOLLOW_UP_QQ_MAX_AGE_MS;
 }

@@ -591,7 +591,7 @@ export const spaces = {
   clearContents: (id: string) =>
     request<{
       success: boolean;
-      deleted: { messages: number; files: number; memories: number; sessions: number; discussions: number; relays: number; runs: number };
+      deleted: { followUps: number; messages: number; files: number; memories: number; sessions: number; discussions: number; relays: number; runs: number; works: number };
     }>(`/spaces/${id}/contents`, { method: 'DELETE' }),
   learning: (id: string) =>
     request<{ learning: import('@/types').SpaceLearning; readme: string }>(`/spaces/${id}/learning`),
@@ -1106,15 +1106,28 @@ export const spaces = {
 };
 
 export const spaceFollowUps = {
+  history: (spaceId: string, options: { status: string; page: number; workId?: string }, signal?: AbortSignal) => request<{
+    tasks: import('@/types').SpaceFollowUp[]; total: number; page: number; pageSize: number;
+    settings: { maxContinuations: number; maxAllowedContinuations: number };
+    contractMode: boolean;
+  }>(`/spaces/${spaceId}/follow-ups?view=history&status=${encodeURIComponent(options.status)}&page=${options.page}${options.workId ? `&workId=${encodeURIComponent(options.workId)}` : ''}`, { signal, cache: 'no-store' }),
+  detail: (spaceId: string, taskId: string, signal?: AbortSignal) => request<{
+    task: import('@/types').SpaceFollowUp; report: { content: string; createdAt: string } | null;
+  }>(`/spaces/${spaceId}/follow-ups?taskId=${encodeURIComponent(taskId)}`, { signal, cache: 'no-store' }),
   list: (spaceId: string, signal?: AbortSignal) => request<{
     tasks: import('@/types').SpaceFollowUp[]; enabled: boolean; schedulerEnabled: boolean;
     qqEnabled: boolean; qqChannel: { ready: boolean; reason: string };
+    settings: { maxContinuations: number; maxAllowedContinuations: number };
+    contractMode: boolean;
   }>(`/spaces/${spaceId}/follow-ups`, { signal, cache: 'no-store' }),
   setEnabled: (spaceId: string, enabled: boolean) => request<{ success: boolean; enabled: boolean }>(`/spaces/${spaceId}/follow-ups`, {
     method: 'PATCH', body: JSON.stringify({ enabled }),
   }),
   setQQEnabled: (spaceId: string, qqEnabled: boolean) => request<{ success: boolean; qqEnabled: boolean }>(`/spaces/${spaceId}/follow-ups`, {
     method: 'PATCH', body: JSON.stringify({ qqEnabled }),
+  }),
+  setMaxContinuations: (spaceId: string, maxContinuations: number) => request<{ success: boolean; maxContinuations: number }>(`/spaces/${spaceId}/follow-ups`, {
+    method: 'PATCH', body: JSON.stringify({ maxContinuations }),
   }),
   cancel: (spaceId: string, id: string) => request<{ success: boolean }>(`/spaces/${spaceId}/follow-ups`, {
     method: 'PATCH', body: JSON.stringify({ id }),

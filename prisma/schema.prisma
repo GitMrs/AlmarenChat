@@ -287,8 +287,9 @@ model Space {
   templateVersion    Int?
   templateSnapshot   Json?
   discussionSettings Json?
-  cryptoAutonomyEnabled Boolean @default(false)
-  cryptoFollowUpQQEnabled Boolean @default(false)
+  followUpEnabled Boolean @default(false) @map("cryptoAutonomyEnabled")
+  followUpQQEnabled Boolean @default(false) @map("cryptoFollowUpQQEnabled")
+  followUpMaxContinuations Int @default(3) @map("cryptoFollowUpMaxContinuations")
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
@@ -411,6 +412,7 @@ model SpaceWork {
   files          SpaceFile[]
   actionRequests SpaceActionRequest[]
   versions       SpaceWorkVersion[]
+  followUps      SpaceFollowUp[]
 
   @@index([spaceId, updatedAt])
   @@index([spaceId, status, updatedAt])
@@ -436,12 +438,18 @@ model SpaceFollowUp {
   spaceId        String
   space          Space     @relation(fields: [spaceId], references: [id], onDelete: Cascade)
   agentId        String
+  domain         String    @default("GENERAL")
+  sourceMessageId String?
+  workId         String?
+  work           SpaceWork? @relation(fields: [workId], references: [id], onDelete: SetNull)
+  workTitle      String?
   title          String
   prompt         String
   context        String
   origin         String    @default("USER_REQUEST")
   parentId       String?   @unique
   chainDepth     Int       @default(0)
+  maxChainDepth  Int       @default(3)
   chainEndsAt    DateTime?
   reason         String?
   qqReminderId   String?   @unique
@@ -458,9 +466,19 @@ model SpaceFollowUp {
   completedAt    DateTime?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
+  report         SpaceFollowUpReport?
 
   @@index([status, nextAttemptAt])
   @@index([spaceId, status, runAt])
+  @@index([spaceId, workId, runAt])
+}
+
+model SpaceFollowUpReport {
+  taskId    String @id
+  task      SpaceFollowUp @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  summary   String
+  content   String
+  createdAt DateTime @default(now())
 }
 
 model SpaceAutomation {

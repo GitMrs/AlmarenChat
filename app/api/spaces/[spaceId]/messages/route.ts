@@ -943,9 +943,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
       ? createAgentGrowthTools({ userId, agentId: targetAgent.id, spaceId })
       : null;
     const connectorBroker = !useIsolatedContext ? await createScopedConnectorBroker(userId, 'space', spaceId) : null;
-    const followUp = !useIsolatedContext && !isMultiReply && space.templateId === 'crypto-contract-trading' && space.cryptoAutonomyEnabled
+    const followUp = !useIsolatedContext && !isMultiReply && space.followUpEnabled
       ? createSpaceFollowUpTools({ userId, spaceId, agentId: targetAgent.id,
-          sourceMessageId: persistedUserMessage?.id || randomUUID(), history: rawHistory, networkAllowed: allowWebSearch, userMessage: textMessage })
+          sourceMessageId: persistedUserMessage?.id || randomUUID(), history: rawHistory, networkAllowed: allowWebSearch, userMessage: textMessage, workId: selectedWork?.id })
       : null;
     const availableTools = [
       ...filterToolSchemas([
@@ -1028,8 +1028,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
       runEvidence,
       chatGuidance,
       followUp ? `${SPACE_FOLLOW_UP_GUIDANCE}\n${followUp.guidance}` : '',
-      space.templateId === 'crypto-contract-trading' && !space.cryptoAutonomyEnabled
-        ? '当前空间的自主复查开关已关闭。可以建议复查时间，但不能承诺主动执行或推送；用户需要自主跟进时，提示先在作战中心开启“自主复查与汇报”。'
+      !space.followUpEnabled
+        ? '当前空间的自主跟进开关已关闭。可以建议跟进时间，但不能承诺主动执行或推送；用户需要自主跟进时，提示先在对话或跟进记录中开启“自主跟进与汇报”。'
         : '',
       currentPendingProposal
         ? [

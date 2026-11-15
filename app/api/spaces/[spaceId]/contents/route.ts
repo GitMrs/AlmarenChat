@@ -34,7 +34,13 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ s
     }
 
     const deleted = await resetSpaceContentsStorage(spaceRoot(userId, spaceId), async () => {
-      const [messages, files, memories, sessions, discussions, relays, runs, works] = await prisma.$transaction([
+      const [, followUps, messages, files, memories, sessions, discussions, relays, runs, works] = await prisma.$transaction([
+        prisma.assistantReminder.updateMany({
+          where: { userId, status: 'PENDING', qqDeliveredAt: null, spaceFollowUp: { is: { spaceId } } },
+          data: { status: 'CANCELLED', qqNextAttemptAt: null },
+        }),
+        // 删除跟进会级联删除完整报告，同时让执行中的租约无法再发布结果。
+        prisma.spaceFollowUp.deleteMany({ where: { spaceId } }),
         prisma.spaceMessage.deleteMany({ where: { spaceId } }),
         prisma.spaceFile.deleteMany({ where: { spaceId } }),
         prisma.spaceMemory.deleteMany({ where: { spaceId } }),
@@ -45,6 +51,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ s
         prisma.spaceWork.deleteMany({ where: { spaceId } }),
       ]);
       return {
+        followUps: followUps.count,
         messages: messages.count,
         files: files.count,
         memories: memories.count,
