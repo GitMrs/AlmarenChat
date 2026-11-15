@@ -23,6 +23,7 @@ export default function SpaceFollowUpPanel({ spaceId, showControl, refreshKey, o
   const [available, setAvailable] = useState(true);
   const [loaded, setLoaded] = useState(false);
   const [settingsExpanded, setSettingsExpanded] = useState(false);
+  const [progressExpanded, setProgressExpanded] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const onResultsRef = useRef(onResults);
@@ -44,6 +45,7 @@ export default function SpaceFollowUpPanel({ spaceId, showControl, refreshKey, o
     setBusy(null);
     setError(null);
     setSettingsExpanded(false);
+    setProgressExpanded(false);
     generation.current++;
     mutationVersion.current++;
     mutationInFlight.current = false;
@@ -140,7 +142,7 @@ export default function SpaceFollowUpPanel({ spaceId, showControl, refreshKey, o
           </button>
           <span className="hidden text-[11px] text-slate-400 sm:inline">{!loaded ? '读取中…' : qqEnabled ? '已开启' : '已关闭'}</span>
         </div>}
-        {active.length > 0 && <button type="button" onClick={onOpenHistory}
+        {active.length > 0 && <button type="button" onClick={() => setProgressExpanded(value => !value)} aria-expanded={progressExpanded}
           title={nextTime ? `下次跟进 ${nextTime} · ${next.title}` : '查看复查任务'}
           className="flex items-center gap-1.5 text-[11px] text-emerald-700 hover:text-emerald-800">
           {running && <Loader2 size={12} className="animate-spin" />}
@@ -148,10 +150,10 @@ export default function SpaceFollowUpPanel({ spaceId, showControl, refreshKey, o
           {nextTime && <span className="hidden sm:inline">· 下次 {nextTime}</span>}
         </button>}
         <div className="ml-auto flex shrink-0 items-center gap-3">
-          <button type="button" onClick={onOpenHistory}
-            className="flex items-center gap-1 py-1 text-[11px] text-slate-500 hover:text-slate-800">
-            跟进记录
-          </button>
+          {!showControl && <button type="button" onClick={() => setProgressExpanded(value => !value)} aria-expanded={progressExpanded}
+            aria-label="近期跟进进度" className="flex items-center gap-1 py-1 text-[11px] text-slate-500 hover:text-slate-800">
+            近期进度 <ChevronDown size={12} className={progressExpanded ? 'rotate-180' : ''} />
+          </button>}
           {showControl && <button type="button" onClick={() => setSettingsExpanded(value => !value)} aria-expanded={settingsExpanded}
             aria-label="自主跟进设置" className="flex items-center gap-1 py-1 text-[11px] text-slate-500 hover:text-slate-800">
             设置 <ChevronDown size={12} className={settingsExpanded ? 'rotate-180' : ''} />
@@ -164,6 +166,19 @@ export default function SpaceFollowUpPanel({ spaceId, showControl, refreshKey, o
         {!qqChannel.ready && <p className="text-amber-700">
           {qqChannel.reason || (!loaded ? '正在读取 QQ 通知状态…' : 'QQ 通道未就绪，请先在个人设置中配置 QQ 通知。')}
         </p>}
+      </div>}
+      {progressExpanded && <div aria-label="近期跟进任务" className="mt-3 max-h-48 space-y-2 overflow-y-auto">
+        {tasks.map(task => <div key={task.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-slate-50 px-3 py-2 text-xs">
+          {task.status === 'RUNNING' && <Loader2 size={13} className="animate-spin text-emerald-600" />}
+          <span className="min-w-0 flex-1 truncate font-semibold text-slate-700">{task.title}</span>
+          {task.origin === 'AI_FOLLOW_UP' && <span className="text-emerald-700">AI 续查 {task.chainDepth ?? '—'}/{task.maxChainDepth ?? 3}</span>}
+          <time className="text-slate-500">{new Date(task.runAt).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })}</time>
+          <span className="text-slate-500">{{ PENDING: '待跟进', RUNNING: '正在跟进', COMPLETED: '已汇报', FAILED: '未完成', CANCELLED: '已取消' }[task.status]}</span>
+          {['PENDING', 'RUNNING'].includes(task.status) && <button type="button" disabled={busy !== null}
+            onClick={() => void mutate(task.id, () => spaceFollowUps.cancel(spaceId, task.id))}
+            className="text-slate-400 hover:text-rose-600 disabled:opacity-50">取消跟进</button>}
+        </div>)}
+        <button type="button" onClick={onOpenHistory} className="px-3 py-1 text-xs text-emerald-700 hover:text-emerald-800">查看全部跟进记录</button>
       </div>}
       {!available && <p className="mt-2 text-xs text-amber-700">服务器已暂停自主跟进。</p>}
       {error && <p className="mt-2 text-xs text-rose-600" role="status">{error}</p>}

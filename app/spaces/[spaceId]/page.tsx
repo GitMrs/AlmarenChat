@@ -3649,8 +3649,8 @@ export default function SpaceDetailPage() {
               <SpaceFollowUpPanel
                 key={spaceId}
                 spaceId={spaceId}
-                showControl={['chat', 'files', 'follow_ups', 'crypto'].includes(workspaceView)}
-                hidden={!['chat', 'files', 'follow_ups', 'crypto'].includes(workspaceView)}
+                showControl={workspaceView === 'follow_ups'}
+                hidden={!['chat', 'follow_ups'].includes(workspaceView)}
                 onOpenHistory={() => { setSidePanel(null); setWorkspaceView('follow_ups'); }}
                 refreshKey={`${messages.length}:${isStreaming}`}
                 onResults={async (signal) => {
