@@ -51,6 +51,7 @@ model User {
   assistantExperiences         AssistantExperience[]
   assistantReminders           AssistantReminder[]
   assistantProactiveDeliveries AssistantProactiveDelivery[]
+  platformNotification        PlatformNotification?
   assistantQQBinding           AssistantQQBinding?
   assistantQQEvents            AssistantQQEvent[]
   qqBotAccounts                QqBotAccount[]
@@ -872,6 +873,7 @@ model AssistantReminder {
   status             String    @default("PENDING")
   sourceMessageId    String?
   idempotencyKey     String?
+  notificationChannel String   @default("PERSONAL_QQ")
   qqDeliveredAt      DateTime?
   qqMessageId        String?
   qqDeliveryAttempts Int       @default(0)
@@ -1357,4 +1359,16 @@ model TrendingFavorite {
   @@unique([userId, source, itemId])
   @@index([userId, createdAt])
   @@index([userId, source])
+}
+
+model PlatformNotification {
+  userId String @id
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  baseUrl String
+  tokenCiphertext String
+  targetType String
+  targetId String
+  enabled Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

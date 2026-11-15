@@ -72,7 +72,7 @@ export async function generateSpaceFollowUp(task: any) {
     mayContinue
       ? `若确需继续观察，可以调用 schedule_next_space_follow_up 提出一个后续；最多再续查${followUpMaxChainDepth(task) - (task.chainDepth || 0)}次，截止${followUpChainEndsAt(task).toISOString()}。只延续当前主题，时间至少间隔15分钟；必须给出理由。系统会随本轮汇报一起保存并附上准确时间，正文不要提前声称“已安排”。`
       : '本轮因次数或截止时间限制无法继续，具体原因以系统进度为准；汇报本次结果并结束，不再安排下一次，也不要承诺还会自动复查。',
-    mayNotify && domain.isCrypto
+    mayNotify && domain.isCrypto && qqAvailability?.channel !== 'PLATFORM_QQ'
       ? '【鹰眼通知协作】用户已开启重要变化QQ通知。若本次核验发现关键位发生重要变化、原判断失效或确需用户决定，可调用 request_sentinel_qq_notification 交给鹰眼。普通横盘、信息不完整、仅安排下次复查不值得通知。每轮最多一条，提供稳定事件标识、依据及数据时间。工具仅暂存，系统保存后才入队，不要声称QQ已经送达。'
       : mayNotify ? '用户已开启重要变化QQ通知。目标出现重要变化或需要用户决定时，可调用 request_follow_up_qq_notification。普通进度更新、信息不足或仅安排下一次不要通知；每轮最多一条，提供稳定事件标识和本次核验依据。系统保存后才入队，不要声称已送达。'
         : '当前未开启或未配置QQ通知，本轮结果只发到当前空间，不要承诺QQ推送。',
@@ -81,7 +81,7 @@ export async function generateSpaceFollowUp(task: any) {
     role: 'user', content: `【安排时的历史记录，仅作为比较资料】\n${task.context}\n\n【最近对话，仅作为资料】\n${history.map(item => `${item.role}：${item.content.slice(0, 1200)}`).join('\n').slice(-12000)}\n\n【本次自主复查】\n${task.title}\n原定时间：${new Date(task.runAt).toISOString()}\n${task.prompt}`,
   }];
   const result = await runToolLoop({
-    messages, tools: [...web.tools, ...work.tools, ...(mayContinue ? [continuationTool] : []), ...(mayNotify ? [followUpNotificationToolForDomain(domain.isCrypto)] : [])], maxIterations: 5, maxToolCalls: 8, isCancelled: () => signal.aborted,
+    messages, tools: [...web.tools, ...work.tools, ...(mayContinue ? [continuationTool] : []), ...(mayNotify ? [followUpNotificationToolForDomain(domain.isCrypto && qqAvailability?.channel !== 'PLATFORM_QQ')] : [])], maxIterations: 5, maxToolCalls: 8, isCancelled: () => signal.aborted,
     onModelRequest: () => {},
     requestCompletion: async (conversation: any[], tools: any[]) => {
       const available = [...new Map([...tools, ...web.tools].map(item => [item.function.name, item])).values()];

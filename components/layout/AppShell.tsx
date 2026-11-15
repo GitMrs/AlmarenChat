@@ -190,6 +190,8 @@ export default function AppShell({
           {isLoggedIn ? (
             <button
               onClick={() => router.push('/me')}
+              aria-label="我的账号"
+              title="我的账号"
               className="hidden h-10 w-10 items-center justify-center rounded-full bg-slate-950 text-white shadow-sm md:flex"
             >
               <UserRound size={18} />

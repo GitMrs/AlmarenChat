@@ -10,7 +10,7 @@ export function selectDueQQReminders(db, userIds, now = new Date()) {
   return db.prepare(`
     SELECT r.*, b."qqOpenId", b."appId" AS "qqAppId"
     FROM "AssistantReminder" r JOIN "AssistantQQBinding" b ON b."userId" = r."userId"
-    WHERE r."userId" IN (${placeholders}) AND r."status" = 'PENDING'
+    WHERE r."notificationChannel" = 'PERSONAL_QQ' AND r."userId" IN (${placeholders}) AND r."status" = 'PENDING'
       AND r."dueTime" IS NOT NULL AND r."dueTime" <= ? AND r."qqDeliveredAt" IS NULL
       AND (r."qqNextAttemptAt" IS NULL OR r."qqNextAttemptAt" <= ?)
       AND ((COALESCE(r."idempotencyKey", '') NOT LIKE 'crypto-follow-up:%'

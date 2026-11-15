@@ -53,7 +53,7 @@ function MeContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const requestedTab = searchParams.get('tab');
-  const normalizedTab = requestedTab === 'mcp' ? 'connectors' : requestedTab;
+  const normalizedTab = requestedTab === 'mcp' ? 'connectors' : requestedTab === 'notifications' ? 'settings' : requestedTab;
   const activeTab = normalizedTab === 'settings' || normalizedTab === 'shares' || normalizedTab === 'assistant' || normalizedTab === 'connectors' || normalizedTab === 'bots' || normalizedTab === 'capabilities' ? normalizedTab : 'assets';
   const [myAgents, setMyAgents] = useState<Agent[]>([]);
   const [favoriteAgents, setFavoriteAgents] = useState<any[]>([]);
@@ -281,7 +281,7 @@ function MeContent() {
             return (
               <button
                 key={tab.id}
-                onClick={() => switchTab(tab.id as 'assets' | 'shares' | 'settings' | 'assistant' | 'connectors' | 'bots' | 'capabilities')}
+                onClick={() => switchTab(tab.id as Parameters<typeof switchTab>[0])}
                 className={cn(
                   'inline-flex cursor-pointer items-center gap-2 rounded-full px-4 py-2 text-sm font-black transition',
                   active ? 'bg-slate-950 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-950'

@@ -1116,7 +1116,7 @@ export const spaceFollowUps = {
   }>(`/spaces/${spaceId}/follow-ups?taskId=${encodeURIComponent(taskId)}`, { signal, cache: 'no-store' }),
   list: (spaceId: string, signal?: AbortSignal) => request<{
     tasks: import('@/types').SpaceFollowUp[]; enabled: boolean; schedulerEnabled: boolean;
-    qqEnabled: boolean; qqChannel: { ready: boolean; reason: string };
+    qqEnabled: boolean; qqChannel: { ready: boolean; reason: string; channel?: string };
     settings: { maxContinuations: number; maxAllowedContinuations: number };
     contractMode: boolean;
   }>(`/spaces/${spaceId}/follow-ups`, { signal, cache: 'no-store' }),
@@ -1585,4 +1585,18 @@ export const connectors = {
   test: (id: string) => request<McpProbeResult>('/connectors/' + encodeURIComponent(id) + '/test', { method: 'POST' }),
   bindings: (scope: ConnectorScope, scopeId?: string) => request<{ connectorIds: string[] }>('/connectors/bindings?' + new URLSearchParams({ scope, ...(scopeId ? { scopeId } : {}) })),
   bind: (scope: ConnectorScope, scopeId: string | undefined, connectorId: string, enabled: boolean) => request<{ ok: boolean }>('/connectors/bindings', { method: 'PATCH', body: JSON.stringify({ scope, scopeId, connectorId, enabled }) }),
+};
+
+export interface PlatformNotificationConfig {
+  baseUrl: string;
+  targetType: 'PRIVATE' | 'GROUP';
+  targetId: string;
+  enabled: boolean;
+  tokenConfigured?: boolean;
+}
+export const platformNotifications = {
+  get: () => request<{ config: PlatformNotificationConfig | null }>('/platform-notifications'),
+  save: (data: PlatformNotificationConfig & { token: string }) => request<{ config: PlatformNotificationConfig }>('/platform-notifications', { method: 'PUT', body: JSON.stringify(data) }),
+  test: () => request<{ success: boolean }>('/platform-notifications', { method: 'POST' }),
+  remove: () => request<{ success: boolean }>('/platform-notifications', { method: 'DELETE' }),
 };

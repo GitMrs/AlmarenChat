@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import { deliverPlatformNotifications } from './runtime/platform-notifications.mjs';
 import { randomUUID } from 'node:crypto';
 import { createServer } from 'node:http';
 import path from 'node:path';
@@ -571,12 +572,13 @@ function reconcileBindings() {
 }
 
 async function deliverDueReminders() {
-  if (stopping || secret.length < 32 || reminderLoopRunning) return;
+  if (stopping || reminderLoopRunning) return;
   reminderLoopRunning = true;
   try {
     const now = sqliteDate();
     cancelUnavailableFollowUpQQNotifications(db, now);
     stopExhaustedMarketQQNotifications(db, now);
+    await deliverPlatformNotifications(db);
     const readyUserIds = [...clients.values()]
       .filter(entry => entry.kind === 'PERSONAL' && entry.ready && Date.now() - entry.lastProactiveAt >= pollMs)
       .map(entry => entry.userId);

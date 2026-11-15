@@ -3,6 +3,8 @@ import prisma from '@/app/api/_lib/db';
 import { FOLLOW_UP_QQ_CATEGORIES, FOLLOW_UP_QQ_COOLDOWN_MS, FOLLOW_UP_QQ_MAX_AGE_MS, FOLLOW_UP_QQ_PREFIX, followUpSpaceLink, normalizeFollowUpNotification } from './follow-up-notification-policy.mjs';
 
 export async function getFollowUpQQAvailability(userId: string, db: any = prisma) {
+  const platform = await db.platformNotification.findUnique({ where: { userId } });
+  if (platform) return { ready: platform.enabled, channel: 'PLATFORM_QQ', reason: platform.enabled ? '使用独立平台通知机器人' : '平台通知已停用，请在个人中心启用' };
   const binding = await db.assistantQQBinding.findUnique({ where: { userId }, select: { enabled: true, qqOpenId: true, status: true } });
   if (!binding?.enabled) return { ready: false, reason: '现有个人 QQ 通知通道未启用' };
   if (!binding.qqOpenId) return { ready: false, reason: '请先私聊现有 QQ 机器人，完成接收人绑定' };
@@ -39,7 +41,7 @@ export function followUpNotificationToolForDomain(isCrypto: boolean) {
 export async function queueFollowUpQQNotification(tx: any, task: any, input: any, analystName: string, now: Date) {
   const space = await tx.space.findUnique({ where: { id: task.spaceId } });
   const isCrypto = task.domain ? task.domain === 'CRYPTO' : space?.templateId === 'crypto-contract-trading';
-  const label = isCrypto ? '鹰眼通知' : '跟进通知';
+  const label = '跟进通知';
   if (!space?.followUpEnabled || !space.followUpQQEnabled || space.runtimeType === 'PI_CODING') {
     return { note: `${label}：当前空间 QQ 通知已关闭，本次结果仅保留在空间。` };
   }
@@ -62,15 +64,15 @@ export async function queueFollowUpQQNotification(tx: any, task: any, input: any
   const checkedAt = now.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false });
   const link = followUpSpaceLink(space.id);
   const content = [
-    isCrypto ? '🦅【鹰眼·自主复查重要速报】' : '【自主跟进·重要变化速报】', notice.title,
+    availability.channel === 'PLATFORM_QQ' ? '【Almaren 平台通知 · 跟进重要变化】' : isCrypto ? '🦅【鹰眼·自主复查重要速报】' : '【自主跟进·重要变化速报】', notice.title,
     `空间：${space.name}`, `分析成员：${analystName || task.agentId}`,
     `${isCrypto ? '复查' : '核验'}时间：${checkedAt}（北京时间）`, '', notice.summary,
     `提醒原因：${notice.reason}`, '', link ? `查看完整报告：${link}` : '请回到对应空间查看完整报告。',
   ].join('\n');
   const reminder = await tx.assistantReminder.upsert({
     where: { userId_idempotencyKey: { userId: space.userId, idempotencyKey: `${eventPrefix}${task.id}` } },
-    update: {}, create: { userId: space.userId, content, dueTime: now, createdAt: now, idempotencyKey: `${eventPrefix}${task.id}` },
+    update: {}, create: { notificationChannel: availability.channel || 'PERSONAL_QQ', userId: space.userId, content, dueTime: now, createdAt: now, idempotencyKey: `${eventPrefix}${task.id}` },
   });
   await tx.spaceFollowUp.update({ where: { id: task.id }, data: { qqReminderId: reminder.id } });
-  return { note: `${isCrypto ? '鹰眼通知' : '跟进通知'}：已加入现有 QQ 通知队列，投递状态可在跟进记录查看。`, reminderId: reminder.id };
+  return { note: `${availability.channel === 'PLATFORM_QQ' ? '平台通知' : isCrypto ? '鹰眼通知' : '跟进通知'}：已加入通知队列，投递状态可在跟进记录查看。`, reminderId: reminder.id };
 }

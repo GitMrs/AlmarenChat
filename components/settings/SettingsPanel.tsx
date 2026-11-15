@@ -24,6 +24,7 @@ import LoginRequired from '@/components/auth/LoginRequired';
 import ModelPicker from '@/components/shared/ModelPicker';
 import { TEXT_MODEL_PRESETS } from '@/lib/client/model-presets';
 import WeatherLocationSettings from './WeatherLocationSettings';
+import PlatformNotificationSettings from './PlatformNotificationSettings';
 import { auth, user as userApi } from '@/lib/client/api';
 import {
   DEFAULT_BROWSER_MODEL_CONFIG,
@@ -874,6 +875,8 @@ export default function SettingsPanel() {
               </span>
             </div>
           </section>
+
+          <PlatformNotificationSettings />
 
           <section className="rounded-[28px] border border-black/[0.06] bg-white p-5 shadow-sm">
             <div className="mb-4 flex items-center gap-3">
