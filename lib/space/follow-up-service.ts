@@ -204,7 +204,11 @@ export async function runSpaceFollowUpTick({ db = prisma, now = new Date(), gene
 
 const schedulerGlobal = globalThis as unknown as { __spaceFollowUpScheduler?: ReturnType<typeof createScheduler> };
 export function startSpaceFollowUpScheduler() {
-  if (schedulerGlobal.__spaceFollowUpScheduler || process.env.ENABLE_SPACE_FOLLOW_UPS === 'false') return;
+  if (schedulerGlobal.__spaceFollowUpScheduler) return;
+  if (process.env.ENABLE_SPACE_FOLLOW_UPS === 'false') {
+    console.info('[space-follow-ups] scheduler disabled by ENABLE_SPACE_FOLLOW_UPS=false');
+    return;
+  }
   const scheduler = createScheduler({ name: 'space-follow-ups', pollMs: 15_000 });
   scheduler.register('follow-up', async () => {
     const results = await runSpaceFollowUpTick();
@@ -212,4 +216,5 @@ export function startSpaceFollowUpScheduler() {
   });
   schedulerGlobal.__spaceFollowUpScheduler = scheduler;
   scheduler.start();
+  console.info('[space-follow-ups] scheduler started; polling every 15s');
 }
