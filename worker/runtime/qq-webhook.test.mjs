@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -72,6 +73,8 @@ function notificationDatabase() {
       "enabled" INTEGER, "qqOpenId" TEXT
     );
   `);
+  db.exec(`CREATE TABLE "User" ("id" TEXT PRIMARY KEY); INSERT INTO "User" VALUES ('user-1');`);
+  db.exec(readFileSync(new URL('../../prisma/migrations/20261115210000_add_user_notifications/migration.sql', import.meta.url), 'utf8'));
   db.prepare('INSERT INTO "Space" VALUES (?, ?)').run('space-1', 'user-1');
   db.prepare('INSERT INTO "SpaceAutomation" VALUES (?, ?, ?, ?, ?, ?)').run(
     'automation-1',

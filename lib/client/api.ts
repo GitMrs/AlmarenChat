@@ -1600,3 +1600,13 @@ export const platformNotifications = {
   test: () => request<{ success: boolean }>('/platform-notifications', { method: 'POST' }),
   remove: () => request<{ success: boolean }>('/platform-notifications', { method: 'DELETE' }),
 };
+
+export interface InboxNotification {
+  id: string; kind: string; title: string; content: string; sourceHref: string | null; readAt: string | null; createdAt: string;
+  deliveries: { channel: string; status: string; error: string | null; sentAt: string | null }[];
+}
+export const notifications = {
+  list: (filter = 'ALL', page = 1, signal?: AbortSignal) => request<{ notifications: InboxNotification[]; unread: number; total: number; page: number; pageSize: number }>(`/notifications?${new URLSearchParams({ filter, page: String(page) })}`, { signal }),
+  read: (id: string) => request('/notifications', { method: 'PATCH', body: JSON.stringify({ action: 'read', id }) }),
+  readAll: () => request('/notifications', { method: 'PATCH', body: JSON.stringify({ action: 'read-all' }) }),
+};

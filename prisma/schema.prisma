@@ -8,6 +8,7 @@ datasource db {
 }
 
 model User {
+  notifications UserNotification[]
   id                     String   @id @default(uuid())
   email                  String   @unique
   passwordHash           String
@@ -1371,4 +1372,33 @@ model PlatformNotification {
   enabled Boolean @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model UserNotification {
+  id String @id
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sourceKey String
+  kind String
+  title String
+  content String
+  sourceHref String?
+  readAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deliveries UserNotificationDelivery[]
+  @@unique([userId, sourceKey])
+  @@index([userId, readAt, createdAt])
+}
+
+model UserNotificationDelivery {
+  id String @id
+  notificationId String
+  notification UserNotification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  channel String
+  status String
+  error String?
+  sentAt DateTime?
+  updatedAt DateTime @updatedAt
+  @@unique([notificationId, channel])
 }

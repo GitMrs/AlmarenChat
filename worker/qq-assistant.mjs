@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import { sendRecordedNotification } from '../lib/notifications/store.mjs';
 import { sendPlatformQQ } from '../lib/platform-notifications/qq.mjs';
 import { deliverPlatformNotifications } from './runtime/platform-notifications.mjs';
 import { randomUUID } from 'node:crypto';
@@ -622,10 +623,6 @@ function cleanupWebhookEvents(now = Date.now()) {
 
 async function handleAgentWebhookRequest(response, binding, body) {
   const platform = db.prepare('SELECT * FROM "PlatformNotification" WHERE "userId" = ? AND "enabled" = 1').get(binding.userId);
-  if (!platform) {
-    writeJson(response, 409, { error: '请在账号设置中配置并启用平台通知' });
-    return;
-  }
 
   const content = typeof body.content === 'string'
     ? body.content.trim().slice(0, 12_000)
@@ -652,7 +649,9 @@ async function handleAgentWebhookRequest(response, binding, body) {
       ? body.run.status.trim().slice(0, 40) : 'COMPLETED';
   const message = `【${binding.agentName || 'Agent'}】${title}\n状态：${status}\n\n${content}`;
   try {
-    const sent = await sendPlatformQQ(platform, message);
+    const sent = await sendRecordedNotification(db, platform, { userId: binding.userId,
+      sourceKey: `webhook:${binding.id || binding.userId}:${idempotencyKey || randomUUID()}`, kind: 'SYSTEM', title, content: message,
+      sourceHref: '/me?tab=bots' }, sendPlatformQQ);
     updateAgentBinding(binding.id, { webhookLastUsedAt: sqliteDate() });
     if (eventKey) recentWebhookEvents.set(eventKey, Date.now() + 10 * 60_000);
     writeJson(response, 200, { sent: true, messageId: sent?.messageId || sent?.ext_info?.ref_idx || sent?.id || null });
@@ -728,10 +727,6 @@ async function handleWebhookRequest(request, response) {
   }
 
   const platform = db.prepare('SELECT * FROM "PlatformNotification" WHERE "userId" = ? AND "enabled" = 1').get(binding.userId);
-  if (!platform) {
-    writeJson(response, 409, { error: '请在账号设置中配置并启用平台通知' });
-    return;
-  }
 
   const title = typeof body.title === 'string' && body.title.trim()
     ? body.title.trim().slice(0, 160)
@@ -743,7 +738,9 @@ async function handleWebhookRequest(request, response) {
       ? body.run.status.trim().slice(0, 40) : 'COMPLETED';
   const message = `【空间通知】${title}\n状态：${status}\n\n${content}`;
   try {
-    const sent = await sendPlatformQQ(platform, message);
+    const sent = await sendRecordedNotification(db, platform, { userId: binding.userId,
+      sourceKey: `webhook:${binding.id || binding.userId}:${idempotencyKey || randomUUID()}`, kind: 'SYSTEM', title, content: message,
+      sourceHref: '/me?tab=bots' }, sendPlatformQQ);
     const now = sqliteDate();
     updateBinding(binding.userId, { webhookLastUsedAt: now });
     if (eventKey) recentWebhookEvents.set(eventKey, Date.now() + 10 * 60_000);

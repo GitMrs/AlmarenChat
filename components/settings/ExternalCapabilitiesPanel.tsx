@@ -21,18 +21,18 @@ export default function ExternalCapabilitiesPanel() {
   return (
     <section className="min-w-0 space-y-5" aria-labelledby="external-capabilities-title">
       <div>
-        <h2 id="external-capabilities-title" className="text-2xl font-black text-slate-950">外挂能力</h2>
-        <p className="mt-2 text-sm leading-6 text-slate-500">集中查找可用的外部能力，了解使用范围和配置入口。允许使用的能力会在需要时加载。</p>
+        <h2 id="external-capabilities-title" className="text-2xl font-black text-slate-950">内置工具</h2>
+        <p className="mt-2 text-sm leading-6 text-slate-500">查看平台提供的工具、使用范围和配置入口，允许使用的工具会在需要时加载。</p>
       </div>
       <div className="rounded-2xl border border-indigo-100 bg-indigo-50/60 px-4 py-3 text-sm leading-6 text-indigo-800">
-        这里展示能力目录，具体可用性取决于当前入口、服务配置与授权。人设、时间、聊天连续性及各入口自己的基础能力默认保留。
+        这里展示工具说明，实际可用性取决于使用入口、服务配置与授权。飞书、邮箱和 MCP 连接可在上方连接器标签中管理。
       </div>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <label className="flex min-w-0 items-center gap-2 rounded-2xl border border-black/[0.08] bg-white px-4 sm:w-96">
           <Search size={17} className="shrink-0 text-slate-400" aria-hidden="true" />
           <input
             type="search"
-            aria-label="搜索外挂能力"
+            aria-label="搜索内置工具"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="搜索名称、用途或使用范围"

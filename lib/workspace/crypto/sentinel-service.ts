@@ -563,49 +563,41 @@ export async function checkSentinelForSpace(
     // 平台通知通道统一投递行情告警。
     if (state.userId) {
       try {
-        const qqBinding = await prisma.platformNotification.findFirst({
-          where: {
-            userId: state.userId,
-            enabled: true,
-          },
-        });
-        if (qqBinding) {
-          const qqAlerts = alerts.filter((a) => a.notifyQQ !== false);
-          if (qqAlerts.length === 1) {
-            const a = qqAlerts[0];
-            const content = `🦅【加密合约作战室·紧急盘面告警】\n${a.title}\n${a.content}`;
-            const idempotencyKey = sentinelReminderIdempotencyKey(spaceId, qqAlerts);
-            await prisma.assistantReminder.upsert({
-              where: { userId_idempotencyKey: { userId: state.userId, idempotencyKey } },
-              update: {},
-              create: {
-                id: `rem-sentinel-${Date.now()}-${randomUUID().slice(0, 6)}`,
-                userId: state.userId,
-                notificationChannel: 'PLATFORM_QQ',
-                content,
-                dueTime: new Date(),
-                status: 'PENDING',
-                idempotencyKey,
-              },
-            });
-          } else if (qqAlerts.length > 1) {
-            const digestItems = qqAlerts.map((a, i) => `${i + 1}. ${a.title}\n${a.content}`).join('\n\n');
-            const content = `🦅【加密合约作战室·盘面异动汇总 (${qqAlerts.length}笔)】\n\n${digestItems}\n\n请前往空间查看详细建议与盘面。`;
-            const idempotencyKey = sentinelReminderIdempotencyKey(spaceId, qqAlerts);
-            await prisma.assistantReminder.upsert({
-              where: { userId_idempotencyKey: { userId: state.userId, idempotencyKey } },
-              update: {},
-              create: {
-                id: `rem-sentinel-${Date.now()}-${randomUUID().slice(0, 6)}`,
-                userId: state.userId,
-                notificationChannel: 'PLATFORM_QQ',
-                content,
-                dueTime: new Date(),
-                status: 'PENDING',
-                idempotencyKey,
-              },
-            });
-          }
+        const qqAlerts = alerts.filter((a) => a.notifyQQ !== false);
+        if (qqAlerts.length === 1) {
+          const a = qqAlerts[0];
+          const content = `🦅【加密合约作战室·紧急盘面告警】\n${a.title}\n${a.content}`;
+          const idempotencyKey = sentinelReminderIdempotencyKey(spaceId, qqAlerts);
+          await prisma.assistantReminder.upsert({
+            where: { userId_idempotencyKey: { userId: state.userId, idempotencyKey } },
+            update: {},
+            create: {
+              id: `rem-sentinel-${Date.now()}-${randomUUID().slice(0, 6)}`,
+              userId: state.userId,
+              notificationChannel: 'PLATFORM_QQ',
+              content,
+              dueTime: new Date(),
+              status: 'PENDING',
+              idempotencyKey,
+            },
+          });
+        } else if (qqAlerts.length > 1) {
+          const digestItems = qqAlerts.map((a, i) => `${i + 1}. ${a.title}\n${a.content}`).join('\n\n');
+          const content = `🦅【加密合约作战室·盘面异动汇总 (${qqAlerts.length}笔)】\n\n${digestItems}\n\n请前往空间查看详细建议与盘面。`;
+          const idempotencyKey = sentinelReminderIdempotencyKey(spaceId, qqAlerts);
+          await prisma.assistantReminder.upsert({
+            where: { userId_idempotencyKey: { userId: state.userId, idempotencyKey } },
+            update: {},
+            create: {
+              id: `rem-sentinel-${Date.now()}-${randomUUID().slice(0, 6)}`,
+              userId: state.userId,
+              notificationChannel: 'PLATFORM_QQ',
+              content,
+              dueTime: new Date(),
+              status: 'PENDING',
+              idempotencyKey,
+            },
+          });
         }
       } catch (e: any) {
         console.warn('[CryptoSentinel] push QQ reminder via Prisma failed:', e?.message);

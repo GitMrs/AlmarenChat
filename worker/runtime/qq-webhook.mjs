@@ -1,3 +1,4 @@
+import { recordNotification, sendRecordedNotification } from '../../lib/notifications/store.mjs';
 import { randomUUID } from 'node:crypto';
 import { readFileSync, realpathSync } from 'node:fs';
 import path from 'node:path';
@@ -158,6 +159,10 @@ export async function notifyWebhookCompletion(db, { executionId = null, runId = 
     },
   };
 
+  await recordNotification(db, { userId: context.userId, sourceKey: `automation:${context.executionId}`, kind: 'AUTOMATION',
+    title: context.automationName || '自动化任务完成', content, sourceHref: `/spaces/${encodeURIComponent(context.spaceId)}`,
+    createdAt: context.completedAt || new Date(), delivery: { channel: target === 'CUSTOM_WEBHOOK' ? 'WEBHOOK' : 'QQ', status: 'PENDING' } });
+
   if (target === 'CUSTOM_WEBHOOK') {
     const configured = db.prepare(
       `SELECT "url", "bodyTemplate", "enabled" FROM "SpaceWebhook" WHERE "id" = ? AND "spaceId" = ? LIMIT 1`
@@ -192,7 +197,6 @@ export async function notifyWebhookCompletion(db, { executionId = null, runId = 
   if (target !== 'PERSONAL_QQ') return { skipped: true, reason: 'Webhook 通知目标无效' };
 
   const platform = db.prepare('SELECT * FROM "PlatformNotification" WHERE "userId" = ? AND "enabled" = 1').get(context.userId);
-  if (!platform) throw new Error('请在账号设置中配置并启用平台通知');
 
   const notification = notificationTextArtifact(db, context, projectRoot);
   let shareTheme = context.shareTheme === 'clean' || context.shareTheme === 'editorial-handwritten'
@@ -216,7 +220,9 @@ export async function notifyWebhookCompletion(db, { executionId = null, runId = 
   const shareUrl = ensureArtifactShare(db, artifact, shareTheme);
   const qqContent = qqNotificationText(notification?.text || content, shareUrl);
 
-  await sendPlatformQQ(platform, qqContent);
+  await sendRecordedNotification(db, platform, { userId: context.userId, sourceKey: `automation:${context.executionId}`, kind: 'AUTOMATION',
+    title: context.automationName || '自动化任务完成', content: qqContent, sourceHref: `/spaces/${encodeURIComponent(context.spaceId)}`,
+    createdAt: context.completedAt || new Date() }, sendPlatformQQ);
   return { sent: true, target };
 }
 

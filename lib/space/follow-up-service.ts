@@ -44,7 +44,7 @@ export async function generateSpaceFollowUp(task: any) {
   const startedAt = task.startedAt ? new Date(task.startedAt) : new Date();
   const mayContinue = canContinueFollowUp(task, startedAt);
   const qqAvailability = space.followUpQQEnabled ? await getFollowUpQQAvailability(space.userId) : null;
-  const mayNotify = qqAvailability?.ready === true;
+  const mayNotify = space.followUpQQEnabled === true;
   let qqNotification: ReturnType<typeof normalizeFollowUpNotification> | undefined;
   let nextFollowUp: ReturnType<typeof normalizeFollowUpContinuation> | undefined;
   const continuationTool = {
@@ -74,7 +74,7 @@ export async function generateSpaceFollowUp(task: any) {
       : '本轮因次数或截止时间限制无法继续，具体原因以系统进度为准；汇报本次结果并结束，不再安排下一次，也不要承诺还会自动复查。',
     mayNotify && domain.isCrypto && qqAvailability?.channel !== 'PLATFORM_QQ'
       ? '【鹰眼通知协作】用户已开启重要变化QQ通知。若本次核验发现关键位发生重要变化、原判断失效或确需用户决定，可调用 request_sentinel_qq_notification 交给鹰眼。普通横盘、信息不完整、仅安排下次复查不值得通知。每轮最多一条，提供稳定事件标识、依据及数据时间。工具仅暂存，系统保存后才入队，不要声称QQ已经送达。'
-      : mayNotify ? '用户已开启重要变化QQ通知。目标出现重要变化或需要用户决定时，可调用 request_follow_up_qq_notification。普通进度更新、信息不足或仅安排下一次不要通知；每轮最多一条，提供稳定事件标识和本次核验依据。系统保存后才入队，不要声称已送达。'
+      : mayNotify ? '用户已开启重要变化通知。通知会保存到个人中心的“我的通知”，QQ 是否发送取决于通道配置。目标出现重要变化或需要用户决定时，可调用 request_follow_up_qq_notification。普通进度更新、信息不足或仅安排下一次不要通知；每轮最多一条，提供稳定事件标识和本次核验依据。系统保存后才入队，不要声称已送达。'
         : '当前未开启或未配置QQ通知，本轮结果只发到当前空间，不要承诺QQ推送。',
     '不要声称执行了交易、写文件或其他外部操作。',
   ].filter(Boolean).join('\n\n') }, {

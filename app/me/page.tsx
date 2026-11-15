@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   ArrowRight,
+  Bell,
   Blocks,
   Bot,
   Clock3,
@@ -33,10 +34,11 @@ import SettingsPanel from '@/components/settings/SettingsPanel';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import Avatar from '@/components/shared/Avatar';
 import PersonalAssistantSettings from '@/components/assistant/PersonalAssistantSettings';
+import NotificationCenter from '@/components/notifications/NotificationCenter';
+import { startSerialPolling } from '@/lib/space/serial-polling.mjs';
 import BotBindingsManager from '@/components/settings/BotBindingsManager';
 import ConnectorCenter from '@/components/connectors/ConnectorCenter';
-import ExternalCapabilitiesPanel from '@/components/settings/ExternalCapabilitiesPanel';
-import { agents as agentsApi, auth, conversations as conversationsApi, favorites as favoritesApi, spaceShares as spaceSharesApi, spaces as spacesApi } from '@/lib/client/api';
+import { agents as agentsApi, auth, notifications as notificationsApi, conversations as conversationsApi, favorites as favoritesApi, spaceShares as spaceSharesApi, spaces as spacesApi } from '@/lib/client/api';
 import type { Agent, SpaceFileShare } from '@/types';
 import { cn } from '@/lib/client/utils';
 
@@ -53,8 +55,15 @@ function MeContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const requestedTab = searchParams.get('tab');
-  const normalizedTab = requestedTab === 'mcp' ? 'connectors' : requestedTab === 'notifications' ? 'settings' : requestedTab;
-  const activeTab = normalizedTab === 'settings' || normalizedTab === 'shares' || normalizedTab === 'assistant' || normalizedTab === 'connectors' || normalizedTab === 'bots' || normalizedTab === 'capabilities' ? normalizedTab : 'assets';
+  const normalizedTab = requestedTab === 'mcp' || requestedTab === 'capabilities' ? 'connectors' : requestedTab;
+  const activeTab = normalizedTab === 'notifications' || normalizedTab === 'settings' || normalizedTab === 'shares' || normalizedTab === 'assistant' || normalizedTab === 'connectors' || normalizedTab === 'bots' ? normalizedTab : 'assets';
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
+  useEffect(() => {
+    if (activeTab === 'notifications' || !localStorage.getItem('token')) return;
+    return startSerialPolling(async (signal: AbortSignal) => {
+      try { const result = await notificationsApi.list('UNREAD', 1, signal); if (!signal.aborted) setUnreadNotifications(result.unread); } catch {}
+    }, { immediate: true, delay: 30_000 });
+  }, [activeTab]);
   const [myAgents, setMyAgents] = useState<Agent[]>([]);
   const [favoriteAgents, setFavoriteAgents] = useState<any[]>([]);
   const [recentConversations, setRecentConversations] = useState<any[]>([]);
@@ -205,7 +214,7 @@ function MeContent() {
     }
   };
 
-  const switchTab = (tab: 'assets' | 'shares' | 'settings' | 'assistant' | 'connectors' | 'bots' | 'capabilities') => {
+  const switchTab = (tab: 'assets' | 'shares' | 'settings' | 'assistant' | 'connectors' | 'bots' | 'notifications') => {
     router.push(tab === 'assets' ? '/me' : `/me?tab=${tab}`);
   };
 
@@ -272,8 +281,8 @@ function MeContent() {
             { id: 'shares', label: '内容共享', icon: Globe2 },
             { id: 'assistant', label: '助理设置', icon: MessageCircleHeart },
             { id: 'bots', label: 'Bot 管理', icon: Bot },
-            { id: 'capabilities', label: '外挂能力', icon: Sparkles },
             { id: 'connectors', label: '我的连接器', icon: Blocks },
+            { id: 'notifications', label: '我的通知', icon: Bell },
             { id: 'settings', label: '账号设置', icon: SlidersHorizontal },
           ].map((tab) => {
             const Icon = tab.icon;
@@ -289,6 +298,7 @@ function MeContent() {
               >
                 <Icon size={16} />
                 {tab.label}
+                {tab.id === 'notifications' && unreadNotifications > 0 && <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${active ? 'bg-white/20 text-white' : 'bg-indigo-50 text-indigo-700'}`} aria-label={`${unreadNotifications} 条未读通知`}>{unreadNotifications > 99 ? '99+' : unreadNotifications}</span>}
               </button>
             );
           })}
@@ -396,15 +406,16 @@ function MeContent() {
           />
         )}
 
+        {!needsLogin && activeTab === 'notifications' && <NotificationCenter onUnreadChange={setUnreadNotifications} />}
+
         {!needsLogin && activeTab === 'settings' && <SettingsPanel />}
 
         {!needsLogin && activeTab === 'assistant' && <PersonalAssistantSettings />}
 
         {!needsLogin && activeTab === 'bots' && <BotBindingsManager />}
 
-        {!needsLogin && activeTab === 'connectors' && <ConnectorCenter />}
+        {!needsLogin && activeTab === 'connectors' && <ConnectorCenter key={requestedTab === 'capabilities' || searchParams.get('section') === 'tools' ? 'tools' : 'connections'} initialTab={requestedTab === 'capabilities' || searchParams.get('section') === 'tools' ? 'tools' : 'added'} />}
 
-        {!needsLogin && activeTab === 'capabilities' && <ExternalCapabilitiesPanel />}
 
         {!needsLogin && activeTab === 'shares' && (
           <section className="space-y-5">

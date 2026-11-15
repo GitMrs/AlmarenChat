@@ -44,7 +44,6 @@ export async function queueFollowUpQQNotification(tx: any, task: any, input: any
   }
   const notice = normalizeFollowUpNotification(input);
   const availability = await getFollowUpQQAvailability(space.userId, tx);
-  if (!availability.ready) return { note: `${label}未排队：${availability.reason}。` };
   const fingerprint = createHash('sha256').update(`${notice.category}:${notice.eventKey}`).digest('hex').slice(0, 24);
   const prefix = `${FOLLOW_UP_QQ_PREFIX}${task.spaceId}:`;
   const eventPrefix = `${prefix}${fingerprint}:`;

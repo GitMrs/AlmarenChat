@@ -1,3 +1,4 @@
+import { syncNotifications } from '../../lib/notifications/store.mjs';
 import { sendPlatformQQ } from '../../lib/platform-notifications/qq.mjs';
 import { FOLLOW_UP_QQ_PREFIX, isMarketQQNotification } from '../../lib/space/follow-up-notification-policy.mjs';
 import { sqliteDate } from '../../lib/qq-assistant/policy.mjs';
@@ -13,6 +14,7 @@ export function selectPlatformReminders(db, now = new Date()) {
 }
 
 export async function deliverPlatformNotifications(db, sender = sendPlatformQQ, clock = () => new Date()) {
+  await syncNotifications(db, { now: clock() });
   const now = sqliteDate(clock());
   db.prepare(`UPDATE "AssistantReminder" SET "status" = CASE
       WHEN "idempotencyKey" LIKE 'crypto-follow-up:%' OR "idempotencyKey" LIKE 'crypto-sentinel:%' OR "idempotencyKey" LIKE 'space-automation:%' THEN 'FAILED'
@@ -56,4 +58,5 @@ export async function deliverPlatformNotifications(db, sender = sendPlatformQQ, 
           attempts >= 3 ? '平台通知发送失败，已达到3次投递上限' : '平台通知发送失败，等待重试', sqliteDate(clock()), reminder.id, attempts);
     }
   }
+  await syncNotifications(db, { now: clock() });
 }
