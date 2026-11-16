@@ -3,6 +3,34 @@ import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { ensurePersonalAssistant } from '@/lib/personal-assistant/profile';
 
+export async function GET(request: Request, { params }: { params: Promise<{ conversationId: string }> }) {
+  try {
+    const userId = requireAuth(request);
+    const { conversationId } = await params;
+    const conversation = await prisma.conversation.findFirst({ where: { id: conversationId, userId, kind: 'PERSONAL_ASSISTANT' } });
+    if (!conversation) return NextResponse.json({ error: '会话不存在' }, { status: 404 });
+    const query = new URL(request.url).searchParams;
+    const before = query.get('before');
+    const beforeId = query.get('beforeId');
+    const requestedLimit = Number(query.get('limit') || 60);
+    if (!Number.isInteger(requestedLimit) || requestedLimit < 1 || (before && !Number.isFinite(Date.parse(before))) || (beforeId && !before)) {
+      return NextResponse.json({ error: 'Invalid message pagination' }, { status: 400 });
+    }
+    const limit = Math.min(requestedLimit, 100);
+    const rows = await prisma.message.findMany({
+      where: { conversationId, ...(before ? { OR: [
+        { createdAt: { lt: new Date(before) } },
+        ...(beforeId ? [{ createdAt: new Date(before), id: { lt: beforeId } }] : []),
+      ] } : {}) },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: limit + 1,
+    });
+    return NextResponse.json({ messages: rows.slice(0, limit).reverse(), hasMore: rows.length > limit });
+  } catch (error: any) {
+    if (error.message === 'Unauthorized') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ conversationId: string }> }
@@ -21,14 +49,15 @@ export async function POST(
 
     const messages = await prisma.message.findMany({
       where: { conversationId },
-      orderBy: { createdAt: 'desc' },
-      take: 60,
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: 61,
     });
 
     return NextResponse.json({
       conversationId,
       conversationMode: conversation.id === profile.conversationId ? 'MAIN' : 'TEMPORARY',
-      messages: messages.reverse(),
+      messages: messages.slice(0, 60).reverse(),
+      hasMore: messages.length > 60,
     });
   } catch (error: any) {
     if (error.message === 'Unauthorized') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -70,14 +99,15 @@ export async function DELETE(
 
     const mainMessages = await prisma.message.findMany({
       where: { conversationId: profile.conversationId },
-      orderBy: { createdAt: 'desc' },
-      take: 60,
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: 61,
     });
 
     return NextResponse.json({
       success: true,
       currentConversationId: profile.conversationId,
-      messages: mainMessages.reverse(),
+      messages: mainMessages.slice(0, 60).reverse(),
+      hasMore: mainMessages.length > 60,
     });
   } catch (error: any) {
     if (error.message === 'Unauthorized') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

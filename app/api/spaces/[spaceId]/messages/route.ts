@@ -599,17 +599,25 @@ export async function GET(request: Request, { params }: { params: Promise<{ spac
 
     const { searchParams } = new URL(request.url);
     const before = searchParams.get('before');
-    const limit = Math.min(parseInt(searchParams.get('limit') || String(MESSAGE_PAGE_SIZE), 10), 100);
+    const beforeId = searchParams.get('beforeId');
+    const requestedLimit = Number(searchParams.get('limit') || MESSAGE_PAGE_SIZE);
+    if (!Number.isInteger(requestedLimit) || requestedLimit < 1 || (before && !Number.isFinite(Date.parse(before))) || (beforeId && !before)) {
+      return NextResponse.json({ error: 'Invalid message pagination' }, { status: 400 });
+    }
+    const limit = Math.min(requestedLimit, 100);
     const rows = await prisma.spaceMessage.findMany({
       where: {
         spaceId,
-        ...(before ? { createdAt: { lt: new Date(before) } } : {}),
+        ...(before ? { OR: [
+          { createdAt: { lt: new Date(before) } },
+          ...(beforeId ? [{ createdAt: new Date(before), id: { lt: beforeId } }] : []),
+        ] } : {}),
       },
-      orderBy: { createdAt: 'desc' },
-      take: limit,
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: limit + 1,
     });
-    const messages = rows.reverse();
-    return NextResponse.json({ messages, hasMore: rows.length === limit });
+    const messages = rows.slice(0, limit).reverse();
+    return NextResponse.json({ messages, hasMore: rows.length > limit });
   } catch (e: any) {
     if (e.message === 'Unauthorized') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     return NextResponse.json({ error: e.message }, { status: 500 });

@@ -17,6 +17,7 @@ import { cn } from '@/lib/client/utils';
 import { shouldExtractMemorySuggestion } from '@/lib/personal-assistant/memory-intent.mjs';
 import type { AssistantConversationSummary, AssistantExperience, AssistantReminder, AssistantReminderCandidate, Message, MessageAttachment, PersonalAssistantBootstrap } from '@/types';
 import { createClientId } from '@/lib/client/client-id';
+import { useMessageHistory } from '@/hooks/useMessageHistory';
 
 const HIDDEN_PATHS = ['/login'];
 
@@ -554,7 +555,8 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
     try {
       if (!data) return;
       await assistant.clearMessages(data.conversationId);
-      setData((prev) => (prev ? { ...prev, messages: [] } : prev));
+      resetHistory({ messages: [], hasMore: false });
+      setData((prev) => (prev ? { ...prev, hasMore: false } : prev));
       setConfirmClearAssistantOpen(false);
     } catch (e) {
       console.error('Failed to clear assistant messages:', e);
@@ -594,6 +596,20 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
   const [pendingAttachment, setPendingAttachment] = useState<MessageAttachment | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
+  const followMessagesRef = useRef(true);
+  const { hasMoreMessages, loadingMoreMessages, historyError, loadMoreMessages, resetHistory } = useMessageHistory<Message>({
+    scopeId: data?.conversationId || '',
+    scrollRef: listRef,
+    initialHasMore: Boolean(data?.hasMore),
+    controlledState: {
+      messages: data?.messages || [],
+      setMessages: update => setData(current => current && current.conversationId === data?.conversationId ? {
+        ...current, messages: typeof update === 'function' ? update(current.messages) : update,
+      } : current),
+    },
+    fetchPage: options => assistant.getMessages(data!.conversationId, options),
+    onBeforePrepend: () => { followMessagesRef.current = false; },
+  });
   const abortRef = useRef<AbortController | null>(null);
   const proactiveNextCheckAtRef = useRef(0);
   const toolsRef = useRef<HTMLDivElement>(null);
@@ -847,8 +863,14 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
     }
   };
   useEffect(() => {
-    listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
+    if (followMessagesRef.current) listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
   }, [data?.messages, streaming, open]);
+  useEffect(() => {
+    if (!open || view !== 'chat') return;
+    followMessagesRef.current = true;
+    const frame = requestAnimationFrame(() => listRef.current?.scrollTo({ top: listRef.current.scrollHeight }));
+    return () => cancelAnimationFrame(frame);
+  }, [data?.conversationId, open, view]);
   // 主动关怀：仅在网页前台且抽屉收起时检查，频率由服务端统一限制。
   useEffect(() => {
     if (!loggedIn || open || hidden || proactiveGreeting) return;
@@ -978,6 +1000,7 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
             conversationId: main.conversationId,
             conversationMode: main.conversationMode,
             messages: main.messages,
+            hasMore: main.hasMore,
           } : prev);
         }
       }
@@ -1178,6 +1201,7 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
       createdAt: now,
     };
     const assistantMessage: Message = { id: createClientId(), conversationId: data.conversationId, role: 'assistant', content: '', createdAt: now };
+    followMessagesRef.current = true;
     setData({ ...data, messages: [...data.messages, userMessage, assistantMessage] });
     setInput('');
     setPendingAttachment(null);
@@ -1350,6 +1374,7 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
         conversationId: res.conversationId,
         conversationMode: res.conversationMode,
         messages: [],
+        hasMore: false,
       } : current);
       setView('chat');
     } catch (err: any) {
@@ -1436,6 +1461,7 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
         conversationId: res.conversationId,
         conversationMode: res.conversationMode,
         messages: res.messages,
+        hasMore: res.hasMore,
       } : current);
       setView('chat');
     } catch (err: any) {
@@ -1465,6 +1491,7 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
           conversationId: res.currentConversationId,
           conversationMode: 'MAIN',
           messages: res.messages || [],
+          hasMore: res.hasMore,
         });
       }
       setPendingDeleteConversation(null);
@@ -1830,8 +1857,23 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
                     </div>
                   </div>
                 )}
-                <div ref={listRef} className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-5">
+                <div ref={listRef} onScroll={() => {
+                  const container = listRef.current;
+                  if (!container) return;
+                  followMessagesRef.current = container.scrollHeight - container.scrollTop - container.clientHeight <= 80;
+                  if (container.scrollTop <= 80 && !historyError) void loadMoreMessages();
+                }} className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-5">
                   {loading && <div className="flex h-full items-center justify-center"><Loader2 size={20} className="animate-spin text-slate-400" /></div>}
+                  {!loading && (hasMoreMessages || historyError) && (
+                    <div className="flex flex-col items-center gap-2">
+                      <button type="button" disabled={loadingMoreMessages} onClick={() => void loadMoreMessages()}
+                        className="inline-flex h-9 items-center gap-2 rounded-full border border-black/[0.06] bg-white px-4 text-xs font-black text-slate-500 shadow-sm disabled:text-slate-300">
+                        {loadingMoreMessages && <Loader2 size={14} className="animate-spin" />}
+                        {historyError ? '重试加载更早消息' : '加载更早消息'}
+                      </button>
+                      {historyError && <p role="alert" className="text-xs text-rose-600">{historyError}</p>}
+                    </div>
+                  )}
                   {!loading && data && data.messages.length === 0 && (
                     <div className="mx-auto flex min-h-full max-w-xs flex-col items-center justify-center pb-16 text-center">
                       <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full border border-black/[0.08] bg-white shadow-sm"><MessageCircleHeart size={25} /></div>
@@ -1839,7 +1881,7 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
                     </div>
                   )}
                   {data?.messages.map((message, index) => (
-                    <div key={message.id} className="space-y-2">
+                    <div key={message.id} data-history-message-id={message.id} className="space-y-2">
                       {index > 0 && data.messages[index - 1]?.assistantExperienceId && !message.assistantExperienceId && (
                         <div className="flex items-center gap-2 py-2 text-[10px] font-bold text-slate-400 select-none">
                           <div className="h-px flex-1 bg-slate-200" />

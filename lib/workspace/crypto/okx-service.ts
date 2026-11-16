@@ -88,6 +88,8 @@ export interface CryptoMicrostructure {
   liquidationLongUsd: number;
   liquidationShortUsd: number;
   liquidationCount: number;
+  liquidationSampleFrom?: string | null;
+  liquidationSampleTo?: string | null;
   fetchedAt: string;
   dataQuality: Pick<CryptoDataQuality, 'orderBook' | 'trades' | 'liquidations'>;
 }
@@ -334,10 +336,12 @@ async function getMicrostructureData(instId: string, now: number): Promise<Cache
   const cached = microstructureCache.get(instId);
   if (cached && now - cached.fetchedAt < MICROSTRUCTURE_CACHE_TTL_MS) return cached;
 
-  const [bookRes, tradesRes, liquidationRes] = await Promise.allSettled([
+  const instFamily = instId.replace(/-SWAP$/, '');
+  const [bookRes, tradesRes, liquidationRes, instrumentRes] = await Promise.allSettled([
     smartFetch(`https://www.okx.com/api/v5/market/books?instId=${instId}&sz=20`, { timeoutMs: 5000 }),
     smartFetch(`https://www.okx.com/api/v5/market/trades?instId=${instId}&limit=100`, { timeoutMs: 5000 }),
-    smartFetch(`https://www.okx.com/api/v5/public/liquidation-orders?instType=SWAP&instId=${instId}&state=filled&limit=100`, { timeoutMs: 5000 }),
+    smartFetch(`https://www.okx.com/api/v5/public/liquidation-orders?instType=SWAP&instFamily=${instFamily}&instId=${instId}&state=filled&limit=100`, { timeoutMs: 5000 }),
+    smartFetch(`https://www.okx.com/api/v5/public/instruments?instType=SWAP&instId=${instId}`, { timeoutMs: 5000 }),
   ]);
 
   let bidDepthUsd = 0;
@@ -374,20 +378,43 @@ async function getMicrostructureData(instId: string, now: number): Promise<Cache
   let liquidationLongUsd = 0;
   let liquidationShortUsd = 0;
   let liquidationCount = 0;
+  let liquidationSampleFrom: string | null = null;
+  let liquidationSampleTo: string | null = null;
   let liquidationsAvailable = false;
+  const instrumentPayload = instrumentRes.status === 'fulfilled' && instrumentRes.value.ok
+    ? await instrumentRes.value.json().catch(() => ({})) : {};
+  const instrument = instrumentPayload.code === '0' && Array.isArray(instrumentPayload.data)
+    ? instrumentPayload.data.find((row: any) => row?.instId === instId) : null;
+  const contractValue = Number(instrument?.ctVal) * Number(instrument?.ctMult);
+  const validUnit = instrument?.ctType === 'linear' && instrument?.settleCcy === 'USDT'
+    && instrument?.ctValCcy === instFamily.slice(0, -5) && Number.isFinite(contractValue) && contractValue > 0;
   if (liquidationRes.status === 'fulfilled' && liquidationRes.value.ok) {
-    const groups = (await liquidationRes.value.json().catch(() => ({}))).data;
-    const details = Array.isArray(groups)
-      ? groups.flatMap((group: any) => Array.isArray(group?.details) ? group.details : [])
+    const payload = await liquidationRes.value.json().catch(() => ({}));
+    const groups = payload.data;
+    const validPayload = payload.code === '0' && Array.isArray(groups);
+    const details = validPayload
+      ? groups.filter((group: any) => group?.instId === instId).flatMap((group: any) => Array.isArray(group?.details) ? group.details : [])
       : [];
+    let invalidDetails = false;
+    const times: number[] = [];
     for (const detail of details) {
-      const value = Number(detail?.bkPx) * Number(detail?.sz);
-      if (!Number.isFinite(value) || value <= 0) continue;
-      if (detail?.posSide === 'long' || detail?.side === 'sell') liquidationLongUsd += value;
-      if (detail?.posSide === 'short' || detail?.side === 'buy') liquidationShortUsd += value;
+      const price = Number(detail?.bkPx), size = Number(detail?.sz), timestamp = Number(detail?.ts);
+      if (!validUnit || !Number.isFinite(price) || price <= 0 || !Number.isFinite(size) || size <= 0
+        || !Number.isFinite(timestamp) || timestamp <= 0 || timestamp > now
+        || !['long', 'short'].includes(detail?.posSide)) { invalidDetails = true; continue; }
+      const value = price * size * contractValue;
+      if (!Number.isFinite(value)) { invalidDetails = true; continue; }
+      if (detail.posSide === 'long') liquidationLongUsd += value;
+      else liquidationShortUsd += value;
       liquidationCount += 1;
+      times.push(timestamp);
     }
-    liquidationsAvailable = true;
+    liquidationsAvailable = validPayload && validUnit && !invalidDetails
+      && (groups.length === 0 || groups.every((group: any) => group?.instId === instId && Array.isArray(group?.details)));
+    if (times.length) {
+      liquidationSampleFrom = new Date(Math.min(...times)).toISOString();
+      liquidationSampleTo = new Date(Math.max(...times)).toISOString();
+    }
   }
 
   const entry = {
@@ -403,6 +430,8 @@ async function getMicrostructureData(instId: string, now: number): Promise<Cache
       liquidationLongUsd,
       liquidationShortUsd,
       liquidationCount,
+      liquidationSampleFrom,
+      liquidationSampleTo,
       fetchedAt: new Date().toISOString(),
       dataQuality: {
         orderBook: orderBookAvailable,

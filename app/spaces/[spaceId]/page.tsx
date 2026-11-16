@@ -3,6 +3,7 @@
 import { startSerialPolling } from '@/lib/space/serial-polling.mjs';
 import { compactActivityEvents } from '@/lib/space/activity-events.mjs';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMessageHistory } from '@/hooks/useMessageHistory';
 import { useParams, usePathname, useRouter } from 'next/navigation';
 import { Activity, ArrowLeft, BookOpen, Flame, CalendarClock, Check, CheckCircle2, ChevronRight, Code2, Copy, Cpu, Database, Download, ExternalLink, FilePenLine, FileText, Gamepad2, Globe2, History, Image as ImageIcon, ListTodo, Loader2, MessagesSquare, Newspaper, PackagePlus, Paperclip, Play, Plus, RotateCcw, Save, Send, Settings2, ShieldCheck, SkipForward, Sliders, SlidersHorizontal, Square, Trash2, TrendingUp, Tv, UploadCloud, UsersRound, X } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
@@ -559,7 +560,17 @@ export default function SpaceDetailPage() {
     const destination = spaceWorkspaceHref(space);
     if (pathname !== destination) router.replace(`${destination}${window.location.search}`);
   }, [space?.id, space?.workspaceType, space?.templateId, pathname, router, dedicatedWechatRoute, wechatWorkspace]);
-  const [messages, setMessages] = useState<SpaceMessage[]>([]);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const { messages, setMessages, hasMoreMessages, loadingMoreMessages, historyError, resetHistory, mergeLatestPage, loadMoreMessages } = useMessageHistory<SpaceMessage>({
+    scopeId: spaceId,
+    scrollRef,
+    fetchPage: options => spacesApi.messages(spaceId, { ...options, limit: 60 }),
+    onBeforePrepend: () => {
+      forceScrollToBottomRef.current = false;
+      followMessagesRef.current = false;
+      wasAtBottomRef.current = false;
+    },
+  });
   const [agents, setAgents] = useState<Agent[]>([]);
   const [files, setFiles] = useState<SpaceFile[]>([]);
   const [runs, setRuns] = useState<AgentRun[]>([]);
@@ -743,7 +754,6 @@ export default function SpaceDetailPage() {
   const [dismissedDiscussionIds, setDismissedDiscussionIds] = useState<string[]>([]);
   const [relayBusy, setRelayBusy] = useState(false);
   const [dismissedRelayIds, setDismissedRelayIds] = useState<string[]>([]);
-  const scrollRef = useRef<HTMLDivElement>(null);
   const forceScrollToBottomRef = useRef(true);
   const followMessagesRef = useRef(true);
   const chatScrollTopRef = useRef<number>(0);
@@ -1245,7 +1255,7 @@ export default function SpaceDetailPage() {
       setExecutionModeDraft(spaceResult.space.executionMode === 'AUTO' ? 'AUTO' : 'REVIEW_DISPATCH');
       setExecutionEngineDraft(spaceResult.space.executionEngine === 'pi' ? 'pi' : 'native');
       forceScrollToBottomRef.current = true;
-      setMessages(messageResult.messages);
+      resetHistory(messageResult);
       const pendingWorkId = messageResult.messages
         .map((message) => taskProposalOf(message))
         .find((proposal) => proposal?.status === 'pending')?.workId;
@@ -1325,6 +1335,7 @@ export default function SpaceDetailPage() {
     followMessagesRef.current = isAtBottom;
     wasAtBottomRef.current = isAtBottom;
     chatScrollTopRef.current = container.scrollTop;
+    if (container.scrollTop <= 80 && !historyError) void loadMoreMessages();
   };
 
   useEffect(() => {
@@ -1399,7 +1410,7 @@ export default function SpaceDetailPage() {
       spacesApi.actions(spaceId),
     ]).then(([fileResult, messageResult, learningResult, workResult, automationResult, actionResult]) => {
       setFiles(fileResult.files);
-      setMessages(messageResult.messages);
+      mergeLatestPage(messageResult);
       setLearning(learningResult.learning);
       setLearningReadme(learningResult.readme);
       setWorks(workResult.works);
@@ -1424,7 +1435,7 @@ export default function SpaceDetailPage() {
         const updates = new Map(actionResult.actions.map((action) => [action.id, action]));
         return current.map((action) => updates.get(action.id) || action);
       });
-      setMessages(messageResult.messages);
+      mergeLatestPage(messageResult);
       setConnectors(connectorResult.connectors);
     }).catch(() => {});
     const timer = window.setInterval(refresh, 1_500);
@@ -1450,7 +1461,7 @@ export default function SpaceDetailPage() {
         ]);
         setRuns(runResult.runs);
         setWorks(workResult.works);
-        setMessages(messageResult.messages);
+        mergeLatestPage(messageResult);
       } catch {
         // A later poll can recover from a transient refresh failure.
       }
@@ -1468,7 +1479,7 @@ export default function SpaceDetailPage() {
           spacesApi.messages(spaceId, { limit: 60 }),
         ]);
         setDiscussions(discussionResult.discussions);
-        setMessages(messageResult.messages);
+        mergeLatestPage(messageResult);
       } catch {
         // Keep the latest persisted discussion state; the next poll can recover.
       }
@@ -1486,7 +1497,7 @@ export default function SpaceDetailPage() {
           spacesApi.files(spaceId),
         ]);
         setRelays(relayResult.relays);
-        setMessages(messageResult.messages);
+        mergeLatestPage(messageResult);
         setFiles(fileResult.files);
       } catch {
         // Keep the latest persisted relay state; the next poll can recover.
@@ -1883,7 +1894,7 @@ export default function SpaceDetailPage() {
         const result = await streamSpaceMessage({
           spaceId,
           message: replyRequest.message,
-          history: currentHistory.map((message) => ({
+          history: currentHistory.slice(-61).map((message) => ({
             role: message.role,
             content: message.content,
             speakerAgentId: message.speakerAgentId,
@@ -2030,7 +2041,7 @@ export default function SpaceDetailPage() {
         if (index < replyRequests.length - 1) {
           const messageResult = await spacesApi.messages(spaceId, { limit: 60 });
           currentHistory = messageResult.messages;
-          setMessages(currentHistory);
+          mergeLatestPage(messageResult);
         }
       }
 
@@ -2042,7 +2053,7 @@ export default function SpaceDetailPage() {
         spacesApi.runs(spaceId),
         refreshSpace(),
       ]);
-      setMessages(messageResult.messages);
+      mergeLatestPage(messageResult);
       if (fileResult) setFiles(fileResult.files);
       setRelays(relayResult.relays);
       setDiscussions(discussionResult.discussions);
@@ -2114,7 +2125,7 @@ export default function SpaceDetailPage() {
       });
       const messageResult = await spacesApi.messages(spaceId, { limit: 60 });
       setDiscussions((items) => [result.discussion, ...items]);
-      setMessages(messageResult.messages);
+      mergeLatestPage(messageResult);
       setInput('');
       setDiscussionDialogOpen(false);
     } catch (err: any) {
@@ -2361,7 +2372,7 @@ export default function SpaceDetailPage() {
         setAutomations(automationResult.automations);
         setRuns(runResult.runs);
         setWorks(workResult.works);
-        setMessages(messageResult.messages);
+        mergeLatestPage(messageResult);
         const current = automationResult.automations.find((item) => item.id === automation.id);
         if (!current?.lastRunId || current.lastRunId === previousRunId) continue;
         const run = runResult.runs.find((item) => item.id === current.lastRunId);
@@ -2408,7 +2419,7 @@ export default function SpaceDetailPage() {
         setWorks((items) => items.map((work) => work.id === result.work?.id ? { ...work, ...result.work } : work));
       }
       const messageResult = await spacesApi.messages(spaceId, { limit: 60 });
-      setMessages(messageResult.messages);
+      mergeLatestPage(messageResult);
     } catch (err: any) {
       setError(err.message || '处理动作审批失败');
     } finally {
@@ -2712,7 +2723,7 @@ export default function SpaceDetailPage() {
     setError('');
     try {
       await spacesApi.clearContents(spaceId);
-      setMessages([]);
+      resetHistory({ messages: [], hasMore: false });
       setFiles([]);
       setRuns([]);
       setWorks([]);
@@ -3657,7 +3668,7 @@ export default function SpaceDetailPage() {
                   if (signal.aborted || streamingRef.current) return false;
                   const result = await spacesApi.messages(spaceId, { limit: 60, signal });
                   if (signal.aborted || streamingRef.current) return false;
-                  setMessages(result.messages);
+                  mergeLatestPage(result);
                   return true;
                 }}
               />
@@ -3915,6 +3926,16 @@ export default function SpaceDetailPage() {
             <div className={`min-h-0 flex-1 flex flex-col ${workspaceView === 'chat' ? '' : 'hidden'}`}>
             <div ref={scrollRef} onScroll={handleMessagesScroll} className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-[#fbfaf7] px-4 py-5 sm:px-6 lg:px-10 lg:py-6">
               <div className="mx-auto max-w-4xl space-y-5">
+                {(hasMoreMessages || historyError) && (
+                  <div className="flex flex-col items-center gap-2">
+                    <button type="button" disabled={loadingMoreMessages} onClick={() => void loadMoreMessages()}
+                      className="inline-flex h-9 items-center gap-2 rounded-full border border-black/[0.06] bg-white px-4 text-xs font-black text-slate-500 shadow-sm transition hover:text-slate-950 disabled:text-slate-300">
+                      {loadingMoreMessages && <Loader2 size={14} className="animate-spin" />}
+                      {historyError ? '重试加载更早消息' : '加载更早消息'}
+                    </button>
+                    {historyError && <p role="alert" className="text-xs text-rose-600">{historyError}</p>}
+                  </div>
+                )}
                 {error && <div className="rounded-2xl bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-600">{error}</div>}
                 {!isPiSpace && mode === 'task' && (
                   <>
@@ -4545,8 +4566,8 @@ export default function SpaceDetailPage() {
                   </div>
                 )}
                 {messages.map((message) => (
+                  <div key={message.id} data-history-message-id={message.id}>
                   <SpaceMessageItem
-                    key={message.id}
                     message={message}
                     speaker={message.speakerAgentId ? speakerById.get(message.speakerAgentId) : null}
                     fallbackColor={FALLBACK_COLOR}
@@ -4613,6 +4634,7 @@ export default function SpaceDetailPage() {
                     onApproveCryptoDecision={(decision) => void approveCryptoDecision(message, decision)}
                     onRejectCryptoDecision={() => rejectCryptoDecision(message.id)}
                   />
+                  </div>
                 ))}
                 {isStreaming && (streamingContent || (streamingPiActivity || streamingPiStatus || streamingPiNotes.length > 0)) && (
                   <div className="flex justify-start gap-3">

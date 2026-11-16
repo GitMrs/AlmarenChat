@@ -12,8 +12,8 @@ export async function GET(request: Request) {
     const [messages, memories, experiences, reminders] = await Promise.all([
       prisma.message.findMany({
         where: { conversationId: profile.conversationId },
-        orderBy: { createdAt: 'desc' },
-        take: 60,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take: 61,
       }),
       prisma.assistantMemoryItem.findMany({
         where: { userId, agentId, status: { in: ['ACTIVE', 'DISABLED', 'SUPERSEDED'] } },
@@ -61,7 +61,8 @@ export async function GET(request: Request) {
       conversationId: profile.conversationId,
       mainConversationId: profile.conversationId,
       conversationMode: 'MAIN',
-      messages: messages.reverse(),
+      messages: messages.slice(0, 60).reverse(),
+      hasMore: messages.length > 60,
       memories,
       experiences,
       reminders: reminders.map((r) => ({

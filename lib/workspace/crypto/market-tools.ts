@@ -39,6 +39,9 @@ export async function queryCryptoMarket(tool: string, args: { symbol: string }) 
       fetchedAt: snapshot.microstructure.fetchedAt,
       depthImbalance: quality.orderBook ? snapshot.microstructure.depthImbalance : null,
       liquidationCount: quality.liquidations ? snapshot.microstructure.liquidationCount : null,
+      liquidationSampleFrom: quality.liquidations ? snapshot.microstructure.liquidationSampleFrom ?? null : null,
+      liquidationSampleTo: quality.liquidations ? snapshot.microstructure.liquidationSampleTo ?? null : null,
+      liquidationScope: 'OKX returned records only; limited sample, not a complete hourly or market-wide total',
     },
   };
 }

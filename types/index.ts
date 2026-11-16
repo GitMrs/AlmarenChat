@@ -263,6 +263,7 @@ export interface PersonalAssistantBootstrap {
   mainConversationId: string;
   conversationMode: AssistantConversationMode;
   messages: Message[];
+  hasMore?: boolean;
   memories: AssistantMemoryItem[];
   experiences?: AssistantExperience[];
   reminders?: AssistantReminder[];

@@ -155,6 +155,10 @@ export const agentMemories = {
 
 export const assistant = {
   get: (agentId?: string) => request<PersonalAssistantBootstrap>(`/assistant${agentId ? `?agentId=${encodeURIComponent(agentId)}` : ''}`),
+  getMessages: (conversationId: string, options: { before: string; beforeId: string; signal: AbortSignal }) => {
+    const query = new URLSearchParams({ before: options.before, beforeId: options.beforeId, limit: '60' });
+    return request<{ messages: Message[]; hasMore: boolean }>(`/assistant/conversations/${encodeURIComponent(conversationId)}?${query}`, { signal: options.signal });
+  },
   getContextStats: (conversationId?: string) =>
     request<AssistantContextStats>(`/assistant/experiences${conversationId ? `?conversationId=${encodeURIComponent(conversationId)}` : ''}`),
   archiveExperience: (data?: { conversationId?: string; preserveRecent?: number }) =>
@@ -186,11 +190,11 @@ export const assistant = {
       body: JSON.stringify({ title }),
     }),
   switchConversation: (conversationId: string) =>
-    request<{ conversationId: string; conversationMode: 'MAIN' | 'TEMPORARY'; messages: Message[] }>(`/assistant/conversations/${conversationId}`, {
+    request<{ conversationId: string; conversationMode: 'MAIN' | 'TEMPORARY'; messages: Message[]; hasMore?: boolean }>(`/assistant/conversations/${conversationId}`, {
       method: 'POST',
     }),
   deleteConversation: (conversationId: string) =>
-    request<{ success: true; currentConversationId: string; messages?: Message[] }>(`/assistant/conversations/${conversationId}`, {
+    request<{ success: true; currentConversationId: string; messages?: Message[]; hasMore?: boolean }>(`/assistant/conversations/${conversationId}`, {
       method: 'DELETE',
     }),
   updateProfile: (data: Partial<PersonalAssistantProfile>) =>
@@ -619,9 +623,10 @@ export const spaces = {
     request<{ success: boolean }>(`/spaces/${spaceId}/members/${memberId}`, {
       method: 'DELETE',
     }),
-  messages: (id: string, options?: { before?: string; limit?: number; signal?: AbortSignal }) => {
+  messages: (id: string, options?: { before?: string; beforeId?: string; limit?: number; signal?: AbortSignal }) => {
     const params = new URLSearchParams();
     if (options?.before) params.set('before', options.before);
+    if (options?.beforeId) params.set('beforeId', options.beforeId);
     if (options?.limit) params.set('limit', String(options.limit));
     const query = params.toString();
     return request<{ messages: any[]; hasMore?: boolean }>(`/spaces/${id}/messages${query ? `?${query}` : ''}`, { signal: options?.signal });
