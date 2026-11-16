@@ -1,3 +1,4 @@
+import { TIMEFRAME_GUIDANCE } from './timeframe-analysis.mjs';
 import {
   extractCryptoTargetPlanId,
   formatPlanInspectionForPrompt,
@@ -72,7 +73,7 @@ function formatTradingState(
         ...observationPlans.map((plan) => [
           `- 观察计划 ID：${plan.id}`,
           `  ${plan.symbol} ${plan.direction}｜${plan.name}`,
-          `  入场：${plan.entryMin} - ${plan.entryMax}｜止损：${plan.stopLoss}｜TP1：${plan.takeProfit1}｜TP2：${plan.takeProfit2}｜结构失效：${plan.invalidationPrice}`,
+          `  入场：${plan.entryMin} - ${plan.entryMax}｜止损：${plan.stopLoss}｜TP1：${plan.takeProfit1}｜TP2：${plan.takeProfit2}｜结构失效：${plan.invalidationPrice}｜失效方式：${plan.invalidationMode || "未设置（沿用触价提醒）"}｜执行条件：${JSON.stringify(plan.executionCondition || "未设置，不得认定满足")}`,
         ].join('\n')),
       ].join('\n')
     : '【当前已确认加入的观察计划】无。';
@@ -136,6 +137,10 @@ function cryptoAgentPolicy(hasOpenPositions: boolean, input: CryptoAgentPolicyIn
           'TP1：<价格>',
           'TP2：<价格>',
           '结构失效：<价格>',
+          '交易类型：<顺势、逆势或区间>',
+          '执行条件：<15m或1H> <收盘突破或回踩收回> <明确价格>',
+          '失效方式：<触价或1H收盘>',
+          '执行条件价格必须来自本轮结构证据；资料不足则继续观察，不编造条件。',
           '盈亏比：<如 1:2.5>',
           '区间分隔符必须使用半角连字符“-”，不得遗漏字段或改写字段名。复查系统提供的已确认观察计划时，必须原样填写对应的观察计划 ID。用户未说明本金规模时，引导其对齐实际账户净值。',
         ].join('\n')
@@ -144,6 +149,7 @@ function cryptoAgentPolicy(hasOpenPositions: boolean, input: CryptoAgentPolicyIn
   return [
     '本空间为加密合约实战作战室。当分析行情与开单时，按需调用 crypto_quote 或 crypto_market_snapshot，严格依托本轮取得的 OKX 盘面数据进行技术和筹码推演，严禁脱离实盘数据胡编价格；严格遵守轻重双轨制，日常看盘快问快答短平快，开单把关必须核验盈亏比 ≥ 1:2 与 2% 风控线。',
     '【重大事件防御纪律】：若当前处于重大事件倒计时或暴风雨窗口期，必须主动提醒用户防范双向插针风险，禁止盲目开高杠杆，优先等待数据落地形态确认。',
+    TIMEFRAME_GUIDANCE,
     rolePolicy,
   ].join('\n');
 }

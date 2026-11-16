@@ -8,6 +8,10 @@ import {
 export type TradePlanStatus = 'PENDING' | 'TRIGGERED' | 'BREAKEVEN' | 'COMPLETED' | 'EXPIRED';
 
 export interface PlanItem {
+  tradeStyle?: 'TREND' | 'COUNTER_TREND' | 'RANGE';
+  executionCondition?: { period: '15m' | '1H'; kind: 'CLOSE_BREAKOUT' | 'RETEST'; level: number; afterMs: number };
+  invalidationMode?: 'TOUCH' | 'CLOSE_1H';
+
   id: string;
   symbol: string; // 如 "BTC", "ETH"
   name: string; // 如 "BTC 方案 A (箱体下沿做多)"
@@ -190,6 +194,7 @@ export function parseTradePlansFromText(text: string): PlanItem[] {
         takeProfit2,
         invalidationPrice,
         ...(rrMatch?.[1] ? { rrRatio: rrMatch[1] } : {}),
+        ...parseExecutionFields(block),
       });
     }
   }
@@ -306,11 +311,12 @@ export function inspectPlansLifecycle(plans: PlanItem[], currentPrice: number): 
   for (const plan of plans) {
     let status: TradePlanStatus = 'PENDING';
     let statusDesc = '挂单等待中';
+    if (plan.invalidationMode === 'CLOSE_1H') alerts.push(`【${plan.name}】结构失效需1H收盘核验，当前现价不足以认定失效；持仓硬止损不等待收线。`);
     let distPercent = 0;
 
     if (plan.direction === 'LONG') {
       // 1. 多单失效检查：价格跌穿结构失效位/止损线
-      if (currentPrice <= plan.invalidationPrice) {
+      if (plan.invalidationMode !== 'CLOSE_1H' && currentPrice <= plan.invalidationPrice) {
         status = 'EXPIRED';
         statusDesc = `已失效 (现价 $${currentPrice.toLocaleString()} 跌穿失效线 $${plan.invalidationPrice.toLocaleString()})`;
         alerts.push(`🚨 【多单方案失效预警】：现价 $${currentPrice.toLocaleString()} 已击穿结构失效位 $${plan.invalidationPrice.toLocaleString()}！${plan.name} 已失效（EXPIRED），请务必撤销原挂单！`);
@@ -335,7 +341,7 @@ export function inspectPlansLifecycle(plans: PlanItem[], currentPrice: number): 
       }
     } else {
       // 1. 空单失效检查：价格向上突破结构失效位/前高
-      if (currentPrice >= plan.invalidationPrice) {
+      if (plan.invalidationMode !== 'CLOSE_1H' && currentPrice >= plan.invalidationPrice) {
         status = 'EXPIRED';
         statusDesc = `已失效 (现价 $${currentPrice.toLocaleString()} 冲破失效线 $${plan.invalidationPrice.toLocaleString()})`;
         alerts.push(`🚨 【空单方案失效预警】：现价 $${currentPrice.toLocaleString()} 已放量冲破失效位 $${plan.invalidationPrice.toLocaleString()}！${plan.name} 已失效（EXPIRED），严禁在原点位挂空！`);
@@ -435,3 +441,15 @@ export function checkPlanEventConflict(
   return { hasConflict: false };
 }
 
+
+function parseExecutionFields(block: string): Partial<PlanItem> {
+  const style = block.match(/交易类型[：:]\s*(顺势|逆势|区间)/)?.[1];
+  const condition = block.match(/执行条件[：:]\s*(15m|1H)\s+(收盘突破|回踩收回)\s+([0-9]+(?:\.[0-9]+)?)/);
+  const mode = block.match(/失效方式[：:]\s*(触价|1H收盘)/)?.[1];
+  return {
+    ...(style ? { tradeStyle: ({顺势:'TREND',逆势:'COUNTER_TREND',区间:'RANGE'} as const)[style as '顺势'|'逆势'|'区间'] } : {}),
+    ...(condition && Number(condition[3])>0 ? {executionCondition:{period:condition[1] as '15m'|'1H',
+      kind:condition[2]==='收盘突破'?'CLOSE_BREAKOUT' as const:'RETEST' as const, level:Number(condition[3]), afterMs:Date.now()}} : {}),
+    ...(mode ? {invalidationMode: mode==='触价'?'TOUCH' as const:'CLOSE_1H' as const}:{}),
+  };
+}

@@ -812,6 +812,10 @@ export interface SpaceCryptoPlanDecisionAttachment {
   analyzedAt: string;
   referencePrice?: number;
   proposedPlan?: {
+  tradeStyle?: 'TREND' | 'COUNTER_TREND' | 'RANGE';
+  executionCondition?: { period: '15m' | '1H'; kind: 'CLOSE_BREAKOUT' | 'RETEST'; level: number; afterMs: number };
+  invalidationMode?: 'TOUCH' | 'CLOSE_1H';
+
     id: string;
     symbol: string;
     name: string;

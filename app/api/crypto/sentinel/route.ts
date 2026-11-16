@@ -94,6 +94,7 @@ export async function POST(request: Request) {
         takeProfit1: source.takeProfit1,
         takeProfit2: source.takeProfit2,
         invalidationPrice: source.invalidationPrice,
+        tradeStyle: source.tradeStyle, executionCondition: source.executionCondition, invalidationMode: source.invalidationMode,
         createdAt: decision.analyzedAt || new Date().toISOString(),
         expiresInHours: 24,
         watchEnabled: true,

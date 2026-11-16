@@ -1,3 +1,4 @@
+import { evaluateExecution } from './timeframe-analysis.mjs';
 import prisma from '@/app/api/_lib/db';
 import { getCryptoMarketData } from './okx-service';
 import { randomUUID } from 'node:crypto';
@@ -11,6 +12,10 @@ import {
 import { readCryptoEventsFromDisk, syncMacroEvents } from './event-sync.ts';
 
 export interface AmbushPlanItem {
+  tradeStyle?: 'TREND' | 'COUNTER_TREND' | 'RANGE';
+  executionCondition?: { period: '15m' | '1H'; kind: 'CLOSE_BREAKOUT' | 'RETEST'; level: number; afterMs: number };
+  invalidationMode?: 'TOUCH' | 'CLOSE_1H';
+
   id: string;
   symbol: string;
   name: string;
@@ -321,10 +326,26 @@ export async function checkSentinelForSpace(
     const price = snap.price;
     const isLong = plan.direction === 'LONG';
     const notifyQQ = plan.notifyQQ !== false;
+    const last1h = snap.candles1h?.filter((c: any) => c.isClosed === true)
+      .sort((a: any, b: any) => b.startTimeMs - a.startTimeMs)[0];
+    const invalidationPriceSample = plan.invalidationMode === 'CLOSE_1H'
+      ? (last1h && last1h.startTimeMs + 3600000 <= Date.now() && last1h.startTimeMs + 3600000 >= Date.parse(plan.createdAt) && Date.now() - (last1h.startTimeMs + 3600000) < 7200000 ? last1h.close : null)
+      : price;
+    const execution = evaluateExecution(plan, snap, Date.now());
+    if (execution.status === 'MET'
+      && !(isLong ? price <= plan.invalidationPrice : price >= plan.invalidationPrice)
+      && !(invalidationPriceSample !== null && (isLong ? invalidationPriceSample <= plan.invalidationPrice : invalidationPriceSample >= plan.invalidationPrice))) {
+      const key = `${spaceId}:plan:${plan.id}:EXECUTION:${execution.candleAt}`;
+      if (!isAlertInCooldown(key, 24 * 3600000)) {
+        recordAlertCooldown(key);
+        alerts.push({type:'ENTRY_ZONE',symbol:plan.symbol,title:`${plan.symbol} 执行收线条件满足`,
+          content:`【${plan.name}】${execution.reason}。当前价格与计划风险仍需复核，本提醒不会自动开仓。`,level:'WARN',notifyQQ});
+      }
+    }
 
     if (isLong) {
       // 跌破失效位 (10 分钟防刷屏)
-      if (price <= plan.invalidationPrice) {
+      if (invalidationPriceSample !== null && invalidationPriceSample <= plan.invalidationPrice) {
         const alertKey = `${spaceId}:plan:${plan.id}:INVALIDATION`;
         if (!isAlertInCooldown(alertKey, 10 * 60 * 1000)) {
           recordAlertCooldown(alertKey);
@@ -347,7 +368,7 @@ export async function checkSentinelForSpace(
             type: 'ENTRY_ZONE',
             symbol: plan.symbol,
             title: `⚡ ${plan.symbol} 现价进入挂单区间`,
-            content: `【鹰眼·战备提醒】：现价 $${price.toLocaleString()} 已进入【${plan.name}】挂单区间 ($${plan.entryMin.toLocaleString()} - $${plan.entryMax.toLocaleString()})！密切关注 15m 企稳收线信号，准备入场！`,
+            content: `【鹰眼·战备提醒】：现价 $${price.toLocaleString()} 已进入【${plan.name}】挂单区间 ($${plan.entryMin.toLocaleString()} - $${plan.entryMax.toLocaleString()})！仅为区域触碰，${execution.reason}；不代表允许入场。`,
             level: 'WARN',
             notifyQQ,
           });
@@ -355,7 +376,7 @@ export async function checkSentinelForSpace(
       }
     } else {
       // 空单冲破失效位 (10 分钟防刷屏)
-      if (price >= plan.invalidationPrice) {
+      if (invalidationPriceSample !== null && invalidationPriceSample >= plan.invalidationPrice) {
         const alertKey = `${spaceId}:plan:${plan.id}:INVALIDATION`;
         if (!isAlertInCooldown(alertKey, 10 * 60 * 1000)) {
           recordAlertCooldown(alertKey);
@@ -363,7 +384,7 @@ export async function checkSentinelForSpace(
             type: 'INVALIDATION',
             symbol: plan.symbol,
             title: `🚨 ${plan.symbol} 空单结构失效预警！`,
-            content: `【鹰眼·撤单警报】：现价 $${price.toLocaleString()} 已放量冲破【${plan.name}】结构失效线 $${plan.invalidationPrice.toLocaleString()}！空头逻辑作废，严禁盲目挂空，请立即撤单！`,
+            content: `【鹰眼·撤单警报】：现价 $${price.toLocaleString()} 已越过【${plan.name}】结构失效线 $${plan.invalidationPrice.toLocaleString()}！空头逻辑作废，严禁盲目挂空，请立即撤单！`,
             level: 'CRITICAL',
             notifyQQ,
           });
@@ -376,7 +397,7 @@ export async function checkSentinelForSpace(
             type: 'ENTRY_ZONE',
             symbol: plan.symbol,
             title: `⚡ ${plan.symbol} 现价进入挂空区间`,
-            content: `【鹰眼·战备提醒】：现价 $${price.toLocaleString()} 已进入【${plan.name}】挂单区间 ($${plan.entryMin.toLocaleString()} - $${plan.entryMax.toLocaleString()})！密切关注 15m 滞涨信号！`,
+            content: `【鹰眼·战备提醒】：现价 $${price.toLocaleString()} 已进入【${plan.name}】挂单区间 ($${plan.entryMin.toLocaleString()} - $${plan.entryMax.toLocaleString()})！仅为区域触碰，${execution.reason}；不代表允许入场。`,
             level: 'WARN',
             notifyQQ,
           });

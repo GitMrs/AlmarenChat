@@ -1,3 +1,4 @@
+import { analyzeTimeframes } from './okx-analysis.mjs';
 import { getCryptoMarketData, getCryptoQuoteData, normalizeSymbol } from './okx-service';
 import { CRYPTO_CANDLE_CONFIRMATION_GUIDANCE } from './okx-analysis.mjs';
 
@@ -21,6 +22,7 @@ export async function queryCryptoMarket(tool: string, args: { symbol: string }) 
     derivativesFetchedAt: snapshot.derivativesFetchedAt,
     structureFetchedAt: snapshot.structureFetchedAt,
     dataQuality: quality,
+    timeframeAnalysis: analyzeTimeframes(snapshot),
     open24h: snapshot.open24h || null, high24h: snapshot.high24h || null, low24h: snapshot.low24h || null,
     oiUsd: quality.openInterest ? snapshot.oiUsd : null,
     fundingRate: quality.fundingRate ? snapshot.fundingRate : null,

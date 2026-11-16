@@ -48,6 +48,10 @@ export interface SpaceCryptoCenterProps {
 }
 
 export interface AmbushPlan {
+  tradeStyle?: 'TREND' | 'COUNTER_TREND' | 'RANGE';
+  executionCondition?: { period: '15m' | '1H'; kind: 'CLOSE_BREAKOUT' | 'RETEST'; level: number; afterMs: number };
+  invalidationMode?: 'TOUCH' | 'CLOSE_1H';
+
   id: string;
   symbol: string;
   name: string;
@@ -296,6 +300,7 @@ export default function SpaceCryptoCenter({
       takeProfit1: plan.takeProfit1,
       takeProfit2: plan.takeProfit2,
       invalidationPrice: plan.invalidationPrice,
+        tradeStyle: plan.tradeStyle, executionCondition: plan.executionCondition, invalidationMode: plan.invalidationMode,
       createdAt: new Date().toISOString(),
       expiresInHours: 24,
       watchEnabled: true,
@@ -1243,6 +1248,11 @@ export default function SpaceCryptoCenter({
                           目标: <span className="font-mono font-bold text-emerald-600">${p.takeProfit1.toLocaleString()}</span>
                         </span>
                       </div>
+                      <div className="text-[11px] text-slate-600">
+                        类型：{p.tradeStyle === 'TREND' ? '顺势' : p.tradeStyle === 'COUNTER_TREND' ? '逆势' : p.tradeStyle === 'RANGE' ? '区间' : '未设置'}
+                        {' · '}执行：{p.executionCondition ? `${p.executionCondition.period} ${p.executionCondition.kind === 'RETEST' ? '回踩收回' : '收盘突破'} ${p.executionCondition.level}` : '未设置确认条件，触碰仅提醒'}
+                        {' · '}结构失效：{p.invalidationMode === 'CLOSE_1H' ? '1H收盘' : '触价'}
+                      </div>
                       {riskReward && (
                         <div className="mt-1 flex flex-wrap gap-x-3 border-t border-indigo-100 pt-2 text-[10px] font-semibold text-slate-500">
                           <span>止损距离 {riskReward.riskPercentRange[0].toFixed(2)}% - {riskReward.riskPercentRange[1].toFixed(2)}%</span>
@@ -1262,7 +1272,7 @@ export default function SpaceCryptoCenter({
                             <span className="text-indigo-700">${p.entryMin.toLocaleString()} - ${p.entryMax.toLocaleString()}</span>
                           </div>
                           <div className="rounded bg-slate-50 px-2 py-1 text-slate-600">
-                            止损 ${currentPlan.stopLoss.toLocaleString()}
+                            执行：{currentPlan.executionCondition ? `${currentPlan.executionCondition.period} ${currentPlan.executionCondition.kind === "RETEST" ? "回踩收回" : "收盘突破"} @ ${currentPlan.executionCondition.level}` : "未设置确认条件（触碰仅提醒）"} · 止损 ${currentPlan.stopLoss.toLocaleString()}
                             <ArrowRight size={10} className="mx-1 inline" />
                             <span className="text-rose-700">${p.stopLoss.toLocaleString()}</span>
                           </div>
@@ -1289,7 +1299,7 @@ export default function SpaceCryptoCenter({
 
                   if (planPrice > 0) {
                     if (isLong) {
-                      if (planPrice <= plan.invalidationPrice) {
+                      if (plan.invalidationMode !== 'CLOSE_1H' && planPrice <= plan.invalidationPrice) {
                         statusType = 'EXPIRED';
                         statusText = `已击穿失效线 $${plan.invalidationPrice.toLocaleString()}！结构破坏，请立即撤单！`;
                       } else if (planPrice >= plan.entryMin && planPrice <= plan.entryMax) {
@@ -1303,7 +1313,7 @@ export default function SpaceCryptoCenter({
                         statusText = `已跌破入场区，严密盯防失效位 $${plan.invalidationPrice.toLocaleString()}`;
                       }
                     } else {
-                      if (planPrice >= plan.invalidationPrice) {
+                      if (plan.invalidationMode !== 'CLOSE_1H' && planPrice >= plan.invalidationPrice) {
                         statusType = 'EXPIRED';
                         statusText = `已冲破失效线 $${plan.invalidationPrice.toLocaleString()}！空头逻辑失效，请立即撤单！`;
                       } else if (planPrice >= plan.entryMin && planPrice <= plan.entryMax) {
@@ -1319,6 +1329,10 @@ export default function SpaceCryptoCenter({
                     }
                   }
 
+                  statusText += plan.executionCondition
+                    ? ` · ${plan.executionCondition.period} ${plan.executionCondition.kind === 'RETEST' ? '回踩收回' : '收盘突破'} ${plan.executionCondition.level}（以鹰眼收线核验为准）`
+                    : ' · 未设置确认条件，触碰仅作观察';
+                  if (plan.invalidationMode === 'CLOSE_1H') statusText += ' · 结构失效以1H收盘核验';
                   const isEditing = editingPlanId === plan.id;
                   const isExpired = isPlanExpired(plan);
                   const isActivelyWatched = !isExpired && plan.watchEnabled !== false;
@@ -1357,6 +1371,7 @@ export default function SpaceCryptoCenter({
                                   stopLoss: plan.stopLoss,
                                   takeProfit1: plan.takeProfit1,
                                   invalidationPrice: plan.invalidationPrice,
+
                                 });
                               }
                             }}
@@ -1541,6 +1556,7 @@ export default function SpaceCryptoCenter({
                                     p.id === plan.id
                                       ? {
                                           ...p,
+                                          executionCondition: undefined,
                                           entryMin: editForm.entryMin || p.entryMin,
                                           entryMax: editForm.entryMax || p.entryMax,
                                           stopLoss: editForm.stopLoss || p.stopLoss,

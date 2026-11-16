@@ -305,9 +305,9 @@ async function fetchMarketDataDirect(ccy: string, instId: string, rawSymbol: str
       instId,
       ...realtime.value,
       ...derivatives.value,
-      candles15m: candles15m.slice(0, 5),
-      candles1h: candles1h.slice(0, 6),
-      candles4h: candles4h.slice(0, 6),
+      candles15m: candles15m.slice(0, 100),
+      candles1h: candles1h.slice(0, 100),
+      candles4h: candles4h.slice(0, 100),
       microstructure: microstructure.value,
       priceDelta15mPercent: delta(candles15m),
       priceDelta1hPercent: delta(candles1h),
@@ -546,7 +546,7 @@ async function getCandles(instId: string, bar: string, periodMs: number, now: nu
     && now - cached.fetchedAt < CANDLE_CACHE_TTL_MS && !needsBoundaryConfirmation) {
     return cached.value;
   }
-  const response = await smartFetch(`https://www.okx.com/api/v5/market/candles?instId=${instId}&bar=${bar}&limit=10`, { timeoutMs: 5000 }).catch(() => null);
+  const response = await smartFetch(`https://www.okx.com/api/v5/market/candles?instId=${instId}&bar=${bar}&limit=100`, { timeoutMs: 5000 }).catch(() => null);
   if (!response?.ok) return cached?.value || [];
   const json = await response.json().catch(() => ({}));
   if (json.code !== '0' || !Array.isArray(json.data) || json.data.length === 0) return cached?.value || [];
