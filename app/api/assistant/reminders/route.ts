@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
+import { PERSONAL_REMINDER_FILTER } from '@/lib/personal-assistant/reminder-scope.mjs';
 
 export const runtime = 'nodejs';
 
@@ -15,6 +16,7 @@ export async function GET(request: Request) {
     const reminders = await prisma.assistantReminder.findMany({
       where: {
         userId,
+        AND: [PERSONAL_REMINDER_FILTER],
         OR: [
           { status: 'PENDING' },
           { status: 'COMPLETED', updatedAt: { gte: todayStart } },
@@ -110,7 +112,7 @@ export async function PATCH(request: Request) {
     }
 
     const existing = await prisma.assistantReminder.findFirst({
-      where: { id, userId },
+      where: { id, userId, AND: [PERSONAL_REMINDER_FILTER] },
     });
     if (!existing) {
       return NextResponse.json({ error: '提醒不存在' }, { status: 404 });
@@ -183,7 +185,7 @@ export async function DELETE(request: Request) {
     }
 
     await prisma.assistantReminder.deleteMany({
-      where: { id, userId },
+      where: { id, userId, AND: [PERSONAL_REMINDER_FILTER] },
     });
 
     return NextResponse.json({ success: true, id });

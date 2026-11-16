@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { ensurePersonalAssistant } from '@/lib/personal-assistant/profile';
+import { PERSONAL_REMINDER_FILTER } from '@/lib/personal-assistant/reminder-scope.mjs';
 
 export async function GET(request: Request) {
   try {
@@ -34,6 +35,7 @@ export async function GET(request: Request) {
       prisma.assistantReminder.findMany({
         where: {
           userId,
+          AND: [PERSONAL_REMINDER_FILTER],
           status: { in: ['PENDING', 'COMPLETED'] },
         },
         orderBy: [

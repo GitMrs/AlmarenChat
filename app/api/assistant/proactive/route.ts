@@ -5,6 +5,7 @@ import { ensurePersonalAssistant } from '@/lib/personal-assistant/profile';
 import { createModelClient, resolveModelName } from '@/lib/core/model-client';
 import { shouldSkipEventFollowUp } from '@/lib/personal-assistant/proactive-follow-up.mjs';
 import { resolveProactiveWait } from '@/lib/personal-assistant/proactive-schedule.mjs';
+import { PERSONAL_REMINDER_FILTER } from '@/lib/personal-assistant/reminder-scope.mjs';
 
 export const runtime = 'nodejs';
 
@@ -312,7 +313,7 @@ export async function GET(request: Request) {
 
     // 2. 检查待办与便签中是否有因果事件（Suzu Lives 临时待办回访）
     const pendingReminders = await prisma.assistantReminder.findMany({
-      where: { userId, status: 'PENDING' },
+      where: { userId, status: 'PENDING', AND: [PERSONAL_REMINDER_FILTER] },
       orderBy: [{ dueTime: 'asc' }, { createdAt: 'desc' }],
       take: 5,
     });
