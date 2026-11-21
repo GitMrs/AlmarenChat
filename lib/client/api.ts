@@ -309,6 +309,7 @@ export const assistant = {
     conversationId: string;
     userMessageId: string;
     assistantMessageId: string;
+    deepThinking?: boolean;
     onStatus?: (label: string) => void;
     attachments?: MessageAttachment[];
     signal?: AbortSignal;
@@ -322,6 +323,7 @@ export const assistant = {
         conversationId: data.conversationId,
         userMessageId: data.userMessageId,
         assistantMessageId: data.assistantMessageId,
+        deepThinking: data.deepThinking,
         attachments: data.attachments,
       }),
       signal: data.signal,
@@ -1298,6 +1300,7 @@ export const admin = {
 
 // AI Chat (streaming)
 export async function streamChat(data: {
+  deepThinking?: boolean;
   message: string;
   history: { role: string; content: string }[];
   attachments?: { type: 'image'; url: string; name?: string; mimeType?: string; size?: number }[];
@@ -1376,6 +1379,7 @@ export async function generateConversationImage(data: {
 export async function streamSpaceMessage(data: {
   spaceId: string;
   message: string;
+  deepThinking?: boolean;
   history: { role: string; content: string; speakerAgentId?: string | null }[];
   targetAgentId?: string;
   interactionMode?: 'chat' | 'multi_reply' | 'coordinated_turn' | 'coordination_summary';
@@ -1411,6 +1415,7 @@ export async function streamSpaceMessage(data: {
     body: JSON.stringify({
       message: data.message,
       history: data.history,
+      deepThinking: data.deepThinking,
       targetAgentId: data.targetAgentId,
       interactionMode: data.interactionMode,
       coordinationScope: data.coordinationScope,

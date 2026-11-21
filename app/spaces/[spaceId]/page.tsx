@@ -15,6 +15,7 @@ import CapabilityOverview from '@/components/shared/CapabilityOverview';
 import LoginRequired from '@/components/auth/LoginRequired';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import ComposerShell from '@/components/chat/ComposerShell';
+import ComposerModelOptions from '@/components/chat/ComposerModelOptions';
 import SpaceMessageItem from '@/components/spaces/SpaceMessageItem';
 import SpaceFollowUpPanel from '@/components/spaces/SpaceFollowUpPanel';
 import SpaceFollowUpHistory from '@/components/spaces/SpaceFollowUpHistory';
@@ -667,6 +668,7 @@ export default function SpaceDetailPage() {
   const [pendingExecutionSkill, setPendingExecutionSkill] = useState<SpaceSkill | null>(null);
   const [approvedScriptDraft, setApprovedScriptDraft] = useState<string[]>([]);
   const [composerToolsOpen, setComposerToolsOpen] = useState(false);
+  const [deepThinking, setDeepThinking] = useState(false);
   const [trendingPickerOpen, setTrendingPickerOpen] = useState(false);
   const [configuringModelMember, setConfiguringModelMember] = useState<any | null>(null);
 
@@ -1767,6 +1769,7 @@ export default function SpaceDetailPage() {
 
     const activeSkillId = options?.skillIdOverride === undefined ? selectedSkillId : options.skillIdOverride;
     const requestImageGeneration = options?.imageGenerationRequested ?? imageGenerationMode;
+    const thinkForReply = deepThinking && !requestImageGeneration;
     const activeSkill = skills.find((skill) => skill.id === activeSkillId) || null;
     const userMessage: SpaceMessage = {
       id: `user-${Date.now()}`,
@@ -1870,6 +1873,7 @@ export default function SpaceDetailPage() {
             skipPersistUserMessage: Boolean(options?.reuseLastUserMessage),
             imageGenerationRequested: requestImageGeneration,
           }];
+      const directReplyCount = replyRequests.length;
       setReplyQueueAgentIds(targets.length > 1 ? targets.map((agent) => agent.id) : []);
       let workspaceFilesChanged = 0;
       let streamFailure = '';
@@ -1904,6 +1908,7 @@ export default function SpaceDetailPage() {
           coordinationScope: replyRequest.coordinationScope,
           multiReplyIndex: replyRequest.multiReplyIndex,
           imageGenerationRequested: replyRequest.imageGenerationRequested,
+          deepThinking: thinkForReply && index < directReplyCount ? true : undefined,
           skipPersistUserMessage: replyRequest.skipPersistUserMessage,
           isHandoffTurn: replyRequest.isHandoffTurn,
           skillId: replyRequest.interactionMode === 'chat' ? activeSkillId || undefined : undefined,
@@ -4798,6 +4803,14 @@ export default function SpaceDetailPage() {
                 <div ref={composerToolsRef} className="relative mb-0.5 shrink-0">
                   {composerToolsOpen && (
                     <div className="absolute bottom-[calc(100%+10px)] left-0 z-30 max-h-96 w-64 overflow-y-auto rounded-lg border border-black/[0.08] bg-white p-1.5 shadow-xl">
+                      <ComposerModelOptions
+                        deepThinking={deepThinking}
+                        onToggleThinking={() => {
+                          setDeepThinking((enabled) => !enabled);
+                          setComposerToolsOpen(false);
+                        }}
+                        thinkingDisabled={imageGenerationMode || isStreaming || isRunActive || Boolean(activeDiscussion) || hasPendingTaskProposal}
+                      />
                       <button
                         type="button"
                         onClick={() => {
@@ -4934,12 +4947,12 @@ export default function SpaceDetailPage() {
                     disabled={isStreaming || Boolean(activeRelay)}
                     aria-label={composerToolsOpen ? '关闭更多功能' : '打开更多功能'}
                     aria-expanded={composerToolsOpen}
-                    title="更多"
+                    title={deepThinking && !imageGenerationMode ? '更多 · 深度思考已开启' : '更多'}
                     className={`relative flex h-11 w-11 items-center justify-center rounded-xl transition disabled:text-slate-300 ${composerToolsOpen ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-500 hover:bg-white hover:text-slate-950'}`}
                   >
                     <Plus size={19} className={`transition-transform ${composerToolsOpen ? 'rotate-45' : ''}`} />
-                    {(imageGenerationMode) && (
-                      <span className={`absolute right-2 top-2 h-2 w-2 rounded-full ring-2 ring-white ${imageGenerationMode ? 'bg-rose-500' : 'bg-emerald-500'}`} />
+                    {(imageGenerationMode || deepThinking) && (
+                      <span className={`absolute right-2 top-2 h-2 w-2 rounded-full ring-2 ring-white ${imageGenerationMode ? 'bg-rose-500' : 'bg-indigo-500'}`} />
                     )}
                   </button>
                 </div>

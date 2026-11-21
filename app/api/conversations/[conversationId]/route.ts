@@ -18,7 +18,20 @@ export async function GET(
     if (!conversation) {
       return NextResponse.json({ error: 'Conversation not found' }, { status: 404 });
     }
-    return NextResponse.json({ conversation });
+
+    const agent = conversation.agentId
+      ? await prisma.agent.findFirst({
+          where: { id: conversation.agentId, OR: [{ creatorId: userId }, { isPublic: true }] },
+          select: { avatar: true },
+        })
+      : null;
+
+    return NextResponse.json({
+      conversation: {
+        ...conversation,
+        agentAvatar: agent ? agent.avatar : conversation.agentAvatar,
+      },
+    });
   } catch (e: any) {
     if (e.message === 'Unauthorized') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

@@ -140,6 +140,7 @@ export async function streamBrowserModel({
   timeSource = 'browser-clock',
   entry = 'browser-agent-chat',
   contextBudget,
+  deepThinking,
 }: {
   config: BrowserModelConfig;
   messages: ModelMessage[];
@@ -148,6 +149,7 @@ export async function streamBrowserModel({
   timeSource?: 'browser-clock' | 'server-clock';
   entry?: string;
   contextBudget?: number;
+  deepThinking?: boolean;
 }): Promise<ReadableStream<Uint8Array>> {
   if (contextBudget && estimateRequestTokens(messages) > contextBudget) throw new Error('本轮完整上下文超出预算，请缩小输入；不会静默删除消息');
   logModelTimeContext({ entry, model: config.model, source: timeSource, messages });
@@ -157,6 +159,7 @@ export async function streamBrowserModel({
       ? { ...message, content: stripHistoryRetrievalNotices(message.content) }
       : message),
     stream: true,
+    ...(deepThinking ? { reasoning_effort: 'high' } : {}),
   };
   logModelRequest({ entry, body });
   let response: Response;

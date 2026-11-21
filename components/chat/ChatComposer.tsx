@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Brain, Check, Cloud, Cpu, Flame, Image as ImageIcon, ImagePlus, Loader2, Plus, Send, Square, Trash2, X } from 'lucide-react';
+import { Brain, Check, Flame, Image as ImageIcon, ImagePlus, Loader2, Plus, Send, Square, Trash2, X } from 'lucide-react';
+import ComposerModelOptions from '@/components/chat/ComposerModelOptions';
 import ComposerShell from '@/components/chat/ComposerShell';
 import { cn } from '@/lib/client/utils';
 import type { MessageAttachment } from '@/types';
@@ -36,6 +37,8 @@ type ChatComposerProps = {
   modelSource: BrowserModelSource;
   ollamaAvailable: boolean;
   onModelSourceChange: (source: BrowserModelSource) => void;
+  deepThinking: boolean;
+  onToggleThinking: () => void;
   onOpenTrending?: () => void;
   onOpenContext?: () => void;
 };
@@ -69,6 +72,8 @@ export default function ChatComposer({
   modelSource,
   ollamaAvailable,
   onModelSourceChange,
+  deepThinking,
+  onToggleThinking,
   onOpenTrending,
   onOpenContext,
 }: ChatComposerProps) {
@@ -130,30 +135,8 @@ export default function ChatComposer({
         )}
         <ComposerShell
           rowClassName="gap-3"
-          toolbar={(mode === 'image' || ollamaAvailable || onOpenContext) ? (
+          toolbar={(mode === 'image' || onOpenContext) ? (
             <div className="flex w-full flex-wrap items-center gap-2">
-              {ollamaAvailable && (
-                <div className="inline-flex h-8 items-center rounded-lg bg-white p-0.5 text-[11px] font-black shadow-sm" role="group" aria-label="模型来源">
-                  <button
-                    type="button"
-                    onClick={() => onModelSourceChange('ONLINE')}
-                    aria-pressed={modelSource === 'ONLINE'}
-                    className={cn('inline-flex h-7 items-center gap-1 rounded-md px-2.5 transition', modelSource === 'ONLINE' ? 'bg-slate-950 text-white' : 'text-slate-500 hover:text-slate-950')}
-                  >
-                    <Cloud size={12} />
-                    线上
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onModelSourceChange('OLLAMA')}
-                    aria-pressed={modelSource === 'OLLAMA'}
-                    className={cn('inline-flex h-7 items-center gap-1 rounded-md px-2.5 transition', modelSource === 'OLLAMA' ? 'bg-slate-950 text-white' : 'text-slate-500 hover:text-slate-950')}
-                  >
-                    <Cpu size={12} />
-                    本地
-                  </button>
-                </div>
-              )}
               {mode === 'image' && (
                 <div className="inline-flex h-8 max-w-full items-center gap-2 rounded-lg bg-white px-2.5 text-xs font-black text-slate-600 shadow-sm">
                   <ImageIcon size={13} className="shrink-0" />
@@ -187,6 +170,19 @@ export default function ChatComposer({
           <div ref={toolsRef} className="relative mb-0.5 shrink-0">
             {toolsOpen && (
               <div className="absolute bottom-[calc(100%+10px)] left-0 z-30 w-60 max-w-[calc(100vw-32px)] rounded-lg border border-black/[0.08] bg-white p-1.5 shadow-xl">
+                <ComposerModelOptions
+                  modelSource={modelSource}
+                  onModelSourceChange={ollamaAvailable ? (source) => {
+                    onModelSourceChange(source);
+                    setToolsOpen(false);
+                  } : undefined}
+                  deepThinking={deepThinking}
+                  onToggleThinking={() => {
+                    onToggleThinking();
+                    setToolsOpen(false);
+                  }}
+                  thinkingDisabled={isStreaming || mode === 'image'}
+                />
                 <button
                   type="button"
                   onClick={() => {
@@ -257,15 +253,15 @@ export default function ChatComposer({
               disabled={isStreaming}
               aria-label={toolsOpen ? '关闭工具菜单' : '打开工具菜单'}
               aria-expanded={toolsOpen}
-              title="工具"
+              title={deepThinking && mode === 'chat' ? '工具 · 深度思考已开启' : '工具'}
               className={cn(
                 'relative flex h-11 w-11 items-center justify-center rounded-xl text-slate-500 transition hover:bg-white hover:text-slate-950 disabled:text-slate-300',
                 toolsOpen && 'bg-white text-slate-950 shadow-sm'
               )}
             >
               <Plus size={19} className={cn('transition-transform', toolsOpen && 'rotate-45')} />
-              {(mode === 'image') && (
-                <span className={cn('absolute right-2 top-2 h-2 w-2 rounded-full ring-2 ring-white', mode === 'image' ? 'bg-rose-500' : 'bg-emerald-500')} />
+              {(mode === 'image' || deepThinking) && (
+                <span className={cn('absolute right-2 top-2 h-2 w-2 rounded-full ring-2 ring-white', mode === 'image' ? 'bg-rose-500' : 'bg-indigo-500')} />
               )}
             </button>
           </div>

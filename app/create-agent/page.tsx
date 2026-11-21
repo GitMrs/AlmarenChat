@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   AlertTriangle,
@@ -8,6 +8,7 @@ import {
   BrainCircuit,
   Check,
   CheckCircle2,
+  ChevronDown,
   Database,
   Eye,
   FileCode,
@@ -37,25 +38,10 @@ import { useTTS } from '@/hooks/useTTS';
 import { getVoiceById } from '@/lib/tts/voices.mjs';
 import { createAgentAvatar, createRandomAgentAvatarOptions, DEFAULT_AGENT_AVATAR } from '@/lib/agents/data/agent-avatar';
 import { cn } from '@/lib/client/utils';
-import { AGENT_CATEGORIES, AGENT_TONES, CATEGORY_COLORS } from '@/types';
-import { agents, auth } from '@/lib/client/api';
+import { AGENT_CATEGORIES, CATEGORY_COLORS } from '@/types';
+import { agents, auth, uploads } from '@/lib/client/api';
 
-const AVATAR_OPTIONS = ['🪄', '🤖', '💡', '📚', '🧭', '🎨', '🧠', '🛠️', '🌿', '🔥', '🌙', '☕', '🎯', '🧩', '📝', '🪐', '🛡️', '⚖️', '🔬', '💼'];
-
-const PURPOSE_PRESETS = [
-  { category: '写作', tone: '详细', label: '写作搭子', prompt: '帮用户把想法整理成清晰、可发布、有风格的内容。' },
-  { category: '编程', tone: '冷静', label: '编程教练', prompt: '帮助用户拆解代码问题，给出可靠、简洁、可执行的技术建议。' },
-  { category: '学习', tone: '专业', label: '学习导师', prompt: '把复杂知识讲清楚，并用例子、练习和追问帮助用户理解。' },
-  { category: '心理', tone: '温柔', label: '情绪陪伴', prompt: '温柔倾听用户的困扰，帮助用户梳理情绪和下一步选择。' },
-];
-
-function defaultAgentPrompt(category: string, tone: string) {
-  return `你是一个${category}类 AI Agent。你的语气风格是${tone}。你需要根据用户的问题给出清晰、具体、可执行的帮助。`;
-}
-
-function presetAgentPrompt(preset: (typeof PURPOSE_PRESETS)[number]) {
-  return `你是一个${preset.label}。${preset.prompt}回答要贴近普通用户，避免空泛，优先给出可以直接使用的结果。`;
-}
+const BASIC_AGENT_DEFAULT_AVATAR = '🤖';
 
 interface InterviewQuestion {
   id: string;
@@ -111,7 +97,12 @@ function CreateAgentContent() {
   const [tone, setTone] = useState('专业');
   const [greeting, setGreeting] = useState('');
   const [systemPrompt, setSystemPrompt] = useState('');
-  const [selectedAvatar, setSelectedAvatar] = useState('🛡️');
+  const [generatingPrompt, setGeneratingPrompt] = useState(false);
+  const [promptError, setPromptError] = useState('');
+  const [selectedAvatar, setSelectedAvatar] = useState(BASIC_AGENT_DEFAULT_AVATAR);
+  const avatarFileInput = useRef<HTMLInputElement>(null);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [avatarError, setAvatarError] = useState('');
   const [proSelectedAvatar, setProSelectedAvatar] = useState(DEFAULT_AGENT_AVATAR);
   const [voice, setVoice] = useState('zh-CN-XiaoyiNeural');
   const [proAvatarOptions, setProAvatarOptions] = useState(() =>
@@ -184,6 +175,7 @@ ${dims.boundaries.trim() || '- 严禁越权承诺，严禁未经验证盲目脑�
   const [arenaMessages, setArenaMessages] = useState<Array<{ role: 'user' | 'assistant'; content: string }>>([]);
   const [arenaInput, setArenaInput] = useState('');
   const [arenaStreaming, setArenaStreaming] = useState(false);
+  const [arenaError, setArenaError] = useState('');
 
   useEffect(() => {
     if (!localStorage.getItem('token')) {
@@ -207,7 +199,7 @@ ${dims.boundaries.trim() || '- 严禁越权承诺，严禁未经验证盲目脑�
           setTone(agent.tone || '详细');
           setGreeting(agent.greeting || '');
           setSystemPrompt(agent.systemPrompt || '');
-          setSelectedAvatar(agent.avatar || '🪄');
+          setSelectedAvatar(agent.avatar || BASIC_AGENT_DEFAULT_AVATAR);
           setProSelectedAvatar(agent.avatar || DEFAULT_AGENT_AVATAR);
           setVoice(agent.voice || 'zh-CN-XiaoyiNeural');
           setIsPublic(Boolean(agent.isPublic));
@@ -274,8 +266,11 @@ ${dims.boundaries.trim() || '- 严禁越权承诺，严禁未经验证盲目脑�
 
   const finalPrompt = useMemo(() => {
     if (systemPrompt.trim()) return systemPrompt;
-    return defaultAgentPrompt(category, tone);
-  }, [category, systemPrompt, tone]);
+    if (creationMode === 'basic') {
+      return `你是「${name.trim() || 'Agent'}」。根据用户当前的需求自然回应。`;
+    }
+    return `你是一个${category}类 AI Agent。你的语气风格是${tone}。你需要根据用户的问题给出清晰、具体、可执行的帮助。`;
+  }, [category, creationMode, name, systemPrompt, tone]);
 
   const {
     play: playCardTTS,
@@ -299,26 +294,33 @@ ${dims.boundaries.trim() || '- 严禁越权承诺，严禁未经验证盲目脑�
     playCardTTS(finalGreeting, { id: cardVoicePreviewId, voice });
   };
 
-  const applyPreset = (preset: (typeof PURPOSE_PRESETS)[number]) => {
-    setCategory(preset.category);
-    setTone(preset.tone);
-    if (!description.trim()) setDescription(preset.prompt);
-    if (!systemPrompt.trim()) {
-      setSystemPrompt(presetAgentPrompt(preset));
+  const handleGeneratePrompt = async () => {
+    if (generatingPrompt || systemPrompt.trim()) return;
+    if (!name.trim() && !description.trim()) {
+      setPromptError('请先填写角色名称或卡片简介。');
+      return;
     }
-  };
-
-  const changeBasicTone = (nextTone: string) => {
-    setTone(nextTone);
-    setSystemPrompt((current) => {
-      const prompt = current.trim();
-      if (prompt === defaultAgentPrompt(category, tone)) return defaultAgentPrompt(category, nextTone);
-      const preset = PURPOSE_PRESETS.find((item) => {
-        const template = presetAgentPrompt(item);
-        return prompt === template || prompt === `${template}\n语气风格：${tone}。`;
+    setGeneratingPrompt(true);
+    setPromptError('');
+    try {
+      const res = await fetch('/api/agents/meta/generate-prompt', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${localStorage.getItem('token')}`,
+        },
+        body: JSON.stringify({ name, description }),
       });
-      return preset ? `${presetAgentPrompt(preset)}\n语气风格：${nextTone}。` : current;
-    });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '生成失败，请重试。');
+      const draft = typeof data.systemPrompt === 'string' ? data.systemPrompt.trim() : '';
+      if (!draft) throw new Error('没有收到角色设定，请重试。');
+      setSystemPrompt((current) => current.trim() ? current : draft);
+    } catch (error) {
+      setPromptError(error instanceof Error ? error.message : '生成失败，请重试。');
+    } finally {
+      setGeneratingPrompt(false);
+    }
   };
 
   // 1. 生成 3 道对齐面试题
@@ -420,9 +422,13 @@ ${dims.boundaries.trim() || '- 严禁越权承诺，严禁未经验证盲目脑�
     const text = (customText || arenaInput).trim();
     if (!text || arenaStreaming) return;
 
-    const newMessages = [...arenaMessages, { role: 'user' as const, content: text }];
+    const history = creationMode === 'basic' && arenaMessages.length === 0
+      ? [{ role: 'assistant' as const, content: finalGreeting }]
+      : arenaMessages;
+    const newMessages = [...history, { role: 'user' as const, content: text }];
     setArenaMessages(newMessages);
     if (!customText) setArenaInput('');
+    setArenaError('');
     setArenaStreaming(true);
 
     try {
@@ -439,7 +445,7 @@ ${dims.boundaries.trim() || '- 严禁越权承诺，严禁未经验证盲目脑�
         }),
       });
 
-      if (!res.body) throw new Error('No stream body');
+      if (!res.ok || !res.body) throw new Error('试聊请求失败');
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let done = false;
@@ -451,7 +457,7 @@ ${dims.boundaries.trim() || '- 严禁越权承诺，严禁未经验证盲目脑�
         const chunk = await reader.read();
         done = chunk.done;
         if (chunk.value) {
-          assistantText += decoder.decode(chunk.value);
+          assistantText += decoder.decode(chunk.value, { stream: !done });
           setArenaMessages((prev) => {
             const next = [...prev];
             next[next.length - 1] = { role: 'assistant', content: assistantText };
@@ -459,15 +465,40 @@ ${dims.boundaries.trim() || '- 严禁越权承诺，严禁未经验证盲目脑�
           });
         }
       }
+      if (!assistantText.trim()) throw new Error('试聊没有收到回复');
     } catch (err) {
+      setArenaMessages(history);
+      if (!customText) setArenaInput((current) => current || text);
+      setArenaError('试聊没收到回复，可以再试一次。');
       console.error('Arena stream error:', err);
     } finally {
       setArenaStreaming(false);
     }
   };
 
+  const handleUploadAvatar = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const input = event.currentTarget;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file || uploadingAvatar) return;
+    setAvatarError('');
+    if (file.size > 5 * 1024 * 1024) {
+      setAvatarError('请选择 5 MB 以内的图片。');
+      return;
+    }
+    setUploadingAvatar(true);
+    try {
+      const { attachment } = await uploads.image(file);
+      setSelectedAvatar(attachment.url);
+    } catch {
+      setAvatarError('头像上传失败，请确认图片格式后重试。');
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
+
   const handleSubmit = async () => {
-    if (!canCreate || submitting) return;
+    if (!canCreate || submitting || uploadingAvatar) return;
 
     setSubmitting(true);
     try {
@@ -524,20 +555,22 @@ ${dims.boundaries.trim() || '- 严禁越权承诺，严禁未经验证盲目脑�
     <AppShell>
       <div className="py-8">
         {/* 顶部 Banner 与模式切换 */}
-        <section className="mb-6 rounded-[32px] border border-black/[0.06] bg-white/85 p-6 shadow-sm backdrop-blur sm:p-8">
+        <section className={creationMode === 'pro'
+          ? 'mb-6 rounded-[32px] border border-black/[0.06] bg-white/85 p-6 shadow-sm backdrop-blur sm:p-8'
+          : 'mb-6 border-b border-slate-200/80 pb-5'}>
           <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
             <div className="max-w-2xl">
-              <div className="mb-4 inline-flex items-center gap-2 rounded-full bg-slate-950 px-4 py-2 text-sm font-bold text-white">
+              {creationMode === 'pro' && <div className="mb-4 inline-flex items-center gap-2 rounded-full bg-slate-950 px-4 py-2 text-sm font-bold text-white">
                 <Wand2 size={16} />
                 {editingAgentId ? 'Agent 编辑器' : 'Agent 架构工坊'}
-              </div>
-              <h1 className="text-3xl font-black leading-tight text-slate-950 sm:text-4xl">
-                {creationMode === 'pro' ? '塑造工业级交付标准的专业数字员工。' : '快速创建你的 AI Agent。'}
+              </div>}
+              <h1 className="text-3xl font-black leading-tight tracking-tight text-slate-950 sm:text-4xl">
+                {creationMode === 'pro' ? '塑造工业级交付标准的专业数字员工。' : editingAgentId ? '编辑 Agent' : '创建 Agent'}
               </h1>
               <p className="mt-3 text-sm leading-6 text-slate-500">
                 {creationMode === 'pro'
                   ? 'Truman 数字生命架构：需求对齐、SOUL 灵魂宪法、蓝军反驳协议与交付 SOP，右侧靶场现场验货。'
-                  : '快捷基础模式：快速配置名称、语气与基础提示词，适合轻量娱乐与简单问答。'}
+                  : '设定角色的身份和说话方式，保存前可以先试聊。'}
               </p>
             </div>
 
@@ -556,7 +589,7 @@ ${dims.boundaries.trim() || '- 严禁越权承诺，严禁未经验证盲目脑�
                 )}
               >
                 <Sparkles size={15} />
-                ⚡ 快捷基础版
+                快捷基础版
               </button>
               <button
                 type="button"
@@ -576,17 +609,17 @@ ${dims.boundaries.trim() || '- 严禁越权承诺，严禁未经验证盲目脑�
                 )}
               >
                 <ShieldCheck size={15} />
-                👔 专家数字员工版
+                专家数字员工版
               </button>
             </div>
           </div>
         </section>
 
         {/* Agent 管理 Tab */}
-        <section className="mb-6 flex flex-wrap gap-2 rounded-[28px] border border-black/[0.06] bg-white p-2 shadow-sm">
+        {(editingAgentId || creationMode === 'pro') && <section className="mb-6 flex flex-wrap gap-2 rounded-[28px] border border-black/[0.06] bg-white p-2 shadow-sm">
           {[
-            { id: 'create', label: '角色配置与架构', icon: Bot, disabled: false },
-            { id: 'knowledge', label: '知识库向量维护', icon: Database, disabled: !editingAgentId },
+            { id: 'create', label: creationMode === 'pro' ? '角色配置与架构' : '角色设置', icon: Bot, disabled: false },
+            { id: 'knowledge', label: creationMode === 'pro' ? '知识库向量维护' : '知识库', icon: Database, disabled: !editingAgentId },
             ...(creationMode === 'pro'
               ? [{ id: 'growth', label: '成长档案', icon: BrainCircuit, disabled: !editingAgentId }]
               : []),
@@ -610,12 +643,14 @@ ${dims.boundaries.trim() || '- 严禁越权承诺，严禁未经验证盲目脑�
               </button>
             );
           })}
-        </section>
+        </section>}
 
         {displayedTab === 'create' ? (
-          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_440px]">
+          <div className={cn('grid gap-5 lg:items-start', creationMode === 'pro'
+            ? 'lg:grid-cols-[minmax(0,1fr)_440px]'
+            : 'lg:grid-cols-[minmax(0,1fr)_minmax(320px,360px)]')}>
             {/* 左侧主要区域 */}
-            <div className="space-y-6">
+            <div className="min-w-0 space-y-6">
               {/* ======================= 专业模式布局 (PRO MODE) ======================= */}
               {creationMode === 'pro' ? (
                 <>
@@ -1005,213 +1040,179 @@ ${dims.boundaries.trim() || '- 严禁越权承诺，严禁未经验证盲目脑�
                   </section>
                 </>
               ) : (
-                /* ======================= 基础模式布局 (BASIC MODE) ======================= */
-                <>
-                  <section className="rounded-[28px] border border-black/[0.06] bg-white p-5 shadow-sm sm:p-6">
-                    <div className="mb-5 flex items-center gap-3">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-950 text-white">
-                        <Bot size={18} />
-                      </div>
-                      <div>
-                        <h2 className="text-xl font-black text-slate-950">身份外观</h2>
-                        <p className="text-sm text-slate-500">先让用户一眼知道它是谁。</p>
-                      </div>
+                <div className="rounded-3xl border border-slate-200/80 bg-white shadow-sm">
+                  <section className="p-5 sm:p-7">
+                    <div className="flex items-center justify-between gap-3">
+                      <h2 className="text-lg font-extrabold tracking-tight text-slate-950">角色名片</h2>
+                      <a href="#agent-preview" className="rounded-lg px-2 py-1 text-xs font-semibold text-indigo-700 hover:bg-indigo-50 lg:hidden">查看预览</a>
                     </div>
 
-                    <div className="space-y-5">
-                      <div>
-                        <label className="mb-3 block text-sm font-bold text-slate-700">头像</label>
-                        <div className="grid grid-cols-10 gap-2 sm:flex sm:flex-wrap">
-                          {AVATAR_OPTIONS.map((avatar) => (
-                            <button
-                              key={avatar}
-                              type="button"
-                              onClick={() => setSelectedAvatar(avatar)}
-                              className={cn(
-                                'flex h-11 w-11 items-center justify-center rounded-2xl text-2xl transition',
-                                selectedAvatar === avatar
-                                  ? 'scale-105 bg-slate-950 text-white shadow-md'
-                                  : 'bg-[#fbfaf7] hover:bg-slate-100'
-                              )}
-                            >
-                              {avatar}
-                            </button>
-                          ))}
-                        </div>
+                    <div className="mt-4 flex items-start gap-4">
+                      <div className="flex shrink-0 flex-col items-center gap-1.5">
+                        <input
+                          ref={avatarFileInput}
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp,image/gif"
+                          className="hidden"
+                          onChange={handleUploadAvatar}
+                        />
+                        <button
+                          type="button"
+                          disabled={uploadingAvatar}
+                          onClick={() => avatarFileInput.current?.click()}
+                          className="flex flex-col items-center gap-1.5 rounded-xl text-xs font-semibold text-slate-600 hover:text-indigo-700 focus-visible:outline-2 focus-visible:outline-indigo-600 disabled:opacity-60"
+                        >
+                          <div className="relative size-14 overflow-hidden rounded-2xl border border-indigo-100 bg-indigo-50 sm:size-16" aria-hidden="true">
+                            <Avatar src={selectedAvatar} alt="" size="lg" className="h-full w-full rounded-none bg-transparent object-top text-3xl shadow-none ring-0" />
+                            {uploadingAvatar && <span className="absolute inset-0 grid place-items-center rounded-2xl bg-white/75 text-indigo-700"><Loader2 size={18} className="animate-spin" /></span>}
+                          </div>
+                          {uploadingAvatar ? '上传中…' : '上传头像'}
+                        </button>
+                        {selectedAvatar !== BASIC_AGENT_DEFAULT_AVATAR && (
+                          <button
+                            type="button"
+                            disabled={uploadingAvatar}
+                            onClick={() => { setSelectedAvatar(BASIC_AGENT_DEFAULT_AVATAR); setAvatarError(''); }}
+                            className="rounded px-1 text-xs text-slate-500 hover:text-indigo-700 disabled:opacity-60"
+                          >
+                            恢复默认
+                          </button>
+                        )}
                       </div>
 
-                      <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="min-w-0 flex-1 space-y-3">
                         <label className="block">
-                          <span className="mb-2 block text-sm font-bold text-slate-700">Agent 名称</span>
+                          <span className="mb-1.5 block text-sm font-semibold text-slate-700">Agent 名称</span>
                           <input
                             value={name}
                             onChange={(event) => setName(event.target.value)}
-                            placeholder="例如：小鹿写作官"
-                            className="h-12 w-full rounded-2xl border border-black/[0.08] bg-[#fbfaf7] px-4 text-sm font-medium text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-slate-300 focus:ring-4 focus:ring-slate-200/70"
+                            placeholder="例如：大肥鱼"
+                            className="w-full rounded-xl border border-slate-200 bg-slate-50/60 px-3.5 py-2.5 text-sm text-slate-950 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
                           />
                         </label>
-
                         <label className="block">
-                          <span className="mb-2 block text-sm font-bold text-slate-700">一句话定位</span>
+                          <span className="mb-1.5 block text-sm font-semibold text-slate-700">卡片简介</span>
                           <input
                             value={description}
                             onChange={(event) => setDescription(event.target.value)}
-                            placeholder="它最擅长帮用户做什么？"
-                            className="h-12 w-full rounded-2xl border border-black/[0.08] bg-[#fbfaf7] px-4 text-sm font-medium text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-slate-300 focus:ring-4 focus:ring-slate-200/70"
+                            placeholder="展示在角色卡片上的一句介绍"
+                            className="w-full rounded-xl border border-slate-200 bg-slate-50/60 px-3.5 py-2.5 text-sm text-slate-950 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
                           />
                         </label>
                       </div>
                     </div>
+                    {avatarError && <p role="alert" className="mt-2 text-xs text-rose-600">{avatarError}</p>}
                   </section>
 
-                  <section className="rounded-[28px] border border-black/[0.06] bg-white p-5 shadow-sm sm:p-6">
-                    <div className="mb-5 flex items-center gap-3">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-100 text-slate-700">
-                        <Palette size={18} />
-                      </div>
-                      <div>
-                        <h2 className="text-xl font-black text-slate-950">用途和性格</h2>
-                        <p className="text-sm text-slate-500">预设可以填入初始提示词。有自定义提示词时，对话风格以提示词为准。</p>
-                      </div>
-                    </div>
-
-                    <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                      {PURPOSE_PRESETS.map((preset) => (
+                  <section className="border-t border-slate-100 p-5 sm:p-7">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <h2 className="text-lg font-extrabold tracking-tight text-slate-950">角色设定</h2>
+                      {(!systemPrompt.trim() || generatingPrompt) && (
                         <button
-                          key={preset.label}
                           type="button"
-                          onClick={() => applyPreset(preset)}
-                          className="rounded-2xl border border-black/[0.06] bg-[#fbfaf7] p-4 text-left transition hover:-translate-y-0.5 hover:bg-white hover:shadow-md"
+                          onClick={handleGeneratePrompt}
+                          disabled={generatingPrompt}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-100 bg-indigo-50 px-2.5 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 focus-visible:outline-2 focus-visible:outline-indigo-600 disabled:opacity-60"
                         >
-                          <div className="text-sm font-black text-slate-950">{preset.label}</div>
-                          <div className="mt-1 text-xs leading-5 text-slate-500">{preset.prompt}</div>
+                          {generatingPrompt ? <Loader2 size={13} className="animate-spin" aria-hidden="true" /> : <Sparkles size={13} aria-hidden="true" />}
+                          {generatingPrompt ? '生成中…' : 'AI 生成'}
                         </button>
-                      ))}
+                      )}
                     </div>
+                    {promptError && !systemPrompt.trim() && <p role="alert" className="mt-2 text-xs text-rose-600">{promptError}</p>}
 
-                    <div className="grid gap-5 lg:grid-cols-2">
-                      <div>
-                        <label className="mb-3 block text-sm font-bold text-slate-700">分类</label>
-                        <div className="flex flex-wrap gap-2">
-                          {AGENT_CATEGORIES.filter((item) => item !== '全部').map((item) => {
-                            const color = CATEGORY_COLORS[item] || '#6366f1';
-                            const selected = category === item;
-                            return (
-                              <button
-                                key={item}
-                                type="button"
-                                onClick={() => setCategory(item)}
-                                className={cn(
-                                  'rounded-full border px-4 py-2 text-sm font-bold transition',
-                                  selected ? 'text-white shadow-sm' : 'border-black/[0.06] bg-[#fbfaf7] text-slate-600 hover:bg-white'
-                                )}
-                                style={selected ? { backgroundColor: color, borderColor: color } : undefined}
-                              >
-                                {item}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
+                    <label className="mt-4 block">
+                      <span className="mb-1.5 block text-sm font-semibold text-slate-700">系统提示词</span>
+                      <textarea
+                        value={systemPrompt}
+                        onChange={(event) => setSystemPrompt(event.target.value)}
+                        placeholder="写下或粘贴角色的身份、性格和说话习惯。留空时使用默认设定。"
+                        rows={7}
+                        className="block min-h-36 w-full resize-y rounded-xl border border-slate-200 bg-slate-50/60 px-3.5 py-3 text-sm leading-6 text-slate-950 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                      />
+                    </label>
 
-                      <div>
-                        <label className="mb-3 block text-sm font-bold text-slate-700">语气</label>
-                        <div className="flex flex-wrap gap-2">
-                          {AGENT_TONES.map((item) => (
-                            <button
-                              key={item}
-                              type="button"
-                              onClick={() => changeBasicTone(item)}
-                              className={cn(
-                                'rounded-full border px-4 py-2 text-sm font-bold transition',
-                                tone === item
-                                  ? 'border-slate-950 bg-slate-950 text-white shadow-sm'
-                                  : 'border-black/[0.06] bg-[#fbfaf7] text-slate-600 hover:bg-white'
-                              )}
-                            >
-                              {item}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="mt-5 pt-5 border-t border-black/[0.05] flex flex-wrap items-center justify-between gap-3">
-                      <div>
-                        <label className="block text-sm font-bold text-slate-700">角色声线 (TTS)</label>
-                        <p className="text-xs text-slate-500">挑选 Agent 的说话音色，可点击试听</p>
-                      </div>
-                      <AgentVoicePicker value={voice} onChange={setVoice} size="md" />
-                    </div>
+                    <label className="mt-4 block">
+                      <span className="mb-1.5 block text-sm font-semibold text-slate-700">开场白</span>
+                      <textarea
+                        value={greeting}
+                        onChange={(event) => setGreeting(event.target.value)}
+                        placeholder={finalGreeting}
+                        rows={2}
+                        className="block w-full resize-y rounded-xl border border-slate-200 bg-slate-50/60 px-3.5 py-2.5 text-sm leading-5 text-slate-950 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                      />
+                    </label>
                   </section>
 
-                  <section className="rounded-[28px] border border-black/[0.06] bg-white p-5 shadow-sm sm:p-6">
-                    <div className="mb-5 flex items-center gap-3">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-100 text-slate-700">
-                        <MessageCircle size={18} />
-                      </div>
-                      <div>
-                        <h2 className="text-xl font-black text-slate-950">对话能力</h2>
-                        <p className="text-sm text-slate-500">开场白和系统提示词决定它怎么说话。</p>
+                  <details className="group border-t border-slate-100">
+                    <summary className="flex cursor-pointer list-none items-center gap-2.5 rounded-b-3xl px-5 py-4 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-indigo-600 sm:px-7 [&::-webkit-details-marker]:hidden">
+                      <Palette size={16} aria-hidden="true" className="text-slate-500" />
+                      <span className="flex-1">更多设置</span>
+                      <ChevronDown size={17} aria-hidden="true" className="text-slate-500 transition-transform group-open:rotate-180" />
+                    </summary>
+
+                    <div className="divide-y divide-slate-100 px-5 pb-3 sm:px-7 sm:pb-4">
+                      <label className="flex flex-wrap items-center justify-between gap-3 py-3">
+                        <span className="text-sm font-semibold text-slate-700">广场分类</span>
+                        <select
+                          value={category}
+                          onChange={(event) => setCategory(event.target.value)}
+                          className="min-w-28 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                        >
+                          {!AGENT_CATEGORIES.some((item) => item === category) && <option>{category}</option>}
+                          {AGENT_CATEGORIES.filter((item) => item !== '全部').map((item) => <option key={item}>{item}</option>)}
+                        </select>
+                      </label>
+                      <div className="flex flex-wrap items-center justify-between gap-3 py-3">
+                        <span className="text-sm font-semibold text-slate-700">角色声线</span>
+                        <AgentVoicePicker value={voice} onChange={setVoice} size="md" />
                       </div>
                     </div>
-
-                    <div className="space-y-4">
-                      <label className="block">
-                        <span className="mb-2 block text-sm font-bold text-slate-700">开场白</span>
-                        <textarea
-                          value={greeting}
-                          onChange={(event) => setGreeting(event.target.value)}
-                          placeholder={finalGreeting}
-                          rows={2}
-                          className="w-full resize-none rounded-2xl border border-black/[0.08] bg-[#fbfaf7] px-4 py-3 text-sm font-medium leading-6 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-slate-300 focus:ring-4 focus:ring-slate-200/70"
-                        />
-                      </label>
-
-                      <label className="block">
-                        <span className="mb-2 block text-sm font-bold text-slate-700">系统提示词</span>
-                        <textarea
-                          value={systemPrompt}
-                          onChange={(event) => setSystemPrompt(event.target.value)}
-                          placeholder={finalPrompt}
-                          rows={6}
-                          className="w-full resize-none rounded-2xl border border-black/[0.08] bg-[#fbfaf7] px-4 py-3 font-mono text-xs leading-5 text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-slate-300 focus:ring-4 focus:ring-slate-200/70"
-                        />
-                      </label>
-                    </div>
-                  </section>
-                </>
+                  </details>
+                </div>
               )}
             </div>
 
             {/* 右侧面板：实时预览与压力靶场 */}
-            <aside className="lg:sticky lg:top-24 lg:self-start space-y-4">
-              <div className="overflow-hidden rounded-[32px] border border-black/[0.06] bg-white shadow-xl">
-                <div className="h-2" style={{ backgroundColor: categoryColor }} />
+            <aside id="agent-preview" className="min-w-0 scroll-mt-24 space-y-4 lg:sticky lg:top-24 lg:self-start">
+              <div className={cn('overflow-hidden border bg-white', creationMode === 'pro'
+                ? 'rounded-[32px] border-black/[0.06] shadow-xl'
+                : 'rounded-3xl border-slate-200/80 shadow-sm')}>
+                {creationMode === 'pro' && <div className="h-2" style={{ backgroundColor: categoryColor }} />}
 
                 {/* 右侧顶部 Tab 切换：预览 vs 靶场 */}
-                <div className="flex border-b border-black/[0.05] p-2 bg-slate-50/60">
+                <div role="group" aria-label="预览方式" className={cn('flex gap-1', creationMode === 'pro'
+                  ? 'border-b border-black/[0.05] bg-slate-50/60 p-2'
+                  : 'mx-5 mt-5 rounded-xl border border-slate-200/80 bg-slate-50 p-1')}>
                   <button
                     type="button"
+                    aria-pressed={rightPanelTab === 'preview'}
                     onClick={() => setRightPanelTab('preview')}
                     className={cn(
-                      'flex-1 inline-flex items-center justify-center gap-1.5 rounded-2xl py-2 text-xs font-bold transition',
-                      rightPanelTab === 'preview' ? 'bg-white text-slate-950 shadow-2xs' : 'text-slate-500 hover:text-slate-800'
+                      'flex-1 inline-flex items-center justify-center gap-1.5 py-2 text-xs font-bold transition',
+                      creationMode === 'pro' ? 'rounded-2xl' : 'rounded-lg',
+                      rightPanelTab === 'preview'
+                        ? creationMode === 'pro' ? 'bg-white text-slate-950 shadow-2xs' : 'bg-white text-indigo-700 shadow-sm ring-1 ring-slate-200/80'
+                        : 'text-slate-500 hover:text-slate-800'
                     )}
                   >
                     <Eye size={14} />
-                    实时卡片预览
+                    {creationMode === 'pro' ? '实时卡片预览' : '名片预览'}
                   </button>
                   <button
                     type="button"
+                    aria-pressed={rightPanelTab === 'arena'}
                     onClick={() => setRightPanelTab('arena')}
                     className={cn(
-                      'flex-1 inline-flex items-center justify-center gap-1.5 rounded-2xl py-2 text-xs font-bold transition',
-                      rightPanelTab === 'arena' ? 'bg-amber-500 text-white shadow-2xs' : 'text-slate-500 hover:text-slate-800'
+                      'flex-1 inline-flex items-center justify-center gap-1.5 py-2 text-xs font-bold transition',
+                      creationMode === 'pro' ? 'rounded-2xl' : 'rounded-lg',
+                      rightPanelTab === 'arena'
+                        ? creationMode === 'pro' ? 'bg-amber-500 text-white shadow-2xs' : 'bg-white text-indigo-700 shadow-sm ring-1 ring-slate-200/80'
+                        : 'text-slate-500 hover:text-slate-800'
                     )}
                   >
-                    <Flame size={14} />
-                    🔥 压力测试靶场
+                    {creationMode === 'pro' ? <Flame size={14} /> : <MessageCircle size={14} />}
+                    {creationMode === 'pro' ? '压力测试靶场' : '试聊'}
                     {stressTestCases.length > 0 && <span className="h-2 w-2 rounded-full bg-white animate-pulse" />}
                   </button>
                 </div>
@@ -1223,6 +1224,9 @@ ${dims.boundaries.trim() || '- 严禁越权承诺，严禁未经验证盲目脑�
                       <div className="mb-4 flex items-center justify-between">
                         <span className="text-xs font-bold text-slate-400">公开状态</span>
                         <button
+                          type="button"
+                          aria-label={isPublic ? '公开状态：公开' : '公开状态：私有'}
+                          aria-pressed={isPublic}
                           onClick={() => setIsPublic(!isPublic)}
                           className={cn(
                             'inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold transition',
@@ -1234,13 +1238,15 @@ ${dims.boundaries.trim() || '- 严禁越权承诺，严禁未经验证盲目脑�
                         </button>
                       </div>
 
-                      <div className="rounded-[24px] bg-[#fbfaf7] p-5">
+                      <div className={cn('rounded-[24px] p-4 sm:p-5', creationMode === 'pro'
+                        ? 'bg-[#fbfaf7]'
+                        : 'border border-indigo-100 bg-gradient-to-br from-indigo-50 via-[#f8f9ff] to-white')}>
                         <div className="mb-4 flex items-start gap-4">
                           {creationMode === 'pro' ? (
                             <Avatar src={proSelectedAvatar} alt={name || '数字员工'} size="lg" />
                           ) : (
-                            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-3xl shadow-2xs">
-                              {selectedAvatar}
+                            <div className="size-14 shrink-0 overflow-hidden rounded-2xl bg-white shadow-2xs">
+                              <Avatar src={selectedAvatar} alt={name || 'Agent'} size="lg" className="h-full w-full rounded-none bg-transparent object-top text-3xl shadow-none ring-0" />
                             </div>
                           )}
                           <div className="min-w-0 flex-1">
@@ -1281,13 +1287,13 @@ ${dims.boundaries.trim() || '- 严禁越权承诺，严禁未经验证盲目脑�
                           </div>
                         </div>
 
-                        <p className="min-h-[40px] text-xs leading-5 text-slate-600">
-                          {description || '写一句话，让用户知道这个 Agent 最擅长什么。'}
+                        <p className="break-words text-sm leading-5 text-slate-600">
+                          {description || '这里会显示卡片简介。'}
                         </p>
 
                         <div className="mt-4 rounded-xl bg-white p-3 border border-black/[0.04]">
                           <div className="mb-1 text-2xs font-bold text-slate-400">开场白</div>
-                          <p className="text-xs leading-5 text-slate-700">“{finalGreeting}”</p>
+                          <p className="whitespace-pre-wrap break-words text-sm leading-5 text-slate-700">{finalGreeting}</p>
                         </div>
                       </div>
                     </div>
@@ -1296,21 +1302,25 @@ ${dims.boundaries.trim() || '- 严禁越权承诺，严禁未经验证盲目脑�
                     <div className="space-y-3">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-1 text-xs font-black text-slate-900">
-                          <Flame size={14} className="text-amber-500" />
-                          <span>在线压力测试靶场</span>
+                          {creationMode === 'pro' ? <Flame size={14} className="text-amber-500" /> : <MessageCircle size={14} className="text-indigo-600" />}
+                          <span>{creationMode === 'pro' ? '在线压力测试靶场' : name || '未命名 Agent'}</span>
                         </div>
                         <button
                           type="button"
-                          onClick={() => setArenaMessages([{ role: 'assistant', content: finalGreeting }])}
-                          className="inline-flex items-center gap-1 text-2xs text-slate-400 hover:text-slate-600"
+                          disabled={arenaStreaming}
+                          onClick={() => {
+                            setArenaMessages(creationMode === 'basic' ? [] : [{ role: 'assistant', content: finalGreeting }]);
+                            setArenaError('');
+                          }}
+                          className="inline-flex items-center gap-1 text-2xs text-slate-500 hover:text-slate-700 disabled:opacity-40"
                         >
                           <RotateCcw size={12} />
-                          清空演练
+                          {creationMode === 'pro' ? '清空演练' : '重新试聊'}
                         </button>
                       </div>
 
                       {/* 3 道一键测试题 */}
-                      {stressTestCases.length > 0 ? (
+                      {creationMode === 'pro' && (stressTestCases.length > 0 ? (
                         <div className="space-y-1.5">
                           <span className="block text-2xs font-bold text-slate-400">点击发起刁难测试题：</span>
                           {stressTestCases.map((tc, idx) => (
@@ -1329,11 +1339,13 @@ ${dims.boundaries.trim() || '- 严禁越权承诺，严禁未经验证盲目脑�
                         <div className="rounded-xl bg-slate-50 p-3 text-center text-xs text-slate-500">
                           在左侧完成“编译专业数字员工”后，系统将自动生成 3 道刁钻考题。
                         </div>
-                      )}
+                      ))}
 
                       {/* 靶场聊天对话流 */}
                       <div className="h-64 overflow-y-auto rounded-2xl bg-slate-50 p-3 space-y-2 border border-slate-100">
-                        {arenaMessages.map((m, idx) => (
+                        {(creationMode === 'basic' && arenaMessages.length === 0
+                          ? [{ role: 'assistant', content: finalGreeting }]
+                          : arenaMessages).map((m, idx) => (
                           <div
                             key={idx}
                             className={cn('flex flex-col', m.role === 'user' ? 'items-end' : 'items-start')}
@@ -1347,7 +1359,7 @@ ${dims.boundaries.trim() || '- 严禁越权承诺，严禁未经验证盲目脑�
                                   : 'bg-white text-slate-800 shadow-2xs border border-slate-200/60 rounded-bl-xs'
                               )}
                             >
-                              {m.content || (arenaStreaming && idx === arenaMessages.length - 1 ? '思考反驳中...' : '')}
+                              {m.content || (arenaStreaming && idx === arenaMessages.length - 1 ? '正在回复…' : '')}
                             </div>
                           </div>
                         ))}
@@ -1359,13 +1371,15 @@ ${dims.boundaries.trim() || '- 严禁越权承诺，严禁未经验证盲目脑�
                           value={arenaInput}
                           onChange={(e) => setArenaInput(e.target.value)}
                           onKeyDown={(e) => {
-                            if (e.key === 'Enter') handleSendArenaMessage();
+                            if (e.key === 'Enter' && !e.nativeEvent.isComposing) handleSendArenaMessage();
                           }}
-                          placeholder="输入刁难指令测试底线..."
-                          className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs outline-none focus:border-slate-400"
+                          aria-label="试聊消息"
+                          placeholder={creationMode === 'pro' ? '输入刁难指令测试底线...' : '发条消息试试角色语气'}
+                          className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-indigo-400"
                         />
                         <button
                           type="button"
+                          aria-label="发送试聊消息"
                           disabled={arenaStreaming || !arenaInput.trim()}
                           onClick={() => handleSendArenaMessage()}
                           className="rounded-xl bg-slate-950 px-3 py-2 text-white transition hover:bg-slate-800 disabled:opacity-40"
@@ -1373,22 +1387,24 @@ ${dims.boundaries.trim() || '- 严禁越权承诺，严禁未经验证盲目脑�
                           <Send size={14} />
                         </button>
                       </div>
+                      {arenaError && <p role="alert" className="text-xs text-rose-600">{arenaError}</p>}
                     </div>
                   )}
 
                   {/* 保存按钮 */}
                   <button
+                    type="button"
                     onClick={handleSubmit}
-                    disabled={!canCreate || submitting}
+                    disabled={!canCreate || submitting || uploadingAvatar}
                     className={cn(
                       'mt-5 flex h-12 w-full items-center justify-center gap-2 rounded-full text-sm font-black transition',
-                      canCreate && !submitting
+                      canCreate && !submitting && !uploadingAvatar
                         ? 'bg-slate-950 text-white shadow-sm hover:-translate-y-0.5 hover:shadow-lg'
                         : 'bg-slate-100 text-slate-400'
                     )}
                   >
                     <Sparkles size={16} />
-                    {submitting ? '保存中...' : editingAgentId ? '保存修改' : '创建并开始工作'}
+                    {submitting ? '保存中…' : editingAgentId ? '保存修改' : creationMode === 'pro' ? '创建并开始工作' : '创建 Agent'}
                   </button>
                 </div>
               </div>

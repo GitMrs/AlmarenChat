@@ -361,6 +361,7 @@ async function handlePiMessage(options: {
   persistMessages: boolean;
   allowWebSearch: boolean;
   imageGenerationRequested: boolean;
+  deepThinking: boolean;
   agentMemoryContext: string;
   worldEventContext: string;
   interactionMode?: 'chat' | 'multi_reply' | 'coordinated_turn' | 'coordination_summary';
@@ -369,7 +370,7 @@ async function handlePiMessage(options: {
 }) {
   const {
     userId, spaceId, space, targetAgent, memberAgents, selectedSkill, textMessage,
-    skipPersistUserMessage, persistMessages, allowWebSearch, imageGenerationRequested, agentMemoryContext, worldEventContext, interactionMode, coordinationScope, multiReplyIndex,
+    skipPersistUserMessage, persistMessages, allowWebSearch, imageGenerationRequested, deepThinking, agentMemoryContext, worldEventContext, interactionMode, coordinationScope, multiReplyIndex,
   } = options;
   let persistedMemory = await prisma.spaceMemory.findUnique({ where: { spaceId } });
   if (!persistedMemory || spaceMemoryNeedsTrustedRebuild(persistedMemory)) {
@@ -464,6 +465,7 @@ async function handlePiMessage(options: {
             apiBaseUrl: modelConfig.effectiveApiBaseUrl,
             apiKey: modelConfig.effectiveApiKey,
             modelName: modelConfig.effectiveModelName,
+            thinkingLevel: deepThinking ? 'high' : undefined,
             modelContextWindow: settings.modelContextWindow,
             allowWebSearch,
             imageGenerationRequested,
@@ -631,6 +633,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
     const {
       message, targetAgentId, history, skipPersistUserMessage, interactionMode, coordinationScope,
       multiReplyIndex, imageGenerationRequested, skillId, workId, persistMessages,
+      deepThinking,
       isolatedContext, contextAgentIds, isHandoffTurn, directContent, speakerId,
     } = await request.json();
     const textMessage = typeof message === 'string' ? message.trim() : '';
@@ -638,6 +641,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
     const useIsolatedContext = isolatedContext === true;
     const allowWebSearch = !useIsolatedContext;
     const explicitImageRequest = imageGenerationRequested === true;
+    const thinkForReply = deepThinking === true && !explicitImageRequest;
     if (!textMessage) return NextResponse.json({ error: '消息不能为空' }, { status: 400 });
 
     const space = await getSpaceForUser(spaceId, userId);
@@ -773,6 +777,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
         persistMessages: shouldPersistMessages,
         allowWebSearch,
         imageGenerationRequested: explicitImageRequest,
+        deepThinking: thinkForReply,
         agentMemoryContext: agentMemory,
         worldEventContext: await loadAgentWorldContext({ agentId: targetAgent.id, query: textMessage, history: Array.isArray(history) ? history : [] }),
         interactionMode: normalizedInteractionMode,
@@ -1142,6 +1147,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
                 model,
                 messages: conversation as any,
                 stream: true,
+                ...(thinkForReply ? { reasoning_effort: 'high' } : {}),
                 ...(hasTools ? { tools: tools as any, tool_choice: 'auto' } : {}),
               };
               logModelRequest({

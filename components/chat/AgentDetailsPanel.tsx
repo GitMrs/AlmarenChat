@@ -1411,8 +1411,8 @@ export default function AgentDetailsPanel({
                 {viewMode === 'companion' ? '文字' : '陪伴'}
               </button>
             )}
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-[24px] bg-white shadow-sm">
-              <Avatar src={displayAgent.avatar} alt={displayAgent.name} size="lg" />
+            <div className="mx-auto size-16 overflow-hidden rounded-[24px] bg-white shadow-sm">
+              <Avatar src={displayAgent.avatar} alt={displayAgent.name} size="lg" className="h-full w-full rounded-none object-top text-3xl ring-0 shadow-none" />
             </div>
             <h1 className="mt-3 line-clamp-2 text-xl font-black leading-tight text-slate-950">{displayAgent.name}</h1>
             <div className="mt-2 flex flex-wrap justify-center gap-2">

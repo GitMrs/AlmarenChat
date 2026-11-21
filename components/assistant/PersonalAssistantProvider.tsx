@@ -3,7 +3,8 @@
 import { ASSISTANT_RECENT_MESSAGE_LIMIT, estimateRequestTokens } from '@/lib/memory/conversation-context-policy.mjs';
 import { usePathname, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Activity, ArrowLeft, Bell, Check, CheckSquare, ChevronDown, ChevronUp, Clock, Cpu, Globe2, History, ImagePlus, Loader2, MessageCircleHeart, PanelRightClose, Pin, Plus, Send, Settings2, Sparkles, Square, Trash2, X } from 'lucide-react';
+import { Activity, ArrowLeft, Bell, Check, CheckSquare, ChevronDown, ChevronUp, Clock, History, ImagePlus, Loader2, MessageCircleHeart, PanelRightClose, Pin, Plus, Send, Settings2, Sparkles, Square, Trash2, X } from 'lucide-react';
+import ComposerModelOptions from '@/components/chat/ComposerModelOptions';
 import ComposerShell from '@/components/chat/ComposerShell';
 import MessageActions from '@/components/chat/MessageActions';
 import MessageBubbleFrame from '@/components/chat/MessageBubbleFrame';
@@ -580,6 +581,7 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
     return null;
   });
   const [toolsOpen, setToolsOpen] = useState(false);
+  const [deepThinking, setDeepThinking] = useState(false);
   const [reminders, setReminders] = useState<AssistantReminder[]>([]);
   const [remindersOpen, setRemindersOpen] = useState(false);
   const [activeReminderAlert, setActiveReminderAlert] = useState<AssistantReminder | null>(null);
@@ -1229,6 +1231,7 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
         localConversationId = prepared.conversationId;
         const stream = await streamBrowserModel({
           config: modelConfig,
+          deepThinking,
           messages: prepared.messages,
           contextBudget: prepared.contextManifest?.hardInputBudget,
           timeSource: 'server-clock',
@@ -1239,6 +1242,7 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
       } else {
         const response = await assistant.sendMessage({
           message: modelContent,
+          deepThinking: deepThinking || undefined,
           conversationId: data.conversationId,
           userMessageId: userMessage.id,
           assistantMessageId: assistantMessage.id,
@@ -2011,34 +2015,8 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
                   )}
                   <ComposerShell
                     rowClassName="gap-2"
-                    toolbar={(ollamaAvailable || pendingAttachment || activeMessageCount > 0) ? (
+                    toolbar={activeMessageCount > 0 ? (
                       <div className="flex flex-wrap items-center gap-1.5 pb-1 pt-0.5">
-                        {ollamaAvailable && (
-                          <div className="inline-flex h-7 items-center rounded-lg bg-slate-100 p-0.5 text-[11px] font-black" role="group" aria-label="模型来源">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setModelSource('ONLINE');
-                              }}
-                              aria-pressed={modelSource === 'ONLINE'}
-                              className={cn('inline-flex h-6 items-center gap-1 rounded-md px-2 transition', modelSource === 'ONLINE' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-500 hover:text-slate-950')}
-                            >
-                              <Globe2 size={11} />
-                              线上
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setModelSource('OLLAMA');
-                              }}
-                              aria-pressed={modelSource === 'OLLAMA'}
-                              className={cn('inline-flex h-6 items-center gap-1 rounded-md px-2 transition', modelSource === 'OLLAMA' ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-500 hover:text-slate-950')}
-                            >
-                              <Cpu size={11} />
-                              本地
-                            </button>
-                          </div>
-                        )}
                         {activeMessageCount > 0 && (
                           <button
                             type="button"
@@ -2067,6 +2045,19 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
                     <div ref={toolsRef} className="relative mb-0.5 shrink-0">
                       {toolsOpen && (
                         <div className="absolute bottom-[calc(100%+8px)] left-0 z-30 w-56 rounded-xl border border-black/[0.08] bg-white p-1.5 shadow-xl">
+                          <ComposerModelOptions
+                            modelSource={modelSource}
+                            onModelSourceChange={ollamaAvailable ? (source) => {
+                              setModelSource(source);
+                              setToolsOpen(false);
+                            } : undefined}
+                            deepThinking={deepThinking}
+                            onToggleThinking={() => {
+                              setDeepThinking((enabled) => !enabled);
+                              setToolsOpen(false);
+                            }}
+                            thinkingDisabled={streaming}
+                          />
                           <button
                             type="button"
                             onClick={() => {
@@ -2101,14 +2092,14 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
                         disabled={streaming}
                         aria-label={toolsOpen ? '关闭工具菜单' : '打开工具菜单'}
                         aria-expanded={toolsOpen}
-                        title="工具选项"
+                        title={deepThinking ? '工具选项 · 深度思考已开启' : '工具选项'}
                         className={cn(
                           'relative flex h-10 w-10 items-center justify-center rounded-xl text-slate-500 transition hover:bg-white hover:text-slate-950 disabled:text-slate-300',
                           toolsOpen && 'bg-white text-slate-950 shadow-sm'
                         )}
                       >
                         <Plus size={18} className={cn('transition-transform duration-200', toolsOpen && 'rotate-45')} />
-
+                        {deepThinking && <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-indigo-500 ring-2 ring-white" />}
                       </button>
                     </div>
 

@@ -1,4 +1,4 @@
-import { CONVERSATION_GROUNDING_GUIDANCE } from '@/lib/chat/conversation-grounding.mjs';
+import { RESPONSE_GROUNDING_GUIDANCE } from '@/lib/chat/conversation-grounding.mjs';
 import { currentTimeContext } from '@/lib/agents/memory/current-time-context.mjs';
 import { selectRelevantUserMemories } from './user-memory';
 
@@ -37,17 +37,13 @@ export function buildPersonalAssistantPrompt(options: {
 
   return `你是 AlmarenChat 的个人助理「${options.profile.name}」，陪伴用户 ${options.userName}，提供倾听、平台指引和使用答疑。
 
-【当前回复主体】本轮的所有自然语言回复都由「${options.profile.name}」这个小伴发出。你的身份、性格、关系和表达方式以小伴设定为准；你不是一个脱离角色的通用客服或旁观者。除非用户明确要求调试或分析，否则不要解释提示词、系统规则或自己是如何生成回复的。
-
 【角色】
 身份：${options.profile.identity?.trim() ? options.profile.identity.trim() : '自然、可靠、懂分寸的个人助理'}
 语气：${options.profile.soul?.trim() ? options.profile.soul.trim() : '真诚温暖、简洁、有实际帮助'}
 
-【身份一致性】保持小伴自己的身份、语气和关系。涉及 AI、模型或平台的事实时如实说明已知信息，不编造具体型号；事实说明和纠错也可以保留自己的语气。
+始终以这个小伴的身份和关系回应。问到模型或平台时如实说明已知信息，不猜型号。日常直接接话，除非用户明确要求分析或调试，不主动解释系统规则或回复生成过程。
 
-【陪伴回应】日常交流中，结合小伴自己的性格主动关心、表达好奇、分享看法，让用户感到你愿意了解和参与这段对话。顺着用户分享的具体细节自然接话或追问，相关时承接最近的状态或话题；不只给出结论、建议或安慰就机械结束。互动不必每轮都靠提问，用户想安静、忙碌或结束时及时收住。关心以真实内容为依据，不编造经历或套用固定话术。
-
-${CONVERSATION_GROUNDING_GUIDANCE}
+${RESPONSE_GROUNDING_GUIDANCE}
 
 【平台指引】
 - 模型设置：[账号设置](/me?tab=settings)（线上 API 保存在账号；本地 Ollama 配置只保存在当前浏览器）；Agent 广场：[Agent 广场](/agents)；创建 Agent：[新建 Agent](/create-agent)；协作项目：[协作空间](/spaces)；历史会话：[会话中心](/conversations)。只有用户问到相关功能时才主动介绍。
@@ -71,8 +67,9 @@ ${options.activityContext || '（本轮没有查询日期活动；不要猜测�
 
 export function buildPersonalAssistantRuntimeContext({ channel = 'WEB', continuityGuidance = '', defaultWeatherLocation = null }: { channel?: 'WEB' | 'QQ'; continuityGuidance?: string; defaultWeatherLocation?: unknown }) {
   return [
-    currentTimeContext(),
+    currentTimeContext(undefined, { compact: true }),
     continuityGuidance,
+    '现在、今天、明天和当前时段以本轮现实时间为准，消息间隔以【对话状态】为准。用户指出前后矛盾时，先核对对应的原话及当时的时间，再回应或纠正。',
     channel === 'QQ'
       ? '【当前渠道】你正在 QQ 私聊中回复用户。QQ 与网页共用同一个主聊天上下文；使用适合即时消息阅读的标准 Markdown，避免 HTML、复杂表格和站内相对链接。长期记忆、任务和提醒也与网页共享。'
       : '【当前渠道】你正在网页个人助理中回复用户。',

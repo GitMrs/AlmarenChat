@@ -159,6 +159,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
   const [uploadError, setUploadError] = useState('');
   const [webStatus, setWebStatus] = useState('');
   const [chatMode, setChatMode] = useState<'chat' | 'image'>('chat');
+  const [deepThinking, setDeepThinking] = useState(false);
   const [trendingPickerOpen, setTrendingPickerOpen] = useState(false);
   const [quickTopics, setQuickTopics] = useState<{ id: string; source: string; sourceName: string; title: string; heat?: string }[]>([]);
   const [dailyStudy, setDailyStudy] = useState<AgentDailyStudyRecord | null>(null);
@@ -364,7 +365,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
             setConversationAgent({
               id: conversation.agentId || agentId || existingConversationId,
               name: conversation.agentName || found?.name || '未知 Agent',
-              avatar: conversation.agentAvatar || found?.avatar,
+              avatar: mainConversation && found ? found.avatar : conversation.agentAvatar ?? found?.avatar,
               description: conversation.agentDescription || found?.description,
               category: conversation.agentCategory || found?.category,
               themeColor: found?.themeColor || (conversation as any).agentThemeColor,
@@ -805,6 +806,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
     const requestMode = isCompanionSend ? 'chat' : options.modeOverride || chatMode;
     if (requestMode === 'image' && outgoingAttachments.length > 0) return;
     if ((!content && outgoingAttachments.length === 0) || isStreaming || (!isCompanionSend && uploadingImage)) return;
+    const thinkForReply = deepThinking && requestMode === 'chat' && !isCompanionSend;
     const replyRequest = ++replyRequestRef.current;
     const requestChat = activeChatRef.current;
 
@@ -998,6 +1000,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
         result = {
           stream: await streamBrowserModel({
             config: activeBrowserModelConfig,
+            deepThinking: thinkForReply,
             messages: preparedContext.messages,
             contextBudget: preparedContext.contextManifest.hardInputBudget,
             signal: controller.signal,
@@ -1008,6 +1011,7 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
       } else {
         result = await streamChat({
           message: content,
+          deepThinking: thinkForReply || undefined,
           history,
           context: [
             displayAgent?.systemPrompt,
@@ -1523,6 +1527,8 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
             onSend={() => handleSend()}
             onStop={handleStop}
             mode={chatMode}
+            deepThinking={deepThinking}
+            onToggleThinking={() => setDeepThinking((enabled) => !enabled)}
             onOpenTrending={() => setTrendingPickerOpen(true)}
             onOpenContext={() => setContextOpen(true)}
             onClearMessages={() => setConfirmClearOpen(true)}

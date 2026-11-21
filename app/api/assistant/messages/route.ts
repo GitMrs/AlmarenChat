@@ -330,7 +330,7 @@ export async function POST(request: Request) {
           });
         };
         try {
-          await runAutoWebChat({ client, model, messages, web, contextBudget: preparedContext.manifest.hardInputBudget, onContextUsage: usage => recordConversationUsage(userId, conversationId, preparedContext.manifest, usage), extraTools: currentExtraTools(), getExtraTools: currentExtraTools, callTool: async (name: string, args: any) => { if (name === 'capability_help') return capabilityHelp.execute(args); if (name === 'memory_search' || name === 'memory_read') return memoryTools?.execute(name, args); if (name !== 'mcp_load') toolCalled = true; return broker.call(name, args); }, signal: modelAbortController.signal, onText: (text: string) => { fullContent += text; emit({ type: 'text_delta', text }); } });
+          await runAutoWebChat({ client, model, messages, web, deepThinking: body.deepThinking === true, contextBudget: preparedContext.manifest.hardInputBudget, onContextUsage: usage => recordConversationUsage(userId, conversationId, preparedContext.manifest, usage), extraTools: currentExtraTools(), getExtraTools: currentExtraTools, callTool: async (name: string, args: any) => { if (name === 'capability_help') return capabilityHelp.execute(args); if (name === 'memory_search' || name === 'memory_read') return memoryTools?.execute(name, args); if (name !== 'mcp_load') toolCalled = true; return broker.call(name, args); }, signal: modelAbortController.signal, onText: (text: string) => { fullContent += text; emit({ type: 'text_delta', text }); } });
           if (!fullContent) throw new Error('模型没有返回正文');
           const notice = retrievalNotice();
           fullContent += notice;

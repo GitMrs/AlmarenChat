@@ -63,6 +63,7 @@ export async function POST(request: Request) {
       attachments,
       knowledgeEnabled,
       companionMode,
+      deepThinking,
     } = await request.json();
     const imageAttachments: ChatAttachment[] = Array.isArray(attachments)
       ? attachments.filter((attachment: ChatAttachment) => attachment?.type === 'image' && attachment.url)
@@ -309,6 +310,7 @@ export async function POST(request: Request) {
           await runAutoWebChat({
             client,
             model,
+            deepThinking: deepThinking === true,
             messages: openaiMessages,
             web,
             contextBudget: preparedContext?.manifest.hardInputBudget,
