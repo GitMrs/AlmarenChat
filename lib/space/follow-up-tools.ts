@@ -90,14 +90,19 @@ export function createSpaceFollowUpTools({ userId, spaceId, agentId, sourceMessa
           if (targetWorkId && !work) throw new Error('关联成果不存在或不属于当前空间');
           const activeCount = await tx.spaceFollowUp.count({ where: { spaceId, status: { in: ['PENDING', 'RUNNING'] } } });
           if (activeCount >= FOLLOW_UP_ACTIVE_LIMIT) throw new Error(`当前空间最多同时安排 ${FOLLOW_UP_ACTIVE_LIMIT} 项跟进，请先取消不需要的任务`);
+          const source = await tx.spaceMessage.findFirst({ where: { id: sourceMessageId, spaceId }, select: { createdAt: true } });
+          const recent = source ? await tx.spaceMessage.findMany({ where: { spaceId, createdAt: { lte: source.createdAt } },
+            orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: 8,
+            select: { role: true, content: true, speakerAgentId: true } }) : [];
           return tx.spaceFollowUp.create({ data: {
             id: randomUUID(), spaceId, agentId, sourceKey,
             sourceMessageId, workId: work?.id, workTitle: work?.title,
             domain: currentSpace.templateId === 'crypto-contract-trading' ? 'CRYPTO' : 'GENERAL',
             ...normalized, nextAttemptAt: normalized.runAt,
+            rootPrompt: normalized.prompt,
             maxChainDepth: currentSpace.followUpMaxContinuations ?? FOLLOW_UP_DEFAULT_MAX_CONTINUATIONS,
             chainEndsAt: new Date(normalized.runAt.getTime() + FOLLOW_UP_CHAIN_WINDOW_MS),
-            context: [followUpContext(history), work ? `【安排时的成果状态】${JSON.stringify(work)}` : ''].filter(Boolean).join('\n\n'), networkAllowed,
+            context: [followUpContext(recent.length ? recent.reverse() : history), work ? `【安排时的成果状态】${JSON.stringify(work)}` : ''].filter(Boolean).join('\n\n'), networkAllowed,
           } });
         });
         return { ok: true, id: task.id, title: task.title, runAt: task.runAt.toISOString(), status: task.status,

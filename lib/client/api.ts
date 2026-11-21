@@ -1118,15 +1118,17 @@ export const spaceFollowUps = {
     tasks: import('@/types').SpaceFollowUp[]; total: number; page: number; pageSize: number;
     settings: { maxContinuations: number; maxAllowedContinuations: number };
     contractMode: boolean;
+    eagle?: import('@/types').EagleMonitorInfo | null;
   }>(`/spaces/${spaceId}/follow-ups?view=history&status=${encodeURIComponent(options.status)}&page=${options.page}${options.workId ? `&workId=${encodeURIComponent(options.workId)}` : ''}`, { signal, cache: 'no-store' }),
   detail: (spaceId: string, taskId: string, signal?: AbortSignal) => request<{
-    task: import('@/types').SpaceFollowUp; report: { content: string; createdAt: string } | null;
+    task: import('@/types').SpaceFollowUp; report: { content: string; createdAt: string; assessment?: { status: string; reason: string } | null } | null; eagle?: import('@/types').EagleMonitorInfo | null;
   }>(`/spaces/${spaceId}/follow-ups?taskId=${encodeURIComponent(taskId)}`, { signal, cache: 'no-store' }),
   list: (spaceId: string, signal?: AbortSignal) => request<{
     tasks: import('@/types').SpaceFollowUp[]; enabled: boolean; schedulerEnabled: boolean;
     qqEnabled: boolean; qqChannel: { ready: boolean; reason: string; channel?: string };
     settings: { maxContinuations: number; maxAllowedContinuations: number };
     contractMode: boolean;
+    eagle?: import('@/types').EagleMonitorInfo | null;
   }>(`/spaces/${spaceId}/follow-ups`, { signal, cache: 'no-store' }),
   setEnabled: (spaceId: string, enabled: boolean) => request<{ success: boolean; enabled: boolean }>(`/spaces/${spaceId}/follow-ups`, {
     method: 'PATCH', body: JSON.stringify({ enabled }),

@@ -551,7 +551,30 @@ export interface SpaceAutomation {
   executions?: SpaceAutomationExecution[];
 }
 
+export interface EagleMonitorInfo {
+  state: string;
+  label: string;
+  message: string;
+  conditions: number;
+  problemTasks: number;
+  unknownTasks: number;
+  lastStartedAt?: string | null;
+  lastFinishedAt?: string | null;
+  lastSuccessAt?: string | null;
+  lastErrorAt?: string | null;
+  consecutiveFailures: number;
+}
+
 export interface SpaceFollowUp {
+  attempts?: number;
+  watchHealth?: {
+    status: string; message: string; lastCheckedAt: string; lastSuccessAt: string | null; consecutiveFailures: number;
+    error?: { code: string; message: string; at: string } | null;
+    lastError?: { code: string; message: string; at: string } | null;
+    samples: Array<{ symbol: string; period: string; direction: string; level: number; state: string; price: number | null; sampledAt: string | null; message: string }>;
+    events: Array<{ at: string; status: string; message: string }>;
+  } | null;
+  rootPrompt?: string | null;
   watchConditions?: Array<{ symbol: string; period: 'PRICE' | '15m' | '1H'; direction: 'ABOVE' | 'BELOW'; level: number }> | null;
   watchTriggeredAt?: string | null;
   watchEvent?: { symbol: string; period: 'PRICE' | '15m' | '1H'; direction: 'ABOVE' | 'BELOW'; level: number; price: number; at: number } | null;

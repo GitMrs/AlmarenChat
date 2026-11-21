@@ -8,6 +8,7 @@ import SearchableSelect from '@/components/shared/SearchableSelect';
 import { spaceFollowUps } from '@/lib/client/api';
 import { startSerialPolling } from '@/lib/space/serial-polling.mjs';
 import type { Agent, SpaceFollowUp } from '@/types';
+import { EagleMonitorSummary, TaskEagleMonitor } from './FollowUpEagleMonitor';
 
 const labels = { PENDING: '待跟进', RUNNING: '正在跟进', COMPLETED: '已汇报', FAILED: '未完成', CANCELLED: '已取消' };
 const qqLabels = { PENDING: 'QQ 待发送', SENT: 'QQ 已发送', RETRYING: 'QQ 重试中', FAILED: 'QQ 已停止重试', CANCELLED: 'QQ 已取消' };
@@ -64,8 +65,9 @@ function FollowUpSettings({ spaceId, initialValue, maxAllowed, onSaved }: {
   </div>;
 }
 
-function FollowUpReport({ spaceId, task }: { spaceId: string; task: SpaceFollowUp }) {
-  const [report, setReport] = useState<{ content: string; createdAt: string } | null>(null);
+function FollowUpReport({ spaceId, task, paused }: { spaceId: string; task: SpaceFollowUp; paused: boolean }) {
+  const [report, setReport] = useState<{ content: string; createdAt: string; assessment?: { status: string; reason: string } | null } | null>(null);
+  const [originalGoal, setOriginalGoal] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [revision, setRevision] = useState(0);
@@ -74,15 +76,15 @@ function FollowUpReport({ spaceId, task }: { spaceId: string; task: SpaceFollowU
     setLoading(true);
     setError('');
     spaceFollowUps.detail(spaceId, task.id, controller.signal).then(result => {
-      if (!controller.signal.aborted) setReport(result.report);
+      if (!controller.signal.aborted) { setReport(result.report); setOriginalGoal(result.task?.rootPrompt || ''); }
     }).catch(error => {
       if (!controller.signal.aborted) setError(error.message || '读取汇报失败');
     }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   }, [spaceId, task.id, task.updatedAt, revision]);
   return <div className="border-t border-slate-100 px-4 py-4 sm:px-5">
-    {!!task.watchConditions?.length && <p className="mb-3 text-xs leading-6 text-slate-500">鹰眼观察：{task.watchConditions.map(rule => `${rule.symbol} ${rule.period === 'PRICE' ? '盘中' : `${rule.period}收盘`} ${rule.direction === 'ABOVE' ? '上穿' : '下穿'} ${rule.level.toLocaleString()}`).join('；')}。触发后提前复查，不代表允许开仓。</p>}
-    {task.watchEvent && <p className="mb-3 text-xs leading-6 text-amber-700">触发依据：{task.watchEvent.symbol} {task.watchEvent.period === 'PRICE' ? '盘中预警' : `${task.watchEvent.period}收盘变化`}，观察位 {task.watchEvent.level.toLocaleString()}，采样价格 {task.watchEvent.price.toLocaleString()}。</p>}
+    {originalGoal && <p className="mb-3 whitespace-pre-wrap text-xs leading-6 text-slate-500">原始跟进目标：{originalGoal}</p>}
+    <TaskEagleMonitor task={task} detailed paused={paused} />
     {task.reason && <p className="mb-3 text-xs leading-6 text-slate-500">续查原因：{task.reason}</p>}
     {task.error && <p className="mb-3 text-xs leading-6 text-rose-600">未完成原因：{task.error}</p>}
     {task.qqNotification?.error && <p className="mb-3 text-xs leading-6 text-amber-700">QQ 通知：{task.qqNotification.error}</p>}
@@ -151,6 +153,7 @@ export default function SpaceFollowUpHistory({ spaceId, agents, workId, workTitl
           onClick={() => { if (status === value) return; setStatus(value); setPage(1); setData(null); setExpandedId(null); }}
           className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${status === value ? 'bg-slate-900 text-white' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'}`}>{label}</button>)}
       </nav>
+      {data?.eagle && <div className="mx-auto max-w-5xl"><EagleMonitorSummary info={data.eagle} /></div>}
     </header>
     <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6">
       <div className="mx-auto max-w-5xl space-y-3">
@@ -182,7 +185,8 @@ export default function SpaceFollowUpHistory({ spaceId, agents, workId, workTitl
               {active && <button type="button" disabled={busyId !== null} onClick={() => void cancel(task)} className="shrink-0 rounded-lg px-2 py-1.5 text-xs text-slate-500 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50">{busyId === task.id ? '取消中…' : '取消跟进'}</button>}
               <ChevronDown size={15} className={`shrink-0 text-slate-400 ${expanded ? 'rotate-180' : ''}`} />
             </div>
-            {expanded && <FollowUpReport spaceId={spaceId} task={task} />}
+            {!expanded && (!!task.watchConditions?.length || task.watchHealth || task.watchTriggeredAt) && <div className="px-4 pb-3 sm:px-5"><TaskEagleMonitor task={task} paused={data.eagle?.state === 'PAUSED'} /></div>}
+            {expanded && <FollowUpReport spaceId={spaceId} task={task} paused={data.eagle?.state === 'PAUSED'} />}
           </article>;
         })}
       </div>

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { CalendarClock, ChevronDown, Loader2 } from 'lucide-react';
 import { spaceFollowUps } from '@/lib/client/api';
 import { startSerialPolling } from '@/lib/space/serial-polling.mjs';
-import type { SpaceFollowUp } from '@/types';
+import type { SpaceFollowUp, EagleMonitorInfo } from '@/types';
 
 export default function SpaceFollowUpPanel({ spaceId, showControl, refreshKey, onResults, onOpenHistory, hidden = false }: {
   spaceId: string;
@@ -15,6 +15,7 @@ export default function SpaceFollowUpPanel({ spaceId, showControl, refreshKey, o
   hidden?: boolean;
 }) {
   const [tasks, setTasks] = useState<SpaceFollowUp[]>([]);
+  const [eagle, setEagle] = useState<EagleMonitorInfo | null>(null);
   const [enabled, setEnabled] = useState(false);
   const [contractMode, setContractMode] = useState(false);
   const [qqEnabled, setQQEnabled] = useState(false);
@@ -36,6 +37,7 @@ export default function SpaceFollowUpPanel({ spaceId, showControl, refreshKey, o
   useEffect(() => {
     seen.current = null;
     setTasks([]);
+    setEagle(null);
     setLoaded(false);
     setEnabled(false);
     setContractMode(false);
@@ -59,6 +61,7 @@ export default function SpaceFollowUpPanel({ spaceId, showControl, refreshKey, o
         if (signal.aborted) return false;
         if (version !== mutationVersion.current || mutationInFlight.current) return;
         setTasks(result.tasks);
+        setEagle(result.eagle || null);
         setEnabled(result.enabled);
         setContractMode(result.contractMode === true);
         setQQEnabled(result.qqEnabled);
@@ -88,6 +91,7 @@ export default function SpaceFollowUpPanel({ spaceId, showControl, refreshKey, o
       const result = await spaceFollowUps.list(spaceId);
       if (current !== generation.current) return;
       setTasks(result.tasks);
+      setEagle(result.eagle || null);
       setEnabled(result.enabled);
       setContractMode(result.contractMode === true);
       setQQEnabled(result.qqEnabled);
@@ -149,6 +153,10 @@ export default function SpaceFollowUpPanel({ spaceId, showControl, refreshKey, o
           {running && <Loader2 size={12} className="animate-spin" />}
           <span>{running ? `正在跟进 · ${active.length} 项待办` : `待跟进 ${active.length} 项`}</span>
           {awakened ? <span className="text-amber-700">· 鹰眼已触发，等待复查</span> : nextTime && <span className="hidden sm:inline">· 下次 {nextTime}</span>}
+        </button>}
+        {!showControl && eagle && (eagle.conditions > 0 || eagle.problemTasks > 0) && ['UNKNOWN', 'DELAYED', 'ERROR', 'PARTIAL_ERROR'].includes(eagle.state) && <button
+          type="button" onClick={onOpenHistory} className="text-[11px] text-amber-800 underline decoration-amber-300 underline-offset-2">
+          鹰眼监测：{eagle.label}
         </button>}
         <div className="ml-auto flex shrink-0 items-center gap-3">
           {!showControl && <button type="button" onClick={() => setProgressExpanded(value => !value)} aria-expanded={progressExpanded}

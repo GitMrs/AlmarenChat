@@ -3,16 +3,17 @@ import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { getSpaceForUser } from '@/app/api/_lib/spaces';
 import { getFollowUpQQAvailability } from '@/lib/space/follow-up-notifications';
+import { readEagleMonitor } from '@/lib/space/eagle-monitor.mjs';
 import { FOLLOW_UP_DEFAULT_MAX_CONTINUATIONS, FOLLOW_UP_MAX_CONTINUATIONS_SETTING, normalizeFollowUpLimit, supportsSpaceFollowUps } from '@/lib/space/follow-up-policy.mjs';
 
 const reminderDetails = { select: { status: true, qqDeliveredAt: true, qqDeliveryError: true } };
 const taskDetails = { id: true, agentId: true, title: true, runAt: true, status: true, error: true,
   updatedAt: true, origin: true, reason: true, chainDepth: true, maxChainDepth: true, domain: true, workId: true, workTitle: true,
-  watchConditions: true, watchTriggeredAt: true, watchEvent: true, qqReminder: reminderDetails } as const;
-function serializeTask({ id, agentId, title, runAt, status, error, updatedAt, origin, reason, chainDepth, maxChainDepth, domain, workId, workTitle, watchConditions, watchTriggeredAt, watchEvent, qqReminder }: any) {
+  watchConditions: true, watchHealth: true, watchTriggeredAt: true, watchEvent: true, attempts: true, qqReminder: reminderDetails } as const;
+function serializeTask({ id, agentId, title, runAt, status, error, updatedAt, origin, reason, chainDepth, maxChainDepth, domain, workId, workTitle, watchConditions, watchHealth, watchTriggeredAt, watchEvent, rootPrompt, attempts, qqReminder }: any) {
   return {
     id, agentId, title, runAt, status, error, updatedAt, origin, reason, chainDepth, maxChainDepth, domain, workId, workTitle,
-    watchConditions, watchTriggeredAt, watchEvent,
+    watchConditions, watchHealth, watchTriggeredAt, watchEvent, rootPrompt, attempts,
     qqNotification: qqReminder ? { status: qqReminder.qqDeliveredAt ? 'SENT' : qqReminder.status === 'FAILED' ? 'FAILED' : qqReminder.status === 'CANCELLED' ? 'CANCELLED' : qqReminder.qqDeliveryError ? 'RETRYING' : 'PENDING', error: qqReminder.qqDeliveryError } : null,
   };
 }
@@ -32,14 +33,18 @@ export async function GET(request: Request, { params }: { params: Promise<{ spac
       return NextResponse.json({ error: '关联成果不存在' }, { status: 404 });
     }
     const scope = { spaceId, ...(workId ? { workId } : {}) };
+    const eagleInfo = () => readEagleMonitor(prisma, space, { workId: workId || undefined,
+      enabled: process.env.ENABLE_SPACE_FOLLOW_UPS !== 'false' && (process.env.NODE_ENV !== 'development' || process.env.ENABLE_SCHEDULERS === 'true'),
+      pauseReason: process.env.ENABLE_SPACE_FOLLOW_UPS === 'false' ? '服务器已暂停自主跟进与条件监测' : '开发环境尚未开启鹰眼巡检；定时跟进按原设置执行',
+    });
     const taskId = search.get('taskId');
     if (taskId) {
-      const task = await prisma.spaceFollowUp.findFirst({ where: { id: taskId, ...scope }, select: taskDetails });
+      const task = await prisma.spaceFollowUp.findFirst({ where: { id: taskId, ...scope }, select: { ...taskDetails, rootPrompt: true } });
       if (!task) return NextResponse.json({ error: '复查记录不存在' }, { status: 404 });
-      const report = await prisma.spaceFollowUpReport.findUnique({ where: { taskId: task.id }, select: { content: true, summary: true, createdAt: true } }) || await prisma.spaceMessage.findFirst({
+      const report = await prisma.spaceFollowUpReport.findUnique({ where: { taskId: task.id }, select: { content: true, summary: true, createdAt: true, assessment: true } }) || await prisma.spaceMessage.findFirst({
         where: { spaceId, sourceKey: `space-follow-up:${task.id}` }, select: { content: true, createdAt: true },
       });
-      return NextResponse.json({ task: serializeTask(task), report }, { headers: { 'Cache-Control': 'no-store' } });
+      return NextResponse.json({ task: serializeTask(task), report, eagle: await eagleInfo() }, { headers: { 'Cache-Control': 'no-store' } });
     }
     if (search.get('view') === 'history') {
       const status = search.get('status') || 'ALL';
@@ -55,7 +60,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ spac
       const page = Math.min(rawPage, Math.max(1, Math.ceil(total / pageSize)));
       const tasks = await prisma.spaceFollowUp.findMany({ where, orderBy: [{ runAt: 'desc' }, { id: 'desc' }],
         skip: (page - 1) * pageSize, take: pageSize, select: taskDetails });
-      return NextResponse.json({ tasks: tasks.map(serializeTask), total, page, pageSize, settings, contractMode: space.templateId === 'crypto-contract-trading' }, { headers: { 'Cache-Control': 'no-store' } });
+      return NextResponse.json({ tasks: tasks.map(serializeTask), total, page, pageSize, settings, contractMode: space.templateId === 'crypto-contract-trading', eagle: await eagleInfo() }, { headers: { 'Cache-Control': 'no-store' } });
     }
     const [active, recent, qqChannel] = await Promise.all([
       prisma.spaceFollowUp.findMany({ where: { ...scope, status: { in: ['PENDING', 'RUNNING'] } }, orderBy: { runAt: 'asc' }, take: 12, select: taskDetails }),
@@ -63,7 +68,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ spac
       getFollowUpQQAvailability(userId),
     ]);
     return NextResponse.json({ tasks: [...active, ...recent].map(serializeTask), settings, contractMode: space.templateId === 'crypto-contract-trading', enabled: space.followUpEnabled, qqEnabled: space.followUpQQEnabled, qqChannel,
-      schedulerEnabled: process.env.ENABLE_SPACE_FOLLOW_UPS !== 'false' }, { headers: { 'Cache-Control': 'no-store' } });
+      schedulerEnabled: process.env.ENABLE_SPACE_FOLLOW_UPS !== 'false', eagle: await eagleInfo() }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (error: any) {
     return NextResponse.json({ error: error.message === 'Unauthorized' ? 'Unauthorized' : '获取复查任务失败' }, { status: error.message === 'Unauthorized' ? 401 : 500 });
   }

@@ -24,5 +24,5 @@ export async function prepareFollowUpDomain(task: any) {
   const evidence = window
     ? `OI 统计依据：OKX ${window.instId} 持仓张数，${displayTime(window.from)} 至 ${displayTime(window.to)}，变化 ${snapshot.oiDelta1hPercent?.toFixed(2)}%；本轮采集 ${displayTime(snapshot.derivativesFetchedAt)}（均为北京时间）。统计时点与采集时间不同，同一窗口不作为新增确认。`
     : 'OI 统计依据：本轮未取得可靠的 1H 比较窗口，不作为最新一小时的新增确认。';
-  return { context, guidance: CRYPTO_REVIEW_GUIDANCE, evidence, isCrypto: true };
+  return { context, guidance: CRYPTO_REVIEW_GUIDANCE, evidence, isCrypto: true, snapshot };
 }

@@ -456,8 +456,10 @@ model SpaceFollowUp {
   reason         String?
   watchConditions Json?
   watchState      Json?
+  watchHealth     Json?
   watchEvent      Json?
   watchTriggeredAt DateTime?
+  rootPrompt      String?
   qqReminderId   String?   @unique
   qqReminder     AssistantReminder? @relation(fields: [qqReminderId], references: [id], onDelete: SetNull)
   sourceKey      String    @unique
@@ -486,7 +488,19 @@ model SpaceFollowUpReport {
   task      SpaceFollowUp @relation(fields: [taskId], references: [id], onDelete: Cascade)
   summary   String
   content   String
+  assessment Json?
   createdAt DateTime @default(now())
+}
+
+model EagleRuntime {
+  id                  String @id
+  lastStartedAt       DateTime?
+  lastFinishedAt      DateTime?
+  lastSuccessAt       DateTime?
+  lastErrorAt         DateTime?
+  errorCode           String?
+  consecutiveFailures Int @default(0)
+  updatedAt           DateTime @updatedAt
 }
 
 model SpaceAutomation {

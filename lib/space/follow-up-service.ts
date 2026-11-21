@@ -9,11 +9,37 @@ import { currentTimeContext } from '../agents/memory/current-time-context.mjs';
 import { RESPONSE_GROUNDING_GUIDANCE } from '../chat/conversation-grounding.mjs';
 import { prepareSpaceMessageRuntime } from './space-message-runtime';
 import { createScheduler } from '../core/scheduler.mjs';
-import { FOLLOW_UP_ACTIVE_LIMIT, FOLLOW_UP_LEASE_MS, FOLLOW_UP_MAX_ATTEMPTS, FOLLOW_UP_REVIEW_GUIDANCE, canContinueFollowUp, followUpChainEndsAt, followUpContext, followUpMaxChainDepth, followUpSummary, formatFollowUpProgress, normalizeFollowUpContinuation, supportsSpaceFollowUps } from './follow-up-policy.mjs';
+import { FOLLOW_UP_ACTIVE_LIMIT, FOLLOW_UP_LEASE_MS, FOLLOW_UP_MAX_ATTEMPTS, FOLLOW_UP_REVIEW_GUIDANCE, canContinueFollowUp, followUpChainEndsAt, followUpMaxChainDepth, followUpSummary, formatFollowUpProgress, normalizeFollowUpContinuation, supportsSpaceFollowUps } from './follow-up-policy.mjs';
 import { prepareFollowUpDomain } from './follow-up-domains';
 import { prepareFollowUpWork } from './follow-up-work';
 import { followUpNotificationToolForDomain, getFollowUpQQAvailability, queueFollowUpQQNotification } from './follow-up-notifications';
 import { normalizeFollowUpNotification } from './follow-up-notification-policy.mjs';
+import { cryptoAssessmentTool, cryptoReviewVerdictTool, normalizeCryptoAssessment, normalizeCryptoVerdict, formatCryptoAssessment, verifyCandidateConfirmation } from './crypto-follow-up-review-policy.mjs';
+import { reviewCryptoCandidate } from './crypto-follow-up-review';
+
+async function callCryptoReviewer({ task, agentId, candidate, risk, prior, context, signal }: any) {
+  if (task.claimToken && !await prisma.spaceFollowUp.findFirst({ where: { id: task.id, status: 'RUNNING', claimToken: task.claimToken }, select: { id: true } })) throw new Error('跟进已取消或租约已失效');
+  const space = await getSpaceForUser(task.spaceId, task.space.userId);
+  if (!space?.followUpEnabled || !space.members.some((m: any) => m.agentId === agentId)) throw new Error('审核成员不在当前空间，或跟进已关闭');
+  const agent = await resolveAgent(agentId, space.userId);
+  if (!agent) throw new Error('审核成员不可用');
+  const config = await resolveSpaceMemberModelConfig({ spaceId: space.id, agentId, userId: space.userId, space });
+  if (!config.client) throw new Error('审核成员尚未配置可用模型');
+  const stream = await config.client.chat.completions.create({ model: config.model, stream: true,
+    messages: [{ role: 'system', content: [currentTimeContext(), agent.systemPrompt || agent.description || `你是${agent.name}`,
+      '这是同一跟进中的真实候选审核。只审核给定候选，不修改原触发门槛或价位，不安排新任务，不执行交易。只基于本轮共享证据；资料不足明确NEEDS_DATA。',
+      agentId === 'crypto-whale-hunter' ? '核验OI、资金费率、成交量与数据口径；不能把OI方向直接认定为主力意图，缺清算数据本身不是否决项。'
+        : agentId === 'crypto-risk-warden' ? '给出最终风控审核。程序RR低于2不能通过；2%风险上限以当前净值计算。账户净值未知可以通过技术观察方案，但必须说明无法核验实际仓位，禁止声称允许实盘开仓。'
+          : '核验4H背景、1H结构和15m执行证据；允许逆势反弹，不把4H反转新增为原条件。',
+      RESPONSE_GROUNDING_GUIDANCE,
+    ].join('\n\n') }, { role: 'user', content: `${context}\n\n【同一候选与程序风控】\n${JSON.stringify({ candidate, risk, priorReviews: prior })}` }],
+    tools: [cryptoReviewVerdictTool], tool_choice: { type: 'function', function: { name: 'submit_crypto_review_verdict' } },
+  } as any, { signal: AbortSignal.any([signal, AbortSignal.timeout(45_000)]) });
+  const response = await collectChatCompletionStream(stream);
+  const calls = response.tool_calls || [];
+  if (calls.length !== 1 || calls[0].function.name !== 'submit_crypto_review_verdict') throw new Error('审核成员未提交结构化结论');
+  return { agentName: agent.name, ...normalizeCryptoVerdict(JSON.parse(calls[0].function.arguments)) };
+}
 
 export async function generateSpaceFollowUp(task: any) {
   const space = await getSpaceForUser(task.spaceId, task.space.userId);
@@ -35,7 +61,7 @@ export async function generateSpaceFollowUp(task: any) {
   const work = await prepareFollowUpWork(prisma, task);
   const domain = await prepareFollowUpDomain(task);
   const user = await prisma.user.findUnique({ where: { id: space.userId }, select: { tavilyApiKey: true, defaultWeatherLocation: true } });
-  const signal = AbortSignal.timeout(90_000);
+  const signal = AbortSignal.timeout(domain.isCrypto ? 210_000 : 90_000);
   const web = createChatWebTools({
     apiKey: user?.tavilyApiKey, defaultWeatherLocation: user?.defaultWeatherLocation,
     query: task.prompt, history, signal, capabilityEntry: 'space', phase: 'chat',
@@ -48,6 +74,7 @@ export async function generateSpaceFollowUp(task: any) {
   const mayNotify = space.followUpQQEnabled === true;
   let qqNotification: ReturnType<typeof normalizeFollowUpNotification> | undefined;
   let nextFollowUp: ReturnType<typeof normalizeFollowUpContinuation> | undefined;
+  let assessment: any;
   const continuationTool = {
     type: 'function', function: {
       name: 'schedule_next_space_follow_up',
@@ -68,6 +95,7 @@ export async function generateSpaceFollowUp(task: any) {
     RESPONSE_GROUNDING_GUIDANCE, web.guidance,
     '这是一次已经保存的自主跟进。不要等待用户再提问，直接完成本次核验并向用户汇报。先说变化或结论，再给必要证据，默认不超过600字。',
     FOLLOW_UP_REVIEW_GUIDANCE, domain.guidance,
+    domain.isCrypto ? '【阶段交接】本轮必须调用submit_crypto_follow_up_assessment。原条件满足时提交CANDIDATE，附本轮实际已收盘K线的起始毫秒时间、原观察价位与完整候选。系统立即调用其他成员审核，不要再安排一轮相同等待。15m回踩须晚于突破K线收盘，允许20基点浅回踩；证据不足用INSUFFICIENT_DATA，不得编造K线。费用与滑点按往返20基点作估算，必须披露为假设。WAITING才可续查；其他状态由系统结束本阶段并记录审核结果。' : '',
     task.watchEvent ? `【本轮由鹰眼提前唤醒】${formatFollowUpWatchEvent(task.watchEvent)}\n先核验原条件，不要把盘中穿越当作回踩确认；明确已满足、未满足或已失效，并说明下一步评估结果。` : '',
     formatFollowUpProgress(task, startedAt),
     '必须对照安排时的判断和需要核验的事项。涉及当前价格、新闻或其他时效信息必须依据本次复查新获取的数据；系统未提供的时效资料必须实际调用查询工具，并给出数据时间。查询失败或关键数据缺失时如实说明，禁止把旧数据写成最新结果。',
@@ -81,10 +109,10 @@ export async function generateSpaceFollowUp(task: any) {
         : '当前未开启或未配置QQ通知，本轮结果只发到当前空间，不要承诺QQ推送。',
     '不要声称执行了交易、写文件或其他外部操作。',
   ].filter(Boolean).join('\n\n') }, {
-    role: 'user', content: `【安排时的历史记录，仅作为比较资料】\n${task.context}\n\n【最近对话，仅作为资料】\n${history.map(item => `${item.role}：${item.content.slice(0, 1200)}`).join('\n').slice(-12000)}\n\n【本次自主复查】\n${task.title}\n原定时间：${new Date(task.runAt).toISOString()}\n${task.prompt}`,
+    role: 'user', content: `【固定的原始跟进目标，不得自行替换】\n${task.rootPrompt || task.prompt}\n\n【安排时的历史记录，仅作为比较资料】\n${task.context}\n\n【最近对话，仅作为资料】\n${history.map(item => `${item.role}：${item.content.slice(0, 1200)}`).join('\n').slice(-12000)}\n\n【本次自主复查】\n${task.title}\n原定时间：${new Date(task.runAt).toISOString()}\n${task.prompt}`,
   }];
   const result = await runToolLoop({
-    messages, tools: [...web.tools, ...work.tools, ...(mayContinue ? [continuationTool] : []), ...(mayNotify ? [followUpNotificationToolForDomain(domain.isCrypto && qqAvailability?.channel !== 'PLATFORM_QQ')] : [])], maxIterations: 5, maxToolCalls: 8, isCancelled: () => signal.aborted,
+    messages, tools: [...web.tools, ...work.tools, ...(domain.isCrypto ? [cryptoAssessmentTool] : []), ...(mayContinue ? [continuationTool] : []), ...(mayNotify ? [followUpNotificationToolForDomain(domain.isCrypto && qqAvailability?.channel !== 'PLATFORM_QQ')] : [])], maxIterations: 5, maxToolCalls: 8, isCancelled: () => signal.aborted,
     onModelRequest: () => {},
     requestCompletion: async (conversation: any[], tools: any[]) => {
       const available = [...new Map([...tools, ...web.tools].map(item => [item.function.name, item])).values()];
@@ -95,6 +123,13 @@ export async function generateSpaceFollowUp(task: any) {
       return collectChatCompletionStream(stream);
     },
     executeTool: (name: string, args: any) => {
+      if (name === 'submit_crypto_follow_up_assessment' && domain.isCrypto) {
+        if (assessment) return { ok: false, error: '本轮已提交阶段结论，不能改写' };
+        try {
+          assessment = normalizeCryptoAssessment(args);
+          return { ok: true, status: assessment.status, message: assessment.status === 'CANDIDATE' ? '候选已暂存，系统随后执行真实成员审核；不要提前宣称审核通过或安排重复等待。' : '阶段结论已暂存，随本轮结果保存。' };
+        } catch (error: any) { return { ok: false, error: error.message }; }
+      }
       if (name === 'request_sentinel_qq_notification' || name === 'request_follow_up_qq_notification') {
         if (!mayNotify) return { ok: false, error: '本空间未开启QQ通知或现有通知通道不可用' };
         if (qqNotification) return { ok: false, error: '本轮已提出一条重要变化通知' };
@@ -104,6 +139,7 @@ export async function generateSpaceFollowUp(task: any) {
         } catch (error: any) { return { ok: false, error: error.message }; }
       }
       if (name === 'schedule_next_space_follow_up') {
+        if (assessment && assessment.status !== 'WAITING') return { ok: false, error: '本轮已进入候选或结束状态，不能继续安排相同等待' };
         if (!mayContinue) return { ok: false, error: '已达到自动续查上限' };
         if (nextFollowUp) return { ok: false, error: '本轮已提出一个后续复查' };
         try {
@@ -118,18 +154,52 @@ export async function generateSpaceFollowUp(task: any) {
     },
   });
   if (!result.content?.trim()) throw new Error('本次复查未返回有效内容');
+  let reviewSummary = '';
+  const attachments: any[] = web.attachments();
+  if (domain.isCrypto) {
+    assessment ||= { status: 'INSUFFICIENT_DATA', reason: '本轮未提交结构化条件核验，不能把正文中的候选描述认定为已确认，也不自动抬高门槛续查。' };
+    assessment = await reviewCryptoCandidate({ assessment, snapshot: domain.snapshot, analystId: task.agentId, referenceConditions: task.watchConditions || [],
+      review: (agentId, candidate, risk, prior) => callCryptoReviewer({ task, agentId, candidate, risk, prior, signal,
+        context: `【固定原目标】${task.rootPrompt || task.prompt}\n【本轮证据】${domain.context}\n【原条件与分析】${task.prompt}\n${result.content}` }),
+    });
+    if (assessment.status === 'APPROVED_FOR_WATCH') {
+      try {
+        const refreshed = await prepareFollowUpDomain(task);
+        const proof = verifyCandidateConfirmation(assessment.candidate, refreshed.snapshot);
+        if (!proof.ok) assessment = { ...assessment, status: 'EXPIRED', reason: `审核后重新核验未通过：${proof.reason}` };
+        else assessment = { ...assessment, verifiedAt: refreshed.snapshot.realtimeFetchedAt, referencePrice: refreshed.snapshot.price };
+      } catch (error: any) { assessment = { ...assessment, status: 'REVIEW_BLOCKED', reason: `审核后行情无法重新核验：${error.message}` }; }
+    }
+    if (assessment.status !== 'WAITING') nextFollowUp = undefined;
+    reviewSummary = formatCryptoAssessment(assessment);
+    if (assessment.status === 'APPROVED_FOR_WATCH') {
+      const c = assessment.candidate;
+      attachments.push({ type: 'crypto_plan_decision_v1', version: 1, mode: 'CREATE', action: 'WATCH',
+        summary: '候选经成员审核，仅供用户确认加入观察，不执行交易', analyzedAt: new Date().toISOString(), referencePrice: assessment.referencePrice,
+        proposedPlan: { id: `review-${task.id}`, symbol: c.symbol, name: `${c.symbol} 已审核候选`, direction: c.direction,
+          status: 'PENDING', entryMin: c.entryMin, entryMax: c.entryMax, stopLoss: c.stopLoss,
+          takeProfit1: c.takeProfit1, takeProfit2: c.takeProfit2, invalidationPrice: c.invalidationPrice,
+          executionCondition: { period: '15m', kind: 'RETEST', level: c.confirmation.level, afterMs: c.confirmation.retestStartMs - 900000 },
+          invalidationMode: 'TOUCH',
+          rrRatio: `1:${assessment.risk.minNetRR.toFixed(2)}`, note: reviewSummary } });
+    }
+    if (mayNotify && ['APPROVED_FOR_WATCH', 'REJECTED', 'REVIEW_BLOCKED', 'CONFIRMATION_FAILED', 'INVALIDATED', 'EXPIRED'].includes(assessment.status)) {
+      qqNotification = normalizeFollowUpNotification({ category: 'USER_DECISION_REQUIRED', eventKey: `ASSESSMENT:${task.id}:${assessment.status}`,
+        title: `${assessment.candidate?.symbol || '合约'} 候选阶段结果`, summary: reviewSummary.slice(0, 1000), reason: '原条件核验已产生明确阶段结果，请查看审核依据，不继续重复等待。' });
+    }
+  }
   if (task.watchEvent && mayNotify && !qqNotification) {
     qqNotification = normalizeFollowUpNotification({ category: 'KEY_LEVEL_CHANGE',
       eventKey: `WATCH:${task.sourceMessageId || task.id}:${task.watchEvent.symbol}:${task.watchEvent.period}:${task.watchEvent.direction}:${task.watchEvent.level}`,
       title: `${task.watchEvent.symbol} 鹰眼观察条件变化`, summary: formatFollowUpWatchEvent(task.watchEvent),
       reason: '已保存的关键观察条件发生变化，提前复查；不构成交易执行指令。' });
   }
-  return { content: `【${domain.isCrypto ? '自主复查' : '自主跟进'} · ${task.title}】\n\n${result.content.trim()}${task.watchEvent ? `\n\n${formatFollowUpWatchEvent(task.watchEvent)}` : ''}${web.footer()}${domain.evidence ? `\n\n${domain.evidence}` : ''}`, marketEvidenceContext: domain.evidence, attachments: web.attachments(), nextFollowUp, qqNotification, analystName: agent.name };
+  return { content: `【${domain.isCrypto ? '自主复查' : '自主跟进'} · ${task.title}】\n\n${reviewSummary ? `${reviewSummary}\n\n【负责成员分析记录，最终结论以阶段结果为准】\n` : ''}${result.content.trim()}${task.watchEvent ? `\n\n${formatFollowUpWatchEvent(task.watchEvent)}` : ''}${web.footer()}${domain.evidence ? `\n\n${domain.evidence}` : ''}`, marketEvidenceContext: domain.evidence, assessment, attachments, nextFollowUp, qqNotification, analystName: agent.name };
 }
 
 // 任务与运行租约持久化；多进程竞争、重启重试和用户取消都以数据库条件更新为准。
 export async function runSpaceFollowUpTick({ db = prisma, now = new Date(), generate = generateSpaceFollowUp }: {
-  db?: any; now?: Date; generate?: (task: any) => Promise<{ content: string; marketEvidenceContext?: string; attachments?: any[]; nextFollowUp?: any; qqNotification?: any; analystName?: string }>;
+  db?: any; now?: Date; generate?: (task: any) => Promise<{ content: string; marketEvidenceContext?: string; assessment?: any; attachments?: any[]; nextFollowUp?: any; qqNotification?: any; analystName?: string }>;
 } = {}) {
   const eligible = {
     nextAttemptAt: { lte: now },
@@ -156,12 +226,14 @@ export async function runSpaceFollowUpTick({ db = prisma, now = new Date(), gene
         return 'TARGET_REMOVED';
       }
       if (task.attempts >= FOLLOW_UP_MAX_ATTEMPTS) throw new Error('重启后已达到最大重试次数');
-      const result = await generate({ ...task, startedAt: now });
+      const result = await generate({ ...task, startedAt: now, claimToken });
+      if (result.assessment && result.assessment.status !== 'WAITING') result.nextFollowUp = undefined;
       const finishedAt = new Date(Math.max(Date.now(), now.getTime()));
       return await db.$transaction(async (tx: any) => {
         const currentSpace = await tx.space.findFirst({ where: { id: task.spaceId, followUpEnabled: true, runtimeType: { not: 'PI_CODING' } }, include: { members: true } });
         const targetExists = !task.workId || await tx.spaceWork.findFirst({ where: { id: task.workId, spaceId: task.spaceId }, select: { id: true } });
-        const memberExists = task.agentId === SPACE_COORDINATOR.id || currentSpace?.members.some((member: any) => member.agentId === task.agentId);
+        const memberExists = (task.agentId === SPACE_COORDINATOR.id || currentSpace?.members.some((member: any) => member.agentId === task.agentId))
+          && (result.assessment?.reviews || []).every((review: any) => currentSpace?.members.some((member: any) => member.agentId === review.agentId));
         if (!currentSpace || !targetExists || !memberExists) {
           await tx.spaceFollowUp.updateMany({ where: ownsClaim, data: { status: 'CANCELLED', error: '跟进已关闭、成员已移除或关联成果已删除', claimToken: null, leaseUntil: null } });
           return 'CANCELLED';
@@ -180,9 +252,10 @@ export async function runSpaceFollowUpTick({ db = prisma, now = new Date(), gene
             if (activeCount >= FOLLOW_UP_ACTIVE_LIMIT) throw new Error('当前空间待办已满，未继续安排');
             const child = await tx.spaceFollowUp.upsert({ where: { parentId: task.id }, update: {}, create: {
               ...next, spaceId: task.spaceId, agentId: task.agentId, networkAllowed: task.networkAllowed,
+              rootPrompt: task.rootPrompt || task.prompt,
               domain: task.domain, workId: task.workId, workTitle: task.workTitle, sourceMessageId: task.sourceMessageId,
               sourceKey: `space-follow-up-next:${task.id}`, nextAttemptAt: next.runAt,
-              context: [followUpContext([{ role: 'user', content: task.context }, { role: 'assistant', speakerAgentId: task.agentId, content: result.content }]), result.marketEvidenceContext].filter(Boolean).join('\n\n'),
+              context: [`【上轮观察条件】\n${task.prompt}\n\n【上轮结果】\n${result.content.slice(0, 3500)}`, result.marketEvidenceContext].filter(Boolean).join('\n\n'),
             } });
             const displayTime = new Date(child.runAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
             continuationMessage = `\n\n下次${label}：${displayTime}（北京时间）。${child.reason}\n已保存第 ${child.chainDepth}/${followUpMaxChainDepth(child)} 次自动续查；该次执行后最多还可续查 ${Math.max(0, followUpMaxChainDepth(child) - child.chainDepth)} 次，仍受本轮截止时间限制。`;
@@ -205,7 +278,15 @@ export async function runSpaceFollowUpTick({ db = prisma, now = new Date(), gene
         }
         const content = result.content + progressMessage + continuationMessage + notificationMessage;
         const summary = followUpSummary(result.content);
-        await tx.spaceFollowUpReport.upsert({ where: { taskId: task.id }, update: {}, create: { taskId: task.id, content, summary, createdAt: finishedAt } });
+        await tx.spaceFollowUpReport.upsert({ where: { taskId: task.id }, update: {}, create: { taskId: task.id, content, summary, createdAt: finishedAt,
+          ...(result.assessment ? { assessment: result.assessment } : {}) } });
+        for (const review of result.assessment?.reviews || []) {
+          await tx.spaceMessage.upsert({ where: { sourceKey: `space-follow-up-review:${task.id}:${review.agentId}` }, update: {}, create: {
+            spaceId: task.spaceId, role: 'assistant', speakerAgentId: review.agentId,
+            content: `【候选审核 · ${task.title}】\n\n${review.agentName || review.agentId}：${({ PASS: '通过技术观察方案', REJECT: '否决候选', NEEDS_DATA: '资料不足，未通过' } as any)[review.verdict]}。\n\n${review.reason}\n\n不执行交易；最终状态以本轮阶段报告为准。`,
+            sourceKey: `space-follow-up-review:${task.id}:${review.agentId}`,
+          } });
+        }
         await tx.spaceMessage.upsert({ where: { sourceKey: `space-follow-up:${task.id}` }, update: {}, create: {
           spaceId: task.spaceId, role: 'assistant', speakerAgentId: task.agentId,
           content: task.workId ? `【自主跟进 · ${task.title}】\n\n${summary}\n\n完整报告已保存至「${task.workTitle || '关联成果'}」的跟进记录。${progressMessage}${continuationMessage}${notificationMessage}` : content,
