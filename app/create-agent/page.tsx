@@ -49,6 +49,14 @@ const PURPOSE_PRESETS = [
   { category: '心理', tone: '温柔', label: '情绪陪伴', prompt: '温柔倾听用户的困扰，帮助用户梳理情绪和下一步选择。' },
 ];
 
+function defaultAgentPrompt(category: string, tone: string) {
+  return `你是一个${category}类 AI Agent。你的语气风格是${tone}。你需要根据用户的问题给出清晰、具体、可执行的帮助。`;
+}
+
+function presetAgentPrompt(preset: (typeof PURPOSE_PRESETS)[number]) {
+  return `你是一个${preset.label}。${preset.prompt}回答要贴近普通用户，避免空泛，优先给出可以直接使用的结果。`;
+}
+
 interface InterviewQuestion {
   id: string;
   question: string;
@@ -266,7 +274,7 @@ ${dims.boundaries.trim() || '- 严禁越权承诺，严禁未经验证盲目脑�
 
   const finalPrompt = useMemo(() => {
     if (systemPrompt.trim()) return systemPrompt;
-    return `你是一个${category}类 AI Agent。你的语气风格是${tone}。你需要根据用户的问题给出清晰、具体、可执行的帮助。`;
+    return defaultAgentPrompt(category, tone);
   }, [category, systemPrompt, tone]);
 
   const {
@@ -296,8 +304,21 @@ ${dims.boundaries.trim() || '- 严禁越权承诺，严禁未经验证盲目脑�
     setTone(preset.tone);
     if (!description.trim()) setDescription(preset.prompt);
     if (!systemPrompt.trim()) {
-      setSystemPrompt(`你是一个${preset.label}。${preset.prompt}回答要贴近普通用户，避免空泛，优先给出可以直接使用的结果。`);
+      setSystemPrompt(presetAgentPrompt(preset));
     }
+  };
+
+  const changeBasicTone = (nextTone: string) => {
+    setTone(nextTone);
+    setSystemPrompt((current) => {
+      const prompt = current.trim();
+      if (prompt === defaultAgentPrompt(category, tone)) return defaultAgentPrompt(category, nextTone);
+      const preset = PURPOSE_PRESETS.find((item) => {
+        const template = presetAgentPrompt(item);
+        return prompt === template || prompt === `${template}\n语气风格：${tone}。`;
+      });
+      return preset ? `${presetAgentPrompt(preset)}\n语气风格：${nextTone}。` : current;
+    });
   };
 
   // 1. 生成 3 道对齐面试题
@@ -1050,7 +1071,7 @@ ${dims.boundaries.trim() || '- 严禁越权承诺，严禁未经验证盲目脑�
                       </div>
                       <div>
                         <h2 className="text-xl font-black text-slate-950">用途和性格</h2>
-                        <p className="text-sm text-slate-500">选择它的领域、语气和默认行为。</p>
+                        <p className="text-sm text-slate-500">预设可以填入初始提示词。有自定义提示词时，对话风格以提示词为准。</p>
                       </div>
                     </div>
 
@@ -1100,7 +1121,7 @@ ${dims.boundaries.trim() || '- 严禁越权承诺，严禁未经验证盲目脑�
                             <button
                               key={item}
                               type="button"
-                              onClick={() => setTone(item)}
+                              onClick={() => changeBasicTone(item)}
                               className={cn(
                                 'rounded-full border px-4 py-2 text-sm font-bold transition',
                                 tone === item

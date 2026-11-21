@@ -24,7 +24,7 @@ import { useTTS } from '@/hooks/useTTS';
 import { getBuiltInAgents } from '@/lib/agents/data/agents-data';
 import { getCompanionCharacterId } from '@/lib/companion/agents';
 import { companionReplyInstruction, createCompanionReplyParser } from '@/lib/companion/reply-protocol.mjs';
-import { CONVERSATION_GROUNDING_GUIDANCE } from '@/lib/chat/conversation-grounding.mjs';
+import { buildAgentIdentitySystem, buildAgentRuntimeSystem } from '@/lib/chat/agent-prompt.mjs';
 import { buildRecentStateContinuityGuidance } from '@/lib/chat/conversation-continuity.mjs';
 import { currentTimeContext } from '@/lib/agents/memory/current-time-context.mjs';
 import { dispatchContextCandidates, planContextSources } from '@/lib/memory/context-dispatcher.mjs';
@@ -977,7 +977,17 @@ export default function ChatRoom({ agentId: routeAgentId, conversationId: routeC
           ? `当前换装的皮肤对话规则（只影响表达氛围，不改变核心人格）：${companionSkinPrompt}\n请在自然相关的回复中适度融入这些元素，偶尔使用对应意象或小口头禅即可；不要每句话都重复皮肤关键词，也不要把服装设定说成角色身份发生了改变。`
           : '';
         const continuityGuidance = buildRecentStateContinuityGuidance({ message: content, history: historySource });
-        const systemPrompt = [currentTimeContext(), displayAgent?.systemPrompt, continuityGuidance, CONVERSATION_GROUNDING_GUIDANCE, isCompanionSend ? companionReplyInstruction : '', companionSkinInstruction].filter(Boolean).join('\n\n');
+        const identitySystem = buildAgentIdentitySystem({
+          name: displayAgent?.name,
+          systemPrompt: displayAgent?.systemPrompt,
+          description: displayAgent?.description,
+          tone: displayAgent?.tone,
+        });
+        const runtimeSystem = buildAgentRuntimeSystem({
+          timeContext: currentTimeContext(undefined, { compact: true }),
+          continuityGuidance,
+        });
+        const systemPrompt = [identitySystem, runtimeSystem, isCompanionSend ? companionReplyInstruction : '', companionSkinInstruction].filter(Boolean).join('\n\n');
         const preparedContext = await conversationsApi.prepareContext(localConversationId, {
           requiredSystem: systemPrompt,
           optional: dispatchContextCandidates(content, [{ name: '相关记忆与历史原文', content: memoryContext }, { name: '角色知识库', content: knowledgeContext }, { name: '世界事件', content: worldContext }]),

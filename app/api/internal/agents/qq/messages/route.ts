@@ -21,7 +21,6 @@ import { isValidInternalQQSecret } from '@/lib/qq-assistant/credentials.mjs';
 import { qqImageAttachments } from '@/lib/qq-assistant/policy.mjs';
 import { archiveAgentChat } from '@/app/api/_lib/agent-personal-memory';
 import { loadAgentModelSetting, resolveUserModelConfig } from '@/app/api/_lib/agent-model';
-import { CONVERSATION_GROUNDING_GUIDANCE } from '@/lib/chat/conversation-grounding.mjs';
 import { stripHistoryRetrievalNotices } from '@/lib/personal-assistant/retrieval-notice.mjs';
 import { buildRecentStateContinuityGuidance } from '@/lib/chat/conversation-continuity.mjs';
 import { buildAgentIdentitySystem, buildAgentRuntimeSystem } from '@/lib/chat/agent-prompt.mjs';
@@ -189,9 +188,8 @@ export async function POST(request: Request) {
     });
     const runtimeSystem = buildAgentRuntimeSystem({
       channel: 'QQ',
-      timeContext: currentTimeContext(),
+      timeContext: currentTimeContext(undefined, { compact: true }),
       continuityGuidance: buildRecentStateContinuityGuidance({ message, history: normalizedHistory, states: recentStates }),
-      groundingGuidance: CONVERSATION_GROUNDING_GUIDANCE,
     });
 
     const client = createModelClient(modelConfig.apiBaseUrl, modelConfig.apiKey);
@@ -203,6 +201,7 @@ export async function POST(request: Request) {
       history: sourceHistory,
       query: message,
       capabilityEntry: 'agent',
+      compact: true,
       signal: request.signal,
       onStatus: (label: string) => reportStatus?.(label),
     });

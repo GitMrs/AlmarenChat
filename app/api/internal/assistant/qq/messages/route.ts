@@ -35,6 +35,13 @@ function eventMessageId(kind: 'user' | 'assistant', appId: string, eventId: stri
 }
 
 export async function POST(request: Request) {
+  const startedAt = Date.now();
+  let stage = 'prepare';
+  const logFailure = (error: any) => console.error('[qq-assistant-request]', {
+    stage, durationMs: Date.now() - startedAt, requestAborted: request.signal.aborted,
+    errorName: String(error?.name || 'Error').slice(0, 64),
+    errorCode: String(error?.code || error?.cause?.code || '').slice(0, 64),
+  });
   try {
     if (!isValidInternalQQSecret(request.headers.get('x-qq-assistant-secret'))) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -132,6 +139,7 @@ export async function POST(request: Request) {
       usesCustomModel ? userSettings.apiKey : undefined
     );
     const model = resolveModelName(usesCustomModel ? userSettings.modelName : undefined);
+    stage = 'experience-archive';
     await archiveOldMainChatMessages({
       userId,
       conversationId: binding.conversationId,
@@ -145,6 +153,7 @@ export async function POST(request: Request) {
       },
     });
 
+    stage = 'load-context';
     const contextLimit = ASSISTANT_RECENT_MESSAGE_LIMIT;
     const contextSources = {
       spaces: profile.includeSpaceContext,
@@ -211,6 +220,7 @@ export async function POST(request: Request) {
       { role: 'user', content: userContent },
     ];
 
+    stage = 'prepare-context';
     const preparedContext = await prepareConversationContext({
       userId, conversationId: binding.conversationId, maxMessages: contextLimit, excludeMessageIds: [userMessageId],
       requiredSystem: systemPrompt, runtimeSystem, optional: optionalContext,
@@ -249,11 +259,13 @@ export async function POST(request: Request) {
       loadableCapabilities: web.loadableCapabilities,
       getAvailableToolNames: () => [...web.tools, ...memoryTools.tools].map(tool => tool.function.name) });
     const finalizeResponse = async (modelContent: string) => {
+      stage = 'finalize';
       const normalizedModelContent = stripRetrievalNotices(modelContent).trim();
       if (!normalizedModelContent) throw new Error('模型没有返回可展示的正文');
 
       let reminderCandidates: Array<{ content: string; dueTime: Date | null }> = [];
       if (classifyReminderRequest(message).explicit) {
+        stage = 'extract-reminders';
         try {
           const reminderCompletion = await client.chat.completions.create({
             model,
@@ -271,6 +283,7 @@ export async function POST(request: Request) {
         : '';
       const content = `${normalizedModelContent}${reminderSummary}`;
 
+      stage = 'persist-reply';
       try {
         await prisma.$transaction([
           ...reminderCandidates.map((item, index) => prisma.assistantReminder.upsert({
@@ -314,6 +327,7 @@ export async function POST(request: Request) {
     };
 
     const connectorBroker = await createScopedConnectorBroker(userId, 'assistant');
+    stage = 'model-reply';
     if (body.stream === true) {
       const encoder = new TextEncoder();
       const responseStream = new ReadableStream({
@@ -329,6 +343,7 @@ export async function POST(request: Request) {
             const finalized = await finalizeResponse(modelContent);
             emit({ type: 'done', content: finalized.streamContent, conversationId: binding.conversationId });
           } catch (error: any) {
+            logFailure(error);
             emit({ type: 'error', error: error.message || 'QQ 小伴回复失败' });
           } finally {
             controller.close();
@@ -350,6 +365,7 @@ export async function POST(request: Request) {
     const finalized = await finalizeResponse(modelContent);
     return NextResponse.json({ content: finalized.content, conversationId: binding.conversationId });
   } catch (error: any) {
+    logFailure(error);
     return NextResponse.json({ error: error.message || 'QQ 小伴回复失败' }, { status: 500 });
   }
 }

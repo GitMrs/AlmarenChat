@@ -11,7 +11,7 @@ import { getReadOnlyExternalCapabilityIds } from '../capabilities/registry.mjs';
 export { AUTO_WEB_GUIDANCE, AUTO_WEB_SCHEMAS, runAutoWebChat } from './auto-web-core.mjs';
 export { DATA_TOOL_GUIDANCE, TOOL_DECISION_POLICY, TOOL_SAFETY_POLICY, buildToolGuidance } from '../chat/tool-policy.mjs';
 
-export function createChatWebTools(options: { apiKey?: string | null; defaultWeatherLocation?: unknown; signal?: AbortSignal; onStatus?: (label: string) => void; history?: any[]; cryptoContext?: (data: any) => string; query?: string; capabilityEntry?: 'assistant' | 'agent' | 'space' | 'task'; phase?: 'chat' | 'explore' | 'artifact' | 'task'; enabledCapabilities?: string[]; permittedCapabilities?: string[]; disabledCapabilities?: string[] } = {}) {
+export function createChatWebTools(options: { apiKey?: string | null; defaultWeatherLocation?: unknown; signal?: AbortSignal; onStatus?: (label: string) => void; history?: any[]; cryptoContext?: (data: any) => string; query?: string; capabilityEntry?: 'assistant' | 'agent' | 'space' | 'task'; phase?: 'chat' | 'explore' | 'artifact' | 'task'; enabledCapabilities?: string[]; permittedCapabilities?: string[]; disabledCapabilities?: string[]; compact?: boolean } = {}) {
   const defaultWeatherLocation = normalizeWeatherLocation(options.defaultWeatherLocation);
   const pendingWeather = pendingWeatherQuery(options.history || []);
   const entry = options.capabilityEntry || 'assistant';
@@ -41,7 +41,9 @@ export function createChatWebTools(options: { apiKey?: string | null; defaultWea
     loadableCapabilities: loadable.capabilities,
     pendingWeather,
   });
-  if (defaultWeatherLocation) {
+  if (defaultWeatherLocation && options.compact) {
+    web.guidance += '\n天气地点未指定时用账号默认地点，location 留空。明确指定地点或确认候选时按用户选择。';
+  } else if (defaultWeatherLocation) {
     web.guidance += '\n账号已确认的默认天气地点：' + JSON.stringify(defaultWeatherLocation) + '。用户未指定地点时直接调用 weather_query，location 留空，无需再问地点或查询城市编码；明确指定其他地点时以本轮指定地点为准。上轮其他地点的候选确认仍须遵循用户选择，不得替换成默认地点。';
   }
   return web;

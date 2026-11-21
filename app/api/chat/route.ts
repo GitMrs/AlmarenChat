@@ -23,7 +23,6 @@ import { currentTimeContext } from '@/lib/agents/memory/current-time-context.mjs
 import { archiveAgentChat } from '@/app/api/_lib/agent-personal-memory';
 import { loadAgentWorldContext } from '@/lib/world/context';
 import { loadAgentModelSetting, resolveUserModelConfig } from '@/app/api/_lib/agent-model';
-import { CONVERSATION_GROUNDING_GUIDANCE } from '@/lib/chat/conversation-grounding.mjs';
 import { buildRecentStateContinuityGuidance } from '@/lib/chat/conversation-continuity.mjs';
 import { buildAgentIdentitySystem, buildAgentRuntimeSystem } from '@/lib/chat/agent-prompt.mjs';
 import { applyRecentStateMessage, syncRecentStates } from '@/lib/chat/recent-state-store';
@@ -215,9 +214,8 @@ export async function POST(request: Request) {
       tone: conversationSettings?.agentTone || builtInAgent?.tone || agentSnapshot?.tone || '',
     });
     const runtimeSystem = buildAgentRuntimeSystem({
-      timeContext: currentTimeContext(),
+      timeContext: currentTimeContext(undefined, { compact: true }),
       continuityGuidance,
-      groundingGuidance: CONVERSATION_GROUNDING_GUIDANCE,
     });
     const optionalContext = [{ name: '相关记忆与历史原文', content: employeeMemory }, { name: '世界事件', content: worldContext }];
     if (knowledgeEnabled && agentId && contextPlan.knowledge) {
@@ -293,7 +291,7 @@ export async function POST(request: Request) {
     const readable = new ReadableStream({
       async start(controller) {
         const emit = (event: Record<string, unknown>) => controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
-        const web = createChatWebTools({ apiKey: userSettings.tavilyApiKey, defaultWeatherLocation: userSettings.defaultWeatherLocation, history: sourceHistory, query: textMessage, capabilityEntry: usesAgentMemory ? 'agent' : 'assistant', signal: abortController.signal, onStatus: (label: string) => emit({ type: 'status', label }) });
+        const web = createChatWebTools({ apiKey: userSettings.tavilyApiKey, defaultWeatherLocation: userSettings.defaultWeatherLocation, history: sourceHistory, query: textMessage, capabilityEntry: usesAgentMemory ? 'agent' : 'assistant', compact: true, signal: abortController.signal, onStatus: (label: string) => emit({ type: 'status', label }) });
         const growth = usesAgentMemory && memoryAgentId
           ? createAgentGrowthTools({ userId, agentId: memoryAgentId })
           : null;
