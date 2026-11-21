@@ -7,10 +7,12 @@ import { FOLLOW_UP_DEFAULT_MAX_CONTINUATIONS, FOLLOW_UP_MAX_CONTINUATIONS_SETTIN
 
 const reminderDetails = { select: { status: true, qqDeliveredAt: true, qqDeliveryError: true } };
 const taskDetails = { id: true, agentId: true, title: true, runAt: true, status: true, error: true,
-  updatedAt: true, origin: true, reason: true, chainDepth: true, maxChainDepth: true, domain: true, workId: true, workTitle: true, qqReminder: reminderDetails } as const;
-function serializeTask({ id, agentId, title, runAt, status, error, updatedAt, origin, reason, chainDepth, maxChainDepth, domain, workId, workTitle, qqReminder }: any) {
+  updatedAt: true, origin: true, reason: true, chainDepth: true, maxChainDepth: true, domain: true, workId: true, workTitle: true,
+  watchConditions: true, watchTriggeredAt: true, watchEvent: true, qqReminder: reminderDetails } as const;
+function serializeTask({ id, agentId, title, runAt, status, error, updatedAt, origin, reason, chainDepth, maxChainDepth, domain, workId, workTitle, watchConditions, watchTriggeredAt, watchEvent, qqReminder }: any) {
   return {
     id, agentId, title, runAt, status, error, updatedAt, origin, reason, chainDepth, maxChainDepth, domain, workId, workTitle,
+    watchConditions, watchTriggeredAt, watchEvent,
     qqNotification: qqReminder ? { status: qqReminder.qqDeliveredAt ? 'SENT' : qqReminder.status === 'FAILED' ? 'FAILED' : qqReminder.status === 'CANCELLED' ? 'CANCELLED' : qqReminder.qqDeliveryError ? 'RETRYING' : 'PENDING', error: qqReminder.qqDeliveryError } : null,
   };
 }

@@ -454,6 +454,10 @@ model SpaceFollowUp {
   maxChainDepth  Int       @default(3)
   chainEndsAt    DateTime?
   reason         String?
+  watchConditions Json?
+  watchState      Json?
+  watchEvent      Json?
+  watchTriggeredAt DateTime?
   qqReminderId   String?   @unique
   qqReminder     AssistantReminder? @relation(fields: [qqReminderId], references: [id], onDelete: SetNull)
   sourceKey      String    @unique
@@ -469,6 +473,8 @@ model SpaceFollowUp {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
   report         SpaceFollowUpReport?
+
+  @@index([domain, status, watchTriggeredAt])
 
   @@index([status, nextAttemptAt])
   @@index([spaceId, status, runAt])

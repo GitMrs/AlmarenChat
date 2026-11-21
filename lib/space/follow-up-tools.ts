@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { followUpWatchSchema } from './follow-up-watch.mjs';
 import prisma from '@/app/api/_lib/db';
 import { getSpaceForUser, SPACE_COORDINATOR } from '@/app/api/_lib/spaces';
 import { FOLLOW_UP_ACTIVE_LIMIT, FOLLOW_UP_CHAIN_WINDOW_MS, FOLLOW_UP_DEFAULT_MAX_CONTINUATIONS, followUpContext, isExplicitFollowUpRequest, normalizeFollowUp, supportsSpaceFollowUps } from './follow-up-policy.mjs';
@@ -24,6 +25,7 @@ export function createSpaceFollowUpTools({ userId, spaceId, agentId, sourceMessa
       title: { type: 'string', maxLength: 100, description: '如 BTC 21点收线复查' },
       prompt: { type: 'string', maxLength: 4000, description: '完整复查目标，包含本次判断、比较基准、关键位置和需要验证的变化。只查询和汇报，不执行外部写操作。' },
       runAt: { type: 'string', description: '未来7天内的ISO日期时间，必须包含时区，如2026-11-14T21:00:00+08:00。' },
+      watchConditions: followUpWatchSchema,
       workId: { type: 'string', description: '可选，关联用户指定的本空间成果ID；当前已选择成果时默认关联它，不可擅自改为其他成果。' },
     }, ['title', 'prompt', 'runAt']),
     tool('list_space_follow_ups', '查看当前空间已安排、执行中及近期完成的自主跟进，包含任务ID、时间和状态。', {}),
@@ -50,7 +52,7 @@ export function createSpaceFollowUpTools({ userId, spaceId, agentId, sourceMessa
         if (name === 'list_space_follow_ups') {
           const tasks = await prisma.spaceFollowUp.findMany({
             where: { spaceId, ...(workId ? { workId } : {}) }, orderBy: { createdAt: 'desc' }, take: 20,
-            select: { id: true, title: true, agentId: true, runAt: true, status: true, error: true, chainDepth: true, maxChainDepth: true, workId: true, workTitle: true },
+            select: { id: true, title: true, agentId: true, runAt: true, status: true, error: true, chainDepth: true, maxChainDepth: true, workId: true, workTitle: true, watchConditions: true, watchTriggeredAt: true },
           });
           return { ok: true, tasks, maxContinuations: space.followUpMaxContinuations, schedulingAllowed: maySchedule,
             nextStep: maySchedule
@@ -69,6 +71,7 @@ export function createSpaceFollowUpTools({ userId, spaceId, agentId, sourceMessa
         if (!space.followUpEnabled) return { ok: false, error: '当前空间自主跟进已关闭，请先在对话或跟进记录中开启' };
         if (process.env.ENABLE_SPACE_FOLLOW_UPS === 'false') return { ok: false, error: '服务器已关闭自主复查，暂不能安排' };
         const normalized = normalizeFollowUp(args);
+        if (normalized.watchConditions && (space.templateId !== 'crypto-contract-trading' || !networkAllowed)) throw new Error('鹰眼条件仅支持已授权联网的合约跟进');
         if (args.workId != null && (typeof args.workId !== 'string' || !args.workId)) throw new Error('成果ID无效');
         if (workId && args.workId && workId !== args.workId) throw new Error('不能切换本轮已选择的成果');
         const targetWorkId = workId || (typeof args.workId === 'string' ? args.workId : null);
@@ -98,6 +101,7 @@ export function createSpaceFollowUpTools({ userId, spaceId, agentId, sourceMessa
           } });
         });
         return { ok: true, id: task.id, title: task.title, runAt: task.runAt.toISOString(), status: task.status,
+          watchConditions: task.watchConditions,
           networkAllowed: task.networkAllowed, maxChainDepth: task.maxChainDepth, chainEndsAt: task.chainEndsAt?.toISOString(),
           workId: task.workId, workTitle: task.workTitle,
           message: '已保存首次复查，到点在本空间主动汇报；自动续查额度不含首次，以 maxChainDepth 为准' };

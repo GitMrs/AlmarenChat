@@ -552,6 +552,9 @@ export interface SpaceAutomation {
 }
 
 export interface SpaceFollowUp {
+  watchConditions?: Array<{ symbol: string; period: 'PRICE' | '15m' | '1H'; direction: 'ABOVE' | 'BELOW'; level: number }> | null;
+  watchTriggeredAt?: string | null;
+  watchEvent?: { symbol: string; period: 'PRICE' | '15m' | '1H'; direction: 'ABOVE' | 'BELOW'; level: number; price: number; at: number } | null;
   domain?: 'GENERAL' | 'CRYPTO';
   workId?: string | null;
   workTitle?: string | null;

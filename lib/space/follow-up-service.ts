@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { followUpWatchSchema, formatFollowUpWatchEvent } from './follow-up-watch.mjs';
 import prisma from '@/app/api/_lib/db';
 import { getSpaceForUser, resolveAgent, resolveSpaceMemberModelConfig, SPACE_COORDINATOR } from '@/app/api/_lib/spaces';
 import { createChatWebTools } from '../web/auto-web';
@@ -52,6 +53,7 @@ export async function generateSpaceFollowUp(task: any) {
       name: 'schedule_next_space_follow_up',
       description: '本轮自主跟进后确有必要继续观察时，提出下一次跟进及理由；随本轮结果一起保存。每轮至多安排一个后续，至少间隔15分钟，限同一跟进主题。',
       parameters: { type: 'object', additionalProperties: false, required: ['title', 'prompt', 'runAt', 'reason'], properties: {
+        watchConditions: followUpWatchSchema,
         title: { type: 'string', maxLength: 100 },
         prompt: { type: 'string', maxLength: 4000, description: '延续本次主题，包含目标、本轮证据、下一步成立的条件、结束跟进的条件、比较基准及下一次核验事项。' },
         runAt: { type: 'string', description: '带时区的ISO日期时间，至少间隔15分钟，必须在本轮跟进的截止时间之前。' },
@@ -66,6 +68,7 @@ export async function generateSpaceFollowUp(task: any) {
     RESPONSE_GROUNDING_GUIDANCE, web.guidance,
     '这是一次已经保存的自主跟进。不要等待用户再提问，直接完成本次核验并向用户汇报。先说变化或结论，再给必要证据，默认不超过600字。',
     FOLLOW_UP_REVIEW_GUIDANCE, domain.guidance,
+    task.watchEvent ? `【本轮由鹰眼提前唤醒】${formatFollowUpWatchEvent(task.watchEvent)}\n先核验原条件，不要把盘中穿越当作回踩确认；明确已满足、未满足或已失效，并说明下一步评估结果。` : '',
     formatFollowUpProgress(task, startedAt),
     '必须对照安排时的判断和需要核验的事项。涉及当前价格、新闻或其他时效信息必须依据本次复查新获取的数据；系统未提供的时效资料必须实际调用查询工具，并给出数据时间。查询失败或关键数据缺失时如实说明，禁止把旧数据写成最新结果。',
     '这是已获用户约定的后台自主跟进。根据本轮证据判断是否需要继续跟进，以及合理的下次时点。目标已完成、判断失效或没有明确价值时结束，不要为了活跃而续查。完整报告由系统保存；关联成果时对话只展示首段简报，不自行写文件或新建成果。',
@@ -115,7 +118,13 @@ export async function generateSpaceFollowUp(task: any) {
     },
   });
   if (!result.content?.trim()) throw new Error('本次复查未返回有效内容');
-  return { content: `【${domain.isCrypto ? '自主复查' : '自主跟进'} · ${task.title}】\n\n${result.content.trim()}${web.footer()}${domain.evidence ? `\n\n${domain.evidence}` : ''}`, marketEvidenceContext: domain.evidence, attachments: web.attachments(), nextFollowUp, qqNotification, analystName: agent.name };
+  if (task.watchEvent && mayNotify && !qqNotification) {
+    qqNotification = normalizeFollowUpNotification({ category: 'KEY_LEVEL_CHANGE',
+      eventKey: `WATCH:${task.sourceMessageId || task.id}:${task.watchEvent.symbol}:${task.watchEvent.period}:${task.watchEvent.direction}:${task.watchEvent.level}`,
+      title: `${task.watchEvent.symbol} 鹰眼观察条件变化`, summary: formatFollowUpWatchEvent(task.watchEvent),
+      reason: '已保存的关键观察条件发生变化，提前复查；不构成交易执行指令。' });
+  }
+  return { content: `【${domain.isCrypto ? '自主复查' : '自主跟进'} · ${task.title}】\n\n${result.content.trim()}${task.watchEvent ? `\n\n${formatFollowUpWatchEvent(task.watchEvent)}` : ''}${web.footer()}${domain.evidence ? `\n\n${domain.evidence}` : ''}`, marketEvidenceContext: domain.evidence, attachments: web.attachments(), nextFollowUp, qqNotification, analystName: agent.name };
 }
 
 // 任务与运行租约持久化；多进程竞争、重启重试和用户取消都以数据库条件更新为准。

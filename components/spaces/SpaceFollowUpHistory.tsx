@@ -59,6 +59,7 @@ function FollowUpSettings({ spaceId, initialValue, maxAllowed, onSaved }: {
     </div>
     <p className="mt-3 text-xs leading-6 text-slate-500">不含首次约定复查。{limit === 0 ? '设为 0 时只执行首次复查，不再自动续查。' : `首次 1 次 + 最多续查 ${limit} 次，共最多 ${limit + 1} 次；AI 可以提前结束。`}</p>
     <p className="text-xs leading-6 text-slate-500">只对本空间新一轮跟进生效；已有任务沿用创建时的上限。每轮最长 24 小时，自动续查至少间隔 15 分钟。</p>
+    <p className="text-xs leading-6 text-slate-500">合约跟进保存了明确观察条件且鹰眼开启时，可在关键位变化后提前复查；仍执行原任务，不额外增加续查次数。没有条件时按约定时间复查。</p>
     {error && <p role="alert" className="mt-2 text-xs text-rose-600">{error}</p>}
   </div>;
 }
@@ -80,6 +81,8 @@ function FollowUpReport({ spaceId, task }: { spaceId: string; task: SpaceFollowU
     return () => controller.abort();
   }, [spaceId, task.id, task.updatedAt, revision]);
   return <div className="border-t border-slate-100 px-4 py-4 sm:px-5">
+    {!!task.watchConditions?.length && <p className="mb-3 text-xs leading-6 text-slate-500">鹰眼观察：{task.watchConditions.map(rule => `${rule.symbol} ${rule.period === 'PRICE' ? '盘中' : `${rule.period}收盘`} ${rule.direction === 'ABOVE' ? '上穿' : '下穿'} ${rule.level.toLocaleString()}`).join('；')}。触发后提前复查，不代表允许开仓。</p>}
+    {task.watchEvent && <p className="mb-3 text-xs leading-6 text-amber-700">触发依据：{task.watchEvent.symbol} {task.watchEvent.period === 'PRICE' ? '盘中预警' : `${task.watchEvent.period}收盘变化`}，观察位 {task.watchEvent.level.toLocaleString()}，采样价格 {task.watchEvent.price.toLocaleString()}。</p>}
     {task.reason && <p className="mb-3 text-xs leading-6 text-slate-500">续查原因：{task.reason}</p>}
     {task.error && <p className="mb-3 text-xs leading-6 text-rose-600">未完成原因：{task.error}</p>}
     {task.qqNotification?.error && <p className="mb-3 text-xs leading-6 text-amber-700">QQ 通知：{task.qqNotification.error}</p>}
@@ -169,6 +172,7 @@ export default function SpaceFollowUpHistory({ spaceId, agents, workId, workTitl
                 </div>
                 <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-400">
                   <time>约定 {displayTime(task.runAt)}</time>
+                  {task.watchTriggeredAt && <span className="text-amber-700">鹰眼提前唤醒 {displayTime(task.watchTriggeredAt)}</span>}
                   <span>{agents.find(agent => agent.id === task.agentId)?.name || task.agentId}</span>
                   <span>{task.origin === 'AI_FOLLOW_UP' ? `AI 续查 ${task.chainDepth ?? '—'}/${task.maxChainDepth ?? 3}` : '用户约定'}</span>
                   {!workId && <span>{task.workTitle ? `成果：${task.workTitle}${task.workId ? '' : '（已删除）'}` : '对话跟进'}</span>}

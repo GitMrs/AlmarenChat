@@ -107,6 +107,7 @@ export default function SpaceFollowUpPanel({ spaceId, showControl, refreshKey, o
   };
   const active = tasks.filter(task => task.status === 'PENDING' || task.status === 'RUNNING');
   const running = active.some(task => task.status === 'RUNNING');
+  const awakened = active.some(task => task.status === 'PENDING' && task.watchTriggeredAt);
   const next = active.filter(task => task.status === 'PENDING')
     .sort((a, b) => new Date(a.runAt).getTime() - new Date(b.runAt).getTime())[0];
   const nextTime = next ? new Date(next.runAt).toLocaleString('zh-CN', {
@@ -143,11 +144,11 @@ export default function SpaceFollowUpPanel({ spaceId, showControl, refreshKey, o
           <span className="hidden text-[11px] text-slate-400 sm:inline">{!loaded ? '读取中…' : qqEnabled ? '已开启' : '已关闭'}</span>
         </div>}
         {active.length > 0 && <button type="button" onClick={() => setProgressExpanded(value => !value)} aria-expanded={progressExpanded}
-          title={nextTime ? `下次跟进 ${nextTime} · ${next.title}` : '查看复查任务'}
+          title={awakened ? '鹰眼已提前触发，原定时间仅作记录' : nextTime ? `下次跟进 ${nextTime} · ${next.title}` : '查看复查任务'}
           className="flex items-center gap-1.5 text-[11px] text-emerald-700 hover:text-emerald-800">
           {running && <Loader2 size={12} className="animate-spin" />}
           <span>{running ? `正在跟进 · ${active.length} 项待办` : `待跟进 ${active.length} 项`}</span>
-          {nextTime && <span className="hidden sm:inline">· 下次 {nextTime}</span>}
+          {awakened ? <span className="text-amber-700">· 鹰眼已触发，等待复查</span> : nextTime && <span className="hidden sm:inline">· 下次 {nextTime}</span>}
         </button>}
         <div className="ml-auto flex shrink-0 items-center gap-3">
           {!showControl && <button type="button" onClick={() => setProgressExpanded(value => !value)} aria-expanded={progressExpanded}
@@ -172,7 +173,7 @@ export default function SpaceFollowUpPanel({ spaceId, showControl, refreshKey, o
           {task.status === 'RUNNING' && <Loader2 size={13} className="animate-spin text-emerald-600" />}
           <span className="min-w-0 flex-1 truncate font-semibold text-slate-700">{task.title}</span>
           {task.origin === 'AI_FOLLOW_UP' && <span className="text-emerald-700">AI 续查 {task.chainDepth ?? '—'}/{task.maxChainDepth ?? 3}</span>}
-          <time className="text-slate-500">{new Date(task.runAt).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })}</time>
+          <time className="text-slate-500">{task.watchTriggeredAt ? '鹰眼提前唤醒 · 原定 ' : ''}{new Date(task.runAt).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })}</time>
           <span className="text-slate-500">{{ PENDING: '待跟进', RUNNING: '正在跟进', COMPLETED: '已汇报', FAILED: '未完成', CANCELLED: '已取消' }[task.status]}</span>
           {['PENDING', 'RUNNING'].includes(task.status) && <button type="button" disabled={busy !== null}
             onClick={() => void mutate(task.id, () => spaceFollowUps.cancel(spaceId, task.id))}

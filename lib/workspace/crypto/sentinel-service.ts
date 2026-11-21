@@ -1,5 +1,6 @@
 import { evaluateExecution } from './timeframe-analysis.mjs';
 import prisma from '@/app/api/_lib/db';
+import { checkFollowUpWatches } from '../../space/follow-up-watch-service';
 import { getCryptoMarketData } from './okx-service';
 import { randomUUID } from 'node:crypto';
 import { createScheduler } from '../../core/scheduler.mjs';
@@ -664,6 +665,10 @@ export function startCryptoSentinelScheduler() {
     name: 'crypto-sentinel-scheduler',
     pollMs: 30 * 1000,
     logger: console,
+  });
+  scheduler.register('follow-up-watches', async () => {
+    if (process.env.ENABLE_SPACE_FOLLOW_UPS === 'false') return;
+    await checkFollowUpWatches({ db: prisma, getMarket: getCryptoMarketData });
   });
   scheduler.register('check-spaces', async () => {
     if (schedulerState.isChecking) return;
