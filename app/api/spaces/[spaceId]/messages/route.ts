@@ -22,6 +22,7 @@ import { stripHistoryRetrievalNotices } from '@/lib/personal-assistant/retrieval
 import { createBilibiliAgentTools } from '@/lib/bilibili/agent-tools.mjs';
 import { createAgentGrowthTools } from '@/lib/agents/growth/agent-growth';
 import { collectChatCompletionStream, runToolLoop } from '@/lib/agents/runtime/tool-loop.mjs';
+import { withMessageReasoning } from '@/lib/chat/reasoning.mjs';
 import { normalizeTaskProposalSteps, taskProposalCapabilities, taskProposalNeedsClarification, taskProposalWithTurnNetworkAuthorization } from '@/lib/space/task-proposals';
 import { directAgentTaskNeedsProposal, professionalDeliverableNeedsTask } from '@/lib/space/task-proposal-policy.mjs';
 import { buildContextCheckpointSummary, estimateMessagesTokens } from '@/lib/agents/memory/context-compression';
@@ -433,6 +434,7 @@ async function handlePiMessage(options: {
       const send = (event: Record<string, unknown>) => {
         try { controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`)); } catch { /* Pi continues and persists after a client disconnect */ }
       };
+      let fullReasoning = '';
       const spacePhase = interactionMode === 'chat' ? 'chat' : 'explore';
       const permittedExternal = allowWebSearch
         ? [...getReadOnlyExternalCapabilityIds('space'), ...(space.templateId === 'bilibili-creator' ? ['bilibili'] : [])]
@@ -487,6 +489,11 @@ async function handlePiMessage(options: {
                 : web.execute(name, args, signal),
             onMutation: (relativePath: string) => changedPaths.add(relativePath),
             onTextDelta: (delta: string) => send({ type: 'text_delta', delta }),
+            onReasoningDelta: (delta: string) => {
+              if (!delta) return;
+              fullReasoning += delta;
+              send({ type: 'reasoning_delta', delta });
+            },
             onTextReset: () => send({ type: 'text_reset' }),
             onProcessNote: (note: Record<string, unknown>) => send({ type: 'process_note', note }),
             onSkillApprovalRequired: (approval: Record<string, unknown>) => send({ type: 'approval_required', approval }),
@@ -543,9 +550,9 @@ async function handlePiMessage(options: {
                 role: 'assistant',
                 speakerAgentId: targetAgent.id,
                 content: result.content,
-                attachments: [result.execution,
+                attachments: withMessageReasoning([result.execution,
                   ...(interactionMode === 'coordinated_turn' && coordinationScope ? [{ type: 'coordination_turn', scopeId: coordinationScope.scopeId }] : []),
-                  ...(memoryEpisode ? [memoryEpisode] : []), ...web.attachments()] as Prisma.InputJsonValue,
+                  ...(memoryEpisode ? [memoryEpisode] : []), ...web.attachments()], fullReasoning) as Prisma.InputJsonValue,
               },
               select: { id: true, createdAt: true },
             }),
@@ -1132,6 +1139,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
     const readable = new ReadableStream({
       async start(controller) {
         let taskProposal: TaskProposal | null = null;
+        let fullReasoning = '';
         let relayDraft: RelayDraft | null = null;
         let discussionDraft: DiscussionDraft | null = null;
         const emit = (event: Record<string, unknown>) => controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
@@ -1157,6 +1165,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
               const completionStream = await client.chat.completions.create(requestBody, { signal: abortController.signal });
               return collectChatCompletionStream(completionStream, {
                 onContentDelta: (delta: string) => emit({ type: 'text_delta', delta }),
+                onReasoningDelta: (delta: string) => {
+                  fullReasoning += delta;
+                  emit({ type: 'reasoning_delta', delta });
+                },
               });
             },
             executeTool: async (name: string, args: Record<string, unknown>) => {
@@ -1385,18 +1397,18 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
               textMessage,
               rawHistory,
             });
-            const attachments = [
+            const attachments = withMessageReasoning([
               ...baseAttachments,
               ...runtimeAttachments,
               ...web.attachments(),
-            ];
+            ], fullReasoning);
             const assistantMessage = await tx.spaceMessage.create({
               data: {
                 spaceId,
                 role: 'assistant',
                 speakerAgentId: targetAgent.id,
                 content: assistantContent,
-                ...(attachments.length > 0 ? { attachments: attachments as Prisma.InputJsonValue } : {}),
+                ...(attachments ? { attachments: attachments as Prisma.InputJsonValue } : {}),
               },
               select: { id: true, createdAt: true },
             });

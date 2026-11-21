@@ -9,6 +9,7 @@ import { NextResponse } from 'next/server';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
 import { reserveChatQuota } from '@/lib/chat/chat-quota';
+import { withMessageReasoning } from '@/lib/chat/reasoning.mjs';
 import { createModelClient, resolveModelName } from '@/lib/core/model-client';
 import { createChatWebTools, runAutoWebChat } from '@/lib/web/auto-web';
 import { createCapabilityHelpTool } from '@/lib/capabilities/help.mjs';
@@ -81,6 +82,7 @@ export async function POST(request: Request) {
 
     if (operation === 'persist-local') {
       const content = typeof body.content === 'string' ? body.content.trim().slice(0, 50000) : '';
+      const reasoning = typeof body.reasoning === 'string' ? body.reasoning.slice(0, 50000) : '';
       const conversationId = typeof body.conversationId === 'string' ? body.conversationId : '';
       if (!content) return NextResponse.json({ error: '回复内容不能为空' }, { status: 400 });
       const conversation = await prisma.conversation.findFirst({
@@ -88,15 +90,16 @@ export async function POST(request: Request) {
         select: { id: true },
       });
       if (!conversation) return NextResponse.json({ error: '会话不存在' }, { status: 404 });
+      const attachments = withMessageReasoning(undefined, reasoning);
       const message = await prisma.$transaction(async (tx) => {
         const updated = await tx.message.updateMany({
           where: { id: assistantMessageId, conversationId: conversation.id, role: 'assistant' },
-          data: { content },
+          data: { content, attachments },
         });
         const saved = updated.count
           ? await tx.message.findUniqueOrThrow({ where: { id: assistantMessageId } })
           : await tx.message.create({
-            data: { id: assistantMessageId, conversationId: conversation.id, role: 'assistant', source: 'WEB', content },
+            data: { id: assistantMessageId, conversationId: conversation.id, role: 'assistant', source: 'WEB', content, attachments },
           });
         await tx.conversation.update({
           where: { id: conversation.id },
@@ -304,23 +307,24 @@ export async function POST(request: Request) {
     const readable = new ReadableStream({
       async start(controller) {
         let fullContent = '';
+        let fullReasoning = '';
         const emit = (event: Record<string, unknown>) => controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
         const web = createChatWebTools({ apiKey: userSettings.tavilyApiKey, defaultWeatherLocation: userSettings.defaultWeatherLocation, history: memoryContext.history, query: textMessage, capabilityEntry: 'assistant', signal: modelAbortController.signal, onStatus: (label: string) => emit({ type: 'status', label }) });
         const capabilityHelp = createCapabilityHelpTool({ entry: 'assistant', query: textMessage,
           loadableCapabilities: web.loadableCapabilities,
           getAvailableToolNames: () => [...web.tools, ...broker.modelTools(), ...(memoryTools?.tools || [])].map(tool => tool.function.name) });
         const currentExtraTools = () => [...broker.modelTools(), ...(memoryTools?.tools || []), capabilityHelp.tool];
-        const messageAttachments = () => web.attachments() as any;
         const persistAssistantMessage = async () => {
           if (!fullContent.trim()) return;
+          const attachments = withMessageReasoning(web.attachments(), fullReasoning);
           await prisma.$transaction(async (tx) => {
             const updated = await tx.message.updateMany({
               where: { id: assistantMessageId, conversationId, role: 'assistant' },
-              data: { content: fullContent, attachments: messageAttachments() },
+              data: { content: fullContent, attachments },
             });
             if (!updated.count) {
               await tx.message.create({
-                data: { id: assistantMessageId, conversationId, role: 'assistant', source: 'WEB', content: fullContent, attachments: messageAttachments() },
+                data: { id: assistantMessageId, conversationId, role: 'assistant', source: 'WEB', content: fullContent, attachments },
               });
             }
             await tx.conversation.update({
@@ -330,7 +334,32 @@ export async function POST(request: Request) {
           });
         };
         try {
-          await runAutoWebChat({ client, model, messages, web, deepThinking: body.deepThinking === true, contextBudget: preparedContext.manifest.hardInputBudget, onContextUsage: usage => recordConversationUsage(userId, conversationId, preparedContext.manifest, usage), extraTools: currentExtraTools(), getExtraTools: currentExtraTools, callTool: async (name: string, args: any) => { if (name === 'capability_help') return capabilityHelp.execute(args); if (name === 'memory_search' || name === 'memory_read') return memoryTools?.execute(name, args); if (name !== 'mcp_load') toolCalled = true; return broker.call(name, args); }, signal: modelAbortController.signal, onText: (text: string) => { fullContent += text; emit({ type: 'text_delta', text }); } });
+          await runAutoWebChat({
+            client,
+            model,
+            messages,
+            web,
+            deepThinking: body.deepThinking === true,
+            contextBudget: preparedContext.manifest.hardInputBudget,
+            onContextUsage: usage => recordConversationUsage(userId, conversationId, preparedContext.manifest, usage),
+            extraTools: currentExtraTools(),
+            getExtraTools: currentExtraTools,
+            callTool: async (name: string, args: any) => {
+              if (name === 'capability_help') return capabilityHelp.execute(args);
+              if (name === 'memory_search' || name === 'memory_read') return memoryTools?.execute(name, args);
+              if (name !== 'mcp_load') toolCalled = true;
+              return broker.call(name, args);
+            },
+            signal: modelAbortController.signal,
+            onText: (text: string) => {
+              fullContent += text;
+              emit({ type: 'text_delta', text });
+            },
+            onReasoning: (text: string) => {
+              fullReasoning += text;
+              emit({ type: 'reasoning_delta', text });
+            },
+          });
           if (!fullContent) throw new Error('模型没有返回正文');
           const notice = retrievalNotice();
           fullContent += notice;

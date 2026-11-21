@@ -5,6 +5,8 @@ import { Activity, BookOpen, Check, CheckCircle2, ChevronRight, Clock3, Code2, F
 import MessageActions from '@/components/chat/MessageActions';
 import MessageBubbleFrame from '@/components/chat/MessageBubbleFrame';
 import MessageContent from '@/components/chat/MessageContent';
+import MessageReasoning from '@/components/chat/MessageReasoning';
+import { getMessageReasoning } from '@/lib/chat/reasoning.mjs';
 import type { Agent, AgentRun, AgentTask, SpaceCryptoPlanDecisionAttachment, SpaceMessage, SpacePiExecutionAttachment, SpaceRelayStartedAttachment, SpaceRunResultAttachment, SpaceTaskProposal } from '@/types';
 import { calculatePlanRiskReward } from '@/lib/workspace/crypto/trade-lifecycle';
 
@@ -624,6 +626,7 @@ const SpaceMessageItem = memo(function SpaceMessageItem({
           <span className="truncate">使用 {skillInvocation.name}</span>
         </div>
       )}
+      {message.role === 'assistant' && <MessageReasoning reasoning={getMessageReasoning(message.attachments)} />}
       <MessageContent
         role={message.role}
         content={message.content}

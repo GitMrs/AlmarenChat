@@ -347,7 +347,7 @@ export interface Message {
   role: 'user' | 'assistant' | 'system';
   source?: 'WEB' | 'QQ' | 'SYSTEM';
   content: string;
-  attachments?: MessageAttachment[];
+  attachments?: (MessageAttachment | MessageReasoningAttachment)[];
   assistantExperienceId?: string | null;
   createdAt: string;
 }
@@ -1014,7 +1014,7 @@ export interface SpaceRelayReviewAttachment {
   decision: 'CONTINUE';
 }
 
-export type SpaceMessageAttachment = MessageAttachment | SpaceTaskProposal | SpaceDiscussionAttachment | SpaceRunResultAttachment | SpaceSkillInvocationAttachment | SpacePiExecutionAttachment | SpacePiMemoryEpisodeAttachment | SpaceRelayAttachment | SpaceRelayStartedAttachment | SpaceRelayTurnAttachment | SpaceRelayReviewAttachment | SpaceRelayHandoffAttachment | SpaceIdleTalkAttachment | SpaceCryptoPlanDecisionAttachment;
+export type SpaceMessageAttachment = MessageAttachment | MessageReasoningAttachment | SpaceTaskProposal | SpaceDiscussionAttachment | SpaceRunResultAttachment | SpaceSkillInvocationAttachment | SpacePiExecutionAttachment | SpacePiMemoryEpisodeAttachment | SpaceRelayAttachment | SpaceRelayStartedAttachment | SpaceRelayTurnAttachment | SpaceRelayReviewAttachment | SpaceRelayHandoffAttachment | SpaceIdleTalkAttachment | SpaceCryptoPlanDecisionAttachment;
 
 export interface AgentRun {
   id: string;
@@ -1120,6 +1120,11 @@ export interface MessageAttachment {
   prompt?: string;
   model?: string;
   imageSize?: string;
+}
+
+export interface MessageReasoningAttachment {
+  type: 'reasoning';
+  content: string;
 }
 
 export interface FavoriteAgent {

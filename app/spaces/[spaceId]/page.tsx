@@ -16,6 +16,7 @@ import LoginRequired from '@/components/auth/LoginRequired';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import ComposerShell from '@/components/chat/ComposerShell';
 import ComposerModelOptions from '@/components/chat/ComposerModelOptions';
+import MessageReasoning from '@/components/chat/MessageReasoning';
 import SpaceMessageItem from '@/components/spaces/SpaceMessageItem';
 import SpaceFollowUpPanel from '@/components/spaces/SpaceFollowUpPanel';
 import SpaceFollowUpHistory from '@/components/spaces/SpaceFollowUpHistory';
@@ -687,6 +688,7 @@ export default function SpaceDetailPage() {
   streamingRef.current = isStreaming;
   const { play: playTTS, stop: stopTTS, isPlaying: isTTSPlaying, isLoading: isTTSLoading, currentId: currentTTSId } = useTTS();
   const [streamingContent, setStreamingContent] = useState('');
+  const [streamingReasoning, setStreamingReasoning] = useState('');
   const [streamingSpeakerId, setStreamingSpeakerId] = useState<string | null>(null);
   const [streamingPiActivity, setStreamingPiActivity] = useState<SpacePiExecutionActivity | null>(null);
   const [streamingPiStatus, setStreamingPiStatus] = useState('');
@@ -1328,7 +1330,7 @@ export default function SpaceDetailPage() {
     });
     forceScrollToBottomRef.current = false;
     wasAtBottomRef.current = true;
-  }, [messages, streamingContent, isStreaming]);
+  }, [messages, streamingContent, streamingReasoning, isStreaming]);
 
   const handleMessagesScroll = () => {
     const container = scrollRef.current;
@@ -1803,6 +1805,7 @@ export default function SpaceDetailPage() {
 
     setIsStreaming(true);
     setStreamingContent('');
+    setStreamingReasoning('');
     setStreamingSpeakerId(null);
     setStreamingPiActivity(null);
     setStreamingPiStatus('');
@@ -1893,6 +1896,7 @@ export default function SpaceDetailPage() {
         const currentSpeakerId = replyRequest.target?.id || coordinatorAgent.id;
         setReplyQueueIndex(index);
         setStreamingContent('');
+        setStreamingReasoning('');
         setStreamingSpeakerId(replyRequest.target?.id || null);
         setStreamingPiNotes([]);
         const result = await streamSpaceMessage({
@@ -1949,6 +1953,9 @@ export default function SpaceDetailPage() {
               if (event.type === 'text_delta' && typeof event.delta === 'string') {
                 fullContent += event.delta;
                 setStreamingContent(fullContent);
+              } else if (event.type === 'reasoning_delta' && typeof event.delta === 'string') {
+                const delta = event.delta;
+                setStreamingReasoning((current) => current + delta);
               } else if (event.type === 'text_reset') {
                 fullContent = '';
                 setStreamingContent('');
@@ -2073,6 +2080,7 @@ export default function SpaceDetailPage() {
       if (sendInFlightRef.current === sendToken) sendInFlightRef.current = null;
       setIsStreaming(false);
       setStreamingContent('');
+      setStreamingReasoning('');
       setStreamingPiActivity(null);
       setStreamingPiStatus('');
       setStreamingPiNotes([]);
@@ -2089,6 +2097,7 @@ export default function SpaceDetailPage() {
     abortRef.current?.abort();
     setIsStreaming(false);
     setStreamingContent('');
+    setStreamingReasoning('');
     setReplyQueueAgentIds([]);
     setReplyQueueIndex(0);
     setStreamingSpeakerId(null);
@@ -2103,6 +2112,7 @@ export default function SpaceDetailPage() {
     abortRef.current?.abort();
     setIsStreaming(false);
     setStreamingContent('');
+    setStreamingReasoning('');
     setPendingPiSkillApproval(null);
     setReplyQueueAgentIds([]);
     setReplyQueueIndex(0);
@@ -3321,6 +3331,7 @@ export default function SpaceDetailPage() {
   }
 
   const streamingSpeaker = streamingSpeakerId ? speakerById.get(streamingSpeakerId) : coordinatorAgent;
+  const hasStreamingReply = Boolean(streamingContent || streamingReasoning || streamingPiActivity || streamingPiStatus || streamingPiNotes.length);
 
   return (
     <AppShell hideHeader hideBottomNav mainClassName="!max-w-none !px-0 !pb-0">
@@ -4641,11 +4652,12 @@ export default function SpaceDetailPage() {
                   />
                   </div>
                 ))}
-                {isStreaming && (streamingContent || (streamingPiActivity || streamingPiStatus || streamingPiNotes.length > 0)) && (
+                {isStreaming && hasStreamingReply && (
                   <div className="flex justify-start gap-3">
                     <Avatar src={streamingSpeaker?.avatar || '🤖'} alt={streamingSpeaker?.name || 'Agent'} size="sm" className="mt-1 shrink-0" />
                     <div className="min-w-0 max-w-[84%] rounded-[24px] rounded-bl-md border border-black/[0.06] bg-white px-5 py-4 text-slate-800 shadow-sm">
                       <div className="mb-1 text-xs font-black text-slate-400">{streamingSpeaker?.name || '空间 Agent'}</div>
+                      <MessageReasoning reasoning={streamingReasoning} thinking={!streamingContent} />
                       {(streamingPiActivity || streamingPiStatus) && (
                         <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-slate-500">
                           <Activity size={13} className="animate-pulse" />
@@ -4666,7 +4678,7 @@ export default function SpaceDetailPage() {
                     </div>
                   </div>
                 )}
-                {isStreaming && !streamingContent && !(streamingPiActivity || streamingPiStatus || streamingPiNotes.length > 0) && (
+                {isStreaming && !hasStreamingReply && (
                   <div className="flex justify-start gap-3">
                     <Avatar src={streamingSpeaker?.avatar || '🤖'} alt={streamingSpeaker?.name || 'Agent'} size="sm" className="mt-1 shrink-0" />
                     <div className="rounded-[24px] rounded-bl-md border border-black/[0.06] bg-white px-5 py-4 shadow-sm">

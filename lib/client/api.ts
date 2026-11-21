@@ -311,6 +311,7 @@ export const assistant = {
     assistantMessageId: string;
     deepThinking?: boolean;
     onStatus?: (label: string) => void;
+    onReasoning?: (text: string) => void;
     attachments?: MessageAttachment[];
     signal?: AbortSignal;
   }) => {
@@ -328,7 +329,7 @@ export const assistant = {
       }),
       signal: data.signal,
     });
-    return new Response(decodeChatBody(response, data.onStatus), { status: response.status, statusText: response.statusText, headers: response.headers });
+    return new Response(decodeChatBody(response, data.onStatus, undefined, data.onReasoning), { status: response.status, statusText: response.statusText, headers: response.headers });
   },
   prepareLocalMessage: (data: {
     message: string;
@@ -353,10 +354,10 @@ export const assistant = {
       }),
       signal: data.signal,
     }),
-  persistLocalMessage: (conversationId: string, content: string, assistantMessageId: string) =>
+  persistLocalMessage: (conversationId: string, content: string, assistantMessageId: string, reasoning?: string) =>
     request<{ message: Message }>('/assistant/messages', {
       method: 'POST',
-      body: JSON.stringify({ operation: 'persist-local', conversationId, content, assistantMessageId }),
+      body: JSON.stringify({ operation: 'persist-local', conversationId, content, assistantMessageId, reasoning }),
     }),
   deleteMessage: (messageId: string, conversationId: string) =>
     request<{ success: boolean }>('/assistant/messages', {

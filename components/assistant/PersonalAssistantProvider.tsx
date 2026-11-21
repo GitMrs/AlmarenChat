@@ -9,12 +9,14 @@ import ComposerShell from '@/components/chat/ComposerShell';
 import MessageActions from '@/components/chat/MessageActions';
 import MessageBubbleFrame from '@/components/chat/MessageBubbleFrame';
 import MessageContent from '@/components/chat/MessageContent';
+import MessageReasoning from '@/components/chat/MessageReasoning';
 import ConfirmDialog from '@/components/shared/ConfirmDialog';
 import { AssistantContextModal } from '@/components/assistant/AssistantContextModal';
 import { assistant, uploads } from '@/lib/client/api';
 import { completeBrowserModel, readBrowserModelConfigForScope, streamBrowserModel } from '@/lib/web/browser-model';
 import type { BrowserModelSource } from '@/lib/web/browser-model';
 import { cn } from '@/lib/client/utils';
+import { getMessageReasoning, withMessageReasoning } from '@/lib/chat/reasoning.mjs';
 import { shouldExtractMemorySuggestion } from '@/lib/personal-assistant/memory-intent.mjs';
 import type { AssistantConversationSummary, AssistantExperience, AssistantReminder, AssistantReminderCandidate, Message, MessageAttachment, PersonalAssistantBootstrap } from '@/types';
 import { createClientId } from '@/lib/client/client-id';
@@ -1215,6 +1217,18 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
     let usesLocalModel = false;
     let localConversationId = '';
     let answer = '';
+    let reasoning = '';
+    const onReasoning = (delta: string) => {
+      if (controller.signal.aborted) return;
+      reasoning += delta;
+      const content = reasoning;
+      setData((current) => current ? {
+        ...current,
+        messages: current.messages.map((message) => message.id === assistantMessage.id
+          ? { ...message, attachments: withMessageReasoning(message.attachments, content) }
+          : message),
+      } : current);
+    };
     try {
       const modelConfig = { ...readBrowserModelConfigForScope('GLOBAL'), source: modelSource };
       usesLocalModel = modelSource === 'OLLAMA';
@@ -1236,6 +1250,7 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
           contextBudget: prepared.contextManifest?.hardInputBudget,
           timeSource: 'server-clock',
           entry: 'browser-personal-assistant',
+          onReasoning,
           signal: controller.signal,
         });
         reader = stream.getReader();
@@ -1247,6 +1262,7 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
           userMessageId: userMessage.id,
           assistantMessageId: assistantMessage.id,
           onStatus: setWebStatus,
+          onReasoning,
           attachments: attachment ? [attachment] : undefined,
           signal: controller.signal,
         });
@@ -1270,7 +1286,7 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
 
       if (usesLocalModel) {
         if (!answer.trim()) throw new Error('Ollama 没有返回可展示的正文');
-        await assistant.persistLocalMessage(localConversationId, answer, assistantMessage.id);
+        await assistant.persistLocalMessage(localConversationId, answer, assistantMessage.id, reasoning);
       }
 
       // 方案 A：流式结束后异步轻量提取长期记忆建议
@@ -1307,7 +1323,7 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
         let keepPartial = !usesLocalModel;
         if (usesLocalModel && localConversationId) {
           try {
-            await assistant.persistLocalMessage(localConversationId, interruptedAnswer, assistantMessage.id);
+            await assistant.persistLocalMessage(localConversationId, interruptedAnswer, assistantMessage.id, reasoning);
             keepPartial = true;
           } catch {
             keepPartial = false;
@@ -1929,7 +1945,17 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
                           </div>
                         )}
                         {streaming && message.role === 'assistant' && index === data.messages.length - 1 && webStatus && <div className="mb-2 text-xs text-slate-500" role="status">{webStatus}</div>}
-                        {message.content ? <MessageContent role={message.role} content={message.content} attachments={message.attachments} /> : <span className="inline-flex gap-1 py-1"><i className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-300" /><i className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-300 [animation-delay:120ms]" /><i className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-300 [animation-delay:240ms]" /></span>}
+                        {message.role === 'assistant' && (
+                          <MessageReasoning
+                            reasoning={getMessageReasoning(message.attachments)}
+                            thinking={streaming && !message.content && index === data.messages.length - 1}
+                          />
+                        )}
+                        {message.content ? (
+                          <MessageContent role={message.role} content={message.content} attachments={message.attachments?.filter((attachment) => attachment.type !== 'reasoning')} />
+                        ) : !getMessageReasoning(message.attachments) && (
+                          <span className="inline-flex gap-1 py-1"><i className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-300" /><i className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-300 [animation-delay:120ms]" /><i className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-300 [animation-delay:240ms]" /></span>
+                        )}
                       </MessageBubbleFrame>
 
                       {/* 方案 A：建议记忆提示卡片 */}
