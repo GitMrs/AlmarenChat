@@ -1,3 +1,4 @@
+import { collectNextEventRelease } from '@/lib/workspace/crypto/event-release-collector.ts';
 import { NextResponse } from 'next/server';
 import {
   evaluateEventPhase,
@@ -88,10 +89,14 @@ export async function GET(request: Request) {
 export async function POST() {
   try {
     const result = await syncMacroEvents();
+    // 日历成功与补采状态分别返回，补采失败不抹掉已同步的日历。
+    let releaseCollection;
+    try { releaseCollection = await collectNextEventRelease(); }
+    catch { releaseCollection = { status: 'retry' }; }
     return NextResponse.json({
       success: true,
       message: `同步成功！拉取 ${result.fetchedRawCount} 条，过滤出 ${result.filteredCount} 项重点宏观事件，库内累计 ${result.total} 项。`,
-      data: result,
+      data: { ...result, releaseCollection },
     });
   } catch (error: any) {
     console.error('[api/crypto/events] POST sync failed:', error);

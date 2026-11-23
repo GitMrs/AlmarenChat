@@ -1,3 +1,5 @@
+import { formatEventReleaseContext, getPublishedRelease } from './event-release.ts';
+import { collectNextEventRelease } from './event-release-collector.ts';
 import { evaluateExecution } from './timeframe-analysis.mjs';
 import prisma from '@/app/api/_lib/db';
 import { checkFollowUpWatches } from '../../space/follow-up-watch-service';
@@ -501,7 +503,7 @@ export async function checkSentinelForSpace(
             type: 'MACRO_EVENT',
             symbol: event.impactCoins[0] || 'BTC',
             title: `🌊【事件早期观察】${event.title} 预定公布后 ${Math.round(-deltaMinutes)} 分钟`,
-            content: `【鹰眼·早期观察】：${event.title} 已到预定公布时间 ${Math.round(-deltaMinutes)} 分钟，实际公布值与预期差尚未核验。\n• ${priceInfo}\n• 本条不构成完整复盘，1小时与24小时走势尚未完成核验，请继续观察。`,
+            content: `【鹰眼·早期观察】：${event.title} 已到预定公布时间 ${Math.round(-deltaMinutes)} 分钟，${getPublishedRelease(event, nowObj) ? '已采集公布结果，见下方来源。' : '实际公布值与预期差尚未核验。'}\n• ${formatEventReleaseContext(event, nowObj)}\n• ${priceInfo}\n• 本条不构成完整复盘，1小时与24小时走势尚未完成核验，请继续观察。`,
             level: 'INFO',
             notifyQQ: state.activePositions.length > 0,
             dedupeKey: `${eventGroupKey}:DIGEST`,
@@ -519,7 +521,7 @@ export async function checkSentinelForSpace(
             type: 'MACRO_EVENT',
             symbol: event.impactCoins[0] || 'BTC',
             title: `✅【事件复盘就绪】${event.title} 24小时行情已完成`,
-            content: `【鹰眼·事件闭环】：${event.title} 的 5m、1h、24h 客观行情已经采集完成（${marketReadySummary(event)}）。\n• 当前只完成价格观察，实际公布值、预期差和事件因果仍待来源核验。\n• 请前往空间补充复盘，完成后将沉淀为历史战术剧本。`,
+            content: `【鹰眼·事件闭环】：${event.title} 的 5m、1h、24h 客观行情已经采集完成（${marketReadySummary(event)}）。\n• ${getPublishedRelease(event, nowObj) ? formatEventReleaseContext(event, nowObj) : '当前只完成价格观察，实际公布值、预期差和事件因果仍待来源核验。'}\n• 请前往空间补充复盘，完成后将沉淀为历史战术剧本。`,
             level: 'INFO',
             notifyQQ: true,
             dedupeKey: `${eventGroupKey}:REVIEW_READY`,
@@ -771,6 +773,12 @@ export function startCryptoSentinelScheduler() {
   });
 
   // 全局事件统计与房间/持仓无关；不阻塞原有空间巡检，采集器自身防止重入。
+  scheduler.register('collect-event-releases', () => {
+    void collectNextEventRelease().catch((error) => {
+      console.warn('[crypto-sentinel-scheduler] 宏观公布值采集失败:', error?.message || error);
+    });
+  });
+
   scheduler.register('collect-event-market', () => {
     void collectNextEventMarketWindow().catch((error) => {
       console.warn('[crypto-sentinel-scheduler] 事件行情采集失败:', error?.message || error);
