@@ -845,6 +845,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
     }
 
     const settings = await userModelSettings(userId);
+    const historyLimit = Math.max(1, Math.min(80, settings.contextMessageLimit));
     let checkpoint = null;
     let checkpointAvailable = true;
     try {
@@ -853,23 +854,19 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
       if (!/no such table/i.test(String(error?.message || ''))) throw error;
       checkpointAvailable = false;
     }
-    const persistedHistory = checkpoint
-      ? await prisma.spaceMessage.findMany({
-          where: {
-            spaceId,
-            OR: [
-              { createdAt: { gt: checkpoint.throughCreatedAt } },
-              { createdAt: checkpoint.throughCreatedAt, id: { gt: checkpoint.throughMessageId } },
-            ],
-          },
-          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
-          take: Math.max(1, Math.min(240, settings.contextMessageLimit * 4)),
-        })
-      : await prisma.spaceMessage.findMany({
-          where: { spaceId },
-          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-          take: Math.max(1, Math.min(240, settings.contextMessageLimit * 4)),
-        });
+    const persistedHistory = await prisma.spaceMessage.findMany({
+      where: {
+        spaceId,
+        ...(checkpoint ? {
+          OR: [
+            { createdAt: { gt: checkpoint.throughCreatedAt } },
+            { createdAt: checkpoint.throughCreatedAt, id: { gt: checkpoint.throughMessageId } },
+          ],
+        } : {}),
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: historyLimit,
+    });
     const fallbackHistory = Array.isArray(history) ? history : [];
     const checkpointMessage = checkpoint ? {
       id: `checkpoint:${checkpoint.id}`,
@@ -879,12 +876,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
       attachments: null,
       createdAt: checkpoint.updatedAt,
     } : null;
-    const persistedMessages = checkpoint ? persistedHistory : [...persistedHistory].reverse();
-    const rawHistory = (useIsolatedContext
-      ? fallbackHistory.slice(-settings.contextMessageLimit * 2)
-      : persistedMessages.length > 0
-      ? (checkpointMessage ? [checkpointMessage, ...persistedMessages] : persistedMessages)
-      : fallbackHistory.slice(-settings.contextMessageLimit * 2))
+    const persistedMessages = persistedHistory.reverse();
+    const storedHistory = checkpointMessage ? [checkpointMessage, ...persistedMessages] : persistedMessages;
+    const rawHistory = (!useIsolatedContext && storedHistory.length > 0
+      ? storedHistory
+      : fallbackHistory.slice(-historyLimit))
       .map((item: any) => item.role === 'assistant' ? { ...item, content: stripHistoryRetrievalNotices(item.content) } : item);
     const continuityGuidance = normalizedInteractionMode === 'chat'
       ? buildConversationContinuityGuidance({ message: textMessage, history: rawHistory })

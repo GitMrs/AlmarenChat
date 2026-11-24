@@ -222,6 +222,7 @@ export async function POST(request: Request) {
 
     stage = 'prepare-context';
     const preparedContext = await prepareConversationContext({
+      compactAssistantContext: true,
       userId, conversationId: binding.conversationId, maxMessages: contextLimit, excludeMessageIds: [userMessageId],
       requiredSystem: systemPrompt, runtimeSystem, optional: optionalContext,
       currentMessage: { role: 'user', content: userContent }, modelName: usesCustomModel ? userSettings.modelName : '', modelContextWindow: userSettings.modelContextWindow,

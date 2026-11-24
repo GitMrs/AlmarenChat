@@ -51,7 +51,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ spac
     const totalBytes = calculateMessagesBytes(allMessages);
 
     const totalTokens = estimateMessagesTokens(allMessages);
-    const historyLimit = Math.max(1, Math.min(240, space.user.contextMessageLimit * 4));
+    const historyLimit = Math.max(1, Math.min(80, space.user.contextMessageLimit || 40));
     let activeHistory = allMessages.slice(-historyLimit);
     let activeBytes = calculateMessagesBytes(activeHistory);
     let savedBytes = 0;
@@ -63,7 +63,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ spac
       const recentMessages = allMessages.filter((m) =>
         new Date(m.createdAt) > new Date(checkpoint.throughCreatedAt) ||
         (new Date(m.createdAt).getTime() === new Date(checkpoint.throughCreatedAt).getTime() && m.id > checkpoint.throughMessageId)
-      ).slice(0, historyLimit);
+      ).slice(-historyLimit);
       activeHistory = [{ id: `checkpoint:${spaceId}`, role: 'system', content: checkpoint.summary, createdAt: checkpoint.updatedAt }, ...recentMessages];
       const checkpointSummaryBytes = calculateTextBytes(checkpoint.summary);
       const recentBytes = calculateMessagesBytes(recentMessages);
