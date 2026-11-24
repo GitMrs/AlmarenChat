@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { getReleasePresentation, formatEventReleaseContext, getAdditionalReleaseEvents } from '@/lib/workspace/crypto/event-release.ts';
 import {
   Calendar,
   AlertTriangle,
@@ -167,7 +168,7 @@ export default function SpaceCryptoEventRadar({
             onClick={handleSyncLiveCalendar}
             disabled={syncing}
             className="inline-flex h-7 items-center gap-1.5 rounded-lg border border-black/[0.08] bg-slate-50 px-2.5 text-[11px] font-black text-slate-700 hover:bg-slate-100 transition disabled:opacity-50 cursor-pointer shadow-2xs"
-            title="从 FairEconomy / ForexFactory 聚合源拉取本周 USD 重点事件的时间、市场预期与前值，不含公布值"
+            title="从 FairEconomy / ForexFactory 聚合源拉取本周 USD 重点事件的时间、市场预期与前值，公布后可单独补采实际值；来源与日历分开展示"
           >
             <RefreshCw size={11} className={syncing ? 'animate-spin text-amber-600' : 'text-slate-500'} />
             {syncing ? '同步中...' : '⚡ 同步日历'}
@@ -392,24 +393,26 @@ export default function SpaceCryptoEventRadar({
                           </div>
                         </div>
 
-                        {/* 指引条目 */}
-                        {e.guidance && (
+                        {e.category === 'macro' && <EventReleaseDetails event={e} onRefresh={() => loadEvents(true)} />}
+
+                        {/* 公布前情景参考 */}
+                        {e.guidance && item.deltaMinutes > 0 && (
                           <div className="rounded-lg bg-white/90 border border-black/[0.05] p-2.5 space-y-1.5 text-[11px]">
                             {e.guidance.bullishCondition && (
                               <div className="flex items-start gap-1.5 text-emerald-800">
-                                <span className="font-black shrink-0">🟢 利多:</span>
+                                <span className="font-black shrink-0">🟢 利多情景:</span>
                                 <span className="font-medium text-slate-700">{e.guidance.bullishCondition}</span>
                               </div>
                             )}
                             {e.guidance.bearishCondition && (
                               <div className="flex items-start gap-1.5 text-rose-800">
-                                <span className="font-black shrink-0">🔴 利空:</span>
+                                <span className="font-black shrink-0">🔴 利空情景:</span>
                                 <span className="font-medium text-slate-700">{e.guidance.bearishCondition}</span>
                               </div>
                             )}
                             {e.guidance.riskInstruction && (
                               <div className="flex items-start gap-1.5 text-amber-800 border-t border-black/[0.04] pt-1 mt-1">
-                                <span className="font-black shrink-0">🛡️ 禁令:</span>
+                                <span className="font-black shrink-0">🛡️ 风险提示:</span>
                                 <span className="font-semibold text-amber-900">{e.guidance.riskInstruction}</span>
                               </div>
                             )}
@@ -430,6 +433,7 @@ export default function SpaceCryptoEventRadar({
 【系统评级】：${e.volatilityTier}星（非来源评级）；影响币种由系统规则指定
 【来源】：${formatEventSource(e)}
 【市场预期/前值】：预期 ${e.forecast || '源未提供'} · 前值 ${e.previous || '源未提供'}
+【公布结果与参考解读】：${formatEventReleaseContext(e)}
 
 请凌风结合当前 ${currentSymbol} 的日线与4H形态，评估插针区间；幽影核实巨鲸对冲仓位与资金费率；雷震给出该事件发布前后的仓位防守指令与避险建议。`
                               );
@@ -569,6 +573,7 @@ export default function SpaceCryptoEventRadar({
                             <p className="text-[10px] text-slate-500 mt-1 break-words">{formatEventSource(e)}</p>
                           </div>
 
+                          {e.category === 'macro' && <EventReleaseDetails event={e} onRefresh={() => loadEvents(true)} />}
                           <EventMarketTracking event={e} onRefresh={() => loadEvents(true)} />
 
                           {impact ? (
@@ -744,6 +749,77 @@ function EventMarketTracking({ event, onRefresh }: { event: CryptoEvent; onRefre
           </div>
         );
       })}
+    </div>
+  );
+}
+
+function EventReleaseDetails({ event, onRefresh }: { event: CryptoEvent; onRefresh: () => void | Promise<void> }) {
+  const additional = getAdditionalReleaseEvents(event);
+  return <div className="space-y-2">
+    <EventReleaseSummary event={event} onRefresh={onRefresh} />
+    {additional.length > 0 && <details className="text-[11px] text-slate-600">
+      <summary className="cursor-pointer font-bold">同场其他阶段的公布结果（{additional.length}）</summary>
+      {additional.map((member) => <div key={member.id} className="mt-2">
+        <p className="mb-1 font-bold">{member.title} · {formatLocalTime(new Date(member.timestamp))} (UTC+8)</p>
+        <EventReleaseSummary event={member} onRefresh={onRefresh} />
+      </div>)}
+    </details>}
+  </div>;
+}
+
+/** 同一事件卡内分开展示：公布事实、规则解读、下方行情验证。 */
+function EventReleaseSummary({ event, onRefresh }: { event: CryptoEvent; onRefresh: () => void | Promise<void> }) {
+  const [collecting, setCollecting] = useState(false);
+  const p = getReleasePresentation(event);
+  const due = Date.parse(event.timestamp) <= Date.now();
+  const release = p.release;
+  const record = event.release && Date.parse(event.release.scheduledAt) === Date.parse(event.timestamp) ? event.release : undefined;
+  const collect = async () => {
+    setCollecting(true);
+    try {
+      const response = await cryptoEvents.collectRelease(event.id);
+      if (!response.success) toast.error('公布值补采失败，请稍后重试');
+      else {
+        if (response.data.status === 'busy') toast.success('公布值正在采集，请稍后刷新');
+        else if (response.data.status === 'idle') toast.success('尚未到重试时间，保留当前结果');
+        await onRefresh();
+      }
+    } catch { toast.error('公布值补采失败，请稍后重试'); }
+    finally { setCollecting(false); }
+  };
+  const biasLabel = { BULLISH: '参考偏利多', BEARISH: '参考偏利空', MIXED: '影响分歧', NEUTRAL: '预期差中性', UNKNOWN: '待确认' }[p.bias];
+  const biasColor = p.bias === 'BULLISH' ? 'text-emerald-700' : p.bias === 'BEARISH' ? 'text-rose-700' : 'text-slate-600';
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-3 space-y-2 text-[11px]" data-event-release={event.id}>
+      <div className="flex items-center justify-between gap-2">
+        <span className="font-black text-slate-800">公布结果 · {p.status}</span>
+        {p.supported && due && <button type="button" onClick={() => void collect()} disabled={collecting}
+          className="shrink-0 font-bold text-indigo-600 disabled:opacity-50 cursor-pointer">
+          {collecting ? '采集中…' : release ? '复查公布值' : '补采公布值'}
+        </button>}
+      </div>
+      {release ? <>
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-slate-600">
+          <span>实际公布值：<strong className="font-mono text-slate-900">{release.actual}</strong></span>
+          <span>日历预期：{p.forecast || '未提供'}</span><span>日历前值：{p.previous || '未提供'}</span>
+        </div>
+        <div className="text-slate-700">{p.result}{p.surprise ? ` ${p.surprise.text}` : ''} · 较日历前值 {p.change?.text || '不可比较'}</div>
+        {p.economicState && <p className="text-slate-600">{p.economicState}</p>}
+        {!p.baselineKnownBefore && <p className="text-amber-700">未取得已确认的事前预期记录，差值仅作数值对照。</p>}
+        {p.forecastDiffers && <p className="text-amber-700">补充源预期 {release.sourceForecast}，与原日历不同；保留两份来源，不覆盖原记录。</p>}
+        {p.previousDiffers && <p className="text-amber-700">补充源前值 {release.sourcePrevious}，与原日历不同；尚未确认为官方修正。</p>}
+        <p className="text-slate-500">公布值来源：<a href={release.source!.url} target="_blank" rel="noreferrer" className="underline">Nasdaq 聚合日历</a> · {release.source!.title} · 采集 {formatLocalTime(new Date(release.checkedAt))} (UTC+8)</p>
+        {release.revisions?.length ? <details className="text-slate-500"><summary className="cursor-pointer">来源数值更新记录（{release.revisions.length}）</summary>
+          {release.revisions.map((item, index) => <p key={index}>原采集值 {item.actual} · {item.collectedAt}</p>)}
+        </details> : null}
+      </> : <p className="text-slate-500">{record?.reason || (p.supported ? '到达日历时间后自动补采；来源尚未提供时不推测实际值。' : p.interpretation)}</p>}
+      {record?.error && <p className="text-amber-700">{record.error}{release ? '；保留已采集结果。' : ''}</p>}
+      {record?.checkedAt && <p className="text-slate-400">最近检查 {formatLocalTime(new Date(record.lastAttemptAt || record.checkedAt))} (UTC+8){record.retryAt && Date.now() - Date.parse(event.timestamp) <= 72 * 3_600_000 ? ` · 下次检查 ${formatLocalTime(new Date(record.retryAt))}` : ''}</p>}
+      {p.supported && <div className="border-t border-slate-100 pt-2">
+        <span className={`font-black ${biasColor}`}>BTC 参考解读 · {biasLabel}</span>
+        <p className="mt-1 text-slate-600">{p.interpretation}</p>
+        <p className="mt-1 text-slate-400">系统规则解读；下方行情单独验证，不代表事件因果或交易指令。</p>
+      </div>}
     </div>
   );
 }

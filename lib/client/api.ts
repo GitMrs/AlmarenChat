@@ -1186,6 +1186,10 @@ export interface CryptoEventsData {
 }
 
 export const cryptoEvents = {
+  collectRelease: (eventId: string) =>
+    request<{ success: boolean; data: { status: 'published' | 'pending' | 'retry' | 'idle' | 'busy'; saved?: number; published?: number } }>('/crypto/events/release', {
+      method: 'POST', body: JSON.stringify({ eventId }),
+    }),
   collectMarket: (eventId: string) =>
     request<{ success: boolean; data: { status: 'complete' | 'retry' | 'idle' | 'busy' | 'rescheduled' } }>('/crypto/events/market', {
       method: 'POST', body: JSON.stringify({ eventId }),

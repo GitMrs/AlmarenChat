@@ -1,3 +1,4 @@
+import { formatEventReleaseContext, type MacroRelease } from './event-release.ts';
 import cryptoEventsRaw from './crypto-events.json' with { type: 'json' };
 import { EVENT_MARKET_WINDOWS, getEventMarketResult, hasCompleteEventMarket, formatMarketPercent, type EventMarketObservation, type EventMarketWindow } from './event-market.ts';
 import { groupCryptoEvents } from './event-groups.ts';
@@ -43,6 +44,9 @@ export interface CryptoEvent {
   volatilityTier: VolatilityTier;
   preAlertHours?: number; // 默认 4 小时，3 星事件默认 24 小时 (重大年终决议可至 72 小时)
   postDigestHours?: number; // 默认 4 小时
+  /** 日历预期/前值首次记录时刻，用于区分事前预期与事后对照。 */
+  calendarRecordedAt?: string;
+  release?: MacroRelease;
   forecast?: string | null;
   previous?: string | null;
   source?: {
@@ -64,7 +68,7 @@ export interface CryptoEvent {
   /** 同一场宏观事件的稳定分组键；原始日历记录仍按各自 id 保留。 */
   eventGroupKey?: string;
   /** 分组后代表事件关联的其他阶段/别名，仅用于接口展示。 */
-  eventGroupMembers?: Array<Pick<CryptoEvent, 'id' | 'title' | 'timestamp' | 'marketObservation' | 'impact'>>;
+  eventGroupMembers?: Array<Pick<CryptoEvent, 'id' | 'title' | 'timestamp' | 'marketObservation' | 'impact' | 'release' | 'category' | 'source' | 'forecast' | 'previous' | 'calendarRecordedAt'>>;
 }
 
 export interface EvaluatedEvent {
@@ -345,6 +349,9 @@ export function buildEventRadarContext(options: EventRadarOptions = {}): string 
     const tierIcon = event.volatilityTier === 3 ? '🔴 3星极度高危' : event.volatilityTier === 2 ? '🟡 2星强震' : '🔵 1星扰动';
     lines.push(`  • 来源：${formatEventSource(event)}；系统评级 ${event.volatilityTier} 星；影响币种（系统规则）：${event.impactCoins.join(', ')}；市场预期 ${event.forecast ?? '源未提供'}；前值 ${event.previous ?? '源未提供'}`);
 
+    const releaseContext = formatEventReleaseContext(event, now);
+    if (releaseContext) lines.push(`  • ${releaseContext}`);
+
     if (phase === 'IN_THE_STORM') {
       lines.push(
         `- ⚡【暴风雨正当时 · 严禁追单】${event.title}（${tierIcon}）`,
@@ -398,6 +405,7 @@ export function buildEventRadarContext(options: EventRadarOptions = {}): string 
     lines.push('【历史事件前后 BTC 行情观察】', '仅为 OKX BTC-USDT 永续合约价格统计，以预定公布时间为锚；不代表实际公布值、预期差或事件导致涨跌，不能推断其他币种表现。');
     for (const event of marketHistory) {
       lines.push(`- ${event.title}；预定公布 ${event.timestamp}；日历来源：${formatEventSource(event)}`);
+      lines.push(`  ${formatEventReleaseContext(event, now)}`);
       for (const window of Object.keys(EVENT_MARKET_WINDOWS) as EventMarketWindow[]) {
         const result = getEventMarketResult(event, window, now)!;
         lines.push(`  ${window}：期末涨跌 ${formatMarketPercent(result.returnPct)}，区间最高/最低相对基准 ${formatMarketPercent(result.highPct)} / ${formatMarketPercent(result.lowPct)}；基准 ${result.baselineClose}（${result.baselineAt} 起的1分钟K线收盘价）；区间 [${result.windowStart}, ${result.windowEnd})；采集 ${result.collectedAt}；来源 ${result.sourceUrls.join('、')}`);

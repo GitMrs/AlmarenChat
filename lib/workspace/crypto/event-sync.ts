@@ -1,3 +1,4 @@
+import type { MacroRelease } from './event-release.ts';
 import { readFile, writeFile, rename } from 'node:fs/promises';
 import path from 'node:path';
 import {
@@ -118,9 +119,9 @@ export const MACRO_DICTIONARY = [
     pattern: /flash.*pmi|s&p.*pmi/i,
     chineseTitle: '美国 S&P Global 制造业/服务业采购经理人指数 (Flash PMI 初值)',
     guidance: {
-      bullishCondition: 'PMI 站稳荣枯线 50 上方扩张，经济基本面健康支撑资产估值',
-      bearishCondition: 'PMI 深度跌入收缩区间，衰退预期骤升，避险资产受捧',
-      riskInstruction: '美东时间 09:45 (夏令时北京时间 21:45 / UTC 13:45) 由标普全球 (S&P Global / 原 Markit) 发布初值，美股早盘时段共振波动',
+      bullishCondition: '公布后先比较预期差、前值和荣枯线；经济前景改善可能支持风险偏好，但需结合利率预期。',
+      bearishCondition: '增长走弱可能增加衰退担忧，增长过热也可能压低宽松预期；不能仅按高于或低于 50 判断 BTC 多空。',
+      riskInstruction: '美东时间 09:45（夏令时北京时间 21:45，冬令时 22:45）由标普全球发布初值；具体时间以本条日历为准，关注公布窗口波动。',
     },
     tier: 2 as const,
   },
@@ -298,6 +299,7 @@ export function transformToCryptoEvents(rawEvents: RawCalendarItem[], fetchedAt 
       volatilityTier: volTier,
       preAlertHours: volTier === 3 ? 24 : 4,
       postDigestHours: 6,
+      calendarRecordedAt: fetchedAt,
       forecast: forecastVal,
       previous: previousVal,
       source: {
@@ -361,8 +363,14 @@ export async function mergeEventsIntoJson(newEvents: CryptoEvent[], snapshotWeek
       const legacyId = event.id.replace('macro-revised-uom-consumer-sentiment-', 'macro-final-uom-consumer-sentiment-');
       const oldEvent = existingMap.get(event.id) || (legacyId !== event.id ? existingMap.get(legacyId) : undefined);
       if (legacyId !== event.id) existingMap.delete(legacyId);
+      const sameSchedule = oldEvent && Date.parse(oldEvent.timestamp) === Date.parse(event.timestamp);
+      // 已公布事件保留事前日历记录；补充源的当前预期/前值另存，避免事后改写预期差。
+      const preserveBaseline = sameSchedule && Date.parse(event.timestamp) <= Date.now();
       existingMap.set(event.id, {
         ...event, impact: oldEvent?.impact || event.impact,
+        ...(preserveBaseline ? { forecast: oldEvent.forecast, previous: oldEvent.previous,
+          calendarRecordedAt: oldEvent.calendarRecordedAt || oldEvent.source?.fetchedAt } : {}),
+        release: sameSchedule ? oldEvent.release : undefined,
         marketObservation: oldEvent && Date.parse(oldEvent.timestamp) === Date.parse(event.timestamp)
           ? oldEvent.marketObservation : undefined,
       });
@@ -429,6 +437,23 @@ export async function persistEventMarketStage(
       provider: 'okx', instrument: EVENT_MARKET_INSTRUMENT, scheduledAt,
       stages: { ...(existing && Date.parse(existing.scheduledAt) === Date.parse(scheduledAt) ? existing.stages : {}), [window]: stage },
     };
+    await writeEvents(events);
+    return true;
+  });
+}
+
+/** 使用同一串行写入队列，结果与行情补采互不覆盖；改期结果不得挂到新事件。 */
+export async function persistEventRelease(eventId: string, scheduledAt: string, release: MacroRelease): Promise<boolean> {
+  return withEventWrite(async () => {
+    const events = await readCryptoEventsFromDisk();
+    const event = events.find((item) => item.id === eventId);
+    if (!event || Date.parse(event.timestamp) !== Date.parse(scheduledAt) ||
+        Date.parse(release.scheduledAt) !== Date.parse(scheduledAt)) return false;
+    const prior = event.release;
+    if (prior && Date.parse(prior.scheduledAt) === Date.parse(scheduledAt) &&
+        (Date.parse(prior.checkedAt) > Date.parse(release.checkedAt) ||
+          (prior.status === 'published' && release.status !== 'published'))) return false;
+    event.release = release;
     await writeEvents(events);
     return true;
   });
