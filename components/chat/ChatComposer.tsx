@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Brain, Check, Flame, Image as ImageIcon, ImagePlus, Loader2, Plus, Send, Square, Trash2, X } from 'lucide-react';
-import ComposerModelOptions from '@/components/chat/ComposerModelOptions';
+import ComposerModelOptions, { ComposerModelSourceSwitch } from '@/components/chat/ComposerModelOptions';
 import ComposerShell from '@/components/chat/ComposerShell';
 import { cn } from '@/lib/client/utils';
 import type { MessageAttachment } from '@/types';
@@ -135,8 +135,11 @@ export default function ChatComposer({
         )}
         <ComposerShell
           rowClassName="gap-3"
-          toolbar={(mode === 'image' || onOpenContext) ? (
+          toolbar={(mode === 'image' || ollamaAvailable || onOpenContext) ? (
             <div className="flex w-full flex-wrap items-center gap-2">
+              {ollamaAvailable && (
+                <ComposerModelSourceSwitch modelSource={modelSource} onModelSourceChange={onModelSourceChange} disabled={isStreaming} />
+              )}
               {mode === 'image' && (
                 <div className="inline-flex h-8 max-w-full items-center gap-2 rounded-lg bg-white px-2.5 text-xs font-black text-slate-600 shadow-sm">
                   <ImageIcon size={13} className="shrink-0" />
@@ -171,11 +174,6 @@ export default function ChatComposer({
             {toolsOpen && (
               <div className="absolute bottom-[calc(100%+10px)] left-0 z-30 w-60 max-w-[calc(100vw-32px)] rounded-lg border border-black/[0.08] bg-white p-1.5 shadow-xl">
                 <ComposerModelOptions
-                  modelSource={modelSource}
-                  onModelSourceChange={ollamaAvailable ? (source) => {
-                    onModelSourceChange(source);
-                    setToolsOpen(false);
-                  } : undefined}
                   deepThinking={deepThinking}
                   onToggleThinking={() => {
                     onToggleThinking();

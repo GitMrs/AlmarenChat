@@ -4,7 +4,7 @@ import { ASSISTANT_RECENT_MESSAGE_LIMIT, estimateRequestTokens } from '@/lib/mem
 import { usePathname, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Activity, ArrowLeft, Bell, Check, CheckSquare, ChevronDown, ChevronUp, Clock, History, ImagePlus, Loader2, MessageCircleHeart, PanelRightClose, Pin, Plus, Send, Settings2, Sparkles, Square, Trash2, X } from 'lucide-react';
-import ComposerModelOptions from '@/components/chat/ComposerModelOptions';
+import ComposerModelOptions, { ComposerModelSourceSwitch } from '@/components/chat/ComposerModelOptions';
 import ComposerShell from '@/components/chat/ComposerShell';
 import MessageActions from '@/components/chat/MessageActions';
 import MessageBubbleFrame from '@/components/chat/MessageBubbleFrame';
@@ -2041,8 +2041,11 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
                   )}
                   <ComposerShell
                     rowClassName="gap-2"
-                    toolbar={activeMessageCount > 0 ? (
+                    toolbar={(ollamaAvailable || activeMessageCount > 0) ? (
                       <div className="flex flex-wrap items-center gap-1.5 pb-1 pt-0.5">
+                        {ollamaAvailable && (
+                          <ComposerModelSourceSwitch modelSource={modelSource} onModelSourceChange={setModelSource} disabled={streaming} />
+                        )}
                         {activeMessageCount > 0 && (
                           <button
                             type="button"
@@ -2072,11 +2075,6 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
                       {toolsOpen && (
                         <div className="absolute bottom-[calc(100%+8px)] left-0 z-30 w-56 rounded-xl border border-black/[0.08] bg-white p-1.5 shadow-xl">
                           <ComposerModelOptions
-                            modelSource={modelSource}
-                            onModelSourceChange={ollamaAvailable ? (source) => {
-                              setModelSource(source);
-                              setToolsOpen(false);
-                            } : undefined}
                             deepThinking={deepThinking}
                             onToggleThinking={() => {
                               setDeepThinking((enabled) => !enabled);

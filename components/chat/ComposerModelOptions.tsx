@@ -8,14 +8,44 @@ type Props = {
   deepThinking: boolean;
   onToggleThinking: () => void;
   thinkingDisabled?: boolean;
-  modelSource?: BrowserModelSource;
-  onModelSourceChange?: (source: BrowserModelSource) => void;
 };
 
 const modelOptions = [
-  { source: 'ONLINE', label: '线上模型', Icon: Cloud },
-  { source: 'OLLAMA', label: '本地模型', Icon: Cpu },
+  { source: 'ONLINE', label: '线上', Icon: Cloud },
+  { source: 'OLLAMA', label: '本地', Icon: Cpu },
 ] as const;
+
+export function ComposerModelSourceSwitch({
+  modelSource,
+  onModelSourceChange,
+  disabled,
+}: {
+  modelSource: BrowserModelSource;
+  onModelSourceChange: (source: BrowserModelSource) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div role="group" aria-label="模型来源" className="inline-flex shrink-0 items-center rounded-lg bg-slate-100 p-0.5 text-[11px] font-bold">
+      {modelOptions.map(({ source, label, Icon }) => (
+        <button
+          key={source}
+          type="button"
+          aria-label={label + '模型'}
+          aria-pressed={source === modelSource}
+          onClick={() => onModelSourceChange(source)}
+          disabled={disabled}
+          className={cn(
+            'inline-flex h-7 items-center gap-1 rounded-md px-2.5 transition disabled:cursor-not-allowed disabled:opacity-60',
+            source === modelSource ? 'bg-white text-slate-950 shadow-sm' : 'text-slate-500 hover:text-slate-950'
+          )}
+        >
+          <Icon size={12} aria-hidden="true" />
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 const optionClass = 'flex min-h-10 w-full items-center gap-3 rounded-md px-3 py-2 text-left text-xs font-black transition disabled:opacity-40';
 const inactiveClass = 'text-slate-600 hover:bg-slate-50 hover:text-slate-950';
@@ -25,40 +55,19 @@ export default function ComposerModelOptions({
   deepThinking,
   onToggleThinking,
   thinkingDisabled,
-  modelSource,
-  onModelSourceChange,
 }: Props) {
   return (
-    <>
-      {onModelSourceChange && (
-        <div role="group" aria-label="模型来源">
-          {modelOptions.map(({ source, label, Icon }) => (
-            <button
-              key={source}
-              type="button"
-              aria-pressed={source === modelSource}
-              onClick={() => onModelSourceChange(source)}
-              className={cn(optionClass, source === modelSource ? activeClass : inactiveClass)}
-            >
-              <Icon size={16} />
-              <span className="flex-1">{label}</span>
-              {source === modelSource && <Check size={14} />}
-            </button>
-          ))}
-        </div>
-      )}
-      <button
-        type="button"
-        aria-pressed={deepThinking}
-        onClick={onToggleThinking}
-        disabled={thinkingDisabled}
-        title="开启后用于当前聊天的后续消息，直到手动关闭"
-        className={cn(optionClass, deepThinking ? activeClass : inactiveClass)}
-      >
-        <Brain size={16} />
-        <span className="flex-1">深度思考</span>
-        {deepThinking && <Check size={14} />}
-      </button>
-    </>
+    <button
+      type="button"
+      aria-pressed={deepThinking}
+      onClick={onToggleThinking}
+      disabled={thinkingDisabled}
+      title="开启后用于当前聊天的后续消息，直到手动关闭"
+      className={cn(optionClass, deepThinking ? activeClass : inactiveClass)}
+    >
+      <Brain size={16} />
+      <span className="flex-1">深度思考</span>
+      {deepThinking && <Check size={14} />}
+    </button>
   );
 }
