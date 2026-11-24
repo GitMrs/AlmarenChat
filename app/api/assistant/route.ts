@@ -1,3 +1,4 @@
+import { ASSISTANT_RECENT_MESSAGE_LIMIT } from '@/lib/memory/conversation-context-policy.mjs';
 import { NextResponse } from 'next/server';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
@@ -59,6 +60,7 @@ export async function GET(request: Request) {
         includeChatContext: profile.includeChatContext,
       },
       conversationId: profile.conversationId,
+      contextMessageLimit: profile.conversation.contextMessageLimit ?? ASSISTANT_RECENT_MESSAGE_LIMIT,
       mainConversationId: profile.conversationId,
       conversationMode: 'MAIN',
       messages: messages.slice(0, 60).reverse(),

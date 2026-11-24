@@ -189,12 +189,16 @@ export const assistant = {
       method: 'POST',
       body: JSON.stringify({ title }),
     }),
+  updateContextLimit: (conversationId: string, contextMessageLimit: number) =>
+    request<{ contextMessageLimit: number }>(`/assistant/conversations/${conversationId}`, {
+      method: 'PATCH', body: JSON.stringify({ contextMessageLimit }),
+    }),
   switchConversation: (conversationId: string) =>
-    request<{ conversationId: string; conversationMode: 'MAIN' | 'TEMPORARY'; messages: Message[]; hasMore?: boolean }>(`/assistant/conversations/${conversationId}`, {
+    request<{ conversationId: string; contextMessageLimit: number; conversationMode: 'MAIN' | 'TEMPORARY'; messages: Message[]; hasMore?: boolean }>(`/assistant/conversations/${conversationId}`, {
       method: 'POST',
     }),
   deleteConversation: (conversationId: string) =>
-    request<{ success: true; currentConversationId: string; messages?: Message[]; hasMore?: boolean }>(`/assistant/conversations/${conversationId}`, {
+    request<{ success: true; currentConversationId: string; contextMessageLimit: number; messages?: Message[]; hasMore?: boolean }>(`/assistant/conversations/${conversationId}`, {
       method: 'DELETE',
     }),
   updateProfile: (data: Partial<PersonalAssistantProfile>) =>

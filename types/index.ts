@@ -258,6 +258,7 @@ export interface AssistantReminderCandidate {
 }
 
 export interface PersonalAssistantBootstrap {
+  contextMessageLimit: number;
   profile: PersonalAssistantProfile;
   conversationId: string;
   mainConversationId: string;

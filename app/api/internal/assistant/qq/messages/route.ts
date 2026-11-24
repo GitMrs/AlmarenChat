@@ -154,7 +154,7 @@ export async function POST(request: Request) {
     });
 
     stage = 'load-context';
-    const contextLimit = ASSISTANT_RECENT_MESSAGE_LIMIT;
+    const contextLimit = profile.conversation.contextMessageLimit ?? ASSISTANT_RECENT_MESSAGE_LIMIT;
     const contextSources = {
       spaces: profile.includeSpaceContext,
       tasks: profile.includeTaskContext,

@@ -509,7 +509,8 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
   const [deletingMessageId, setDeletingMessageId] = useState<string | null>(null);
   const [contextModalOpen, setContextModalOpen] = useState(false);
 
-  const recentCandidates = (data?.messages || []).filter(m => (m.role === 'user' || m.role === 'assistant') && m.content.trim()).slice(-ASSISTANT_RECENT_MESSAGE_LIMIT);
+  const contextLimit = data?.contextMessageLimit ?? ASSISTANT_RECENT_MESSAGE_LIMIT;
+  const recentCandidates = (data?.messages || []).filter(m => (m.role === 'user' || m.role === 'assistant') && m.content.trim()).slice(-contextLimit);
   const activeMessageCount = recentCandidates.length;
   const estimatedActiveTokens = estimateRequestTokens(recentCandidates);
   const estimatedTokensText = estimatedActiveTokens >= 1000
@@ -1002,6 +1003,7 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
           setData((prev) => prev ? {
             ...prev,
             conversationId: main.conversationId,
+            contextMessageLimit: main.contextMessageLimit,
             conversationMode: main.conversationMode,
             messages: main.messages,
             hasMore: main.hasMore,
@@ -1394,6 +1396,7 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
         conversationId: res.conversationId,
         conversationMode: res.conversationMode,
         messages: [],
+        contextMessageLimit: ASSISTANT_RECENT_MESSAGE_LIMIT,
         hasMore: false,
       } : current);
       setView('chat');
@@ -1480,6 +1483,7 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
         ...current,
         conversationId: res.conversationId,
         conversationMode: res.conversationMode,
+        contextMessageLimit: res.contextMessageLimit,
         messages: res.messages,
         hasMore: res.hasMore,
       } : current);
@@ -1509,6 +1513,7 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
         setData({
           ...data,
           conversationId: res.currentConversationId,
+          contextMessageLimit: res.contextMessageLimit,
           conversationMode: 'MAIN',
           messages: res.messages || [],
           hasMore: res.hasMore,
@@ -2041,12 +2046,11 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
                   )}
                   <ComposerShell
                     rowClassName="gap-2"
-                    toolbar={(ollamaAvailable || activeMessageCount > 0) ? (
+                    toolbar={data ? (
                       <div className="flex flex-wrap items-center gap-1.5 pb-1 pt-0.5">
                         {ollamaAvailable && (
                           <ComposerModelSourceSwitch modelSource={modelSource} onModelSourceChange={setModelSource} disabled={streaming} />
                         )}
-                        {activeMessageCount > 0 && (
                           <button
                             type="button"
                             onClick={() => setContextModalOpen(true)}
@@ -2057,10 +2061,8 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
                             )}
                           >
                             <span className="h-1.5 w-1.5 rounded-full bg-sky-500" />
-                            <span>{activeMessageCount} 条候选原文 · ~{estimatedTokensText} Tokens</span>
+                            <span>{activeMessageCount ? `上下文与记忆 · 已载入 ${activeMessageCount} 条候选原文 · ~${estimatedTokensText} Tokens` : '上下文与记忆'}</span>
                           </button>
-                        )}
-
                       </div>
                     ) : undefined}
                   >
@@ -2336,6 +2338,14 @@ export default function PersonalAssistantProvider({ children }: { children: Reac
         onConfirm={confirmDeleteConversation}
       />
       <AssistantContextModal
+        key={data?.conversationId}
+        contextMessageLimit={contextLimit}
+        onContextMessageLimitChange={async value => {
+          if (!data) throw new Error('会话尚未加载');
+          const id = data.conversationId;
+          const saved = await assistant.updateContextLimit(id, value);
+          setData(current => current?.conversationId === id ? { ...current, contextMessageLimit: saved.contextMessageLimit } : current);
+        }}
         open={contextModalOpen}
         onClose={() => setContextModalOpen(false)}
         conversationId={data?.conversationId || ''}

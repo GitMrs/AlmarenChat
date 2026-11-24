@@ -1,3 +1,4 @@
+import { ASSISTANT_RECENT_MESSAGE_LIMIT } from '@/lib/memory/conversation-context-policy.mjs';
 import { NextResponse } from 'next/server';
 import prisma from '@/app/api/_lib/db';
 import { requireAuth } from '@/app/api/_lib/auth';
@@ -31,6 +32,27 @@ export async function GET(request: Request, { params }: { params: Promise<{ conv
   }
 }
 
+export async function PATCH(request: Request, { params }: { params: Promise<{ conversationId: string }> }) {
+  try {
+    const userId = requireAuth(request);
+    const { conversationId } = await params;
+    const body = await request.json().catch(() => null);
+    const limit = body?.contextMessageLimit;
+    if (!Number.isInteger(limit) || limit < 1 || limit > 80) {
+      return NextResponse.json({ error: '请输入 1～80 的整数' }, { status: 400 });
+    }
+    const result = await prisma.conversation.updateMany({
+      where: { id: conversationId, userId, kind: 'PERSONAL_ASSISTANT' },
+      data: { contextMessageLimit: limit },
+    });
+    if (!result.count) return NextResponse.json({ error: '会话不存在' }, { status: 404 });
+    return NextResponse.json({ contextMessageLimit: limit });
+  } catch (error: any) {
+    if (error.message === 'Unauthorized') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ conversationId: string }> }
@@ -55,6 +77,7 @@ export async function POST(
 
     return NextResponse.json({
       conversationId,
+      contextMessageLimit: conversation.contextMessageLimit ?? ASSISTANT_RECENT_MESSAGE_LIMIT,
       conversationMode: conversation.id === profile.conversationId ? 'MAIN' : 'TEMPORARY',
       messages: messages.slice(0, 60).reverse(),
       hasMore: messages.length > 60,
@@ -106,6 +129,7 @@ export async function DELETE(
     return NextResponse.json({
       success: true,
       currentConversationId: profile.conversationId,
+      contextMessageLimit: profile.conversation.contextMessageLimit ?? ASSISTANT_RECENT_MESSAGE_LIMIT,
       messages: mainMessages.slice(0, 60).reverse(),
       hasMore: mainMessages.length > 60,
     });
