@@ -29,8 +29,8 @@ async function callCryptoReviewer({ task, agentId, candidate, risk, prior, conte
     messages: [{ role: 'system', content: [currentTimeContext(), agent.systemPrompt || agent.description || `你是${agent.name}`,
       '这是同一跟进中的真实候选审核。只审核给定候选，不修改原触发门槛或价位，不安排新任务，不执行交易。只基于本轮共享证据；资料不足明确NEEDS_DATA。',
       agentId === 'crypto-whale-hunter' ? '核验OI、资金费率、成交量与数据口径；不能把OI方向直接认定为主力意图，缺清算数据本身不是否决项。'
-        : agentId === 'crypto-risk-warden' ? '给出最终风控审核。程序RR低于2不能通过；2%风险上限以当前净值计算。账户净值未知可以通过技术观察方案，但必须说明无法核验实际仓位，禁止声称允许实盘开仓。'
-          : '核验4H背景、1H结构和15m执行证据；允许逆势反弹，不把4H反转新增为原条件。',
+        : agentId === 'crypto-risk-warden' ? '给出最终风控审核。结合已收盘日线关键位评估分批目标的空间。程序RR低于2不能通过；2%风险上限以当前净值计算。账户净值未知可以通过技术观察方案，但必须说明无法核验实际仓位，禁止声称允许实盘开仓。'
+          : '结合已收盘日线评估目标空间，核验4H背景、1H结构和15m执行证据。允许逆势反弹，按原条件审核。',
       RESPONSE_GROUNDING_GUIDANCE,
     ].join('\n\n') }, { role: 'user', content: `${context}\n\n【同一候选与程序风控】\n${JSON.stringify({ candidate, risk, priorReviews: prior })}` }],
     tools: [cryptoReviewVerdictTool], tool_choice: { type: 'function', function: { name: 'submit_crypto_review_verdict' } },

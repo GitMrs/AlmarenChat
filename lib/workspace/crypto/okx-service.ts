@@ -1,4 +1,5 @@
 import { smartFetch } from '../../web/proxy.ts';
+import { analyzeStructure } from './timeframe-analysis.mjs';
 import {
   extractCryptoSymbolFromText,
   normalizeSymbol,
@@ -55,6 +56,8 @@ export interface CryptoMarketSnapshot {
   candles15m: CryptoCandle[];
   candles1h: CryptoCandle[];
   candles4h: CryptoCandle[];
+  candles1d: CryptoCandle[];
+  dailyStructure: ReturnType<typeof analyzeStructure> | null;
   microstructure: CryptoMicrostructure;
   priceDelta15mPercent: number;
   priceDelta1hPercent: number;
@@ -169,6 +172,8 @@ const REALTIME_CACHE_TTL_MS = 2500;
 const DERIVATIVES_CACHE_TTL_MS = 60_000;
 const CANDLE_CACHE_TTL_MS = 10_000;
 const CANDLE_BOUNDARY_GRACE_MS = 5_000;
+const DAILY_CANDLE_PERIOD_MS = 24 * 60 * 60_000;
+const OKX_DAILY_CANDLE_OFFSET_MS = 8 * 60 * 60_000;
 const MICROSTRUCTURE_CACHE_TTL_MS = 5_000;
 type CacheEntry<T> = { fetchedAt: number; value: T };
 type CandleCacheEntry = CacheEntry<CryptoCandle[]> & { periodStartMs: number; periodMs: number };
@@ -284,12 +289,13 @@ async function fetchMarketDataDirect(ccy: string, instId: string, rawSymbol: str
 
   try {
     const now = Date.now();
-    const [realtime, derivatives, candles15m, candles1h, candles4h, microstructure] = await Promise.all([
+    const [realtime, derivatives, candles15m, candles1h, candles4h, candles1d, microstructure] = await Promise.all([
       getRealtimeData(instId, now),
       getDerivativesData(ccy, instId, now),
       getCandles(instId, '15m', 15 * 60_000, now),
       getCandles(instId, '1H', 60 * 60_000, now),
       getCandles(instId, '4H', 4 * 60 * 60_000, now),
+      getCandles(instId, '1D', DAILY_CANDLE_PERIOD_MS, now),
       getMicrostructureData(instId, now),
     ]);
     if (!realtime || realtime.value.price <= 0) return null;
@@ -310,6 +316,8 @@ async function fetchMarketDataDirect(ccy: string, instId: string, rawSymbol: str
       candles15m: candles15m.slice(0, 100),
       candles1h: candles1h.slice(0, 100),
       candles4h: candles4h.slice(0, 100),
+      candles1d: candles1d.slice(0, 10),
+      dailyStructure: candles1d.length ? analyzeStructure(candles1d, '1D') : null,
       microstructure: microstructure.value,
       priceDelta15mPercent: delta(candles15m),
       priceDelta1hPercent: delta(candles1h),
@@ -564,26 +572,33 @@ async function getDerivativesData(ccy: string, instId: string, now: number) {
 }
 
 async function getCandles(instId: string, bar: string, periodMs: number, now: number): Promise<CryptoCandle[]> {
-  const periodStartMs = Math.floor(now / periodMs) * periodMs;
+  const daily = bar === '1D';
+  const offset = daily ? OKX_DAILY_CANDLE_OFFSET_MS : 0;
+  const periodStartMs = Math.floor((now + offset) / periodMs) * periodMs - offset;
   const key = `${instId}:${bar}`;
   const cached = candleCache.get(key);
   // 未收盘 OHLCV 也需要刷新；周期已切换时不复用上一周期的列表。
   // 若边界刚过就取过数据，宽限期后再取一次，核验交易所最终收盘标记。
   const boundaryReadyAt = periodStartMs + CANDLE_BOUNDARY_GRACE_MS;
-  const needsBoundaryConfirmation = cached && cached.fetchedAt < boundaryReadyAt && now >= boundaryReadyAt;
+  const dailyConfirmed = daily && Boolean(cached?.value.length);
+  const needsBoundaryConfirmation = !dailyConfirmed && cached && cached.fetchedAt < boundaryReadyAt && now >= boundaryReadyAt;
+  const ttl = dailyConfirmed ? DAILY_CANDLE_PERIOD_MS : CANDLE_CACHE_TTL_MS;
   if (cached && cached.periodStartMs === periodStartMs
-    && now - cached.fetchedAt < CANDLE_CACHE_TTL_MS && !needsBoundaryConfirmation) {
+    && now - cached.fetchedAt < ttl && !needsBoundaryConfirmation) {
     return cached.value;
   }
+  const fallback = daily && cached?.periodStartMs !== periodStartMs ? [] : cached?.value || [];
   const response = await smartFetch(`https://www.okx.com/api/v5/market/candles?instId=${instId}&bar=${bar}&limit=100`, { timeoutMs: 5000 }).catch(() => null);
-  if (!response?.ok) return cached?.value || [];
+  if (!response?.ok) return fallback;
   const json = await response.json().catch(() => ({}));
-  if (json.code !== '0' || !Array.isArray(json.data) || json.data.length === 0) return cached?.value || [];
+  if (json.code !== '0' || !Array.isArray(json.data) || json.data.length === 0) return fallback;
   const rawList = json.data;
   const candles = rawList.filter(Array.isArray).map((item: any[]) => {
     const startTimeMs = parseInt(item[0], 10);
     return {
-      time: new Date(startTimeMs).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
+      time: daily
+        ? new Date(startTimeMs).toLocaleDateString('zh-CN', { timeZone: 'Asia/Shanghai' })
+        : new Date(startTimeMs).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
       startTimeMs,
       isClosed: item[8] === '1',
       open: parseFloat(item[1]),
@@ -596,7 +611,15 @@ async function getCandles(instId: string, bar: string, periodMs: number, now: nu
     && [candle.open, candle.high, candle.low, candle.close].every(value => Number.isFinite(value) && value > 0)
     && Number.isFinite(candle.vol) && candle.vol >= 0);
   // 上游空数据或异常数据不能清空可用历史，也不能将旧数据的时间刷新为现在。
-  if (candles.length === 0) return cached?.value || [];
-  candleCache.set(key, { fetchedAt: Date.now(), value: candles, periodStartMs, periodMs });
-  return candles;
+  if (candles.length === 0) return fallback;
+  let value = candles;
+  if (daily) {
+    const previousDayStart = periodStartMs - periodMs;
+    const closed = candles.filter(candle => candle.isClosed && candle.startTimeMs <= previousDayStart
+      && (candle.startTimeMs + offset) % periodMs === 0)
+      .sort((a, b) => b.startTimeMs - a.startTimeMs);
+    value = closed.some(candle => candle.startTimeMs === previousDayStart) ? closed : [];
+  }
+  candleCache.set(key, { fetchedAt: Date.now(), value, periodStartMs, periodMs });
+  return value;
 }
