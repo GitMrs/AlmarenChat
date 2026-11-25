@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef, type ReactNode } from 'react';
+import { useState, useEffect, useCallback, useRef, useId } from 'react';
 import {
   Brain,
   Sparkles,
@@ -31,7 +31,9 @@ interface ContextMemoryModalProps {
   source: ContextMemorySource;
   subject: string;
   variant?: 'assistant' | 'agent';
-  settings?: ReactNode;
+  contextMessageLimit: number;
+  maxContextMessageLimit?: number;
+  onContextMessageLimitChange: (value: number) => Promise<void>;
   open: boolean;
   onClose: () => void;
   conversationId: string;
@@ -44,7 +46,9 @@ export function ContextMemoryModal({
   source,
   subject,
   variant = 'assistant',
-  settings,
+  contextMessageLimit,
+  maxContextMessageLimit = 80,
+  onContextMessageLimitChange,
   open,
   onClose,
   conversationId,
@@ -257,7 +261,10 @@ export function ContextMemoryModal({
             </div>
           )}
 
-          {settings}
+          <RecentMessageLimit key={`${conversationId}:${contextMessageLimit}`} value={contextMessageLimit} max={maxContextMessageLimit} hasConversation={Boolean(conversationId)} onSave={async value => {
+            await onContextMessageLimitChange(value);
+            await fetchStats();
+          }} />
           <p className="text-xs leading-5 text-slate-500">近期原文上限为 {stats?.contextLimit ?? '…'} 条历史消息（当前输入另计，不是对话轮数）。归档只建立历史索引，不会直接把原文从近期窗口排除。</p>
           {conversationId && <>
           {/* 指标卡片网格 */}
@@ -526,6 +533,40 @@ export function ContextMemoryModal({
         }}
         onConfirm={handleDeleteExperience}
       />
+    </div>
+  );
+}
+
+function RecentMessageLimit({ value, max, hasConversation, onSave }: {
+  value: number;
+  max: number;
+  hasConversation: boolean;
+  onSave: (value: number) => Promise<void>;
+}) {
+  const inputId = useId();
+  const [limit, setLimit] = useState(value);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  return (
+    <div className="rounded-xl border border-slate-200 p-3 text-xs text-slate-600">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <label htmlFor={inputId} className="font-bold">近期原文上限</label>
+        <div className="flex items-center gap-2">
+          <input id={inputId} type="number" min={1} max={max} value={limit} disabled={saving} onChange={event => setLimit(Number(event.target.value))} className="h-8 w-16 rounded-lg border border-slate-200 px-2 text-center" />
+          <span>/ {max} 条</span>
+          <button type="button" disabled={saving || limit === value} onClick={async () => {
+            if (!Number.isInteger(limit) || limit < 1 || limit > max) { setError(`请输入1～${max}的整数`); return; }
+            setSaving(true);
+            setError('');
+            try { await onSave(limit); }
+            catch (err) { setError(err instanceof Error ? err.message : '保存失败'); }
+            finally { setSaving(false); }
+          }} className="rounded-lg bg-slate-950 px-3 py-1.5 font-bold text-white disabled:bg-slate-200 disabled:text-slate-400">{saving ? '保存中…' : '保存'}</button>
+        </div>
+      </div>
+      <p className="mt-2 text-slate-400">保存后从下一条消息生效。更早的对话可由摘要承接，实际带入的条数还受模型上下文预算限制。</p>
+      {!hasConversation && <p className="mt-2 text-slate-400">发送首条消息后，可查看当前会话的统计和归档。</p>}
+      {error && <p role="alert" className="mt-2 text-rose-600">{error}</p>}
     </div>
   );
 }

@@ -144,7 +144,7 @@ export async function POST(request: Request) {
         userId,
         kind: 'PERSONAL_ASSISTANT',
       },
-      select: { id: true, assistantMode: true },
+      select: { id: true, assistantMode: true, contextMessageLimit: true },
     });
     if (!targetConversation) return NextResponse.json({ error: '会话不存在' }, { status: 404 });
     const conversationId = targetConversation.id;
@@ -188,7 +188,7 @@ export async function POST(request: Request) {
       });
     }
 
-    const contextLimit = ASSISTANT_RECENT_MESSAGE_LIMIT;
+    const contextLimit = targetConversation.contextMessageLimit ?? ASSISTANT_RECENT_MESSAGE_LIMIT;
     const contextSources = {
       spaces: profile.includeSpaceContext,
       tasks: profile.includeTaskContext,

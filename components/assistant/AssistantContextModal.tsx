@@ -13,6 +13,8 @@ const source: ContextMemorySource = {
 
 export function AssistantContextModal(props: {
   open: boolean;
+  contextMessageLimit: number;
+  onContextMessageLimitChange: (value: number) => Promise<void>;
   onClose: () => void;
   conversationId: string;
   conversationMode: 'MAIN' | 'TEMPORARY';

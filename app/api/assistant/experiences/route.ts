@@ -22,15 +22,13 @@ export async function GET(request: Request) {
     const profile = await ensurePersonalAssistant(userId);
     const conversationId = requestedConversationId || profile.conversationId;
 
-    const [user, conversation, unarchivedMessages, totalCount, experiences, recent, contextState] = await Promise.all([
-      prisma.user.findUnique({
-        where: { id: userId },
-        select: { contextMessageLimit: true },
-      }),
-      prisma.conversation.findFirst({
-        where: { id: conversationId, userId, kind: 'PERSONAL_ASSISTANT' },
-        select: { id: true, assistantMode: true, title: true },
-      }),
+    const conversation = await prisma.conversation.findFirst({
+      where: { id: conversationId, userId, kind: 'PERSONAL_ASSISTANT' },
+      select: { id: true, assistantMode: true, contextMessageLimit: true },
+    });
+    if (!conversation) return NextResponse.json({ error: '小伴会话不存在' }, { status: 404 });
+    const contextLimit = conversation.contextMessageLimit ?? ASSISTANT_RECENT_MESSAGE_LIMIT;
+    const [unarchivedMessages, totalCount, experiences, recent, contextState] = await Promise.all([
       prisma.message.findMany({
         where: {
           conversationId,
@@ -56,15 +54,10 @@ export async function GET(request: Request) {
           createdAt: true,
         },
       }),
-      prisma.message.findMany({ where: { conversationId, role: { in: ['user', 'assistant'] } }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: ASSISTANT_RECENT_MESSAGE_LIMIT, select: { id: true, role: true, content: true, createdAt: true } }),
+      prisma.message.findMany({ where: { conversationId, role: { in: ['user', 'assistant'] } }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: contextLimit, select: { id: true, role: true, content: true, createdAt: true } }),
       prisma.conversationContextState.findUnique({ where: { conversationId } }),
     ]);
 
-    if (!conversation) {
-      return NextResponse.json({ error: '小伴会话不存在' }, { status: 404 });
-    }
-
-    const contextLimit = ASSISTANT_RECENT_MESSAGE_LIMIT;
     const unarchivedCount = unarchivedMessages.length;
     const archivedCount = Math.max(0, totalCount - unarchivedCount);
     const estimatedTokens = estimateMessagesTokens(recent);
