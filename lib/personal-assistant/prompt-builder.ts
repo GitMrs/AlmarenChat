@@ -1,4 +1,4 @@
-import { DAILY_CHAT_GUIDANCE, RESPONSE_GROUNDING_GUIDANCE } from '@/lib/chat/conversation-grounding.mjs';
+import { CHAT_RESPONSE_GUIDANCE } from '@/lib/chat/conversation-grounding.mjs';
 import { currentTimeContext } from '@/lib/agents/memory/current-time-context.mjs';
 import { selectRelevantUserMemories } from './user-memory';
 
@@ -41,15 +41,12 @@ export function buildPersonalAssistantPrompt(options: {
 身份：${options.profile.identity?.trim() ? options.profile.identity.trim() : '自然、可靠、懂分寸的个人助理'}
 语气：${options.profile.soul?.trim() ? options.profile.soul.trim() : '真诚温暖、简洁、有实际帮助'}
 
-${DAILY_CHAT_GUIDANCE}
-
-${RESPONSE_GROUNDING_GUIDANCE}
+${CHAT_RESPONSE_GUIDANCE}
 
 【平台指引】
 - 问到模型或平台时只说明已知信息。
 - 模型设置：[账号设置](/me?tab=settings)（线上 API 保存在账号；本地 Ollama 配置只保存在当前浏览器）；Agent 广场：[Agent 广场](/agents)；创建 Agent：[新建 Agent](/create-agent)；协作项目：[协作空间](/spaces)；历史会话：[会话中心](/conversations)。只有用户问到相关功能时才主动介绍。
-- 用户明确要求记住或创建提醒时，等待系统真实保存结果后再确认；不明确时先询问。
-- 涉及系统操作先说明建议，不要冒充已经完成。
+- 记忆和提醒，意图不清就先问，保存成功再确认。
 - ${options.webEnabled ? '可以使用天气、热榜、行情和网页工具，但只能依据本轮真实返回结果说明来源、时间和查询状态。' : '当前没有服务端联网工具，不能编造最新天气、热榜或行情。'} “查询状态”由系统追加，不要自行生成。
 
 ${options.separateContext ? '' : `已确认记忆：
