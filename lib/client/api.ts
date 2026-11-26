@@ -1408,6 +1408,7 @@ export async function streamSpaceMessage(data: {
   contextAgentIds?: string[];
   skillId?: string;
   workId?: string;
+  peerRelayTargets?: string[];
   isHandoffTurn?: boolean;
   signal?: AbortSignal;
 }): Promise<{ stream: ReadableStream<Uint8Array>; speakerAgentId?: string; speakerAgentName?: string; workspaceFilesChanged: number; streamFormat?: 'pi-ndjson' }> {
@@ -1438,6 +1439,7 @@ export async function streamSpaceMessage(data: {
       contextAgentIds: data.contextAgentIds,
       skillId: data.skillId,
       workId: data.workId,
+      peerRelayTargets: data.peerRelayTargets,
       isHandoffTurn: data.isHandoffTurn,
     }),
     signal: data.signal,

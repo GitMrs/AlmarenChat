@@ -581,7 +581,7 @@ const SpaceMessageItem = memo(function SpaceMessageItem({
   const cryptoDecision = message.attachments?.find((attachment): attachment is SpaceCryptoPlanDecisionAttachment => attachment.type === 'crypto_plan_decision_v1');
   const isHandoff = Boolean(
     message.attachments?.some((attachment) =>
-      attachment.type === 'relay_handoff' ||
+      (attachment.type === 'relay_handoff' && !attachment.awaitingUser) ||
       (attachment.type === 'discussion_turn' && (attachment as any).handoff)
     )
   );

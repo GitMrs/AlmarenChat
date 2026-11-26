@@ -21,6 +21,7 @@ import { createCapabilityHelpTool } from '@/lib/capabilities/help.mjs';
 import { stripHistoryRetrievalNotices } from '@/lib/personal-assistant/retrieval-notice.mjs';
 import { createBilibiliAgentTools } from '@/lib/bilibili/agent-tools.mjs';
 import { createAgentGrowthTools } from '@/lib/agents/growth/agent-growth';
+import { askSpaceUser, closingHandoff } from '@/lib/space/chat-turn-recipient.mjs';
 import { collectChatCompletionStream, runToolLoop } from '@/lib/agents/runtime/tool-loop.mjs';
 import { withMessageReasoning } from '@/lib/chat/reasoning.mjs';
 import { normalizeTaskProposalSteps, taskProposalCapabilities, taskProposalNeedsClarification, taskProposalWithTurnNetworkAuthorization } from '@/lib/space/task-proposals';
@@ -641,7 +642,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
       message, targetAgentId, history, skipPersistUserMessage, interactionMode, coordinationScope,
       multiReplyIndex, imageGenerationRequested, skillId, workId, persistMessages,
       deepThinking,
-      isolatedContext, contextAgentIds, isHandoffTurn, directContent, speakerId,
+      isolatedContext, contextAgentIds, isHandoffTurn, directContent, speakerId, peerRelayTargets,
     } = await request.json();
     const textMessage = typeof message === 'string' ? message.trim() : '';
     const shouldPersistMessages = persistMessages !== false;
@@ -963,7 +964,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
       ? createSpaceFollowUpTools({ userId, spaceId, agentId: targetAgent.id,
           sourceMessageId: persistedUserMessage?.id || randomUUID(), history: rawHistory, networkAllowed: allowWebSearch, userMessage: textMessage, workId: selectedWork?.id })
       : null;
+    const canAskUser = Array.isArray(peerRelayTargets) && !useIsolatedContext && shouldPersistMessages;
+    const eligiblePeers = canAskUser && isAutoRelayEnabled && !isHandoffTurn
+      ? memberAgents.filter(agent => agent.id !== targetAgent.id && peerRelayTargets.includes(agent.id))
+      : [];
     const availableTools = [
+      ...(canAskUser ? [askSpaceUser] : []),
       ...filterToolSchemas([
       ...(selectedWork ? workspaceToolSchemas.filter((tool: any) => READ_ONLY_WORKSPACE_TOOLS.has(tool.function.name)) : []),
       ...(growth ? growth.tools : []),
@@ -984,9 +990,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
     const chatGuidance = normalizedInteractionMode === 'chat'
       ? [
           '当前是空间闲聊，不是任务执行轮次。请先像空间里的真实成员一样回应当前话题：理解上下文，接住用户的情绪或观点，必要时表达自己的判断、补充、反驳或提出一个自然的问题。不要因为用户讨论了一个想法，就立刻拆成任务、要求验收或把自己说成已经开始执行。',
-          isAutoRelayEnabled
-            ? '当前空间已开启成员自动接力。请严格区分【提及/引用伙伴】与【传麦呼叫对方接话】：若仅在句子中陈述、引用或提到伙伴（如“正如可可所说”、“诺克斯提到的问题”），直接写姓名，【切勿带 @】，避免系统误将其作为交接指令而唤醒对方；只有当你陈述完观点、确实希望特定伙伴继续接话或补充见解时，才在文末使用「@伙伴名」（例如：“关于这块的技术细节，@可可 你怎么看？”），系统检测到你的 @ 会自动唤醒对方接力发言。若无需他人接话则不要使用 @。严禁 @ 你自己或不在场的角色。'
-            : '当前空间未开启成员自动接力。若提及其他在场伙伴直接称呼名字，不要在正文中使用 @ 符号。',
           '闲聊时可以结合空间说明、最近对话、已有任务状态和只读资料，让回应具有连续性；引用任务或文件时只说已确认的事实，不要把后台状态猜成结果。',
           '只有用户明确要求写入、修改、执行、生成可交付文件，或明确要求持续推进多步骤工作时，才调用 propose_task。用户只是问“你怎么看”“聊聊这个”“帮我分析一下”时，直接在当前对话回答。',
           targetAgent.id === SPACE_COORDINATOR.id
@@ -1030,7 +1033,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
       targetAgent.systemPrompt || targetAgent.description || `你是 ${targetAgent.name}。`,
       RESPONSE_GROUNDING_GUIDANCE,
       agentMemory,
-      formatMembersContext(allAgents, targetAgent, { autoBotChat: isAutoRelayEnabled }),
+      formatMembersContext(allAgents, targetAgent, { canAskUser, canMentionPeer: eligiblePeers.length > 0 }),
       useIsolatedContext ? '当前是一个独立直播上下文。只允许璐璐和可可参与，不得提及、@或邀请空间中的其他成员；不要引用直播之外的历史对话、任务或游戏。' : '',
       !useIsolatedContext && space.description ? `当前空间说明：${space.description}` : '',
       !useIsolatedContext && space.instructions ? `当前空间规则：\n${space.instructions}` : '',
@@ -1070,9 +1073,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
       [
         '你是空间助手。普通问答、讨论方案和少量只读查看直接回答；需要项目事实时可使用只读文件工具核实。',
         isMultiReply
-          ? (isAutoRelayEnabled
-              ? '当前是多成员接力回应，不是任务执行。只代表自己给出观点，不得创建任务方案，不得写文件或声称已经开始执行。请严格区分【引用名字】（直接写名字，切勿带@）与【传麦接话】（若需要特定伙伴继续推进或发表意见，可在文末使用「@伙伴名」；若本轮结束或最后一轮请向用户总结还麦，不要再@其他人）。'
-              : '当前是多人分别回答，不是任务执行。只代表自己给出观点，不得创建任务方案，不得写文件或声称已经开始执行。交流或提及其他在场成员时直接称呼姓名或昵称，不要在正文中使用 @ 符号。')
+          ? '当前是多成员回应，只代表自己发言。承接已有结论，补充自己的判断。'
           : '你没有写入、终端和浏览器权限。普通问答、简单分析、本地只读查看或一到两次联网事实查询应直接完成；需要形成带明确数量、格式或验收要求的专业交付，或者需要修改文件、编写代码并落盘、制作网页或文档、运行命令、操作浏览器、多个步骤持续执行时，调用 propose_task 生成目标授权方案。',
         !isMultiReply ? '任务方案必须覆盖完整目标、范围、主要里程碑、预期产物和总体验收要求，但不要提前选择成员或生成固定执行链。用户确认的是目标与能力边界；运行时 Coordinator 会读取空间中的实时成员、工作状态和每轮成果，动态决定下一件任务交给谁。按可独立验收的产物描述里程碑，不要按页面结构、样式、功能点或检查阶段机械拆分。不要声称任务已经开始。' : '',
         relayTool ? '用户明确要求多个成员按顺序参与同一件事时，调用 start_relay；这包含让大家依次参与、每个人分别回应、轮流处理、接力推进、相互审阅或持续改进同一份文字成果。只有明确的逐员参与或顺序推进要求才启动，泛泛征询意见不自动启动。用户说“大家”“所有成员”或“全员”时，participantIds 必须包含全部可用普通成员；用户只要求几位成员时才选择子集。需要文件、联网、命令、浏览器或专业交付时仍调用 propose_task。接力开始后会按接力规则推进并在最后验收。' : '',
@@ -1135,6 +1136,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
     const readable = new ReadableStream({
       async start(controller) {
         let taskProposal: TaskProposal | null = null;
+        let awaitingUser = false;
         let fullReasoning = '';
         let relayDraft: RelayDraft | null = null;
         let discussionDraft: DiscussionDraft | null = null;
@@ -1168,6 +1170,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
               });
             },
             executeTool: async (name: string, args: Record<string, unknown>) => {
+              if (name === 'ask_space_user' && canAskUser) {
+                const question = typeof args.question === 'string' ? args.question.trim() : '';
+                if (!question) return { ok: false, error: '请填写需要用户澄清的问题' };
+                awaitingUser = true;
+                emit({ type: 'text_reset' });
+                emit({ type: 'text_delta', delta: question });
+                return { ok: true, stop: true, content: question };
+              }
               if (followUp?.owns(name)) return followUp.execute(name, args);
               if (name.startsWith('mcp_')) { if (!connectorBroker) throw new Error('当前场景未开启连接器'); return connectorBroker.call(name, args); }
               if (name === 'capability_help') return capabilityHelp.execute(args);
@@ -1384,10 +1394,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
                   }]
                 : discussionDraft && discussionId
                   ? [{ type: 'discussion_started', discussionId, topic: discussionDraft.topic, participantIds: discussionDraft.participantIds }]
+                  : awaitingUser
+                    ? [{ type: 'relay_handoff', awaitingUser: true, label: '等待你补充' }]
                   : isHandoffTurn === true
                     ? [{ type: 'relay_handoff', label: '本轮互聊收尾 · 等待用户决策' }]
                     : [];
-            const runtimeAttachments = spaceMessageRuntime.assistantAttachments({
+            const runtimeAttachments = awaitingUser ? [] : spaceMessageRuntime.assistantAttachments({
               agentId: targetAgent.id,
               assistantContent,
               textMessage,
@@ -1429,6 +1441,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
           await prisma.space.update({ where: { id: spaceId }, data: { updatedAt: new Date() } });
           const webFooter = web.footer();
           if (webFooter) emit({ type: 'text_delta', delta: webFooter });
+          if (awaitingUser) {
+            emit({ type: 'awaiting_user' });
+          } else if (eligiblePeers.length && !taskProposal && !relayDraft && !discussionDraft) {
+            const handoff = closingHandoff(loopResult.content || '', awaitingUser);
+            const peer = resolveMentionTarget(handoff, memberAgents);
+            if (peer && eligiblePeers.some(agent => agent.id === peer.id)) emit({ type: 'peer_handoff', agentId: peer.id });
+          }
           controller.close();
         } catch (error: any) {
           if (!request.signal.aborted && error?.code === 'EMPTY_MODEL_RESPONSE') {

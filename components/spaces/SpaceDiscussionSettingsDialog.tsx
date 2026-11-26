@@ -161,10 +161,10 @@ export default function SpaceDiscussionSettingsDialog({
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5 text-xs font-black text-slate-800">
                   <AtSign size={14} className="text-sky-600" />
-                  伙伴 @ 提及触发接话 (Mention Relay)
+                  成员交接
                 </div>
                 <p className="mt-1 text-[11px] font-medium leading-relaxed text-slate-400">
-                  当某位成员在发言中 @ 空间内其他伙伴时，自动触发被提及伙伴接力发言（受互聊轮数上限约束）。
+                  成员有疑问时会先问你。理解清楚后，可通过 @ 指定伙伴接话。
                 </p>
               </div>
               <button

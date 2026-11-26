@@ -145,43 +145,20 @@ export function resolveMentionTargets(content: string, agents: ResolvedSpaceAgen
 export function formatMembersContext(
   agents: ResolvedSpaceAgent[],
   targetAgent: ResolvedSpaceAgent,
-  options?: { autoBotChat?: boolean }
+  options?: { canAskUser?: boolean; canMentionPeer?: boolean }
 ) {
   const workers = agents.filter((agent) => agent.id !== SPACE_COORDINATOR_ID);
-  const otherMembers = workers.filter((agent) => agent.id !== targetAgent.id);
   const membersList = workers
     .map((agent) => `- ${agent.name}${agent.category ? `（${agent.category}）` : ''}: ${agent.description || '暂无描述'}`)
     .join('\n');
 
-  const shortNameCounts = new Map<string, number>();
-  for (const agent of workers) {
-    const shortName = agent.name.split(/[·•\-_(（]/)[0].trim();
-    if (shortName && shortName !== agent.name && shortName.length >= 2) {
-      shortNameCounts.set(shortName, (shortNameCounts.get(shortName) || 0) + 1);
-    }
-  }
-  const otherMemberNames = otherMembers.map((agent) => {
-    const shortName = agent.name.split(/[·•\-_(（]/)[0].trim();
-    return shortName && shortName !== agent.name && shortNameCounts.get(shortName) === 1
-      ? `「${agent.name}」（呼叫名：${shortName}）`
-      : `「${agent.name}」`;
-  });
-
-  const allowAutoRelay = options?.autoBotChat !== false;
-  const mentionGuidance = otherMembers.length > 0
-    ? `2. 【伙伴称呼与 @ 协作规范】：
-   - 当前在场的其他伙伴有：${otherMemberNames.join('、')}。
-   - 【自然互动与接力呼叫】：${allowAutoRelay
-      ? `当前空间已开启成员自动接力。请严格区分【提及/引用名字】与【传麦唤醒对方接话】：
-       * 仅仅提及或引用伙伴（例如：“正如可可之前提到的那样……”、“诺克斯的分析很透彻”）：直接写姓名，【绝对不要带 @】，避免系统误将其判定为转麦指令而强制唤醒对方；
-       * 明确需要特定伙伴接力回答/发表见解（例如：“关于这部分细节，请 @诺克斯 补充评估” 或 “@可可 你怎么看？”）：在发言末尾自然地使用「@伙伴名」，系统检测到你的 @ 会自动唤醒该伙伴接力发言；
-       * 若当前话题你已完整回答，无需其他人补充接话，请正常收尾，不要使用 @。`
-      : '当前空间未开启成员自动接力。若提及在场伙伴请直接称呼姓名（如“可可”、“璐璐”），不要使用 @ 符号。'}
-   - 【极其重要】：你只能 @ 上述【实际在场】的伙伴！切勿 @ 任何不在当前群名单中的角色（禁止虚空喊话），不要 @ 你自己。`
-    : `2. 【单聊/无其他在场成员】：
-   - 当前空间中除你之外没有其他伙伴在场，这是你与用户的单独对话。
-   - 请直接与用户交流，不要 @ 任何角色。`;
-
+  const mentionGuidance = [
+    '2. 先结合上下文判断自己是否理解了用户的意思。如果仍有会影响下一步的疑问，先问用户，本轮停在问题处。等用户回复后再判断；若只解答了一部分，就只问剩余疑问。意思清楚时直接推进。',
+    options?.canAskUser ? '需要澄清时用 ask_space_user 发出问题，等待期间不要 @ 伙伴。' : '',
+    options?.canMentionPeer
+      ? '理解清楚且下一步确实需要其他成员时，在回复末尾另起一行写「@伙伴名 具体事项」。平时提到伙伴直接写名字。'
+      : '本轮直接回应，不发起伙伴接力。',
+  ].filter(Boolean).join('\n');
   return `你正在一个名为“空间”的多 Agent 会话中发言。
 当前轮到你以「${targetAgent.name}」的身份发言。
 你只代表自己发言，不要冒充其他 Agent。

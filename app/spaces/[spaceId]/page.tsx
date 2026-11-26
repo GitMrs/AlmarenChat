@@ -1,5 +1,6 @@
 'use client';
 
+import { replyQueueProgress } from '@/lib/space/reply-queue.mjs';
 import { startSerialPolling } from '@/lib/space/serial-polling.mjs';
 import { compactActivityEvents } from '@/lib/space/activity-events.mjs';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -61,6 +62,8 @@ import { DEFAULT_SPACE_DISCUSSION_SETTINGS } from '@/types';
 
 const FALLBACK_COLOR = '#4f46e5';
 const SPACE_COORDINATOR_ID = 'space-coordinator';
+const EMPTY_REPLY_QUEUE = { agentIds: [] as string[], index: 0, memberCount: 0 };
+
 const DEFAULT_COORDINATOR = {
   id: SPACE_COORDINATOR_ID,
   name: '空间协调者',
@@ -695,8 +698,8 @@ export default function SpaceDetailPage() {
   const [streamingPiNotes, setStreamingPiNotes] = useState<SpacePiExecutionNote[]>([]);
   const [pendingPiSkillApproval, setPendingPiSkillApproval] = useState<SpacePiSkillApproval | null>(null);
   const [piSkillApprovalBusy, setPiSkillApprovalBusy] = useState(false);
-  const [replyQueueAgentIds, setReplyQueueAgentIds] = useState<string[]>([]);
-  const [replyQueueIndex, setReplyQueueIndex] = useState(0);
+  const [replyQueue, setReplyQueue] = useState(EMPTY_REPLY_QUEUE);
+  const { agentIds: replyQueueAgentIds, index: replyQueueIndex } = replyQueue;
   const [addingAgentId, setAddingAgentId] = useState('');
   const [uploadingFile, setUploadingFile] = useState(false);
   const [downloadingFileId, setDownloadingFileId] = useState('');
@@ -801,6 +804,7 @@ export default function SpaceDetailPage() {
   const isPiSpace = space?.runtimeType === 'PI_CODING';
   const imageGenerationAvailable = Boolean(space?.imageGenerationAvailable);
   const coordinatorAgent = useMemo(() => space?.hostAgent || DEFAULT_COORDINATOR, [space]);
+  const queueSpeakerName = (id: string) => id === coordinatorAgent.id ? coordinatorAgent.name : agentById.get(id)?.name || '成员';
   const mentionAgents = useMemo(() => {
     const seen = new Set<string>();
     return [coordinatorAgent as Agent, ...memberAgents].filter((agent) => {
@@ -1810,8 +1814,7 @@ export default function SpaceDetailPage() {
     setStreamingPiActivity(null);
     setStreamingPiStatus('');
     setStreamingPiNotes([]);
-    setReplyQueueAgentIds([]);
-    setReplyQueueIndex(0);
+    setReplyQueue(EMPTY_REPLY_QUEUE);
 
     try {
       const controller = new AbortController();
@@ -1838,7 +1841,7 @@ export default function SpaceDetailPage() {
               const isMultiTurn =
                 (prevItem?.role === 'assistant' && prevItem.speakerAgentId !== item.speakerAgentId) ||
                 (nextItem?.role === 'assistant' && nextItem.speakerAgentId !== item.speakerAgentId);
-              if (!isMultiTurn) {
+              if (!isMultiTurn || item.attachments?.some(a => a.type === 'relay_handoff' && a.awaitingUser)) {
                 const found = memberAgents.find((agent) => agent.id === item.speakerAgentId);
                 if (found) {
                   targets = [found];
@@ -1853,6 +1856,7 @@ export default function SpaceDetailPage() {
       const allowPeerMentionRelay = !coordinatorRequested && !isAllMembersRequested;
       const replyRequests: Array<{
         target: Agent | null;
+        speakerAgentId?: string;
         message: string;
         interactionMode: 'chat' | 'multi_reply' | 'coordinated_turn' | 'coordination_summary';
         coordinationScope?: SpacePiCoordinationRequest;
@@ -1877,7 +1881,9 @@ export default function SpaceDetailPage() {
             imageGenerationRequested: requestImageGeneration,
           }];
       const directReplyCount = replyRequests.length;
-      setReplyQueueAgentIds(targets.length > 1 ? targets.map((agent) => agent.id) : []);
+      const updateReplyQueue = (index: number) => {
+        setReplyQueue(replyQueueProgress(replyRequests, index, coordinatorAgent.id));
+      };
       let workspaceFilesChanged = 0;
       let streamFailure = '';
       let coordinationQueued = false;
@@ -1894,12 +1900,18 @@ export default function SpaceDetailPage() {
         }
         const replyRequest = replyRequests[index];
         const currentSpeakerId = replyRequest.target?.id || coordinatorAgent.id;
-        setReplyQueueIndex(index);
+        updateReplyQueue(index);
         setStreamingContent('');
         setStreamingReasoning('');
         setStreamingSpeakerId(replyRequest.target?.id || null);
         setStreamingPiNotes([]);
+        const canRelay = allowPeerMentionRelay && !isPiSpace && autoBotChat && botAtMentionTriggersReply && botChainHops < MAX_BOT_MENTION_HOPS;
+        const queuedIds = new Set(replyRequests.slice(index + 1).map(r => r.target?.id));
+        const peerRelayTargets = canRelay ? memberAgents.filter(agent => !queuedIds.has(agent.id)).map(agent => agent.id) : [];
+        let handoffAgentId: string | null = null;
+        let awaitingUser = false;
         const result = await streamSpaceMessage({
+          peerRelayTargets: isPiSpace ? undefined : peerRelayTargets,
           spaceId,
           message: replyRequest.message,
           history: currentHistory.slice(-61).map((message) => ({
@@ -1919,7 +1931,9 @@ export default function SpaceDetailPage() {
           workId: activeWorkId === 'new' ? undefined : activeWorkId,
           signal: controller.signal,
         });
-        setStreamingSpeakerId(result.speakerAgentId || replyRequest.target?.id || null);
+        replyRequest.speakerAgentId = result.speakerAgentId || currentSpeakerId;
+        if (replyRequest.speakerAgentId !== currentSpeakerId) updateReplyQueue(index);
+        setStreamingSpeakerId(replyRequest.speakerAgentId);
         workspaceFilesChanged += result.workspaceFilesChanged;
 
         const reader = result.stream.getReader();
@@ -1949,10 +1963,15 @@ export default function SpaceDetailPage() {
                 note?: SpacePiExecutionNote;
                 approval?: SpacePiSkillApproval & { approved?: boolean };
                 coordination?: SpacePiCoordinationRequest;
+                agentId?: string;
               };
               if (event.type === 'text_delta' && typeof event.delta === 'string') {
                 fullContent += event.delta;
                 setStreamingContent(fullContent);
+              } else if (event.type === 'awaiting_user') {
+                awaitingUser = true;
+              } else if (event.type === 'peer_handoff' && typeof event.agentId === 'string') {
+                handoffAgentId = event.agentId;
               } else if (event.type === 'reasoning_delta' && typeof event.delta === 'string') {
                 const delta = event.delta;
                 setStreamingReasoning((current) => current + delta);
@@ -2010,28 +2029,20 @@ export default function SpaceDetailPage() {
               coordinationScope: request,
               skipPersistUserMessage: true,
             });
-            setReplyQueueAgentIds([
-              coordinatorAgent.id,
-              ...participants.map((participant) => participant.id),
-              coordinatorAgent.id,
-            ]);
+            updateReplyQueue(index);
           }
         }
 
-        // 伙伴间 @ 联动流转机制 (Peer @-Mention Auto Relay)
-        const canRelay = allowPeerMentionRelay && !isPiSpace && autoBotChat && botAtMentionTriggersReply && botChainHops < MAX_BOT_MENTION_HOPS && Boolean(fullContent);
-        if (canRelay) {
-          const otherMembers = memberAgents.filter((agent) => agent.id !== currentSpeakerId);
-          const mentionedOtherAgents = mentionedAgents(fullContent, otherMembers);
-          // 挑选正文中被 @ 且当前尚未在后续排队的伙伴接话（支持两人及多人持续接力互动）
-          const remainingTargetIds = new Set(replyRequests.slice(index + 1).map((r) => r.target?.id).filter(Boolean));
-          const nextTarget = mentionedOtherAgents.find((agent) => !remainingTargetIds.has(agent.id));
+        if (awaitingUser) break;
+        if (canRelay && handoffAgentId && !streamFailure && !controller.signal.aborted) {
+          const nextTarget = memberAgents.find(agent => agent.id === handoffAgentId && peerRelayTargets.includes(agent.id)
+            && agent.id !== (result.speakerAgentId || currentSpeakerId));
           if (nextTarget) {
             botChainHops += 1;
             const isLastHop = botChainHops >= MAX_BOT_MENTION_HOPS;
             const relayPrompt = isLastHop
-              ? `前一位空间成员（${replyRequest.target?.name || '伙伴'}）的回复如下：\n${fullContent}\n\n【注意：向用户还麦收尾】这是本轮连续互聊的最后一次发言。请在自然回应对方的同时，主动向用户总结核心结论或建议，并向用户提出具体问题/选项邀请用户决策，不要再@其他成员！`
-              : `前一位空间成员（${replyRequest.target?.name || '伙伴'}）@了你并说道：\n${fullContent}\n\n请以你的人设和视角自然回应对方伙伴，继续推进对话与互动交流。`;
+              ? `前一位空间成员（${replyRequest.target?.name || '伙伴'}）的回复如下：\n${fullContent}\n\n【注意：向用户还麦收尾】这是本轮连续互聊的最后一次发言。请在自然回应对方的同时，总结本轮新增结论。只有确需用户决定或补充时才提问。`
+              : `前一位空间成员（${replyRequest.target?.name || '伙伴'}）将以下事项交给你：\n${fullContent}\n\n请完成交接中指定的工作，直接给出新增判断。`;
 
             replyRequests.push({
               target: nextTarget,
@@ -2042,7 +2053,7 @@ export default function SpaceDetailPage() {
               imageGenerationRequested: false,
               isHandoffTurn: isLastHop,
             });
-            setReplyQueueAgentIds((ids) => [...ids, nextTarget.id]);
+            updateReplyQueue(index);
           }
         }
 
@@ -2057,6 +2068,7 @@ export default function SpaceDetailPage() {
         }
       }
 
+      setReplyQueue(EMPTY_REPLY_QUEUE);
       const [messageResult, fileResult, relayResult, discussionResult, runResult] = await Promise.all([
         spacesApi.messages(spaceId, { limit: 60 }),
         (isPiSpace || workspaceFilesChanged > 0) ? spacesApi.files(spaceId) : Promise.resolve(null),
@@ -2086,8 +2098,7 @@ export default function SpaceDetailPage() {
       setStreamingPiNotes([]);
       setPendingPiSkillApproval(null);
       setPiSkillApprovalBusy(false);
-      setReplyQueueAgentIds([]);
-      setReplyQueueIndex(0);
+      setReplyQueue(EMPTY_REPLY_QUEUE);
       setStreamingSpeakerId(null);
     }
   };
@@ -2098,8 +2109,7 @@ export default function SpaceDetailPage() {
     setIsStreaming(false);
     setStreamingContent('');
     setStreamingReasoning('');
-    setReplyQueueAgentIds([]);
-    setReplyQueueIndex(0);
+    setReplyQueue(EMPTY_REPLY_QUEUE);
     setStreamingSpeakerId(null);
     textareaRef.current?.focus();
   };
@@ -2114,8 +2124,7 @@ export default function SpaceDetailPage() {
     setStreamingContent('');
     setStreamingReasoning('');
     setPendingPiSkillApproval(null);
-    setReplyQueueAgentIds([]);
-    setReplyQueueIndex(0);
+    setReplyQueue(EMPTY_REPLY_QUEUE);
     setStreamingSpeakerId(null);
   };
 
@@ -4757,11 +4766,11 @@ export default function SpaceDetailPage() {
                         <span className="relative inline-flex h-2 w-2 rounded-full bg-sky-500" />
                       </span>
                       <span className="font-bold text-sky-900">
-                        多成员接力中（第 {replyQueueIndex + 1}/{replyQueueAgentIds.length} 位 · {agentById.get(replyQueueAgentIds[replyQueueIndex])?.name || '成员'}）
+                        接力中 · {replyQueue.memberCount} 位成员 · 第 {replyQueueIndex + 1}/{replyQueueAgentIds.length} 次发言 · {queueSpeakerName(replyQueueAgentIds[replyQueueIndex])}
                       </span>
                       {replyQueueAgentIds.length > replyQueueIndex + 1 && (
                         <span className="hidden truncate text-slate-400 md:inline">
-                          后续排队：{replyQueueAgentIds.slice(replyQueueIndex + 1).map((id) => agentById.get(id)?.name).filter(Boolean).join('、')}
+                          后续排队：{replyQueueAgentIds.slice(replyQueueIndex + 1).map(queueSpeakerName).join('、')}
                         </span>
                       )}
                     </div>
@@ -5577,7 +5586,7 @@ export default function SpaceDetailPage() {
                               自动接话: <span className="font-black text-slate-800">{(space?.discussionSettings?.autoBotChat ?? true) ? '开启' : '关闭'}</span>
                             </div>
                             <div className="rounded bg-white/70 px-2 py-1 border border-black/[0.04]">
-                              @ 触发接力: <span className="font-black text-slate-800">{(space?.discussionSettings?.botAtMentionTriggersReply ?? true) ? '开启' : '关闭'}</span>
+                              成员交接: <span className="font-black text-slate-800">{(space?.discussionSettings?.botAtMentionTriggersReply ?? true) ? '开启' : '关闭'}</span>
                             </div>
                             <div className="rounded bg-white/70 px-2 py-1 border border-black/[0.04]">
                               空闲搭话: <span className="font-black text-slate-800">{(space?.discussionSettings?.idleTalk ?? false) ? '开启' : '关闭'}</span>

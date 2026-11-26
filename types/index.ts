@@ -820,6 +820,7 @@ export interface SpaceDiscussionAttachment {
 
 export interface SpaceRelayHandoffAttachment {
   type: 'relay_handoff';
+  awaitingUser?: boolean;
   label?: string;
   suggestedActions?: string[];
 }
