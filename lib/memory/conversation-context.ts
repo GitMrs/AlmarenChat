@@ -7,6 +7,11 @@ import { composeConversationRequest, continuousRecentSuffix, conversationBudget,
 const RELATIVE_TIME_PATTERN = /(?:今天|昨天|前天|明天|后天|现在|刚才|今晚|明晚|本周|这周|下周|上周|当天|当时)/u;
 const ABSOLUTE_DATE_PATTERN = /(?:20\d{2}[-年]\d{1,2}[-月]\d{1,2}(?:日|T)|\d{1,2}月\d{1,2}日|\d{4}-\d{2}-\d{2})/u;
 
+function dbTimeoutCode(error: unknown) {
+  const code = (error as { code?: string } | null)?.code;
+  return code && /^(?:P1008|P2024|P2034|SQLITE_(?:BUSY|LOCKED)(?:_[A-Z_]+)?)$/.test(code) ? code : undefined;
+}
+
 function hasUnanchoredRelativeTime(summary: string) {
   return summary.split(/\n+/u).some(line => {
     if (!RELATIVE_TIME_PATTERN.test(line)) return false;
@@ -151,8 +156,10 @@ ${excerpts}`;
   }
   const through = pending.at(-1) || (state?.throughMessageId ? { id: state.throughMessageId, createdAt: state.throughCreatedAt } : null);
   sourceCount += pending.length;
+  const shouldSave = options.persist !== false && !summaryFallback;
   const manifest = {
-    phase: 'prepared', version: summaryFallback ? (stored?.version || 0) : (stored?.version || 0) + 1,
+    phase: 'prepared', version: (stored?.version || 0) + (shouldSave ? 1 : 0),
+    checkpointSaved: shouldSave,
     summaryFallback: summaryFallback ? 'temporary-excerpts' : null,
     summaryRetryAfterMs,
     ...limits, estimatedInputTokens: result.estimatedInputTokens,
@@ -161,23 +168,42 @@ ${excerpts}`;
     summarySourceCount: sourceCount, summaryThroughId: through?.id || null, summaryTokens: estimateRequestTokens([{ content: summary }]),
     included: result.included, omitted: result.omitted, capturedAt: new Date().toISOString(), estimateNotice: '估算包含本轮系统提示、当前输入、摘要、原文与已加入的记忆；图片按保守值估算，工具轮次另行复核。',
   };
-  if (options.persist !== false) {
-    await prisma.$transaction(async tx => {
-      const current = await tx.conversationContextState.findUnique({ where: { conversationId: options.conversationId } });
-      if ((current?.version ?? -1) !== (stored?.version ?? -1)) throw new Error('会话上下文已被另一请求更新，请重试');
-      // A temporary request context must not advance the durable summary cursor.
-      if (summaryFallback) return;
-      const data = { summary, throughMessageId: through?.id || null, throughCreatedAt: through?.createdAt || null, sourceCount, version: (stored?.version || 0) + 1, lastRequest: JSON.parse(JSON.stringify(manifest)) };
-      if (current) await tx.conversationContextState.update({ where: { conversationId: options.conversationId }, data });
-      else await tx.conversationContextState.create({ data: { conversationId: options.conversationId, ...data } });
-    });
+  if (shouldSave) {
+    const { conversationId } = options;
+    const data = { summary, throughMessageId: through?.id || null, throughCreatedAt: through?.createdAt || null, sourceCount, version: manifest.version, lastRequest: JSON.parse(JSON.stringify(manifest)) };
+    try {
+      if (stored) {
+        const { count } = await prisma.conversationContextState.updateMany({
+          where: { conversationId, version: stored.version }, data,
+        });
+        if (count === 0) throw new Error('会话上下文已被另一请求更新，请重试');
+      } else {
+        await prisma.conversationContextState.create({ data: { conversationId, ...data } });
+      }
+    } catch (error) {
+      if (!stored && (error as { code?: string } | null)?.code === 'P2002') {
+        throw new Error('会话上下文已被另一请求更新，请重试');
+      }
+      const code = dbTimeoutCode(error);
+      if (!code) throw error;
+      manifest.checkpointSaved = false;
+      manifest.version = stored?.version ?? 0;
+      console.warn('[conversation-context] checkpoint write timed out; using prepared context', { conversationId, code });
+    }
   }
   return { messages: result.messages as Array<{ role: 'system' | 'user' | 'assistant'; content: any }>, history: recent, summary, manifest };
 }
 
 export async function recordConversationUsage(userId: string, conversationId: string, manifest: any, usage: any) {
-  await prisma.conversationContextState.updateMany({
-    where: { conversationId, version: manifest.version, conversation: { userId } },
-    data: { lastRequest: JSON.parse(JSON.stringify({ ...manifest, ...usage })) },
-  });
+  if (!manifest.checkpointSaved) return;
+  try {
+    await prisma.conversationContextState.updateMany({
+      where: { conversationId, version: manifest.version, conversation: { userId } },
+      data: { lastRequest: JSON.parse(JSON.stringify({ ...manifest, ...usage })) },
+    });
+  } catch (error) {
+    const code = dbTimeoutCode(error);
+    if (!code) throw error;
+    console.warn('[conversation-context] model request usage write timed out', { conversationId, code });
+  }
 }

@@ -347,7 +347,7 @@ export async function POST(request: Request) {
             getExtraTools: currentExtraTools,
             callTool: async (name: string, args: any) => {
               if (name === 'capability_help') return capabilityHelp.execute(args);
-              if (name === 'memory_search' || name === 'memory_read') return memoryTools?.execute(name, args);
+              if (name === 'memory_search') return memoryTools?.execute(name, args);
               if (name !== 'mcp_load') toolCalled = true;
               return broker.call(name, args);
             },

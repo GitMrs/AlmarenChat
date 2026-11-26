@@ -12,7 +12,6 @@ import { getBuiltInAgents } from '@/lib/agents/data/agents-data';
 import { companionReplyInstruction, createCompanionReplyParser } from '@/lib/companion/reply-protocol.mjs';
 import { createChatWebTools, runAutoWebChat } from '@/lib/web/auto-web';
 import { createCapabilityHelpTool } from '@/lib/capabilities/help.mjs';
-import { createAgentGrowthTools } from '@/lib/agents/growth/agent-growth';
 import { formatKnowledgeContext, getKnowledgeHits } from '@/lib/knowledge/knowledge';
 import { createModelClient, resolveModelName } from '@/lib/core/model-client';
 import { reserveChatQuota } from '@/lib/chat/chat-quota';
@@ -293,14 +292,11 @@ export async function POST(request: Request) {
       async start(controller) {
         const emit = (event: Record<string, unknown>) => controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
         const web = createChatWebTools({ apiKey: userSettings.tavilyApiKey, defaultWeatherLocation: userSettings.defaultWeatherLocation, history: sourceHistory, query: textMessage, capabilityEntry: usesAgentMemory ? 'agent' : 'assistant', compact: true, signal: abortController.signal, onStatus: (label: string) => emit({ type: 'status', label }) });
-        const growth = usesAgentMemory && memoryAgentId
-          ? createAgentGrowthTools({ userId, agentId: memoryAgentId })
-          : null;
         const memoryTools = usesAgentMemory && memoryAgentId && resolvedConversationId
           ? createMemoryTools({ userId, kind: 'agent', agentId: memoryAgentId, conversationId: resolvedConversationId }, (preparedContext?.history || normalizedHistory).map(item => item.id)) : null;
         const capabilityHelp = createCapabilityHelpTool({ entry: usesAgentMemory ? 'agent' : 'assistant', query: textMessage,
           loadableCapabilities: web.loadableCapabilities,
-          getAvailableToolNames: () => [...web.tools, ...(growth?.tools || []), ...(memoryTools?.tools || []), ...(connectorBroker?.modelTools() || [])].map(tool => tool.function.name) });
+          getAvailableToolNames: () => [...web.tools, ...(memoryTools?.tools || []), ...(connectorBroker?.modelTools() || [])].map(tool => tool.function.name) });
         try {
           const parser = companionReply ? createCompanionReplyParser() : null;
           const emitText = (text: string) => {
@@ -315,11 +311,11 @@ export async function POST(request: Request) {
             web,
             contextBudget: preparedContext?.manifest.hardInputBudget,
             onContextUsage: preparedContext ? usage => recordConversationUsage(userId, resolvedConversationId, preparedContext.manifest, usage) : undefined,
-            extraTools: [...(growth?.tools || []), ...(memoryTools?.tools || []), capabilityHelp.tool],
-            getExtraTools: () => [...(growth?.tools || []), ...(memoryTools?.tools || []), capabilityHelp.tool, ...(connectorBroker?.modelTools() || [])],
+            extraTools: [...(memoryTools?.tools || []), capabilityHelp.tool],
+            getExtraTools: () => [...(memoryTools?.tools || []), capabilityHelp.tool, ...(connectorBroker?.modelTools() || [])],
             callTool: (name, args) => name.startsWith('mcp_') ? connectorBroker?.call(name, args) : name === 'capability_help'
               ? capabilityHelp.execute(args)
-              : name === 'memory_search' || name === 'memory_read' ? memoryTools?.execute(name, args) : growth?.execute(name, args),
+              : memoryTools?.execute(name, args),
             signal: abortController.signal,
             onText: (text: string) => emitText(parser ? parser.push(text) : text),
             onReasoning: (text: string) => {
