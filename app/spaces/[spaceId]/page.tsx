@@ -1912,6 +1912,7 @@ export default function SpaceDetailPage() {
         let awaitingUser = false;
         const result = await streamSpaceMessage({
           peerRelayTargets: isPiSpace ? undefined : peerRelayTargets,
+          hasQueuedReply: !isPiSpace && index + 1 < replyRequests.length,
           spaceId,
           message: replyRequest.message,
           history: currentHistory.slice(-61).map((message) => ({
@@ -2033,7 +2034,7 @@ export default function SpaceDetailPage() {
           }
         }
 
-        if (awaitingUser) break;
+        if (awaitingUser || streamFailure) break;
         if (canRelay && handoffAgentId && !streamFailure && !controller.signal.aborted) {
           const nextTarget = memberAgents.find(agent => agent.id === handoffAgentId && peerRelayTargets.includes(agent.id)
             && agent.id !== (result.speakerAgentId || currentSpeakerId));

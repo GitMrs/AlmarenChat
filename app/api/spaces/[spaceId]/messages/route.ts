@@ -21,7 +21,7 @@ import { createCapabilityHelpTool } from '@/lib/capabilities/help.mjs';
 import { stripHistoryRetrievalNotices } from '@/lib/personal-assistant/retrieval-notice.mjs';
 import { createBilibiliAgentTools } from '@/lib/bilibili/agent-tools.mjs';
 import { createAgentGrowthTools } from '@/lib/agents/growth/agent-growth';
-import { askSpaceUser, closingHandoff, omitPendingHandoffs } from '@/lib/space/chat-turn-recipient.mjs';
+import { askSpaceUser, closingHandoff, needsUserBeforeRelay, omitPendingHandoffs } from '@/lib/space/chat-turn-recipient.mjs';
 import { collectChatCompletionStream, runToolLoop } from '@/lib/agents/runtime/tool-loop.mjs';
 import { withMessageReasoning } from '@/lib/chat/reasoning.mjs';
 import { normalizeTaskProposalSteps, taskProposalCapabilities, taskProposalNeedsClarification, taskProposalWithTurnNetworkAuthorization } from '@/lib/space/task-proposals';
@@ -642,7 +642,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
       message, targetAgentId, history, skipPersistUserMessage, interactionMode, coordinationScope,
       multiReplyIndex, imageGenerationRequested, skillId, workId, persistMessages,
       deepThinking,
-      isolatedContext, contextAgentIds, isHandoffTurn, directContent, speakerId, peerRelayTargets,
+      isolatedContext, contextAgentIds, isHandoffTurn, directContent, speakerId, peerRelayTargets, hasQueuedReply,
     } = await request.json();
     const textMessage = typeof message === 'string' ? message.trim() : '';
     const shouldPersistMessages = persistMessages !== false;
@@ -1190,10 +1190,29 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
                   emit({ type: 'reasoning_delta', delta });
                 },
               });
+              const asksUser = canAskUser && completion.tool_calls?.find(call => call.function.name === 'ask_space_user');
+              if (asksUser) completion.tool_calls = [asksUser];
+              if (canAskUser && !completion.tool_calls?.length && completion.content?.trim()) {
+                const closingLine = closingHandoff(completion.content, false);
+                const mentionedPeer = resolveMentionTarget(closingLine, memberAgents);
+                const canHandoff = mentionedPeer && eligiblePeers.some(agent => agent.id === mentionedPeer.id);
+                awaitingUser = await needsUserBeforeRelay(streamedContent + mentionTail, hasQueuedReply === true || canHandoff, async (messages) => {
+                  const body = { model, messages, stream: false as const };
+                  logModelRequest({ entry: 'space-native', body: { spaceId, agentId: targetAgent.id, interactionMode: 'check_reply_recipient', request: body } });
+                  try {
+                    const verdict = await client.chat.completions.create(body, { signal: abortController.signal });
+                    return verdict.choices[0]?.message.content;
+                  } catch (error) {
+                    if (abortController.signal.aborted || request.signal.aborted) throw error;
+                    console.warn('[space-message] recipient check unavailable, pausing relay', { spaceId });
+                    return null;
+                  }
+                });
+              }
               if (!mentionTail) return completion;
 
               // A handoff line only becomes visible in a final, tool-free response.
-              const visibleTail = completion.tool_calls?.length
+              const visibleTail = awaitingUser || completion.tool_calls?.length
                 ? omitPendingHandoffs(mentionTail, (line: string) => Boolean(resolveMentionTarget(line, memberAgents)))
                 : mentionTail;
               if (visibleTail) {
@@ -1208,8 +1227,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
                 if (!question) return { ok: false, error: '请填写需要用户澄清的问题' };
                 awaitingUser = true;
                 const questionDelta = streamedContent.trim() ? `\n\n${question}` : question;
+                streamedContent += questionDelta;
                 emit({ type: 'text_delta', delta: questionDelta });
-                return { ok: true, stop: true, content: streamedContent + questionDelta };
+                return { ok: true, stop: true, content: streamedContent };
               }
               if (followUp?.owns(name)) return followUp.execute(name, args);
               if (name.startsWith('mcp_')) { if (!connectorBroker) throw new Error('当前场景未开启连接器'); return connectorBroker.call(name, args); }
@@ -1402,7 +1422,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
               });
               relayId = relay.id;
             }
-            let assistantContent = loopResult.content?.trim()
+            let assistantContent = (canAskUser && !loopResult.paused ? streamedContent.trim() : '') || loopResult.content?.trim()
               || (taskProposal
                 ? '已根据你的要求生成目标授权方案，确认后由协调者根据实时团队和成果动态推进。'
               : relayDraft
