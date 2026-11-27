@@ -21,7 +21,7 @@ import { createCapabilityHelpTool } from '@/lib/capabilities/help.mjs';
 import { stripHistoryRetrievalNotices } from '@/lib/personal-assistant/retrieval-notice.mjs';
 import { createBilibiliAgentTools } from '@/lib/bilibili/agent-tools.mjs';
 import { createAgentGrowthTools } from '@/lib/agents/growth/agent-growth';
-import { askSpaceUser, closingHandoff } from '@/lib/space/chat-turn-recipient.mjs';
+import { askSpaceUser, closingHandoff, omitPendingHandoffs } from '@/lib/space/chat-turn-recipient.mjs';
 import { collectChatCompletionStream, runToolLoop } from '@/lib/agents/runtime/tool-loop.mjs';
 import { withMessageReasoning } from '@/lib/chat/reasoning.mjs';
 import { normalizeTaskProposalSteps, taskProposalCapabilities, taskProposalNeedsClarification, taskProposalWithTurnNetworkAuthorization } from '@/lib/space/task-proposals';
@@ -1137,6 +1137,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
       async start(controller) {
         let taskProposal: TaskProposal | null = null;
         let awaitingUser = false;
+        let streamedContent = '';
         let fullReasoning = '';
         let relayDraft: RelayDraft | null = null;
         let discussionDraft: DiscussionDraft | null = null;
@@ -1161,22 +1162,54 @@ export async function POST(request: Request, { params }: { params: Promise<{ spa
                 body: { spaceId, agentId: targetAgent.id, interactionMode: normalizedInteractionMode, request: requestBody },
               });
               const completionStream = await client.chat.completions.create(requestBody, { signal: abortController.signal });
-              return collectChatCompletionStream(completionStream, {
-                onContentDelta: (delta: string) => emit({ type: 'text_delta', delta }),
+              const completionStart = streamedContent.length;
+              let mentionTail = '';
+              const completion = await collectChatCompletionStream(completionStream, {
+                onContentDelta: (delta: string) => {
+                  if (canAskUser) {
+                    if (mentionTail) {
+                      mentionTail += delta;
+                      return;
+                    }
+                    const lineStart = Math.max(completionStart, streamedContent.lastIndexOf('\n') + 1);
+                    const handoffStart = streamedContent.slice(lineStart).trim()
+                      ? /\n[ \t]*@/.exec(delta)
+                      : /(?:^|\n)[ \t]*@/.exec(delta);
+                    if (handoffStart) {
+                      const mentionIndex = handoffStart.index + handoffStart[0].length - 1;
+                      mentionTail = delta.slice(mentionIndex);
+                      delta = delta.slice(0, mentionIndex);
+                    }
+                  }
+                  if (!delta) return;
+                  streamedContent += delta;
+                  emit({ type: 'text_delta', delta });
+                },
                 onReasoningDelta: (delta: string) => {
                   fullReasoning += delta;
                   emit({ type: 'reasoning_delta', delta });
                 },
               });
+              if (!mentionTail) return completion;
+
+              // A handoff line only becomes visible in a final, tool-free response.
+              const visibleTail = completion.tool_calls?.length
+                ? omitPendingHandoffs(mentionTail, (line: string) => Boolean(resolveMentionTarget(line, memberAgents)))
+                : mentionTail;
+              if (visibleTail) {
+                streamedContent += visibleTail;
+                emit({ type: 'text_delta', delta: visibleTail });
+              }
+              return { ...completion, content: streamedContent.slice(completionStart) || null };
             },
             executeTool: async (name: string, args: Record<string, unknown>) => {
               if (name === 'ask_space_user' && canAskUser) {
                 const question = typeof args.question === 'string' ? args.question.trim() : '';
                 if (!question) return { ok: false, error: '请填写需要用户澄清的问题' };
                 awaitingUser = true;
-                emit({ type: 'text_reset' });
-                emit({ type: 'text_delta', delta: question });
-                return { ok: true, stop: true, content: question };
+                const questionDelta = streamedContent.trim() ? `\n\n${question}` : question;
+                emit({ type: 'text_delta', delta: questionDelta });
+                return { ok: true, stop: true, content: streamedContent + questionDelta };
               }
               if (followUp?.owns(name)) return followUp.execute(name, args);
               if (name.startsWith('mcp_')) { if (!connectorBroker) throw new Error('当前场景未开启连接器'); return connectorBroker.call(name, args); }
